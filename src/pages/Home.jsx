@@ -1,0 +1,682 @@
+// src/pages/Home.jsx
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { collection, doc, getDoc, getDocs, query, orderBy, limit } from 'firebase/firestore'
+import { db } from '../firebase'
+import { SERVICES, WHATSAPP_NUMBER } from '../utils/services'
+import { DAYS_OPEN, DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
+import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart } from 'lucide-react'
+
+const SLIDES = [
+  {
+    id: 1,
+    tag: 'Professional Grooming',
+    title: 'Your Pet Deserves',
+    highlight: 'Royal Treatment',
+    sub: 'Expert groomers, premium products, and a stress-free experience for your beloved pets.',
+    bg: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(10,10,10,0) 60%)',
+    emoji: '✂️',
+  },
+  {
+    id: 2,
+    tag: 'Spa & Wellness',
+    title: 'Relax. Refresh.',
+    highlight: 'Rejuvenate.',
+    sub: 'From spa baths to de-shedding treatments — full wellness care for dogs & cats.',
+    bg: 'linear-gradient(135deg, rgba(74,158,191,0.15) 0%, rgba(10,10,10,0) 60%)',
+    emoji: '🛁',
+  },
+  {
+    id: 3,
+    tag: 'Open 7 Days a Week',
+    title: 'Always Here',
+    highlight: 'For Your Pet',
+    sub: 'We\'re open 9 AM to 9 PM every single day. Book in minutes, walk in anytime.',
+    bg: 'linear-gradient(135deg, rgba(107,175,107,0.15) 0%, rgba(10,10,10,0) 60%)',
+    emoji: '🐾',
+  },
+]
+
+const DEFAULT_HERO_IMAGES = [
+  {
+    src: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=900&q=80',
+    alt: 'Freshly groomed dog resting after a spa session',
+  },
+  {
+    src: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=900&q=80',
+    alt: 'Two clean dogs sitting together',
+  },
+  {
+    src: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&w=900&q=80',
+    alt: 'Happy dog after grooming',
+  },
+  {
+    src: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?auto=format&fit=crop&w=900&q=80',
+    alt: 'Relaxed cat during wellness care',
+  },
+  {
+    src: 'https://images.unsplash.com/photo-1537151608828-ea2b11777ee8?auto=format&fit=crop&w=900&q=80',
+    alt: 'Small dog looking freshly pampered',
+  },
+]
+
+const FEATURE_ICONS = {
+  award: <Award size={24} />,
+  shield: <Shield size={24} />,
+  clock: <Clock size={24} />,
+  star: <Star size={24} />,
+}
+
+function HeroOrbit3D() {
+  return (
+    <div className="hero-orbit-3d" aria-hidden="true">
+      <div className="hero-orbit-ring hero-orbit-ring-a" />
+      <div className="hero-orbit-ring hero-orbit-ring-b" />
+<div className="hero-orbit-chip hero-orbit-chip-1"><Scissors size={16} /></div>
+      <div className="hero-orbit-chip hero-orbit-chip-2"><Heart size={16} /></div>
+</div>
+  )
+}
+function HeroSlider() {
+  const [current, setCurrent] = useState(0)
+  const [imageCurrent, setImageCurrent] = useState(0)
+  const [heroImages, setHeroImages] = useState(null)
+  const [paused, setPaused] = useState(false)
+
+  const images = heroImages || []
+
+  const next = () => {
+    setCurrent(c => (c + 1) % SLIDES.length)
+    if (images.length) setImageCurrent(c => (c + 1) % images.length)
+  }
+
+  const prev = () => {
+    setCurrent(c => (c - 1 + SLIDES.length) % SLIDES.length)
+    if (images.length) setImageCurrent(c => (c - 1 + images.length) % images.length)
+  }
+
+  useEffect(() => {
+    async function fetchHeroImages() {
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'heroImages'))
+        const savedImages = snap.exists() ? snap.data().images : []
+        const cleanImages = Array.isArray(savedImages)
+          ? savedImages.filter(image => image?.url).slice(0, 5).map((image, index) => ({
+              src: image.url,
+              alt: image.alt || `Pet grooming hero image ${index + 1}`,
+            }))
+          : []
+        setHeroImages(cleanImages.length ? cleanImages : DEFAULT_HERO_IMAGES)
+      } catch {
+        setHeroImages(DEFAULT_HERO_IMAGES)
+      }
+    }
+    fetchHeroImages()
+  }, [])
+
+  useEffect(() => {
+    if (paused) return
+    const t = setInterval(() => {
+      setCurrent(c => (c + 1) % SLIDES.length)
+      setImageCurrent(c => images.length ? (c + 1) % images.length : 0)
+    }, 5000)
+    return () => clearInterval(t)
+  }, [paused, images.length])
+
+  useEffect(() => {
+    setImageCurrent(0)
+  }, [heroImages])
+
+  const slide = SLIDES[current]
+
+  return (
+    <div
+      style={{ position: 'relative', overflow: 'hidden', minHeight: '88vh', display: 'flex', alignItems: 'center' }}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      {/* Background glow */}
+      <div style={{ position: 'absolute', inset: 0, background: slide.bg, transition: 'background 0.8s ease', zIndex: 0 }} />
+      <div className="glow-orb" style={{ width: '500px', height: '500px', background: 'var(--accent-bg)', top: '10%', left: '60%', opacity: 0.6 }} />
+      <div className="paw-pattern" style={{ position: 'absolute', inset: 0, opacity: 0.4, zIndex: 0 }} />
+
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '100px 20px 60px', position: 'relative', zIndex: 1, width: '100%' }}>
+        <div className="hero-layout">
+          <div className="hero-copy">
+            {/* Tag */}
+            <div
+              key={`tag-${current}`}
+              className="fade-up"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                background: 'var(--accent-bg)', border: '1px solid var(--accent-border)',
+                color: 'var(--accent)', fontSize: '12px', fontWeight: 700,
+                padding: '6px 16px', borderRadius: '999px', marginBottom: '24px',
+                letterSpacing: '0.5px',
+              }}
+            >
+              <span>{slide.emoji}</span> {slide.tag}
+            </div>
+
+            {/* Heading */}
+            <h1
+              key={`h1-${current}`}
+              className="fade-up delay-1"
+              style={{
+                fontFamily: '"Playfair Display", serif',
+                fontSize: 'clamp(42px, 7vw, 80px)',
+                fontWeight: 800,
+                color: 'var(--text)',
+                lineHeight: 1.1,
+                marginBottom: '12px',
+              }}
+            >
+              {slide.title}
+              <span
+                style={{
+                  display: 'block',
+                  background: 'var(--gradient)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                }}
+              >
+                {slide.highlight}
+              </span>
+            </h1>
+
+            <p key={`sub-${current}`} className="fade-up delay-2"
+              style={{ color: 'var(--muted)', fontSize: '17px', lineHeight: 1.7, marginBottom: '36px', maxWidth: '520px' }}
+            >
+              {slide.sub}
+            </p>
+
+            <div key={`btns-${current}`} className="fade-up delay-3" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '48px' }}>
+              <Link to="/book" className="btn btn-primary" style={{ fontSize: '15px', padding: '13px 28px' }}>
+                <Calendar size={18} /> Book Appointment
+              </Link>
+              <Link to="/services" className="btn btn-secondary" style={{ fontSize: '15px', padding: '13px 28px' }}>
+                View Services <ChevronRight size={18} />
+              </Link>
+            </div>
+
+            {/* Slider controls */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button onClick={prev} aria-label="Previous hero slide"
+                style={{
+                  width: '38px', height: '38px', borderRadius: '50%',
+                  background: 'var(--accent-bg)', border: '1px solid var(--accent-border)',
+                  color: 'var(--accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {SLIDES.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setCurrent(i)}
+                    aria-label={`Show hero slide ${i + 1}`}
+                    style={{
+                      width: i === current ? '28px' : '8px',
+                      height: '8px',
+                      borderRadius: '4px',
+                      background: i === current ? 'var(--accent)' : 'var(--border)',
+                      border: 'none', cursor: 'pointer',
+                      transition: 'all 0.3s ease',
+                    }}
+                  />
+                ))}
+              </div>
+              <button onClick={next} aria-label="Next hero slide"
+                style={{
+                  width: '38px', height: '38px', borderRadius: '50%',
+                  background: 'var(--accent-bg)', border: '1px solid var(--accent-border)',
+                  color: 'var(--accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+
+          <div className="hero-visual-wrap">
+            <HeroOrbit3D />
+            <div className="hero-image-slider" aria-label="Pet grooming photos">
+            {images.length ? (
+              <>
+                {images.map((image, i) => (
+                  <img
+                    key={image.src || image.url}
+                    src={image.src || image.url}
+                    alt={image.alt}
+                    className={`hero-image ${i === imageCurrent ? 'active' : ''}`}
+                  />
+                ))}
+                <div className="hero-image-dots">
+                  {images.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setImageCurrent(i)}
+                      aria-label={`Show grooming photo ${i + 1}`}
+                      className={i === imageCurrent ? 'active' : ''}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="skeleton" style={{ width: '100%', height: '100%', borderRadius: 0 }} />
+            )}
+          </div>
+        </div>
+      </div>
+
+            </div>
+
+      {/* Floating decorative */}
+      <div className="animate-float" style={{ position: 'absolute', right: '8%', top: '25%', fontSize: '120px', opacity: 0.06, userSelect: 'none', pointerEvents: 'none' }}>🐾</div>
+      <div style={{ position: 'absolute', right: '18%', bottom: '20%', fontSize: '60px', opacity: 0.04, userSelect: 'none', pointerEvents: 'none' }}>🐾</div>
+    </div>
+  )
+}
+
+export default function Home() {
+  const [stats, setStats]   = useState({ totalBookings: 0, totalReviews: 0, avgRating: 5, daysOpen: DAYS_OPEN })
+  const [reviews, setReviews] = useState([])
+  const [serviceDetails, setServiceDetails] = useState({})
+  const [galleryImages, setGalleryImages] = useState([])
+  const [galleryIndex, setGalleryIndex] = useState(0)
+  const [galleryLightbox, setGalleryLightbox] = useState(null)
+  const [features, setFeatures] = useState(DEFAULT_FEATURES)
+  const [packages, setPackages] = useState([])
+
+  useEffect(() => {
+    async function fetchStats() {
+      const [
+        bookingsResult,
+        reviewsResult,
+        galleryResult,
+        detailsResult,
+        packagesResult,
+        featuresResult,
+        allReviewsResult,
+        homeStatsResult,
+      ] = await Promise.allSettled([
+        getDocs(collection(db, 'bookings')),
+        getDocs(query(collection(db, 'reviews'), orderBy('createdAt', 'desc'), limit(6))),
+        getDocs(query(collection(db, 'gallery'), orderBy('createdAt', 'desc'), limit(5))),
+        getDocs(collection(db, 'serviceDetails')),
+        getDocs(collection(db, 'packages')),
+        getDoc(doc(db, 'settings', 'whyChooseUs')),
+        getDocs(collection(db, 'reviews')),
+        getDoc(doc(db, 'settings', 'homeStats')),
+      ])
+
+      try {
+        const details = {}
+        if (detailsResult.status === 'fulfilled') {
+          detailsResult.value.docs.forEach(d => { details[d.id] = { id: d.id, ...d.data() } })
+        }
+
+        const revs = reviewsResult.status === 'fulfilled'
+          ? reviewsResult.value.docs.map(d => ({ id: d.id, ...d.data() }))
+          : []
+        const allRevs = allReviewsResult.status === 'fulfilled'
+          ? allReviewsResult.value.docs.map(d => d.data())
+          : revs
+        const avg = allRevs.length
+          ? (allRevs.reduce((s, r) => s + (r.rating || 5), 0) / allRevs.length).toFixed(1)
+          : 5.0
+        const publicStats = homeStatsResult.status === 'fulfilled' && homeStatsResult.value.exists()
+          ? homeStatsResult.value.data()
+          : {}
+        setStats({
+          totalBookings: Number(publicStats.totalBookings ?? (bookingsResult.status === 'fulfilled' ? bookingsResult.value.size : 0)),
+          totalReviews: Number(publicStats.totalReviews ?? allRevs.length),
+          avgRating: publicStats.avgRating ?? avg,
+          daysOpen: Number(publicStats.daysOpen ?? DAYS_OPEN),
+        })
+        setReviews(revs)
+        setServiceDetails(details)
+        if (packagesResult.status === 'fulfilled') {
+          setPackages(packagesResult.value.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
+        }
+        if (galleryResult.status === 'fulfilled') {
+          setGalleryImages(galleryResult.value.docs.map(d => ({ id: d.id, ...d.data() })).filter(image => image.url).slice(0, 5))
+        }
+        const savedFeatures = featuresResult.status === 'fulfilled' && featuresResult.value.exists() && Array.isArray(featuresResult.value.data().features)
+          ? featuresResult.value.data().features
+          : []
+        const cleanFeatures = savedFeatures
+          .filter(item => item?.title || item?.desc)
+          .slice(0, 3)
+          .map((item, index) => {
+            const fallback = DEFAULT_FEATURES[index] || { icon: 'star', title: 'Trusted Care', desc: 'Thoughtful service for every pet' }
+            const normalized = normalizeFeature(item, fallback)
+            return {
+              icon: FEATURE_ICONS[normalized.icon] ? normalized.icon : fallback.icon,
+              title: normalized.title,
+              desc: normalized.desc,
+            }
+          })
+        if (cleanFeatures.length) setFeatures(cleanFeatures)
+      } catch {}
+    }
+    fetchStats()
+  }, [])
+
+  useEffect(() => {
+    if (galleryImages.length <= 1) return
+    const t = setInterval(() => {
+      setGalleryIndex(i => (i + 1) % galleryImages.length)
+    }, 4200)
+    return () => clearInterval(t)
+  }, [galleryImages.length])
+
+  const homeServices = SERVICES
+    .filter(s => serviceDetails[s.id]?.active !== false)
+    .map(s => ({
+      ...s,
+      name: serviceDetails[s.id]?.name || s.name,
+      description: serviceDetails[s.id]?.summary || serviceDetails[s.id]?.description || s.description,
+      price: serviceDetails[s.id]?.price || s.price,
+      duration: serviceDetails[s.id]?.duration || s.duration,
+    }))
+
+  return (
+    <div style={{ background: 'var(--bg)' }}>
+      {/* Hero slider */}
+      <HeroSlider />
+
+      {/* Stats strip */}
+      <div style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '20px 0' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '40px' }}>
+          {[
+            { val: `${stats.totalBookings}${stats.totalBookings > 0 ? '+' : ''}`, label: 'Total Bookings' },
+            { val: `${stats.avgRating}★`,     label: 'Average Rating' },
+            { val: `${stats.totalReviews}${stats.totalReviews > 0 ? '+' : ''}`,  label: 'Happy Customers' },
+            { val: String(stats.daysOpen || DAYS_OPEN),                        label: 'Days a Week' },
+          ].map((s, i) => (
+            <div key={i} style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: '"Playfair Display",serif', fontSize: '28px', fontWeight: 800, background: 'var(--gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                {s.val}
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '3px' }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Features */}
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '76px 20px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '48px' }}>
+          <p className="section-label" style={{ marginBottom: '10px' }}>Why Choose Us</p>
+          <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(28px,4vw,42px)', fontWeight: 800, color: 'var(--text)' }}>
+            Trusted by Pet Parents
+          </h2>
+        </div>
+        <div className="why-choose-grid">
+          {features.map((f, i) => (
+            <div key={`${f.title}-${i}`} className="why-choose-card fade-up" style={{ animationDelay: `${i * 0.1}s` }}>
+              <div className="why-choose-icon">
+                {FEATURE_ICONS[f.icon] || FEATURE_ICONS.star}
+              </div>
+              <span className="why-choose-number">0{i + 1}</span>
+              <h3>{f.title}</h3>
+              <p>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Services preview */}
+      <div style={{ background: 'var(--surface)', padding: '70px 0', borderTop: '1px solid var(--border)' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '44px', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <p className="section-label" style={{ marginBottom: '10px' }}>What We Offer</p>
+              <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(28px,4vw,42px)', fontWeight: 800, color: 'var(--text)' }}>
+                Our Services
+              </h2>
+            </div>
+            <Link to="/services" className="btn btn-secondary" style={{ fontSize: '13px', padding: '9px 20px' }}>
+              View All <ArrowRight size={15} />
+            </Link>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '18px' }}>
+            {homeServices.slice(0, 6).map((s, i) => (
+              <Link
+                key={s.id}
+                to={`/services/${s.id}`}
+                className="service-preview-card fade-up"
+                style={{ animationDelay: `${i * 0.08}s`, '--service-color': s.color || 'var(--accent)' }}
+              >
+                <div className="service-preview-top">
+                  <div className="service-preview-icon">{s.icon}</div>
+                  <span className="service-preview-arrow"><ArrowRight size={16} /></span>
+                </div>
+                <h3 className="service-preview-title">{s.name}</h3>
+                <p className="service-preview-desc">{s.description}</p>
+                <div className="service-preview-meta">
+                  <span className="service-preview-price">{s.price}</span>
+                  <span className="service-preview-duration">
+                    <Clock size={11} /> {s.duration}
+                  </span>
+                </div>
+              </Link>
+            ))}
+            {packages.map((pkg, i) => (
+              <Link
+                key={pkg.id}
+                to={`/book?package=${pkg.id}`}
+                className="service-preview-card fade-up"
+                style={{ animationDelay: `${(homeServices.slice(0, 6).length + i) * 0.08}s`, '--service-color': 'var(--accent)' }}
+              >
+                <div className="service-preview-top">
+                  <div className="service-preview-icon"><Package size={30} /></div>
+                  <span className="service-preview-arrow"><ArrowRight size={16} /></span>
+                </div>
+                <h3 className="service-preview-title">{pkg.name}</h3>
+                <p className="service-preview-desc">
+                  {pkg.description || (Array.isArray(pkg.services) && pkg.services.length ? pkg.services.join(', ') : 'Custom grooming package')}
+                </p>
+                <div className="service-preview-meta">
+                  <span className="service-preview-price">{pkg.priceRange || (pkg.price ? `Rs. ${pkg.price}` : 'Price TBD')}</span>
+                  <span className="service-preview-duration">
+                    <Clock size={11} /> {pkg.duration || 'Package'}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Gallery preview */}
+      {galleryImages.length > 0 && (
+        <div style={{ padding: '70px 0' }}>
+          <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap', marginBottom: '34px' }}>
+              <div>
+                <p className="section-label" style={{ marginBottom: '10px' }}>Our Work</p>
+                <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(28px,4vw,42px)', fontWeight: 800, color: 'var(--text)' }}>
+                  Gallery
+                </h2>
+                <p style={{ color: 'var(--muted)', fontSize: '14px', marginTop: '8px' }}>Recent grooming moments from the salon.</p>
+              </div>
+              <Link to="/gallery" className="btn btn-secondary" style={{ fontSize: '13px', padding: '9px 20px' }}>
+                View All <ArrowRight size={15} />
+              </Link>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 280px', gap: '18px', alignItems: 'stretch' }} className="home-gallery-layout">
+              <div style={{ position: 'relative', minHeight: '420px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                {galleryImages.map((image, index) => (
+                  <img
+                    key={image.id}
+                    src={image.url}
+                    alt={image.caption || 'Gallery image'}
+                    onClick={() => setGalleryLightbox(image)}
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      opacity: index === galleryIndex ? 1 : 0,
+                      transform: index === galleryIndex ? 'scale(1)' : 'scale(1.04)',
+                      transition: 'opacity 0.7s ease, transform 1s ease',
+                      cursor: 'pointer',
+                    }}
+                  />
+                ))}
+                <div style={{ position: 'absolute', inset: 'auto 0 0 0', padding: '22px', background: 'linear-gradient(0deg, rgba(0,0,0,0.75), rgba(0,0,0,0))' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', color: '#fff', background: 'rgba(0,0,0,0.36)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '999px', padding: '6px 10px', fontSize: '12px', marginBottom: '10px' }}>
+                    <Images size={14} /> {galleryImages[galleryIndex]?.category || 'General'}
+                  </div>
+                  {galleryImages[galleryIndex]?.caption && <h3 style={{ color: '#fff', fontWeight: 800, fontSize: '22px', maxWidth: '620px' }}>{galleryImages[galleryIndex].caption}</h3>}
+                </div>
+                {galleryImages.length > 1 && (
+                  <>
+                    <button aria-label="Previous gallery image" onClick={() => setGalleryIndex(i => (i - 1 + galleryImages.length) % galleryImages.length)} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <ChevronLeft size={18} />
+                    </button>
+                    <button aria-label="Next gallery image" onClick={() => setGalleryIndex(i => (i + 1) % galleryImages.length)} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <ChevronRight size={18} />
+                    </button>
+                  </>
+                )}
+              </div>
+              <div style={{ display: 'grid', gap: '10px' }}>
+                {galleryImages.map((image, index) => (
+                  <button key={image.id} onClick={() => setGalleryIndex(index)} style={{ display: 'grid', gridTemplateColumns: '86px 1fr', gap: '10px', alignItems: 'center', textAlign: 'left', padding: '8px', borderRadius: '8px', border: `1px solid ${index === galleryIndex ? 'var(--accent)' : 'var(--border)'}`, background: index === galleryIndex ? 'var(--accent-bg)' : 'var(--card)', cursor: 'pointer' }}>
+                    <img src={image.url} alt={image.caption || 'Gallery thumbnail'} style={{ width: '86px', height: '70px', borderRadius: '6px', objectFit: 'cover' }} />
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ color: index === galleryIndex ? 'var(--accent)' : 'var(--text)', fontSize: '13px', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{image.caption || `Gallery image ${index + 1}`}</p>
+                      <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '4px', textTransform: 'capitalize' }}>{image.category || 'General'}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reviews section */}
+      {reviews.length > 0 && (
+        <div style={{ padding: '70px 0' }}>
+          <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '44px' }}>
+              <p className="section-label" style={{ marginBottom: '10px' }}>What Customers Say</p>
+              <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(28px,4vw,42px)', fontWeight: 800, color: 'var(--text)' }}>
+                Real Reviews
+              </h2>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '18px' }}>
+              {reviews.map((r, i) => (
+                <div key={r.id} className="card fade-up" style={{ padding: '22px', animationDelay: `${i * 0.08}s` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                      {r.userPhoto
+                        ? <img src={r.userPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '14px' }}>{r.userName?.[0]?.toUpperCase()}</span>
+                      }
+                    </div>
+                    <div>
+                      <p style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>{r.userName}</p>
+                      <div style={{ display: 'flex', gap: '2px' }}>
+                        {[1,2,3,4,5].map(n => (
+                          <span key={n} style={{ color: n <= r.rating ? 'var(--accent)' : 'var(--border)', fontSize: '13px' }}>★</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <p style={{ color: 'var(--muted)', fontSize: '13px', lineHeight: 1.6, fontStyle: 'italic' }}>
+                    "{r.comment}"
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div style={{ textAlign: 'center', marginTop: '32px' }}>
+              <Link to="/reviews" className="btn btn-secondary">See All Reviews <ArrowRight size={15} /></Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Location */}
+      <div id="contact" style={{ background: 'var(--surface)', padding: '70px 0', borderTop: '1px solid var(--border)', scrollMarginTop: '84px' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '48px', alignItems: 'center' }} className="grid-cols-1 md:grid-cols-2">
+            <div>
+              <p className="section-label" style={{ marginBottom: '10px' }}>Find Us</p>
+              <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(24px,3vw,36px)', fontWeight: 800, color: 'var(--text)', marginBottom: '28px' }}>
+                Visit Our Centre
+              </h2>
+              {[
+                { icon: <MapPin size={16} />, text: 'Shop no 208, 1st Floor, Mate Kamthe Bhuruk Complex, Near Bhairavnath Temple, Dhayari, Pune – 411041' },
+                { icon: <Phone size={16} />,  text: '8446314149 / 9325475703' },
+                { icon: <Clock size={16} />,  text: 'Open daily 9:00 AM – 9:00 PM, 7 days a week' },
+              ].map((item, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '18px' }}>
+                  <div style={{ color: 'var(--accent)', marginTop: '2px', flexShrink: 0 }}>{item.icon}</div>
+                  <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: 1.6 }}>{item.text}</p>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '28px', flexWrap: 'wrap' }}>
+                <Link to="/book" className="btn btn-primary">
+                  <Calendar size={16} /> Book Now
+                </Link>
+                <a
+                  href="https://maps.google.com/?q=Dhayari+Pune+Maharashtra+411041"
+                  target="_blank" rel="noopener noreferrer"
+                  className="btn btn-secondary"
+                >
+                  <MapPin size={16} /> Get Directions
+                </a>
+              </div>
+            </div>
+            <div style={{ borderRadius: '20px', overflow: 'hidden', border: '1px solid var(--border)', height: '320px' }}>
+              <iframe
+                title="Location"
+                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3784.9!2d73.8118!3d18.4558!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bc2958b7b0a2bed%3A0x2a6c5a5e4a9a75f3!2sDhayari%2C%20Pune%2C%20Maharashtra%20411041!5e0!3m2!1sen!2sin"
+                width="100%" height="100%"
+                style={{ border: 0, filter: 'grayscale(70%) hue-rotate(180deg) invert(5%)' }}
+                allowFullScreen loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* WhatsApp float button */}
+      <a href={`https://wa.me/${WHATSAPP_NUMBER}`} target="_blank" rel="noopener noreferrer" className="whatsapp-btn" title="Chat on WhatsApp">
+        💬
+      </a>
+
+      {galleryLightbox && (
+        <div onClick={() => setGalleryLightbox(null)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.92)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px', cursor:'pointer' }}>
+          <div onClick={e => e.stopPropagation()} style={{ maxWidth:'900px', width:'100%', cursor:'default' }}>
+            <button onClick={() => setGalleryLightbox(null)} aria-label="Close gallery image" style={{ marginLeft: 'auto', marginBottom: '12px', width: '36px', height: '36px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <X size={18} />
+            </button>
+            <img src={galleryLightbox.url} alt={galleryLightbox.caption || ''} style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain' }} />
+            {galleryLightbox.caption && <p style={{ color:'#fff', textAlign:'center', marginTop:'14px', fontSize:'15px' }}>{galleryLightbox.caption}</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+
+
+
+
+
