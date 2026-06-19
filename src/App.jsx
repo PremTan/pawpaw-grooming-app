@@ -29,6 +29,8 @@ import AdminPackages  from './admin/AdminPackages'
 import AdminHeroImages from './admin/AdminHeroImages'
 import AdminServices from './admin/AdminServices'
 import AdminWhyChooseUs from './admin/AdminWhyChooseUs'
+import AdminContactInfo from './admin/AdminContactInfo'
+import AdminFooter from './admin/AdminFooter'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -59,6 +61,8 @@ export default function App() {
         <Route path="packages"  element={<AdminPackages />} />
         <Route path="why-choose-us" element={<AdminWhyChooseUs />} />
         <Route path="hero-images" element={<AdminHeroImages />} />
+        <Route path="contact-info" element={<AdminContactInfo />} />
+        <Route path="footer" element={<AdminFooter />} />
       </Route>
 
       {/* Public — main layout */}

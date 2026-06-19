@@ -33,13 +33,14 @@ export default function AdminDashboard() {
       const bookings = bSnap.docs.map(d => ({ id:d.id, ...d.data() }))
       const reviews  = rSnap.docs.map(d => d.data())
       const byService={}, earningsByService={}
-      let totalEarnings=0, todayEarnings=0
+      let totalEarnings=0, todayEarnings=0, onlineEarnings=0, walkInEarnings=0
+      let onlineCount=0, walkInCount=0
       bookings.forEach(b => {
-        if (b.serviceId) byService[b.serviceId] = (byService[b.serviceId]||0)+1
         if (b.status==='completed' && b.amountCollected) {
           const amt = parseFloat(b.amountCollected)||0
           totalEarnings += amt
-          earningsByService[b.serviceId] = (earningsByService[b.serviceId]||0)+amt
+          if (b.isWalkIn) { walkInEarnings += amt; walkInCount++ }
+          else { onlineEarnings += amt; onlineCount++ }
           if (b.date===today) todayEarnings += amt
         }
       })

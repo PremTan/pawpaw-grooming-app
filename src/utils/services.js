@@ -133,7 +133,19 @@ export const BOOKING_STATUS = {
   CANCELLED: 'cancelled',
 }
 
-export const WHATSAPP_NUMBER = '919146661718' // owner's WhatsApp with country code, no +
+// WhatsApp number is now fetched from Firebase settings and must be set by admin
+// Fetch it from: db.collection('settings').doc('contactInfo')
+export const getWhatsAppNumber = async (db) => {
+  try {
+    const { doc, getDoc } = await import('firebase/firestore')
+    const snap = await getDoc(doc(db, 'settings', 'contactInfo'))
+    return snap.exists() ? snap.data().whatsappNumber : '919146661718'
+  } catch {
+    return '919146661718' // fallback
+  }
+}
+
+export const WHATSAPP_NUMBER = '919146661718' // fallback default
 
 export const buildWhatsAppMessage = (booking) => {
   const emoji = booking.isWalkIn ? '🏪 Walk-in' : '📱 Online'

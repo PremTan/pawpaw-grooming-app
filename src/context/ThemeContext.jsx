@@ -102,8 +102,8 @@ export const THEMES = {
 const ThemeContext = createContext(null)
 
 export function ThemeProvider({ children }) {
-  const [themeId, setThemeId] = useState(() => localStorage.getItem('pawpaw_theme') || 'dark')
-  const theme = THEMES[themeId] || THEMES.dark
+  const [themeId, setThemeId] = useState(() => localStorage.getItem('pawpaw_theme') || 'light')
+  const theme = THEMES[themeId] || THEMES.light
 
   useEffect(() => {
     localStorage.setItem('pawpaw_theme', themeId)

@@ -1,9 +1,9 @@
 // src/pages/Services.jsx
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, getDocs } from 'firebase/firestore'
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
-import { SERVICES } from '../utils/services'
+import { SERVICES, WHATSAPP_NUMBER } from '../utils/services'
 import { Calendar, Clock, TrendingUp, Package } from 'lucide-react'
 import Spinner from '../components/Spinner'
 
@@ -12,14 +12,17 @@ export default function Services() {
   const [packages, setPackages] = useState([])
   const [serviceDetails, setServiceDetails] = useState({})
   const [loading, setLoading]   = useState(true)
+  const [adminPhone, setAdminPhone] = useState(WHATSAPP_NUMBER)
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [bSnap, pSnap, dSnap] = await Promise.all([
+        const [bSnap, pSnap, dSnap, contactSnap, footerSnap] = await Promise.all([
           getDocs(collection(db, 'bookings')),
           getDocs(collection(db, 'packages')),
           getDocs(collection(db, 'serviceDetails')),
+          getDoc(doc(db, 'settings', 'contactInfo')),
+          getDoc(doc(db, 'settings', 'footerInfo')),
         ])
         const c = {}
         bSnap.docs.forEach(d => { const s = d.data().serviceId; if (s) c[s] = (c[s] || 0) + 1 })
@@ -28,6 +31,17 @@ export default function Services() {
         setCounts(c)
         setServiceDetails(details)
         setPackages(pSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.active !== false))
+        
+        if (contactSnap.exists() && contactSnap.data().whatsappNumber) {
+          setAdminPhone(contactSnap.data().whatsappNumber)
+        }
+        if (footerSnap.exists()) {
+          const footerData = footerSnap.data()
+          if (footerData.phones && footerData.phones.length > 0) {
+            const whatsappPhone = footerData.phones.find(p => p.isWhatsapp)
+            if (whatsappPhone) setAdminPhone(whatsappPhone.number)
+          }
+        }
       } catch {}
       setLoading(false)
     }
@@ -162,8 +176,8 @@ export default function Services() {
             <div style={{ marginTop: '56px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '20px', padding: '36px', textAlign: 'center' }}>
               <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '16px', marginBottom: '6px' }}>Not sure which service to choose?</p>
               <p style={{ color: 'var(--muted)', fontSize: '14px', marginBottom: '20px' }}>Call us and our team will help pick the best option for your pet.</p>
-              <a href="tel:8446314149" className="btn btn-primary" style={{ display: 'inline-flex' }}>
-                📞 Call: 8446314149
+              <a href={`tel:${adminPhone}`} className="btn btn-primary" style={{ display: 'inline-flex' }}>
+                📞 Call: {adminPhone}
               </a>
             </div>
           </>

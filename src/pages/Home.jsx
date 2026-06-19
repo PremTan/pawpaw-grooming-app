@@ -291,6 +291,10 @@ export default function Home() {
   const [galleryLightbox, setGalleryLightbox] = useState(null)
   const [features, setFeatures] = useState(DEFAULT_FEATURES)
   const [packages, setPackages] = useState([])
+  const [adminPhone, setAdminPhone] = useState(WHATSAPP_NUMBER)
+  const [contactAddress, setContactAddress] = useState('Shop no 208, 1st Floor, Mate Kamthe Bhuruk Complex, Near Bhairavnath Temple, Dhayari, Pune – 411041')
+  const [contactHours, setContactHours] = useState('Open daily 9:00 AM – 9:00 PM, 7 days a week')
+  const [shopName, setShopName] = useState('Paw Paw Grooming Center')
 
   useEffect(() => {
     async function fetchStats() {
@@ -303,6 +307,8 @@ export default function Home() {
         featuresResult,
         allReviewsResult,
         homeStatsResult,
+        contactInfoResult,
+        footerInfoResult,
       ] = await Promise.allSettled([
         getDocs(collection(db, 'bookings')),
         getDocs(query(collection(db, 'reviews'), orderBy('createdAt', 'desc'), limit(6))),
@@ -312,6 +318,8 @@ export default function Home() {
         getDoc(doc(db, 'settings', 'whyChooseUs')),
         getDocs(collection(db, 'reviews')),
         getDoc(doc(db, 'settings', 'homeStats')),
+        getDoc(doc(db, 'settings', 'contactInfo')),
+        getDoc(doc(db, 'settings', 'footerInfo')),
       ])
 
       try {
@@ -362,6 +370,20 @@ export default function Home() {
             }
           })
         if (cleanFeatures.length) setFeatures(cleanFeatures)
+        if (contactInfoResult.status === 'fulfilled' && contactInfoResult.value.exists()) {
+          const data = contactInfoResult.value.data()
+          if (data.whatsappNumber) setAdminPhone(data.whatsappNumber)
+          if (data.address) setContactAddress(data.address)
+          if (data.hours) setContactHours(data.hours)
+          if (data.shopName) setShopName(data.shopName)
+        }
+        if (footerInfoResult.status === 'fulfilled' && footerInfoResult.value.exists()) {
+          const footerData = footerInfoResult.value.data()
+          if (footerData.phones && footerData.phones.length > 0) {
+            const whatsappPhone = footerData.phones.find(p => p.isWhatsapp)
+            if (whatsappPhone) setAdminPhone(whatsappPhone.number)
+          }
+        }
       } catch {}
     }
     fetchStats()
@@ -496,7 +518,7 @@ export default function Home() {
       </div>
 
       {/* Gallery preview */}
-      {galleryImages.length > 0 && (
+      {/* {galleryImages.length > 0 && (
         <div style={{ padding: '70px 0' }}>
           <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap', marginBottom: '34px' }}>
@@ -512,59 +534,221 @@ export default function Home() {
               </Link>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 280px', gap: '18px', alignItems: 'stretch' }} className="home-gallery-layout">
-              <div style={{ position: 'relative', minHeight: '420px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--surface)' }}>
-                {galleryImages.map((image, index) => (
-                  <img
-                    key={image.id}
-                    src={image.url}
-                    alt={image.caption || 'Gallery image'}
-                    onClick={() => setGalleryLightbox(image)}
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      opacity: index === galleryIndex ? 1 : 0,
-                      transform: index === galleryIndex ? 'scale(1)' : 'scale(1.04)',
-                      transition: 'opacity 0.7s ease, transform 1s ease',
-                      cursor: 'pointer',
-                    }}
-                  />
-                ))}
-                <div style={{ position: 'absolute', inset: 'auto 0 0 0', padding: '22px', background: 'linear-gradient(0deg, rgba(0,0,0,0.75), rgba(0,0,0,0))' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', color: '#fff', background: 'rgba(0,0,0,0.36)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '999px', padding: '6px 10px', fontSize: '12px', marginBottom: '10px' }}>
-                    <Images size={14} /> {galleryImages[galleryIndex]?.category || 'General'}
-                  </div>
-                  {galleryImages[galleryIndex]?.caption && <h3 style={{ color: '#fff', fontWeight: 800, fontSize: '22px', maxWidth: '620px' }}>{galleryImages[galleryIndex].caption}</h3>}
+            <div style={{ position: 'relative', height: '420px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--surface)' }}>
+              {galleryImages.map((image, index) => (
+                <img
+                  key={image.id}
+                  src={image.url}
+                  alt={image.caption || 'Gallery image'}
+                  onClick={() => setGalleryLightbox(image)}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain',
+                    opacity: index === galleryIndex ? 1 : 0,
+                    transform: index === galleryIndex ? 'scale(1)' : 'scale(1.04)',
+                    transition: 'opacity 0.5s ease, transform 1s ease',
+                    cursor: 'pointer',
+                  }}
+                />
+              ))}
+              <div style={{ position: 'absolute', inset: 'auto 0 0 0', padding: '22px', background: 'linear-gradient(0deg, rgba(0,0,0,0.75), rgba(0,0,0,0))' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', color: '#fff', background: 'rgba(0,0,0,0.36)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '999px', padding: '6px 10px', fontSize: '12px', marginBottom: '10px' }}>
+                  <Images size={14} /> {galleryImages[galleryIndex]?.category || 'General'}
                 </div>
-                {galleryImages.length > 1 && (
-                  <>
-                    <button aria-label="Previous gallery image" onClick={() => setGalleryIndex(i => (i - 1 + galleryImages.length) % galleryImages.length)} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <ChevronLeft size={18} />
-                    </button>
-                    <button aria-label="Next gallery image" onClick={() => setGalleryIndex(i => (i + 1) % galleryImages.length)} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <ChevronRight size={18} />
-                    </button>
-                  </>
-                )}
+                {galleryImages[galleryIndex]?.caption && <h3 style={{ color: '#fff', fontWeight: 800, fontSize: '22px', maxWidth: '620px' }}>{galleryImages[galleryIndex].caption}</h3>}
               </div>
-              <div style={{ display: 'grid', gap: '10px' }}>
-                {galleryImages.map((image, index) => (
-                  <button key={image.id} onClick={() => setGalleryIndex(index)} style={{ display: 'grid', gridTemplateColumns: '86px 1fr', gap: '10px', alignItems: 'center', textAlign: 'left', padding: '8px', borderRadius: '8px', border: `1px solid ${index === galleryIndex ? 'var(--accent)' : 'var(--border)'}`, background: index === galleryIndex ? 'var(--accent-bg)' : 'var(--card)', cursor: 'pointer' }}>
-                    <img src={image.url} alt={image.caption || 'Gallery thumbnail'} style={{ width: '86px', height: '70px', borderRadius: '6px', objectFit: 'cover' }} />
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ color: index === galleryIndex ? 'var(--accent)' : 'var(--text)', fontSize: '13px', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{image.caption || `Gallery image ${index + 1}`}</p>
-                      <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '4px', textTransform: 'capitalize' }}>{image.category || 'General'}</p>
-                    </div>
+              {galleryImages.length > 1 && (
+                <>
+                  <button aria-label="Previous gallery image" onClick={() => setGalleryIndex(i => (i - 1 + galleryImages.length) % galleryImages.length)} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ChevronLeft size={18} />
                   </button>
-                ))}
-              </div>
+                  <button aria-label="Next gallery image" onClick={() => setGalleryIndex(i => (i + 1) % galleryImages.length)} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ChevronRight size={18} />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
-      )}
+      )} */}
+      {/* Gallery preview */}
+{/* {galleryImages.length > 0 && (
+  <div style={{ padding: '70px 0' }}>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap', marginBottom: '34px' }}>
+        <div>
+          <p className="section-label" style={{ marginBottom: '10px' }}>Our Work</p>
+          <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(28px,4vw,42px)', fontWeight: 800, color: 'var(--text)' }}>
+            Gallery
+          </h2>
+          <p style={{ color: 'var(--muted)', fontSize: '14px', marginTop: '8px' }}>Recent grooming moments from the salon.</p>
+        </div>
+        <Link to="/gallery" className="btn btn-secondary" style={{ fontSize: '13px', padding: '9px 20px' }}>
+          View All <ArrowRight size={15} />
+        </Link>
+      </div>
+
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+        gap: '12px',
+      }}>
+        {galleryImages.map((image, index) => (
+          <div
+            key={image.id}
+            onClick={() => setGalleryLightbox(image)}
+            style={{
+              borderRadius: '14px',
+              overflow: 'hidden',
+              border: '1px solid var(--border)',
+              cursor: 'pointer',
+              background: 'var(--surface)',
+              position: 'relative',
+              aspectRatio: '1 / 1',       // ← square cells = works for any image shape
+              transition: 'transform 0.25s, border-color 0.25s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+          >
+            <img
+              src={image.url}
+              alt={image.caption || 'Gallery image'}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                objectPosition: 'center top',   // ← shows face/top of portrait images
+              }}
+              loading="lazy"
+            />
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(0deg, rgba(0,0,0,0.65) 0%, transparent 55%)',
+              opacity: 0,
+              transition: 'opacity 0.25s',
+              display: 'flex',
+              alignItems: 'flex-end',
+              padding: '12px',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = '1' }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = '0' }}
+            >
+              {image.caption && (
+                <p style={{ color: '#fff', fontSize: '12px', fontWeight: 600, lineHeight: 1.3 }}>{image.caption}</p>
+              )}
+            </div>
+            {index === 0 && image.category && (
+              <div style={{ position: 'absolute', top: '10px', left: '10px', display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#fff', background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '999px', padding: '4px 10px', fontSize: '11px' }}>
+                <Images size={12} /> {image.category}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+)} */}
+
+{galleryImages.length > 0 && (
+  <div style={{ padding: '70px 0' }}>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap', marginBottom: '24px' }}>
+        <div>
+          <p className="section-label" style={{ marginBottom: '10px' }}>Our Work</p>
+          <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(28px,4vw,42px)', fontWeight: 800, color: 'var(--text)' }}>Gallery</h2>
+          <p style={{ color: 'var(--muted)', fontSize: '14px', marginTop: '8px' }}>Recent grooming moments from the salon.</p>
+        </div>
+        <Link to="/gallery" className="btn btn-secondary" style={{ fontSize: '13px', padding: '9px 20px' }}>
+          View All <ArrowRight size={15} />
+        </Link>
+      </div>
+
+      {/* Mobile: single image slider */}
+      <div className="gallery-mobile-slider">
+        <div style={{
+          position: 'relative',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          border: '1px solid var(--border)',
+          aspectRatio: '4/3',
+          background: 'var(--surface)',
+        }}>
+          {galleryImages.map((image, index) => (
+            <img
+              key={image.id}
+              src={image.url}
+              alt={image.caption || 'Gallery image'}
+              onClick={() => setGalleryLightbox(image)}
+              style={{
+                position: 'absolute', inset: 0,
+                width: '100%', height: '100%',
+                objectFit: 'cover', objectPosition: 'center top',
+                opacity: index === galleryIndex ? 1 : 0,
+                transition: 'opacity 0.6s ease',
+                cursor: 'pointer',
+              }}
+            />
+          ))}
+          {/* Overlay info */}
+          <div style={{ position: 'absolute', inset: 'auto 0 0 0', padding: '16px', background: 'linear-gradient(0deg,rgba(0,0,0,0.7),transparent)' }}>
+            {galleryImages[galleryIndex]?.category && (
+              <div style={{ display:'inline-flex', alignItems:'center', gap:'5px', color:'#fff', background:'rgba(0,0,0,0.4)', border:'1px solid rgba(255,255,255,0.2)', borderRadius:'999px', padding:'4px 10px', fontSize:'11px', marginBottom:'6px' }}>
+                <Images size={11} /> {galleryImages[galleryIndex].category}
+              </div>
+            )}
+            {galleryImages[galleryIndex]?.caption && (
+              <p style={{ color:'#fff', fontWeight:700, fontSize:'15px' }}>{galleryImages[galleryIndex].caption}</p>
+            )}
+          </div>
+          {/* Arrows */}
+          {galleryImages.length > 1 && <>
+            <button onClick={() => setGalleryIndex(i => (i - 1 + galleryImages.length) % galleryImages.length)}
+              style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', width:'34px', height:'34px', borderRadius:'50%', border:'1px solid rgba(255,255,255,0.3)', background:'rgba(0,0,0,0.45)', color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <ChevronLeft size={16} />
+            </button>
+            <button onClick={() => setGalleryIndex(i => (i + 1) % galleryImages.length)}
+              style={{ position:'absolute', right:'10px', top:'50%', transform:'translateY(-50%)', width:'34px', height:'34px', borderRadius:'50%', border:'1px solid rgba(255,255,255,0.3)', background:'rgba(0,0,0,0.45)', color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <ChevronRight size={16} />
+            </button>
+          </>}
+        </div>
+        {/* Dots */}
+        {galleryImages.length > 1 && (
+          <div style={{ display:'flex', justifyContent:'center', gap:'6px', marginTop:'12px' }}>
+            {galleryImages.map((_, i) => (
+              <button key={i} onClick={() => setGalleryIndex(i)}
+                style={{ width: i === galleryIndex ? '20px' : '7px', height:'7px', borderRadius:'4px', border:'none', background: i === galleryIndex ? 'var(--accent)' : 'var(--border)', cursor:'pointer', transition:'all 0.3s', padding:0 }} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Desktop: grid */}
+      <div className="gallery-desktop-grid" style={{
+  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+  gap: '12px',
+}}>
+        {galleryImages.map((image, index) => (
+          <div key={image.id} onClick={() => setGalleryLightbox(image)}
+            style={{ borderRadius:'14px', overflow:'hidden', border:'1px solid var(--border)', cursor:'pointer', background:'var(--surface)', position:'relative', aspectRatio:'1/1', transition:'transform 0.25s, border-color 0.25s' }}
+            onMouseEnter={e => { e.currentTarget.style.transform='scale(1.03)'; e.currentTarget.style.borderColor='var(--accent)' }}
+            onMouseLeave={e => { e.currentTarget.style.transform='scale(1)'; e.currentTarget.style.borderColor='var(--border)' }}
+          >
+            <img src={image.url} alt={image.caption || 'Gallery image'}
+              style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }}
+              loading="lazy" />
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Reviews section */}
       {reviews.length > 0 && (
@@ -608,6 +792,17 @@ export default function Home() {
         </div>
       )}
 
+      {/* Call CTA Section */}
+      <div style={{ marginTop: '56px', marginBottom: '56px', maxWidth: '1200px', margin: '56px auto 56px', padding: '0 20px' }}>
+        <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '20px', padding: '36px', textAlign: 'center' }}>
+          <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '16px', marginBottom: '6px' }}>Not sure which service to choose?</p>
+          <p style={{ color: 'var(--muted)', fontSize: '14px', marginBottom: '20px' }}>Call us and our team will help pick the best option for your pet.</p>
+          <a href={`tel:${adminPhone}`} className="btn btn-primary" style={{ display: 'inline-flex' }}>
+            📞 Call: {adminPhone}
+          </a>
+        </div>
+      </div>
+
       {/* Location */}
       <div id="contact" style={{ background: 'var(--surface)', padding: '70px 0', borderTop: '1px solid var(--border)', scrollMarginTop: '84px' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
@@ -618,9 +813,9 @@ export default function Home() {
                 Visit Our Centre
               </h2>
               {[
-                { icon: <MapPin size={16} />, text: 'Shop no 208, 1st Floor, Mate Kamthe Bhuruk Complex, Near Bhairavnath Temple, Dhayari, Pune – 411041' },
-                { icon: <Phone size={16} />,  text: '8446314149 / 9325475703' },
-                { icon: <Clock size={16} />,  text: 'Open daily 9:00 AM – 9:00 PM, 7 days a week' },
+                { icon: <MapPin size={16} />, text: contactAddress },
+                { icon: <Phone size={16} />,  text: adminPhone },
+                { icon: <Clock size={16} />,  text: contactHours },
               ].map((item, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '18px' }}>
                   <div style={{ color: 'var(--accent)', marginTop: '2px', flexShrink: 0 }}>{item.icon}</div>
@@ -655,7 +850,7 @@ export default function Home() {
       </div>
 
       {/* WhatsApp float button */}
-      <a href={`https://wa.me/${WHATSAPP_NUMBER}`} target="_blank" rel="noopener noreferrer" className="whatsapp-btn" title="Chat on WhatsApp">
+      <a href={`https://wa.me/${adminPhone}`} target="_blank" rel="noopener noreferrer" className="whatsapp-btn" title="Chat on WhatsApp">
         💬
       </a>
 

@@ -134,7 +134,8 @@ export default function AdminGallery() {
       ) : (
         <div style={{ columns:'4 200px', gap:'14px' }}>
           {filtered.map(img => (
-            <div key={img.id} style={{ breakInside:'avoid', marginBottom:'14px', position:'relative', borderRadius:'12px', overflow:'hidden', border:'1px solid var(--border)', cursor:'pointer', transition:'all 0.2s' }}
+            // <div key={img.id} style={{ breakInside:'avoid', marginBottom:'14px', position:'relative', borderRadius:'12px', overflow:'hidden', border:'1px solid var(--border)', cursor:'pointer', transition:'all 0.2s' }}
+            <div key={img.id} style={{ breakInside:'avoid', marginBottom:'14px', position:'relative', borderRadius:'12px', overflow:'hidden', border:'1px solid var(--border)', cursor:'pointer', transition:'all 0.2s', minHeight:'60px', background:'var(--surface)' }}
               onMouseEnter={e => e.currentTarget.style.borderColor='var(--accent)'}
               onMouseLeave={e => e.currentTarget.style.borderColor='var(--border)'}
             >
@@ -147,7 +148,8 @@ export default function AdminGallery() {
               )}
               {/* Edit/delete overlay */}
               <button onClick={() => handleEdit(img)}
-                style={{ position:'absolute', top:'6px', right:'40px', background:'rgba(0,0,0,0.7)', border:'none', color:'#fff', width:'28px', height:'28px', borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', opacity:0, transition:'opacity 0.2s' }}
+                // style={{ position:'absolute', top:'6px', right:'40px', background:'rgba(0,0,0,0.7)', border:'none', color:'#fff', width:'28px', height:'28px', borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', opacity:0, transition:'opacity 0.2s' }}
+                style={{ position:'absolute', top:'6px', right:'40px', background:'rgba(0,0,0,0.7)', border:'none', color:'#fff', width:'28px', height:'28px', borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}
                 onMouseEnter={e => e.currentTarget.style.opacity='1'} onFocus={e => e.currentTarget.style.opacity='1'}
                 className="delete-img-btn"
                 title="Edit image"
@@ -155,8 +157,9 @@ export default function AdminGallery() {
                 <Pencil size={13}/>
               </button>
               <button onClick={() => handleDelete(img.id)} disabled={deleting===img.id}
-                style={{ position:'absolute', top:'6px', right:'6px', background:'rgba(0,0,0,0.7)', border:'none', color:'#fff', width:'28px', height:'28px', borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', opacity:0, transition:'opacity 0.2s' }}
-                onMouseEnter={e => e.currentTarget.style.opacity='1'} onFocus={e => e.currentTarget.style.opacity='1'}
+                // style={{ position:'absolute', top:'6px', right:'6px', background:'rgba(0,0,0,0.7)', border:'none', color:'#fff', width:'28px', height:'28px', borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', opacity:0, transition:'opacity 0.2s' }}
+                // onMouseEnter={e => e.currentTarget.style.opacity='1'} onFocus={e => e.currentTarget.style.opacity='1'}
+                style={{ position:'absolute', top:'6px', right:'6px', background:'rgba(0,0,0,0.7)', border:'none', color:'#fff', width:'28px', height:'28px', borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}
                 className="delete-img-btn"
               >
                 <Trash2 size={13}/>
@@ -167,7 +170,7 @@ export default function AdminGallery() {
       )}
 
       {/* Show delete button on hover via CSS */}
-      <style>{`.delete-img-btn { opacity: 0 !important; } div:hover > .delete-img-btn { opacity: 1 !important; }`}</style>
+      {/* <style>{`.delete-img-btn { opacity: 0 !important; } div:hover > .delete-img-btn { opacity: 1 !important; }`}</style> */}
 
       {/* Add Image Modal */}
       {showModal && (
@@ -182,14 +185,14 @@ export default function AdminGallery() {
               {error && <div style={{ background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.2)', color:'#ef4444', fontSize:'13px', padding:'10px', borderRadius:'10px', marginBottom:'16px' }}>{error}</div>}
 
               {/* Tabs */}
-              <div style={{ display:'flex', gap:'4px', background:'var(--surface)', borderRadius:'10px', padding:'4px', marginBottom:'18px' }}>
+              {/* <div style={{ display:'flex', gap:'4px', background:'var(--surface)', borderRadius:'10px', padding:'4px', marginBottom:'18px' }}>
                 <button style={tabStyle(tab==='upload')} onClick={() => setTab('upload')}>
                   <Upload size={13} style={{ display:'inline', marginRight:'4px' }}/>Upload File
                 </button>
                 <button style={tabStyle(tab==='url')} onClick={() => setTab('url')}>
                   <LinkIcon size={13} style={{ display:'inline', marginRight:'4px' }}/>Paste URL
                 </button>
-              </div>
+              </div> */}
 
               <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
                 {tab === 'upload' ? (

@@ -1,7 +1,7 @@
 // src/admin/AdminLayout.jsx
 import { Link, Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Award, LayoutDashboard, CalendarCheck, Home, MessageSquare, Users, Image, Images, Package, LogOut, Scissors } from 'lucide-react'
+import { Award, LayoutDashboard, CalendarCheck, Home, MessageSquare, Users, Image, Images, Package, LogOut, Scissors, MapPin, Share2 } from 'lucide-react'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import NotificationBell from '../components/NotificationBell'
 
@@ -13,6 +13,8 @@ const LINKS = [
   { to:'/admin/packages',  label:'Packages',   icon:<Package size={17}/> },
   { to:'/admin/why-choose-us', label:'Why Choose Us', icon:<Award size={17}/> },
   { to:'/admin/hero-images', label:'Hero Images', icon:<Images size={17}/> },
+  { to:'/admin/contact-info', label:'Contact Info', icon:<MapPin size={17}/> },
+  { to:'/admin/footer', label:'Footer Settings', icon:<Share2 size={17}/> },
   { to:'/admin/gallery',   label:'Gallery',    icon:<Image size={17}/> },
   { to:'/admin/reviews',   label:'Reviews',    icon:<MessageSquare size={17}/> },
 ]
@@ -93,4 +95,3 @@ export default function AdminLayout() {
     </div>
   )
 }
-

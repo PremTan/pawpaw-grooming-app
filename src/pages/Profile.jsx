@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, updateProfile } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
-import { Lock, Save, User } from 'lucide-react'
-import { auth, db } from '../firebase'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { Lock, Save, User, Upload, X } from 'lucide-react'
+import { auth, db, storage } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
 
@@ -21,6 +22,8 @@ export default function Profile() {
   const [changingPassword, setChangingPassword] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoPreview, setPhotoPreview] = useState(null)
 
   const canChangePassword = user?.providerData?.some(provider => provider.providerId === 'password')
 
@@ -92,6 +95,36 @@ export default function Profile() {
     setChangingPassword(false)
   }
 
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Show preview
+    const reader = new FileReader()
+    reader.onload = () => setPhotoPreview(reader.result)
+    reader.readAsDataURL(file)
+
+    setUploadingPhoto(true)
+    setError('')
+    setMessage('')
+    try {
+      // Upload to Firebase Storage
+      const photoRef = ref(storage, `profile-pics/${user.uid}`)
+      await uploadBytes(photoRef, file)
+      const photoURL = await getDownloadURL(photoRef)
+
+      // Update user profile
+      await updateProfile(auth.currentUser, { photoURL })
+      
+      setMessage('Profile photo updated!')
+      // Clear preview
+      setTimeout(() => setPhotoPreview(null), 2000)
+    } catch (err) {
+      setError(err.message || 'Could not upload photo.')
+    }
+    setUploadingPhoto(false)
+  }
+
   const L = { fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '6px' }
 
   if (loading) return (
@@ -118,6 +151,60 @@ export default function Profile() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
             <User size={18} style={{ color: 'var(--accent)' }} />
             <h2 style={{ color: 'var(--text)', fontSize: '18px', fontWeight: 800 }}>Personal Details</h2>
+          </div>
+
+          {/* Profile Picture */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '14px' }}>
+            <div style={{ position: 'relative' }}>
+              {photoPreview || user.photoURL ? (
+                <img
+                  src={photoPreview || user.photoURL}
+                  alt="Profile"
+                  style={{ width: '70px', height: '70px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent)' }}
+                />
+              ) : (
+                <div style={{ width: '70px', height: '70px', borderRadius: '50%', background: 'var(--accent-bg)', border: '2px dashed var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: 700, color: 'var(--accent)' }}>
+                  {(user.displayName || user.email || 'U')[0].toUpperCase()}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Upload Button */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+            <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoUpload}
+                disabled={uploadingPhoto}
+                style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+              />
+              <button
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--accent-border)',
+                  background: 'var(--accent-bg)',
+                  color: 'var(--accent)',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  cursor: uploadingPhoto ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  opacity: uploadingPhoto ? 0.6 : 1,
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => { if (!uploadingPhoto) { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = 'white'; } }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent-bg)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                disabled={uploadingPhoto}
+              >
+                <Upload size={12} /> {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
