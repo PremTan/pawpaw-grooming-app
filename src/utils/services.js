@@ -91,20 +91,6 @@ export const SERVICES = [
   },
 ]
 
-export const TIME_SLOTS = [
-  '09:00 AM', '09:30 AM',
-  '10:00 AM', '10:30 AM',
-  '11:00 AM', '11:30 AM',
-  '12:00 PM', '12:30 PM',
-  '01:00 PM', '01:30 PM',
-  '02:00 PM', '02:30 PM',
-  '03:00 PM', '03:30 PM',
-  '04:00 PM', '04:30 PM',
-  '05:00 PM', '05:30 PM',
-  '06:00 PM', '06:30 PM',
-  '07:00 PM', '07:30 PM',
-  '08:00 PM', '08:30 PM',
-]
 
 export const PET_TYPES = [
   'Dog', 'Cat', 'Rabbit', 'Bird',
@@ -133,25 +119,13 @@ export const BOOKING_STATUS = {
   CANCELLED: 'cancelled',
 }
 
-// WhatsApp number is now fetched from Firebase settings and must be set by admin
-// Fetch it from: db.collection('settings').doc('contactInfo')
-export const getWhatsAppNumber = async (db) => {
-  try {
-    const { doc, getDoc } = await import('firebase/firestore')
-    const snap = await getDoc(doc(db, 'settings', 'contactInfo'))
-    return snap.exists() ? (snap.data().whatsappNumber || '') : ''
-  } catch {
-    return ''
-  }
-}
 
-export const WHATSAPP_NUMBER = ''
-
-export const buildWhatsAppMessage = (booking) => {
+export const buildWhatsAppMessage = (booking, shopName = '') => {
   const source = booking.isWalkIn ? 'Walk-in' : 'Online'
   const visitType = booking.bookingType === 'home' ? 'Home Visit' : booking.bookingType === 'store' ? 'In Store' : ''
+  const business = shopName || 'Pet Grooming'
   return encodeURIComponent(
-    `*New Booking - Paw Paw Grooming*\n\n` +
+    `*New Booking - ${business}*\n\n` +
     `${source} Appointment\n` +
     `*Owner:* ${booking.ownerName || '-'}\n` +
     `*Phone:* ${booking.phone || '-'}\n` +
@@ -166,5 +140,8 @@ export const buildWhatsAppMessage = (booking) => {
     `\n_Booking ID: #${(booking.id || '').slice(0, 8).toUpperCase()}_`
   )
 }
+
+
+
 
 

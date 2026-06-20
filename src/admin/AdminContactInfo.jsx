@@ -8,9 +8,9 @@ import { uploadToCloudinary } from '../utils/cloudinary'
 
 const DEFAULT_CONTACT = {
   whatsappNumber: '',
-  address: 'Shop no 208, 1st Floor, Mate Kamthe Bhuruk Complex, Near Bhairavnath Temple, Dhayari, Pune – 411041',
-  hours: 'Open daily 9:00 AM – 9:00 PM, 7 days a week',
-  shopName: 'Paw Paw Pet Grooming Center',
+  address: '',
+  hours: '',
+  shopName: '',
   logoUrl: '',
 }
 
@@ -70,7 +70,7 @@ export default function AdminContactInfo() {
         whatsappNumber: contact.whatsappNumber.trim(),
         address: contact.address.trim(),
         hours: contact.hours.trim(),
-        shopName: contact.shopName.trim() || 'Paw Paw Grooming Center',
+        shopName: contact.shopName.trim(),
         logoUrl: contact.logoUrl?.trim() || '',
         updatedAt: serverTimestamp(),
       }, { merge: true })
@@ -135,7 +135,7 @@ export default function AdminContactInfo() {
             type="text"
             value={contact.shopName}
             onChange={e => updateField('shopName', e.target.value)}
-            placeholder="e.g., Paw Paw Grooming Center"
+            placeholder="Business name"
             style={inputStyle}
           />
         </div>
@@ -224,7 +224,7 @@ export default function AdminContactInfo() {
           <textarea
             value={contact.hours}
             onChange={e => updateField('hours', e.target.value)}
-            placeholder="e.g., Open daily 9:00 AM – 9:00 PM, 7 days a week"
+            placeholder="Enter opening hours or leave booking schedule to show public hours"
             style={{ ...inputStyle, resize: 'vertical', minHeight: '60px' }}
           />
         </div>

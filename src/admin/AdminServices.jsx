@@ -237,7 +237,6 @@
 //                   {image.url ? <img src={image.url} alt={image.alt || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ImagePlus size={28} style={{ color: 'var(--muted)' }} />}
 //                 </div>
 //                 <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
-//                   <input className="input" placeholder="Image URL" value={image.url} onChange={e => updateImage(index, 'url', e.target.value)} />
 //                   <input className="input" placeholder="Title" value={image.title} onChange={e => updateImage(index, 'title', e.target.value)} />
 //                   <textarea className="input" rows={3} placeholder="Description for this image" value={image.description} onChange={e => updateImage(index, 'description', e.target.value)} style={{ resize: 'vertical' }} />
 //                   <input className="input" placeholder="Alt text" value={image.alt} onChange={e => updateImage(index, 'alt', e.target.value)} />
@@ -590,7 +589,6 @@ export default function AdminServices() {
                   {image.url ? <img src={image.url} alt={image.alt || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ImagePlus size={28} style={{ color: 'var(--muted)' }} />}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
-                  <input className="input" placeholder="Image URL" value={image.url} onChange={e => updateImage(index, 'url', e.target.value)} />
                   <input className="input" placeholder="Title" value={image.title} onChange={e => updateImage(index, 'title', e.target.value)} />
                   <textarea className="input" rows={3} placeholder="Description for this image" value={image.description} onChange={e => updateImage(index, 'description', e.target.value)} style={{ resize: 'vertical' }} />
                   <input className="input" placeholder="Alt text" value={image.alt} onChange={e => updateImage(index, 'alt', e.target.value)} />

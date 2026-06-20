@@ -5,10 +5,11 @@ import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
-import { SERVICES, PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage, getWhatsAppNumber } from '../utils/services'
+import { SERVICES, PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
 import { Calendar, Clock, CheckCircle, ChevronLeft, Home, Plus, Store, X } from 'lucide-react'
 import { format, addDays, startOfToday } from 'date-fns'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel } from '../utils/bookingSettings'
+import { fetchBusinessInfo } from '../utils/businessInfo'
 
 const ADMIN_UID_KEY = 'admin_uid'
 
@@ -50,6 +51,7 @@ export default function Book() {
   const [bookingRef, setBookingRef] = useState(null)
   const [adminUid, setAdminUid] = useState('')
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
+  const [shopName, setShopName] = useState('Pet Grooming')
   const [bookingSettings, setBookingSettings] = useState(null)
 
   // Fetch packages and admin UID
@@ -75,12 +77,13 @@ export default function Book() {
 
   useEffect(() => {
     async function fetchAdminBookingConfig() {
-      const [settings, whatsappNumber] = await Promise.all([
+      const [settings, businessInfo] = await Promise.all([
         fetchBookingSettings(db),
-        getWhatsAppNumber(db),
+        fetchBusinessInfo(db),
       ])
       setBookingSettings(settings)
-      setAdminWhatsappNumber(whatsappNumber)
+      setAdminWhatsappNumber(businessInfo.whatsappNumber || '')
+      setShopName(businessInfo.contact.shopName || 'Pet Grooming')
     }
     fetchAdminBookingConfig()
   }, [])
@@ -264,7 +267,7 @@ export default function Book() {
   }
 
   const whatsappLink = bookingRef
-    ? (adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage({ ...bookingRef, id: bookingRef.id })}` : '#')
+    ? (adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage({ ...bookingRef, id: bookingRef.id }, shopName)}` : '#')
     : '#'
 
   const today  = format(startOfToday(), 'yyyy-MM-dd')

@@ -67,7 +67,7 @@ export default function AdminHeroImages() {
       .filter(image => image.url)
 
     if (!cleanImages.length) {
-      setError('Please add at least 1 image before saving, or delete custom images to use defaults.')
+      setError('Please add at least 1 image before saving.')
       return
     }
 
@@ -86,7 +86,7 @@ export default function AdminHeroImages() {
   }
 
   const deleteCustomImages = async () => {
-    if (!confirm('Delete custom hero images and show the default home page images?')) return
+    if (!confirm('Delete custom hero images?')) return
     setError('')
     setMessage('')
     setDeleting(true)
@@ -94,7 +94,7 @@ export default function AdminHeroImages() {
       await deleteDoc(doc(db, 'settings', 'heroImages'))
       setImages(EMPTY_IMAGES)
       setHasSavedImages(false)
-      setMessage('Custom hero images deleted. Default images will show on the home page.')
+      setMessage('Custom hero images deleted.')
     } catch (err) {
       setError(err.message || 'Could not delete custom hero images.')
     }
@@ -156,10 +156,6 @@ export default function AdminHeroImages() {
             </div>
 
             <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-              <div>
-                <label style={L}>Image URL</label>
-                <input className="input" value={image.url} onChange={e => updateImage(index, 'url', e.target.value)} placeholder="https://..." />
-              </div>
               <div>
                 <label style={L}>Alt Text</label>
                 <input className="input" value={image.alt} onChange={e => updateImage(index, 'alt', e.target.value)} placeholder="Describe this image" />

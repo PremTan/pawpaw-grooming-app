@@ -72,6 +72,7 @@ export default function App() {
       <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
         <Route index            element={<AdminDashboard />} />
         <Route path="bookings"  element={<AdminBookings />} />
+        <Route path="bookings/:bookingId" element={<AdminBookings />} />
         <Route path="reviews"   element={<AdminReviews />} />
         <Route path="customers" element={<AdminCustomers />} />
         <Route path="services"  element={<AdminServices />} />
@@ -80,7 +81,8 @@ export default function App() {
         <Route path="why-choose-us" element={<AdminWhyChooseUs />} />
         <Route path="hero-images" element={<AdminHeroImages />} />
         <Route path="contact-info" element={<AdminContactInfo />} />
-        <Route path="footer" element={<AdminFooter />} />`r`n        <Route path="booking-settings" element={<AdminBookingSettings />} />
+        <Route path="footer" element={<AdminFooter />} />
+        <Route path="booking-settings" element={<AdminBookingSettings />} />
       </Route>
 
       {/* Public — main layout */}

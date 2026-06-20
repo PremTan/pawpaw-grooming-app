@@ -8,7 +8,8 @@ import Spinner from '../components/Spinner'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { calculatePublicStats } from '../utils/publicStats'
-import { BOOKING_STATUS, PET_TYPES, SERVICES, TIME_SLOTS } from '../utils/services'
+import { BOOKING_STATUS, PET_TYPES, SERVICES } from '../utils/services'
+import { fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
 
 const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', notes: '', amountCollected: '' }
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -95,6 +96,7 @@ export default function AdminDashboard() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [bookingSettings, setBookingSettings] = useState(null)
   const today = format(startOfToday(), 'yyyy-MM-dd')
 
   const fetchData = async () => {
@@ -103,7 +105,8 @@ export default function AdminDashboard() {
       if (user?.uid) {
         await setDoc(doc(db, 'settings', 'general'), { adminUid: user.uid }, { merge: true })
       }
-      const [bSnap, rSnap] = await Promise.all([getDocs(collection(db, 'bookings')), getDocs(collection(db, 'reviews'))])
+      const [bSnap, rSnap, settings] = await Promise.all([getDocs(collection(db, 'bookings')), getDocs(collection(db, 'reviews')), fetchBookingSettings(db)])
+      setBookingSettings(settings)
       const bookings = bSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       const reviews = rSnap.docs.map(d => d.data())
       const byService = {}
@@ -184,6 +187,9 @@ export default function AdminDashboard() {
   }
 
   useEffect(() => { fetchData() }, [])
+
+  const walkinAvailability = getAvailabilityForDate(bookingSettings || undefined, walkin.date)
+  const walkinSlots = walkinAvailability.storeSlots
 
   const upd = (k, v) => setWalkin(p => ({ ...p, [k]: v }))
 
@@ -401,13 +407,13 @@ export default function AdminDashboard() {
                 <div className="admin-form-grid">
                   <div>
                     <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Date *</label>
-                    <input type="date" className="input" value={walkin.date} onChange={e => upd('date', e.target.value)} />
+                    <input type="date" className="input" value={walkin.date} onChange={e => setWalkin(prev => ({ ...prev, date: e.target.value, slot: '' }))} />
                   </div>
                   <div>
                     <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Time Slot *</label>
                     <select className="input" value={walkin.slot} onChange={e => upd('slot', e.target.value)}>
                       <option value="">Select slot</option>
-                      {TIME_SLOTS.map(t => <option key={t}>{t}</option>)}
+                      {walkinSlots.map(t => <option key={t}>{t}</option>)}
                     </select>
                   </div>
                 </div>

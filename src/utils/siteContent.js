@@ -1,10 +1,10 @@
-export const DAYS_OPEN = 7
-export const WORKING_HOURS = '9 AM - 9 PM'
+export const DAYS_OPEN = 0
+export const WORKING_HOURS = ''
 
 export const DEFAULT_FEATURES = [
   { icon: 'award', title: 'Expert Groomers', desc: 'Trained for all breeds & temperaments' },
   { icon: 'shield', title: 'Safe & Gentle', desc: 'Pet-friendly, toxin-free products only' },
-  { icon: 'clock', title: 'Open 7 Days', desc: '9 AM - 9 PM, every day of the week' },
+  { icon: 'clock', title: 'Flexible Hours', desc: 'Availability is managed by the grooming team' },
 ]
 
 export function normalizeFeature(feature, fallback) {
@@ -13,7 +13,7 @@ export function normalizeFeature(feature, fallback) {
 
   return {
     icon: feature?.icon || fallback.icon,
-    title: title.replace(/Open\s+6\s+Days/i, 'Open 7 Days'),
-    desc: desc.replace(/6\s+days?\s+a\s+week/i, '7 days a week'),
+    title,
+    desc,
   }
 }

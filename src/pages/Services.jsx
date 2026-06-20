@@ -1,28 +1,28 @@
 // src/pages/Services.jsx
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore'
+import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
-import { SERVICES, WHATSAPP_NUMBER } from '../utils/services'
+import { SERVICES } from '../utils/services'
 import { Calendar, Clock, TrendingUp, Package } from 'lucide-react'
 import Spinner from '../components/Spinner'
+import { fetchBusinessInfo } from '../utils/businessInfo'
 
 export default function Services() {
   const [counts, setCounts]     = useState({})
   const [packages, setPackages] = useState([])
   const [serviceDetails, setServiceDetails] = useState({})
   const [loading, setLoading]   = useState(true)
-  const [adminPhone, setAdminPhone] = useState(WHATSAPP_NUMBER)
+  const [adminPhone, setAdminPhone] = useState('')
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [bSnap, pSnap, dSnap, contactSnap, footerSnap] = await Promise.all([
+        const [bSnap, pSnap, dSnap, businessInfo] = await Promise.all([
           getDocs(collection(db, 'bookings')),
           getDocs(collection(db, 'packages')),
           getDocs(collection(db, 'serviceDetails')),
-          getDoc(doc(db, 'settings', 'contactInfo')),
-          getDoc(doc(db, 'settings', 'footerInfo')),
+          fetchBusinessInfo(db),
         ])
         const c = {}
         bSnap.docs.forEach(d => { const s = d.data().serviceId; if (s) c[s] = (c[s] || 0) + 1 })
@@ -32,16 +32,7 @@ export default function Services() {
         setServiceDetails(details)
         setPackages(pSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.active !== false))
         
-        if (contactSnap.exists() && contactSnap.data().whatsappNumber) {
-          setAdminPhone(contactSnap.data().whatsappNumber)
-        }
-        if (footerSnap.exists()) {
-          const footerData = footerSnap.data()
-          if (footerData.phones && footerData.phones.length > 0) {
-            const whatsappPhone = footerData.phones.find(p => p.isWhatsapp)
-            if (whatsappPhone) setAdminPhone(whatsappPhone.number)
-          }
-        }
+        setAdminPhone(businessInfo.whatsappNumber || '')
       } catch {}
       setLoading(false)
     }

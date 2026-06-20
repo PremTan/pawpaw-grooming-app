@@ -3,33 +3,17 @@ import { useEffect, useState } from 'react'
 import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, orderBy, query, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
-import { Plus, X, Trash2, Image, Upload, Link as LinkIcon, Pencil } from 'lucide-react'
+import { uploadToCloudinary } from '../utils/cloudinary'
+import { Plus, X, Trash2, Image, Upload, Pencil } from 'lucide-react'
 
 const CATEGORIES = ['before-after', 'haircut', 'bath', 'styling', 'nail', 'general']
 const EMPTY = { url:'', caption:'', category:'general' }
-
-// Cloudinary upload helper
-async function uploadToCloudinary(file) {
-  const CLOUD_NAME  = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
-  const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
-  if (!CLOUD_NAME || !UPLOAD_PRESET) {
-    throw new Error('Cloudinary not configured. Add VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET to .env')
-  }
-  const fd = new FormData()
-  fd.append('file', file)
-  fd.append('upload_preset', UPLOAD_PRESET)
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method:'POST', body:fd })
-  const data = await res.json()
-  if (data.error) throw new Error(data.error.message)
-  return data.secure_url
-}
 
 export default function AdminGallery() {
   const [images, setImages]     = useState([])
   const [loading, setLoading]   = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm]         = useState(EMPTY)
-  const [tab, setTab]           = useState('upload') // 'upload' | 'url'
   const [file, setFile]         = useState(null)
   const [preview, setPreview]   = useState('')
   const [saving, setSaving]     = useState(false)
@@ -64,7 +48,7 @@ export default function AdminGallery() {
     setError(''); setSaving(true)
     try {
       let url = form.url
-      if (tab === 'upload' && file) {
+      if (file) {
         url = await uploadToCloudinary(file)
       }
       if (!url) { setError('Please provide an image.'); setSaving(false); return }
@@ -96,7 +80,6 @@ export default function AdminGallery() {
     setFile(null)
     setPreview('')
     setError('')
-    setTab('url')
     setShowModal(true)
   }
 
@@ -112,7 +95,7 @@ export default function AdminGallery() {
           <h1 style={{ fontFamily:'"Playfair Display",serif', fontSize:'28px', fontWeight:800, color:'var(--text)', marginBottom:'4px' }}>Gallery</h1>
           <p style={{ color:'var(--muted)', fontSize:'13px' }}>{images.length} images · shown to customers</p>
         </div>
-        <button onClick={() => { setShowModal(true); setEditingId(null); setForm(EMPTY); setFile(null); setPreview(''); setError(''); setTab('upload') }} className="btn btn-primary" style={{ fontSize:'13px', padding:'10px 18px' }}>
+        <button onClick={() => { setShowModal(true); setEditingId(null); setForm(EMPTY); setFile(null); setPreview(''); setError('') }} className="btn btn-primary" style={{ fontSize:'13px', padding:'10px 18px' }}>
           <Plus size={16}/> Add Image
         </button>
       </div>
@@ -184,49 +167,37 @@ export default function AdminGallery() {
 
               {error && <div style={{ background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.2)', color:'#ef4444', fontSize:'13px', padding:'10px', borderRadius:'10px', marginBottom:'16px' }}>{error}</div>}
 
-              {/* Tabs */}
-              {/* <div style={{ display:'flex', gap:'4px', background:'var(--surface)', borderRadius:'10px', padding:'4px', marginBottom:'18px' }}>
-                <button style={tabStyle(tab==='upload')} onClick={() => setTab('upload')}>
-                  <Upload size={13} style={{ display:'inline', marginRight:'4px' }}/>Upload File
-                </button>
-                <button style={tabStyle(tab==='url')} onClick={() => setTab('url')}>
-                  <LinkIcon size={13} style={{ display:'inline', marginRight:'4px' }}/>Paste URL
-                </button>
-              </div> */}
-
               <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
-                {tab === 'upload' ? (
-                  <div>
-                    <label style={L}>Image File</label>
-                    {preview ? (
-                      <div style={{ position:'relative', borderRadius:'12px', overflow:'hidden', marginBottom:'8px' }}>
-                        <img src={preview} alt="" style={{ width:'100%', maxHeight:'200px', objectFit:'cover', display:'block' }}/>
-                        <button onClick={() => { setFile(null); setPreview('') }} style={{ position:'absolute', top:'8px', right:'8px', background:'rgba(0,0,0,0.7)', border:'none', color:'#fff', width:'28px', height:'28px', borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                          <X size={14}/>
-                        </button>
-                      </div>
-                    ) : (
-                      <label style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'8px', padding:'32px', border:'2px dashed var(--border)', borderRadius:'12px', cursor:'pointer', background:'var(--surface)', transition:'all 0.2s' }}
-                        onMouseEnter={e => e.currentTarget.style.borderColor='var(--accent)'}
-                        onMouseLeave={e => e.currentTarget.style.borderColor='var(--border)'}
-                      >
-                        <Upload size={28} style={{ color:'var(--muted)' }}/>
-                        <span style={{ color:'var(--muted)', fontSize:'13px' }}>Click to upload image</span>
-                        <span style={{ color:'var(--muted)', fontSize:'11px' }}>JPG, PNG, WEBP up to 10MB</span>
-                        <input type="file" accept="image/*" style={{ display:'none' }} onChange={handleFileChange}/>
-                      </label>
-                    )}
-                    <p style={{ color:'var(--muted)', fontSize:'11px', marginTop:'6px' }}>
-                      Requires Cloudinary setup in .env file
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <label style={L}>Image URL</label>
-                    <input className="input" placeholder="https://..." value={form.url} onChange={e => setForm(p => ({ ...p, url:e.target.value }))}/>
-                    {form.url && <img src={form.url} alt="" style={{ width:'100%', maxHeight:'160px', objectFit:'cover', borderRadius:'10px', marginTop:'8px' }} onError={e => e.currentTarget.style.display='none'}/>}
-                  </div>
-                )}
+                <div>
+                  <label style={L}>Image File</label>
+                  {preview || form.url ? (
+                    <div style={{ position:'relative', borderRadius:'12px', overflow:'hidden', marginBottom:'8px' }}>
+                      <img src={preview || form.url} alt="" style={{ width:'100%', maxHeight:'200px', objectFit:'cover', display:'block' }}/>
+                      <button onClick={() => { setFile(null); setPreview(''); setForm(p => ({ ...p, url:'' })) }} style={{ position:'absolute', top:'8px', right:'8px', background:'rgba(0,0,0,0.7)', border:'none', color:'#fff', width:'28px', height:'28px', borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        <X size={14}/>
+                      </button>
+                    </div>
+                  ) : (
+                    <label style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'8px', padding:'32px', border:'2px dashed var(--border)', borderRadius:'12px', cursor:'pointer', background:'var(--surface)', transition:'all 0.2s' }}
+                      onMouseEnter={e => e.currentTarget.style.borderColor='var(--accent)'}
+                      onMouseLeave={e => e.currentTarget.style.borderColor='var(--border)'}
+                    >
+                      <Upload size={28} style={{ color:'var(--muted)' }}/>
+                      <span style={{ color:'var(--muted)', fontSize:'13px' }}>Click to upload image</span>
+                      <span style={{ color:'var(--muted)', fontSize:'11px' }}>JPG, PNG, WEBP up to 10MB</span>
+                      <input type="file" accept="image/*" style={{ display:'none' }} onChange={handleFileChange}/>
+                    </label>
+                  )}
+                  {(preview || form.url) && (
+                    <label className="btn btn-secondary" style={{ justifyContent:'center', fontSize:'13px', padding:'10px 14px', marginTop:'8px' }}>
+                      <Upload size={15}/> Replace Image
+                      <input type="file" accept="image/*" style={{ display:'none' }} onChange={handleFileChange}/>
+                    </label>
+                  )}
+                  <p style={{ color:'var(--muted)', fontSize:'11px', marginTop:'6px' }}>
+                    Requires Cloudinary setup in .env file
+                  </p>
+                </div>
 
                 <div>
                   <label style={L}>Caption (optional)</label>
@@ -242,7 +213,7 @@ export default function AdminGallery() {
 
                 <div style={{ display:'flex', gap:'10px', paddingTop:'4px' }}>
                   <button onClick={() => { setShowModal(false); setEditingId(null) }} className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }}>Cancel</button>
-                  <button onClick={handleSave} disabled={saving || (tab==='upload'&&!file) || (tab==='url'&&!form.url)} className="btn btn-primary" style={{ flex:1, justifyContent:'center' }}>
+                  <button onClick={handleSave} disabled={saving || (!file && !form.url)} className="btn btn-primary" style={{ flex:1, justifyContent:'center' }}>
                     {saving ? 'Uploading…' : 'Save Image'}
                   </button>
                 </div>

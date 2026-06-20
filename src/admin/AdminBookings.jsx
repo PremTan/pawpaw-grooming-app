@@ -1,13 +1,14 @@
 // src/admin/AdminBookings.jsx
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc } from 'firebase/firestore'
 import { Calendar, CheckCircle2, Clock, IndianRupee, MessageCircle, Phone, Search, Trash2, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import { useNotifications } from '../context/NotificationContext'
 import { db } from '../firebase'
 import { syncPublicStats } from '../utils/publicStats'
-import { SERVICES, buildWhatsAppMessage, getWhatsAppNumber } from '../utils/services'
+import { SERVICES, buildWhatsAppMessage } from '../utils/services'
+import { fetchBusinessInfo } from '../utils/businessInfo'
 import { getBookingTypeLabel } from '../utils/bookingSettings'
 
 const STATUS_OPTS = ['all', 'pending', 'confirmed', 'completed', 'cancelled']
@@ -19,6 +20,8 @@ const shortId = (id = '') => `#${id.slice(0, 8).toUpperCase()}`
 
 export default function AdminBookings() {
   const { sendNotification } = useNotifications()
+  const navigate = useNavigate()
+  const { bookingId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedDate = searchParams.get('date') || ''
   const [bookings, setBookings] = useState([])
@@ -33,6 +36,7 @@ export default function AdminBookings() {
   const [cashAmt, setCashAmt] = useState('')
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
+  const [shopName, setShopName] = useState('Pet Grooming')
 
   const fetchBookings = async () => {
     setLoading(true)
@@ -56,8 +60,16 @@ export default function AdminBookings() {
   useEffect(() => { fetchBookings() }, [])
 
   useEffect(() => {
+    if (!bookingId || bookings.length === 0) return
+    const match = bookings.find(booking => booking.id === bookingId)
+    if (match) setSelectedBooking(match)
+  }, [bookingId, bookings])
+
+  useEffect(() => {
     async function fetchWhatsapp() {
-      setAdminWhatsappNumber(await getWhatsAppNumber(db))
+      const info = await fetchBusinessInfo(db)
+      setAdminWhatsappNumber(info.whatsappNumber || '')
+      setShopName(info.contact.shopName || 'Pet Grooming')
     }
     fetchWhatsapp()
   }, [])
@@ -242,7 +254,7 @@ export default function AdminBookings() {
                       <Trash2 size={14} /> Delete
                     </button>
                   )}
-                  <a href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(b)}` : '#'} target="_blank" rel="noopener noreferrer" style={S.iconBtn('#25D366', 'rgba(37,211,102,0.1)')}>
+                  <a href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(b, shopName)}` : '#'} target="_blank" rel="noopener noreferrer" style={S.iconBtn('#25D366', 'rgba(37,211,102,0.1)')}>
                     <MessageCircle size={14} /> WA
                   </a>
                 </div>
@@ -256,8 +268,9 @@ export default function AdminBookings() {
         <BookingDetailModal
           booking={selectedBooking}
           adminWhatsappNumber={adminWhatsappNumber}
+          shopName={shopName}
           updating={updating}
-          onClose={() => setSelectedBooking(null)}
+          onClose={() => { setSelectedBooking(null); if (bookingId) navigate('/admin/bookings') }}
           onStatus={updateStatus}
           onDelete={deleteBooking}
         />
@@ -287,7 +300,7 @@ export default function AdminBookings() {
   )
 }
 
-function BookingDetailModal({ booking, adminWhatsappNumber, updating, onClose, onStatus, onDelete }) {
+function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, onClose, onStatus, onDelete }) {
   const detailRows = [
     ['Booking ID', shortId(booking.id)],
     ['Owner', booking.ownerName || '-'],
@@ -348,7 +361,7 @@ function BookingDetailModal({ booking, adminWhatsappNumber, updating, onClose, o
               <Trash2 size={15} /> Delete
             </button>
           )}
-          <a className="btn btn-secondary" href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(booking)}` : '#'} target="_blank" rel="noopener noreferrer">
+          <a className="btn btn-secondary" href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(booking, shopName)}` : '#'} target="_blank" rel="noopener noreferrer">
             <MessageCircle size={15} /> WhatsApp
           </a>
         </div>

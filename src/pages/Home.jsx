@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs, query, orderBy, limit } from 'firebase/firestore'
 import { db } from '../firebase'
-import { SERVICES, WHATSAPP_NUMBER } from '../utils/services'
+import { SERVICES } from '../utils/services'
 import { DAYS_OPEN, DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
+import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
 import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart } from 'lucide-react'
 
 const SLIDES = [
@@ -28,37 +29,16 @@ const SLIDES = [
   },
   {
     id: 3,
-    tag: 'Open 7 Days a Week',
-    title: 'Always Here',
-    highlight: 'For Your Pet',
-    sub: 'We\'re open 9 AM to 9 PM every single day. Book in minutes, walk in anytime.',
+    tag: 'Flexible Scheduling',
+    title: 'Book Around',
+    highlight: 'Your Day',
+    sub: 'Choose from the appointment windows enabled by our grooming team.',
     bg: 'linear-gradient(135deg, rgba(107,175,107,0.15) 0%, rgba(10,10,10,0) 60%)',
     emoji: '🐾',
   },
 ]
 
-const DEFAULT_HERO_IMAGES = [
-  {
-    src: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=900&q=80',
-    alt: 'Freshly groomed dog resting after a spa session',
-  },
-  {
-    src: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=900&q=80',
-    alt: 'Two clean dogs sitting together',
-  },
-  {
-    src: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&w=900&q=80',
-    alt: 'Happy dog after grooming',
-  },
-  {
-    src: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?auto=format&fit=crop&w=900&q=80',
-    alt: 'Relaxed cat during wellness care',
-  },
-  {
-    src: 'https://images.unsplash.com/photo-1537151608828-ea2b11777ee8?auto=format&fit=crop&w=900&q=80',
-    alt: 'Small dog looking freshly pampered',
-  },
-]
+const DEFAULT_HERO_IMAGES = []
 
 const FEATURE_ICONS = {
   award: <Award size={24} />,
@@ -106,7 +86,7 @@ function HeroSlider() {
               alt: image.alt || `Pet grooming hero image ${index + 1}`,
             }))
           : []
-        setHeroImages(cleanImages.length ? cleanImages : DEFAULT_HERO_IMAGES)
+        setHeroImages(cleanImages)
       } catch {
         setHeroImages(DEFAULT_HERO_IMAGES)
       }
@@ -140,7 +120,7 @@ function HeroSlider() {
       <div className="glow-orb" style={{ width: '500px', height: '500px', background: 'var(--accent-bg)', top: '10%', left: '60%', opacity: 0.6 }} />
       <div className="paw-pattern" style={{ position: 'absolute', inset: 0, opacity: 0.4, zIndex: 0 }} />
 
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '100px 20px 60px', position: 'relative', zIndex: 1, width: '100%' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '120px 20px 60px', position: 'relative', zIndex: 1, width: '100%' }}>
         <div className="hero-layout">
           <div className="hero-copy">
             {/* Tag */}
@@ -291,10 +271,10 @@ export default function Home() {
   const [galleryLightbox, setGalleryLightbox] = useState(null)
   const [features, setFeatures] = useState(DEFAULT_FEATURES)
   const [packages, setPackages] = useState([])
-  const [adminPhone, setAdminPhone] = useState(WHATSAPP_NUMBER)
-  const [contactAddress, setContactAddress] = useState('Shop no 208, 1st Floor, Mate Kamthe Bhuruk Complex, Near Bhairavnath Temple, Dhayari, Pune – 411041')
-  const [contactHours, setContactHours] = useState('Open daily 9:00 AM – 9:00 PM, 7 days a week')
-  const [shopName, setShopName] = useState('Paw Paw Grooming Center')
+  const [adminPhone, setAdminPhone] = useState('')
+  const [contactAddress, setContactAddress] = useState('')
+  const [contactHours, setContactHours] = useState('')
+  const [shopName, setShopName] = useState('Pet Grooming')
 
   useEffect(() => {
     async function fetchStats() {
@@ -307,8 +287,7 @@ export default function Home() {
         featuresResult,
         allReviewsResult,
         homeStatsResult,
-        contactInfoResult,
-        footerInfoResult,
+        businessInfoResult,
       ] = await Promise.allSettled([
         getDocs(collection(db, 'bookings')),
         getDocs(query(collection(db, 'reviews'), orderBy('createdAt', 'desc'), limit(6))),
@@ -318,8 +297,7 @@ export default function Home() {
         getDoc(doc(db, 'settings', 'whyChooseUs')),
         getDocs(collection(db, 'reviews')),
         getDoc(doc(db, 'settings', 'homeStats')),
-        getDoc(doc(db, 'settings', 'contactInfo')),
-        getDoc(doc(db, 'settings', 'footerInfo')),
+        fetchBusinessInfo(db),
       ])
 
       try {
@@ -370,19 +348,12 @@ export default function Home() {
             }
           })
         if (cleanFeatures.length) setFeatures(cleanFeatures)
-        if (contactInfoResult.status === 'fulfilled' && contactInfoResult.value.exists()) {
-          const data = contactInfoResult.value.data()
-          if (data.whatsappNumber) setAdminPhone(data.whatsappNumber)
-          if (data.address) setContactAddress(data.address)
-          if (data.hours) setContactHours(data.hours)
-          if (data.shopName) setShopName(data.shopName)
-        }
-        if (footerInfoResult.status === 'fulfilled' && footerInfoResult.value.exists()) {
-          const footerData = footerInfoResult.value.data()
-          if (footerData.phones && footerData.phones.length > 0) {
-            const whatsappPhone = footerData.phones.find(p => p.isWhatsapp)
-            if (whatsappPhone) setAdminPhone(whatsappPhone.number)
-          }
+        if (businessInfoResult.status === 'fulfilled') {
+          const info = businessInfoResult.value
+          setAdminPhone(info.whatsappNumber || '')
+          setContactAddress(info.contact.address || '')
+          setContactHours(info.hoursText || '')
+          setShopName(info.contact.shopName || 'Pet Grooming')
         }
       } catch {}
     }
@@ -690,7 +661,7 @@ export default function Home() {
                   <Calendar size={16} /> Book Now
                 </Link>
                 <a
-                  href="https://maps.google.com/?q=Dhayari+Pune+Maharashtra+411041"
+                  href={contactAddress ? `https://maps.google.com/?q=${encodeURIComponent(contactAddress)}` : '#'}
                   target="_blank" rel="noopener noreferrer"
                   className="btn btn-secondary"
                 >
@@ -701,7 +672,7 @@ export default function Home() {
             <div style={{ borderRadius: '20px', overflow: 'hidden', border: '1px solid var(--border)', height: '320px' }}>
               <iframe
                 title="Location"
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3784.9!2d73.8118!3d18.4558!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bc2958b7b0a2bed%3A0x2a6c5a5e4a9a75f3!2sDhayari%2C%20Pune%2C%20Maharashtra%20411041!5e0!3m2!1sen!2sin"
+                src={contactAddress ? `https://www.google.com/maps?q=${encodeURIComponent(contactAddress)}&output=embed` : "about:blank"}
                 width="100%" height="100%"
                 style={{ border: 0, filter: 'grayscale(70%) hue-rotate(180deg) invert(5%)' }}
                 allowFullScreen loading="lazy"
