@@ -1,5 +1,6 @@
 // src/admin/AdminBookings.jsx
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc } from 'firebase/firestore'
 import { Calendar, CheckCircle2, Clock, IndianRupee, MessageCircle, Phone, Search, Trash2, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
@@ -17,13 +18,15 @@ const shortId = (id = '') => `#${id.slice(0, 8).toUpperCase()}`
 
 export default function AdminBookings() {
   const { sendNotification } = useNotifications()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedDate = searchParams.get('date') || ''
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusF, setStatusF] = useState('all')
   const [serviceF, setServiceF] = useState('all')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateFrom, setDateFrom] = useState(requestedDate)
+  const [dateTo, setDateTo] = useState(requestedDate)
   const [updating, setUpdating] = useState(null)
   const [cashModal, setCashModal] = useState(null)
   const [cashAmt, setCashAmt] = useState('')
@@ -182,7 +185,7 @@ export default function AdminBookings() {
         </select>
         <input type="date" aria-label="From date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <input type="date" aria-label="To date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-        {(dateFrom || dateTo) && <button type="button" className="admin-booking-clear-filter" onClick={() => { setDateFrom(''); setDateTo('') }}>Clear dates</button>}
+        {(dateFrom || dateTo) && <button type="button" className="admin-booking-clear-filter" onClick={() => { setDateFrom(''); setDateTo(''); setSearchParams({}) }}>Clear dates</button>}
       </div>
 
       {loading ? <Spinner text="Loading bookings..." /> : filtered.length === 0 ? (
@@ -339,3 +342,4 @@ function BookingDetailModal({ booking, updating, onClose, onStatus, onDelete }) 
     </div>
   )
 }
+

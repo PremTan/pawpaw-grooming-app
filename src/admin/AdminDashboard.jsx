@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
-import { BarChart3, Calendar, IndianRupee, Plus, TrendingUp, UserCheck, Users, X } from 'lucide-react'
+import { BarChart3, Calendar, CalendarCheck, IndianRupee, Plus, UserCheck, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
@@ -82,6 +82,7 @@ export default function AdminDashboard() {
     walkInEarnings: 0,
     onlineCount: 0,
     walkInCount: 0,
+    todayCount: 0,
     customerCount: 0,
     bookings: [],
   })
@@ -138,6 +139,7 @@ export default function AdminDashboard() {
       const sorted = [...bookings].sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0))
       setData({
         totalBookings: bookings.length,
+        todayCount: bookings.filter(b => b.date === today).length,
         pending: bookings.filter(b => b.status === 'pending').length,
         confirmed: bookings.filter(b => b.status === 'confirmed').length,
         completed: bookings.filter(b => b.status === 'completed').length,
@@ -207,12 +209,10 @@ export default function AdminDashboard() {
   const maxCount = Math.max(...Object.values(data.byService), 1)
 
   const statCards = [
-    { label: 'Total Bookings', value: data.totalBookings, icon: <Calendar size={20} />, color: 'var(--accent)' },
-    { label: 'Pending', value: data.pending, icon: <TrendingUp size={20} />, color: '#fbbf24' },
+    { label: 'Total Bookings', value: data.totalBookings, icon: <Calendar size={20} />, color: 'var(--accent)', split: [{ label: 'Online', value: data.onlineCount }, { label: 'Offline', value: data.walkInCount }] },
     { label: 'Total Earnings', value: `Rs ${money(data.totalEarnings)}`, icon: <IndianRupee size={20} />, color: '#34d399', split: [{ label: 'Online', value: `Rs ${money(data.onlineEarnings)}` }, { label: 'Offline', value: `Rs ${money(data.walkInEarnings)}` }] },
     { label: "Today's Earnings", value: `Rs ${money(data.todayEarnings)}`, icon: <IndianRupee size={20} />, color: '#60a5fa' },
-    { label: 'Online Appointments', value: data.onlineCount, icon: <Users size={20} />, color: '#38bdf8' },
-    { label: 'Offline Appointments', value: data.walkInCount, icon: <UserCheck size={20} />, color: '#a78bfa' },
+    { label: "Today's Appointments", value: data.todayCount, icon: <CalendarCheck size={20} />, color: '#22c55e', link: `/admin/bookings?date=${today}`, action: 'View today appointments' },
   ]
 
   return (
@@ -236,6 +236,7 @@ export default function AdminDashboard() {
                 <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text)', fontFamily: '"Playfair Display",serif' }}>{s.value}</div>
                 <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '3px' }}>{s.label}</div>
                 {s.split && <div className="admin-earning-split">{s.split.map(row => <span key={row.label}>{row.label}: <strong>{row.value}</strong></span>)}</div>}
+                {s.link && <Link className="admin-stat-card-link" to={s.link}>{s.action}</Link>}
               </div>
             ))}
           </div>
@@ -428,3 +429,7 @@ export default function AdminDashboard() {
     </div>
   )
 }
+
+
+
+
