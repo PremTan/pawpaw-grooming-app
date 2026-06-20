@@ -1,5 +1,6 @@
 // src/App.jsx
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
@@ -32,6 +33,20 @@ import AdminWhyChooseUs from './admin/AdminWhyChooseUs'
 import AdminContactInfo from './admin/AdminContactInfo'
 import AdminFooter from './admin/AdminFooter'
 
+function ScrollToTop() {
+  const { pathname, search, hash } = useLocation()
+
+  useEffect(() => {
+    if (hash) return
+
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    requestAnimationFrame(() => {
+      document.querySelector('.admin-content')?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    })
+  }, [pathname, search, hash])
+
+  return null
+}
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <div style={{ paddingTop: '80px' }}><Spinner text="Checking login..." /></div>
@@ -49,7 +64,9 @@ function AdminRoute({ children }) {
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <ScrollToTop />
+      <Routes>
       {/* Admin — own layout */}
       <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
         <Route index            element={<AdminDashboard />} />
@@ -87,6 +104,9 @@ export default function App() {
           <Footer />
         </div>
       } />
-    </Routes>
+      </Routes>
+    </>
   )
 }
+
+
