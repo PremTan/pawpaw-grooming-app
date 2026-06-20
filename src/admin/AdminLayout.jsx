@@ -1,7 +1,8 @@
 // src/admin/AdminLayout.jsx
+import { useState } from 'react'
 import { Link, Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Award, LayoutDashboard, CalendarCheck, Home, MessageSquare, Users, Image, Images, Package, LogOut, Scissors, MapPin, Share2 } from 'lucide-react'
+import { Award, LayoutDashboard, CalendarCheck, Home, MessageSquare, Users, Image, Images, Package, LogOut, Scissors, MapPin, Share2, Menu, X } from 'lucide-react'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import NotificationBell from '../components/NotificationBell'
 
@@ -22,14 +23,16 @@ const LINKS = [
 export default function AdminLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const [menuOpen, setMenuOpen] = useState(false)
 
-  const handleLogout = async () => { await logout(); navigate('/') }
+  const handleLogout = async () => { await logout(); setMenuOpen(false); navigate('/') }
+  const closeMenu = () => setMenuOpen(false)
 
   return (
-    <div className="admin-shell">
-      {/* Sidebar */}
+    <div className={`admin-shell${menuOpen ? ' admin-menu-open' : ''}`}>
+      {menuOpen && <button type="button" className="admin-sidebar-overlay" aria-label="Close admin menu" onClick={closeMenu} />}
+
       <aside className="admin-sidebar">
-        {/* Brand */}
         <div className="admin-brand">
           <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
             <div style={{ width:'34px', height:'34px', borderRadius:'10px', background:'var(--gradient)', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -40,12 +43,15 @@ export default function AdminLayout() {
               <div style={{ color:'var(--muted)', fontSize:'10px' }}>Paw Paw Grooming</div>
             </div>
           </div>
+          <button type="button" className="admin-sidebar-close" aria-label="Close admin menu" onClick={closeMenu}>
+            <X size={18} />
+          </button>
         </div>
 
-        {/* Nav */}
         <nav className="admin-sidebar-nav">
           {LINKS.map(link => (
             <NavLink key={link.to} to={link.to} end={link.end}
+              onClick={closeMenu}
               className={({ isActive }) => `admin-nav-link${isActive ? ' active' : ''}`}
               style={{ marginBottom:'2px' }}
             >
@@ -54,9 +60,8 @@ export default function AdminLayout() {
           ))}
         </nav>
 
-        {/* Bottom */}
         <div className="admin-sidebar-bottom">
-          <Link to="/" className="admin-nav-link" style={{ marginBottom:'8px' }}>
+          <Link to="/" onClick={closeMenu} className="admin-nav-link" style={{ marginBottom:'8px' }}>
             <Home size={17}/> View Home
           </Link>
           <div style={{ display:'flex', alignItems:'center', gap:'8px', padding:'8px', marginBottom:'8px' }}>
@@ -65,7 +70,7 @@ export default function AdminLayout() {
             </div>
             <div style={{ minWidth:0 }}>
               <div style={{ color:'var(--text)', fontSize:'11px', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email}</div>
-              <div style={{ color:'var(--accent)', fontSize:'10px' }}>Owner · Admin</div>
+              <div style={{ color:'var(--accent)', fontSize:'10px' }}>Owner - Admin</div>
             </div>
           </div>
           <button onClick={handleLogout}
@@ -78,15 +83,24 @@ export default function AdminLayout() {
         </div>
       </aside>
 
-      {/* Main */}
       <div className="admin-main">
-        {/* Top bar */}
         <div className="admin-topbar">
-          <Link to="/" className="btn btn-secondary" style={{ fontSize:'12px', padding:'8px 14px', textDecoration:'none' }}>
-            <Home size={14}/> Home
-          </Link>
-          <ThemeSwitcher />
-          <NotificationBell />
+          <div className="admin-topbar-left">
+            <button type="button" className="admin-menu-toggle" aria-label="Open admin menu" onClick={() => setMenuOpen(true)}>
+              <Menu size={20} />
+            </button>
+            <div className="admin-mobile-title">
+              <strong>Admin Panel</strong>
+              <span>Paw Paw Grooming</span>
+            </div>
+          </div>
+          <div className="admin-topbar-actions">
+            <Link to="/" className="btn btn-secondary admin-home-btn" style={{ fontSize:'12px', padding:'8px 14px', textDecoration:'none' }}>
+              <Home size={14}/><span>Home</span>
+            </Link>
+            <ThemeSwitcher />
+            <NotificationBell />
+          </div>
         </div>
         <main className="admin-content">
           <Outlet />
