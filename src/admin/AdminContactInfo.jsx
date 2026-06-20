@@ -10,7 +10,7 @@ const DEFAULT_CONTACT = {
   whatsappNumber: '',
   address: 'Shop no 208, 1st Floor, Mate Kamthe Bhuruk Complex, Near Bhairavnath Temple, Dhayari, Pune – 411041',
   hours: 'Open daily 9:00 AM – 9:00 PM, 7 days a week',
-  shopName: 'Paw Paw Grooming Center',
+  shopName: 'Paw Paw Pet Grooming Center',
   logoUrl: '',
 }
 
