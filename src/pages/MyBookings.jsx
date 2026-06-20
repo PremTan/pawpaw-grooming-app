@@ -5,7 +5,8 @@ import { collection, query, where, orderBy, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
-import { Calendar, Clock, Plus, ChevronRight } from 'lucide-react'
+import { getBookingTypeLabel } from '../utils/bookingSettings'
+import { Calendar, Clock, Home, Plus, Store } from 'lucide-react'
 
 const STATUS_BADGE = {
   pending:   'badge-pending',
@@ -107,7 +108,12 @@ export default function MyBookings() {
                         <span style={{ color: 'var(--muted)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <Clock size={11} /> {b.slot}
                         </span>
+                        <span style={{ color: 'var(--muted)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {(b.bookingType || 'store') === 'home' ? <Home size={11} /> : <Store size={11} />} {getBookingTypeLabel(b.bookingType || 'store')}
+                        </span>
                       </div>
+                      {b.visitCharge > 0 && <p style={{ color: 'var(--accent)', fontSize: '12px', marginTop: '8px', fontWeight: 700 }}>Visit charge: Rs {Number(b.visitCharge).toLocaleString('en-IN')}</p>}
+                      {b.estimatedTotal > 0 && <p style={{ color: 'var(--text)', fontSize: '12px', marginTop: '4px', fontWeight: 700 }}>Estimated total: Rs {Number(b.estimatedTotal).toLocaleString('en-IN')}+</p>}
                       {b.notes && <p style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '8px', fontStyle: 'italic' }}>"{b.notes}"</p>}
                     </div>
                   </div>

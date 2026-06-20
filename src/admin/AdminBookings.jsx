@@ -7,7 +7,8 @@ import Spinner from '../components/Spinner'
 import { useNotifications } from '../context/NotificationContext'
 import { db } from '../firebase'
 import { syncPublicStats } from '../utils/publicStats'
-import { SERVICES, WHATSAPP_NUMBER, buildWhatsAppMessage } from '../utils/services'
+import { SERVICES, buildWhatsAppMessage, getWhatsAppNumber } from '../utils/services'
+import { getBookingTypeLabel } from '../utils/bookingSettings'
 
 const STATUS_OPTS = ['all', 'pending', 'confirmed', 'completed', 'cancelled']
 const BADGE = { pending: 'badge-pending', confirmed: 'badge-confirmed', completed: 'badge-completed', cancelled: 'badge-cancelled' }
@@ -31,6 +32,7 @@ export default function AdminBookings() {
   const [cashModal, setCashModal] = useState(null)
   const [cashAmt, setCashAmt] = useState('')
   const [selectedBooking, setSelectedBooking] = useState(null)
+  const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
 
   const fetchBookings = async () => {
     setLoading(true)
@@ -52,6 +54,13 @@ export default function AdminBookings() {
   }
 
   useEffect(() => { fetchBookings() }, [])
+
+  useEffect(() => {
+    async function fetchWhatsapp() {
+      setAdminWhatsappNumber(await getWhatsAppNumber(db))
+    }
+    fetchWhatsapp()
+  }, [])
 
   const filtered = useMemo(() => {
     let r = [...bookings]
@@ -233,7 +242,7 @@ export default function AdminBookings() {
                       <Trash2 size={14} /> Delete
                     </button>
                   )}
-                  <a href={`https://wa.me/${WHATSAPP_NUMBER}?text=${buildWhatsAppMessage(b)}`} target="_blank" rel="noopener noreferrer" style={S.iconBtn('#25D366', 'rgba(37,211,102,0.1)')}>
+                  <a href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(b)}` : '#'} target="_blank" rel="noopener noreferrer" style={S.iconBtn('#25D366', 'rgba(37,211,102,0.1)')}>
                     <MessageCircle size={14} /> WA
                   </a>
                 </div>
@@ -246,6 +255,7 @@ export default function AdminBookings() {
       {selectedBooking && (
         <BookingDetailModal
           booking={selectedBooking}
+          adminWhatsappNumber={adminWhatsappNumber}
           updating={updating}
           onClose={() => setSelectedBooking(null)}
           onStatus={updateStatus}
@@ -277,7 +287,7 @@ export default function AdminBookings() {
   )
 }
 
-function BookingDetailModal({ booking, updating, onClose, onStatus, onDelete }) {
+function BookingDetailModal({ booking, adminWhatsappNumber, updating, onClose, onStatus, onDelete }) {
   const detailRows = [
     ['Booking ID', shortId(booking.id)],
     ['Owner', booking.ownerName || '-'],
@@ -285,8 +295,12 @@ function BookingDetailModal({ booking, updating, onClose, onStatus, onDelete }) 
     ['Pet', `${booking.petName || '-'}${booking.petType ? ` (${booking.petType}${booking.petBreed ? `, ${booking.petBreed}` : ''})` : ''}`],
     ['Service', booking.serviceName || '-'],
     ['Packages', booking.packageNames?.length ? booking.packageNames.join(', ') : '-'],
+    ['Visit Type', getBookingTypeLabel(booking.bookingType || 'store')],
     ['Date', booking.date || '-'],
     ['Time', booking.slot || '-'],
+    ['Address', booking.bookingType === 'home' ? (booking.address || '-') : '-'],
+    ['Visit Charge', booking.visitCharge > 0 ? `Rs ${money(booking.visitCharge)}` : '-'],
+    ['Estimated Total', booking.estimatedTotal > 0 ? `Rs ${money(booking.estimatedTotal)}` : '-'],
     ['Source', booking.isWalkIn ? 'Walk-in' : 'Online'],
     ['Amount Collected', booking.amountCollected > 0 ? `Rs ${money(booking.amountCollected)}` : '-'],
     ['Notes', booking.notes || '-'],
@@ -334,7 +348,7 @@ function BookingDetailModal({ booking, updating, onClose, onStatus, onDelete }) 
               <Trash2 size={15} /> Delete
             </button>
           )}
-          <a className="btn btn-secondary" href={`https://wa.me/${WHATSAPP_NUMBER}?text=${buildWhatsAppMessage(booking)}`} target="_blank" rel="noopener noreferrer">
+          <a className="btn btn-secondary" href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(booking)}` : '#'} target="_blank" rel="noopener noreferrer">
             <MessageCircle size={15} /> WhatsApp
           </a>
         </div>

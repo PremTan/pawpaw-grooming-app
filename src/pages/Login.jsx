@@ -4,6 +4,7 @@
 // import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail } from 'firebase/auth'
 // import { auth, googleProvider } from '../firebase'
 // import { useAuth } from '../context/AuthContext'
+// import BrandLogo from '../components/BrandLogo'
 
 // export default function Login() {
 //   const { user } = useAuth()
@@ -166,6 +167,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail } from 'firebase/auth'
 import { auth, googleProvider } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import BrandLogo from '../components/BrandLogo'
 
 export default function Login() {
   const { user } = useAuth()
@@ -237,11 +239,7 @@ export default function Login() {
       <div style={S.wrap}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ width: '64px', height: '64px', borderRadius: '18px', background: 'var(--gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', margin: '0 auto 16px', boxShadow: '0 8px 24px var(--accent-bg)' }}>🐾</div>
-          <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '26px', fontWeight: 800, color: 'var(--text)' }}>Paw Paw</h1>
-          <p style={{ color: 'var(--muted)', fontSize: '13px', marginTop: '4px' }}>
-            {mode === 'signup' ? 'Create your account' : mode === 'reset' ? 'Reset your password' : 'Welcome back'}
-          </p>
+          <BrandLogo size="login" tagline={mode === 'signup' ? 'Create your account' : mode === 'reset' ? 'Reset your password' : 'Welcome back'} align="center" />
         </div>
 
         <div style={S.card}>
@@ -337,3 +335,5 @@ export default function Login() {
     </div>
   )
 }
+
+

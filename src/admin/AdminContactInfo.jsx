@@ -1,20 +1,24 @@
 import { useEffect, useState } from 'react'
-import { Phone, MapPin, Clock, Save } from 'lucide-react'
+import { Phone, MapPin, Clock, Save, Image as ImageIcon, Upload, X } from 'lucide-react'
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
+import BrandLogo from '../components/BrandLogo'
+import { uploadToCloudinary } from '../utils/cloudinary'
 
 const DEFAULT_CONTACT = {
-  whatsappNumber: '919146661718',
+  whatsappNumber: '',
   address: 'Shop no 208, 1st Floor, Mate Kamthe Bhuruk Complex, Near Bhairavnath Temple, Dhayari, Pune – 411041',
   hours: 'Open daily 9:00 AM – 9:00 PM, 7 days a week',
   shopName: 'Paw Paw Grooming Center',
+  logoUrl: '',
 }
 
 export default function AdminContactInfo() {
   const [contact, setContact] = useState(DEFAULT_CONTACT)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -37,6 +41,20 @@ export default function AdminContactInfo() {
     setContact(prev => ({ ...prev, [key]: value }))
   }
 
+  const uploadLogo = async (file) => {
+    if (!file) return
+    setError('')
+    setMessage('')
+    setUploadingLogo(true)
+    try {
+      const url = await uploadToCloudinary(file)
+      updateField('logoUrl', url)
+      setMessage('Logo uploaded. Click Save Changes to publish it.')
+    } catch (err) {
+      setError(err.message || 'Upload failed. Check Cloudinary settings.')
+    }
+    setUploadingLogo(false)
+  }
   const save = async () => {
     setError('')
     setMessage('')
@@ -53,6 +71,7 @@ export default function AdminContactInfo() {
         address: contact.address.trim(),
         hours: contact.hours.trim(),
         shopName: contact.shopName.trim() || 'Paw Paw Grooming Center',
+        logoUrl: contact.logoUrl?.trim() || '',
         updatedAt: serverTimestamp(),
       }, { merge: true })
       setMessage('Contact information updated successfully!')
@@ -121,6 +140,46 @@ export default function AdminContactInfo() {
           />
         </div>
 
+        {/* Website Logo */}
+        <div>
+          <label style={labelStyle}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <ImageIcon size={12} /> Website Logo
+            </span>
+          </label>
+          <div style={{ display: 'grid', gap: '12px', padding: '14px', border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--surface)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+              <div style={{ width: '74px', height: '74px', borderRadius: '14px', border: '1px solid var(--accent-border)', background: 'var(--card)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                {contact.logoUrl ? (
+                  <img src={contact.logoUrl} alt="Website logo preview" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '6px' }} />
+                ) : (
+                  <ImageIcon size={26} style={{ color: 'var(--muted)' }} />
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <label className="btn btn-secondary" style={{ fontSize: '13px', padding: '10px 14px', opacity: uploadingLogo ? 0.7 : 1 }}>
+                  <Upload size={15} /> {uploadingLogo ? 'Uploading...' : 'Upload Logo'}
+                  <input type="file" accept="image/*" disabled={uploadingLogo || saving} onChange={e => uploadLogo(e.target.files?.[0])} style={{ display: 'none' }} />
+                </label>
+                {contact.logoUrl && (
+                  <button type="button" onClick={() => updateField('logoUrl', '')} className="btn btn-danger" style={{ fontSize: '13px', padding: '10px 14px' }}>
+                    <X size={15} /> Clear
+                  </button>
+                )}
+              </div>
+            </div>
+            <input
+              type="url"
+              value={contact.logoUrl || ''}
+              onChange={e => updateField('logoUrl', e.target.value)}
+              placeholder="Paste logo image URL or upload a file"
+              style={inputStyle}
+            />
+            <p style={{ fontSize: '11px', color: 'var(--muted)' }}>
+              Recommended: square PNG/WebP with transparent background. Click Save Changes after upload.
+            </p>
+          </div>
+        </div>
         {/* WhatsApp Number */}
         <div>
           <label style={labelStyle}>
@@ -132,7 +191,7 @@ export default function AdminContactInfo() {
             type="text"
             value={contact.whatsappNumber}
             onChange={e => updateField('whatsappNumber', e.target.value)}
-            placeholder="e.g., 919146661718"
+            placeholder="e.g., 919876543210"
             style={inputStyle}
           />
           <p style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
@@ -218,3 +277,7 @@ export default function AdminContactInfo() {
     </div>
   )
 }
+
+
+
+

@@ -139,26 +139,32 @@ export const getWhatsAppNumber = async (db) => {
   try {
     const { doc, getDoc } = await import('firebase/firestore')
     const snap = await getDoc(doc(db, 'settings', 'contactInfo'))
-    return snap.exists() ? snap.data().whatsappNumber : '919146661718'
+    return snap.exists() ? (snap.data().whatsappNumber || '') : ''
   } catch {
-    return '919146661718' // fallback
+    return ''
   }
 }
 
-export const WHATSAPP_NUMBER = '919146661718' // fallback default
+export const WHATSAPP_NUMBER = ''
 
 export const buildWhatsAppMessage = (booking) => {
-  const emoji = booking.isWalkIn ? '🏪 Walk-in' : '📱 Online'
+  const source = booking.isWalkIn ? 'Walk-in' : 'Online'
+  const visitType = booking.bookingType === 'home' ? 'Home Visit' : booking.bookingType === 'store' ? 'In Store' : ''
   return encodeURIComponent(
-    `🐾 *New Booking - Paw Paw Grooming*\n\n` +
-    `${emoji} Appointment\n` +
-    `👤 *Owner:* ${booking.ownerName}\n` +
-    `📞 *Phone:* ${booking.phone}\n` +
-    `🐶 *Pet:* ${booking.petName} (${booking.petType}${booking.petBreed ? `, ${booking.petBreed}` : ''})\n` +
-    `✂️ *Service:* ${booking.serviceName}\n` +
-    `📅 *Date:* ${booking.date}\n` +
-    `🕐 *Time:* ${booking.slot}\n` +
-    (booking.notes ? `📝 *Notes:* ${booking.notes}\n` : '') +
+    `*New Booking - Paw Paw Grooming*\n\n` +
+    `${source} Appointment\n` +
+    `*Owner:* ${booking.ownerName || '-'}\n` +
+    `*Phone:* ${booking.phone || '-'}\n` +
+    `*Pet:* ${booking.petName || '-'} (${booking.petType || '-'}${booking.petBreed ? `, ${booking.petBreed}` : ''})\n` +
+    `*Service:* ${booking.serviceName || '-'}\n` +
+    (visitType ? `*Visit Type:* ${visitType}\n` : '') +
+    (booking.visitCharge > 0 ? `*Visit Charge:* Rs ${booking.visitCharge}\n` : '') +
+    (booking.estimatedTotal > 0 ? `*Estimated Total:* Rs ${booking.estimatedTotal}+\n` : '') +
+    `*Date:* ${booking.date || '-'}\n` +
+    `*Time:* ${booking.slot || '-'}\n` +
+    (booking.notes ? `*Notes:* ${booking.notes}\n` : '') +
     `\n_Booking ID: #${(booking.id || '').slice(0, 8).toUpperCase()}_`
   )
 }
+
+

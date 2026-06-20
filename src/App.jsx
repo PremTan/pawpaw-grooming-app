@@ -32,6 +32,7 @@ import AdminServices from './admin/AdminServices'
 import AdminWhyChooseUs from './admin/AdminWhyChooseUs'
 import AdminContactInfo from './admin/AdminContactInfo'
 import AdminFooter from './admin/AdminFooter'
+import AdminBookingSettings from './admin/AdminBookingSettings'
 
 function ScrollToTop() {
   const { pathname, search, hash } = useLocation()
@@ -79,7 +80,7 @@ export default function App() {
         <Route path="why-choose-us" element={<AdminWhyChooseUs />} />
         <Route path="hero-images" element={<AdminHeroImages />} />
         <Route path="contact-info" element={<AdminContactInfo />} />
-        <Route path="footer" element={<AdminFooter />} />
+        <Route path="footer" element={<AdminFooter />} />`r`n        <Route path="booking-settings" element={<AdminBookingSettings />} />
       </Route>
 
       {/* Public — main layout */}
@@ -108,5 +109,6 @@ export default function App() {
     </>
   )
 }
+
 
 

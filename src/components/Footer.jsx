@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { MapPin, Phone, Mail, Clock, Instagram, Facebook, Youtube, Twitter, Linkedin } from 'lucide-react'
 import { db } from '../firebase'
 import { doc, getDoc } from 'firebase/firestore'
+import BrandLogo from './BrandLogo'
 
 const SOCIAL_ICON_MAP = {
   instagram: <Instagram size={16} />,
@@ -63,12 +64,8 @@ export default function Footer() {
 
           {/* Brand */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'var(--gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>🐾</div>
-              <div>
-                <div style={{ fontFamily: '"Playfair Display",serif', fontWeight: 700, fontSize: '18px', color: 'var(--text)' }}>Paw Paw</div>
-                <div style={{ fontSize: '10px', color: 'var(--muted)', letterSpacing: '1.5px', textTransform: 'uppercase' }}>Pet Grooming Centre</div>
-              </div>
+            <div style={{ marginBottom: '16px' }}>
+              <BrandLogo size="footer" tagline="Pet Grooming Centre" />
             </div>
             <p style={{ color: 'var(--muted)', fontSize: '13px', lineHeight: 1.7, marginBottom: '20px' }}>
               {footer.tagline}
@@ -166,3 +163,4 @@ export default function Footer() {
     </footer>
   )
 }
+

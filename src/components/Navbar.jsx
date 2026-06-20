@@ -20,6 +20,7 @@
 // import { useAuth } from '../context/AuthContext'
 // import ThemeSwitcher from './ThemeSwitcher'
 // import NotificationBell from './NotificationBell'
+// import BrandLogo from './BrandLogo'
 
 // export default function Navbar() {
 //   const { user, logout, isAdmin } = useAuth()
@@ -309,6 +310,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import ThemeSwitcher from './ThemeSwitcher'
 import NotificationBell from './NotificationBell'
+import BrandLogo from './BrandLogo'
 
 export default function Navbar() {
   const { user, logout, isAdmin } = useAuth()
@@ -388,13 +390,7 @@ export default function Navbar() {
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', height: '64px', gap: '8px' }}>
             <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', marginRight: '8px', flexShrink: 0 }}>
-              <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: 'var(--gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px var(--accent-bg)' }}>
-                <PawPrint size={18} color="var(--text)" />
-              </div>
-              <div>
-                <div style={{ fontFamily: '"Playfair Display",serif', fontWeight: 700, fontSize: '16px', color: 'var(--text)', lineHeight: 1 }}>Paw Paw</div>
-                <div style={{ fontSize: '9px', color: 'var(--muted)', letterSpacing: '1.5px', textTransform: 'uppercase', marginTop: '2px' }}>Pet Grooming</div>
-              </div>
+              <BrandLogo size="nav" />
             </Link>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }} className="desktop-nav">
@@ -581,3 +577,5 @@ export default function Navbar() {
     </>
   )
 }
+
+
