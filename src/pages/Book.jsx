@@ -580,6 +580,12 @@ export default function Book() {
                     ))}
                   </div>
                 )}
+                {bookingSettings?.fixedVisitCharges && (
+                  <div style={{ marginTop: '10px', padding: '11px 12px', borderRadius: '12px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', color: 'var(--text)', fontSize: '13px', display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                    <span>{getBookingTypeLabel(form.bookingType)} charge</span>
+                    <strong style={{ color: 'var(--accent)' }}>{visitCharge() > 0 ? 'Rs ' + visitCharge() : 'No extra charge'}</strong>
+                  </div>
+                )}
               </div>
 
               {form.bookingType === 'home' && (

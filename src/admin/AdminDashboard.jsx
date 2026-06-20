@@ -78,6 +78,8 @@ export default function AdminDashboard() {
     recentBookings: [],
     totalEarnings: 0,
     todayEarnings: 0,
+    todayOnlineEarnings: 0,
+    todayWalkInEarnings: 0,
     onlineEarnings: 0,
     walkInEarnings: 0,
     onlineCount: 0,
@@ -109,6 +111,8 @@ export default function AdminDashboard() {
       const customerKeys = new Set()
       let totalEarnings = 0
       let todayEarnings = 0
+      let todayOnlineEarnings = 0
+      let todayWalkInEarnings = 0
       let onlineEarnings = 0
       let walkInEarnings = 0
       let onlineCount = 0
@@ -129,7 +133,11 @@ export default function AdminDashboard() {
           totalEarnings += amt
           if (b.isWalkIn) walkInEarnings += amt
           else onlineEarnings += amt
-          if (b.date === today) todayEarnings += amt
+          if (b.date === today) {
+            todayEarnings += amt
+            if (b.isWalkIn) todayWalkInEarnings += amt
+            else todayOnlineEarnings += amt
+          }
           serviceIds.forEach(id => {
             earningsByService[id] = (earningsByService[id] || 0) + amt
           })
@@ -149,6 +157,8 @@ export default function AdminDashboard() {
         recentBookings: sorted.slice(0, 5),
         totalEarnings,
         todayEarnings,
+        todayOnlineEarnings,
+        todayWalkInEarnings,
         onlineEarnings,
         walkInEarnings,
         onlineCount,
@@ -211,7 +221,7 @@ export default function AdminDashboard() {
   const statCards = [
     { label: 'Total Bookings', value: data.totalBookings, icon: <Calendar size={20} />, color: 'var(--accent)', split: [{ label: 'Online', value: data.onlineCount }, { label: 'Offline', value: data.walkInCount }] },
     { label: 'Total Earnings', value: `Rs ${money(data.totalEarnings)}`, icon: <IndianRupee size={20} />, color: '#34d399', split: [{ label: 'Online', value: `Rs ${money(data.onlineEarnings)}` }, { label: 'Offline', value: `Rs ${money(data.walkInEarnings)}` }] },
-    { label: "Today's Earnings", value: `Rs ${money(data.todayEarnings)}`, icon: <IndianRupee size={20} />, color: '#60a5fa' },
+    { label: "Today's Earnings", value: `Rs ${money(data.todayEarnings)}`, icon: <IndianRupee size={20} />, color: '#60a5fa', split: [{ label: 'Online', value: `Rs ${money(data.todayOnlineEarnings)}` }, { label: 'Offline', value: `Rs ${money(data.todayWalkInEarnings)}` }] },
     { label: "Today's Appointments", value: data.todayCount, icon: <CalendarCheck size={20} />, color: '#22c55e', link: `/admin/bookings?date=${today}`, action: 'View today appointments' },
   ]
 
