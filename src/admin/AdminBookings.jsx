@@ -2,24 +2,27 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc } from 'firebase/firestore'
-import { Calendar, CheckCircle2, Clock, Download, Eye, IndianRupee, Mail, MessageCircle, Phone, Search, Trash2, X } from 'lucide-react'
+import { Calendar, CheckCircle2, Clock, IndianRupee, MessageCircle, Phone, Search, Trash2, UserRound, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
+import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import { db } from '../firebase'
 import { syncPublicStats } from '../utils/publicStats'
 import { SERVICES, buildWhatsAppMessage } from '../utils/services'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { getBookingTypeLabel } from '../utils/bookingSettings'
-import { downloadInvoicePdf, getInvoiceSummary, viewInvoicePdf } from '../utils/invoicePdf'
+import { OWNER_ASSIGNEE_ID, buildAssigneePatch, getAssigneeLabel, getBookingAssignee, getOwnerAssignee } from '../utils/teamMembers'
 
 const STATUS_OPTS = ['all', 'pending', 'confirmed', 'completed', 'cancelled']
 const BADGE = { pending: 'badge-pending', confirmed: 'badge-confirmed', completed: 'badge-completed', cancelled: 'badge-cancelled' }
+const PAGE_SIZE = 20
 
 const statusLabel = (status = 'pending') => status.charAt(0).toUpperCase() + status.slice(1)
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
 const shortId = (id = '') => `#${id.slice(0, 8).toUpperCase()}`
 
 export default function AdminBookings() {
+  const { user } = useAuth()
   const { sendNotification } = useNotifications()
   const navigate = useNavigate()
   const { bookingId } = useParams()
@@ -32,14 +35,14 @@ export default function AdminBookings() {
   const [serviceF, setServiceF] = useState('all')
   const [dateFrom, setDateFrom] = useState(requestedDate)
   const [dateTo, setDateTo] = useState(requestedDate)
+  const [page, setPage] = useState(1)
   const [updating, setUpdating] = useState(null)
   const [cashModal, setCashModal] = useState(null)
   const [cashAmt, setCashAmt] = useState('')
   const [selectedBooking, setSelectedBooking] = useState(null)
-  const [invoiceBusy, setInvoiceBusy] = useState('')
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Pet Grooming')
-  const [businessInfo, setBusinessInfo] = useState(null)
+  const [teamMembers, setTeamMembers] = useState([])
 
   const fetchBookings = async () => {
     setLoading(true)
@@ -63,6 +66,21 @@ export default function AdminBookings() {
   useEffect(() => { fetchBookings() }, [])
 
   useEffect(() => {
+    async function fetchTeamMembers() {
+      try {
+        const snap = await getDocs(query(collection(db, 'teamMembers'), orderBy('createdAt', 'desc')))
+        setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      } catch {
+        try {
+          const snap = await getDocs(collection(db, 'teamMembers'))
+          setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+        } catch {}
+      }
+    }
+    fetchTeamMembers()
+  }, [])
+
+  useEffect(() => {
     if (!bookingId || bookings.length === 0) return
     const match = bookings.find(booking => booking.id === bookingId)
     if (match) setSelectedBooking(match)
@@ -73,10 +91,14 @@ export default function AdminBookings() {
       const info = await fetchBusinessInfo(db)
       setAdminWhatsappNumber(info.whatsappNumber || '')
       setShopName(info.contact.shopName || 'Pet Grooming')
-      setBusinessInfo(info)
     }
     fetchWhatsapp()
   }, [])
+
+  const ownerAssignee = useMemo(() => getOwnerAssignee(user), [user])
+  const assignableTeamMembers = useMemo(() => teamMembers.filter(member => member.active !== false), [teamMembers])
+  const assigneeOptions = useMemo(() => [ownerAssignee, ...assignableTeamMembers], [ownerAssignee, assignableTeamMembers])
+  const assigneeFor = booking => getBookingAssignee(booking, ownerAssignee, teamMembers)
 
   const filtered = useMemo(() => {
     let r = [...bookings]
@@ -91,11 +113,23 @@ export default function AdminBookings() {
         b.petName?.toLowerCase().includes(s) ||
         b.phone?.includes(s) ||
         b.serviceName?.toLowerCase().includes(s) ||
+        b.assignedTeamMemberName?.toLowerCase().includes(s) ||
         b.id?.toLowerCase().includes(s)
       )
     }
     return r
   }, [bookings, serviceF, statusF, search, dateFrom, dateTo])
+
+  useEffect(() => { setPage(1) }, [serviceF, statusF, search, dateFrom, dateTo])
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const pageStart = (currentPage - 1) * PAGE_SIZE
+  const paginated = filtered.slice(pageStart, pageStart + PAGE_SIZE)
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount)
+  }, [page, pageCount])
 
   const totalEarnings = useMemo(() => (
     bookings
@@ -121,8 +155,9 @@ export default function AdminBookings() {
 
     setUpdating(b.id)
     try {
-      await updateDoc(doc(db, 'bookings', b.id), { status })
-      patchBooking(b.id, { status })
+      const assignmentPatch = status === 'confirmed' && !b.assignedTeamMemberId ? buildAssigneePatch(ownerAssignee) : {}
+      await updateDoc(doc(db, 'bookings', b.id), { status, ...assignmentPatch })
+      patchBooking(b.id, { status, ...assignmentPatch })
       await syncPublicStats(db)
       if (b.userId && b.userId !== 'walkin') {
         const msgs = {
@@ -164,6 +199,20 @@ export default function AdminBookings() {
     setUpdating(null)
   }
 
+  const assignBooking = async (booking, assigneeId) => {
+    if (!booking?.id || booking.status !== 'confirmed') return
+    const assignee = assigneeOptions.find(item => item.id === assigneeId) || ownerAssignee
+    const patch = buildAssigneePatch(assignee)
+    setUpdating(booking.id)
+    try {
+      await updateDoc(doc(db, 'bookings', booking.id), patch)
+      patchBooking(booking.id, patch)
+    } catch {
+      alert('Could not assign team member. Please try again.')
+    }
+    setUpdating(null)
+  }
+
   const deleteBooking = async (b) => {
     if (!b?.id) return
     if (!window.confirm(`Delete booking ${shortId(b.id)}? This will remove it from booking counts and collected earnings.`)) return
@@ -178,46 +227,6 @@ export default function AdminBookings() {
   }
 
   const stop = (event) => event.stopPropagation()
-  const invoiceInfo = businessInfo || { contact: { shopName }, footer: {}, whatsappNumber: adminWhatsappNumber }
-
-  const runInvoiceTask = async (key, task) => {
-    setInvoiceBusy(key)
-    try {
-      await task()
-    } catch {
-      alert('Could not generate invoice. Please try again.')
-    } finally {
-      setInvoiceBusy('')
-    }
-  }
-
-  const canGenerateInvoice = booking => booking?.status === 'completed'
-  const requireCompletedInvoice = booking => {
-    if (canGenerateInvoice(booking)) return true
-    alert('Invoice can be generated only after the appointment is marked completed.')
-    return false
-  }
-
-  const handleInvoiceDownload = booking => {
-    if (!requireCompletedInvoice(booking)) return
-    runInvoiceTask(`download-${booking.id}`, () => downloadInvoicePdf(booking, invoiceInfo))
-  }
-  const handleInvoiceView = booking => {
-    if (!requireCompletedInvoice(booking)) return
-    runInvoiceTask(`view-${booking.id}`, () => viewInvoicePdf(booking, invoiceInfo))
-  }
-  const handleInvoiceWhatsApp = booking => {
-    if (!requireCompletedInvoice(booking)) return
-    const text = encodeURIComponent(getInvoiceSummary(booking, invoiceInfo))
-    window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer')
-  }
-  const handleInvoiceMail = booking => {
-    if (!requireCompletedInvoice(booking)) return
-    const subject = encodeURIComponent(`Invoice ${booking.ownerName || shortId(booking.id)}`)
-    const body = encodeURIComponent(getInvoiceSummary(booking, invoiceInfo))
-    window.location.href = `mailto:?subject=${subject}&body=${body}`
-  }
-
   const S = {
     meta: { display: 'inline-flex', alignItems: 'center', gap: '5px', minWidth: 0 },
     iconBtn: (color, bg) => ({ border: `1px solid ${color}`, background: bg, color }),
@@ -229,7 +238,7 @@ export default function AdminBookings() {
         <div>
           <h1>Bookings</h1>
           <p>
-            {filtered.length} of {bookings.length} bookings
+            {filtered.length} of {bookings.length} bookings � showing {filtered.length ? pageStart + 1 : 0}-{Math.min(pageStart + PAGE_SIZE, filtered.length)}
             {totalEarnings > 0 && <span>Total Collected: Rs {money(totalEarnings)}</span>}
           </p>
         </div>
@@ -256,7 +265,7 @@ export default function AdminBookings() {
         <div className="admin-booking-empty">No bookings found.</div>
       ) : (
         <div className="admin-booking-list">
-          {filtered.map(b => (
+          {paginated.map(b => (
             <button key={b.id} type="button" className="admin-booking-card" onClick={() => setSelectedBooking(b)}>
               <div className="admin-booking-main">
                 <div className="admin-booking-title-row">
@@ -270,12 +279,18 @@ export default function AdminBookings() {
                   <span style={S.meta}><Calendar size={13} /> {b.date || '-'}</span>
                   <span style={S.meta}><Clock size={13} /> {b.slot || '-'}</span>
                   <span style={S.meta}><Phone size={13} /> {b.phone || '-'}</span>
+                  <span style={S.meta}><UserRound size={13} /> {getAssigneeLabel(assigneeFor(b))}</span>
                   {b.amountCollected > 0 && <span className="admin-booking-money">Rs {money(b.amountCollected)}</span>}
                 </div>
               </div>
 
               <div className="admin-booking-actions" onClick={stop}>
                 <span className={`badge ${BADGE[b.status] || 'badge-pending'}`}>{statusLabel(b.status || 'pending')}</span>
+                {b.status === 'confirmed' && (
+                  <select className="admin-booking-assignee-select" value={assigneeFor(b).id || OWNER_ASSIGNEE_ID} onChange={e => assignBooking(b, e.target.value)} disabled={updating === b.id} aria-label="Assign team member">
+                    {assigneeOptions.map(member => <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>)}
+                  </select>
+                )}
                 <div>
                   {b.status === 'pending' && (
                     <button type="button" onClick={() => updateStatus(b, 'confirmed')} disabled={updating === b.id} style={S.iconBtn('#34d399', 'rgba(52,211,153,0.1)')}>
@@ -297,16 +312,6 @@ export default function AdminBookings() {
                       <Trash2 size={14} /> Delete
                     </button>
                   )}
-                  {canGenerateInvoice(b) && (
-                    <>
-                      <button type="button" onClick={() => handleInvoiceDownload(b)} disabled={invoiceBusy === `download-${b.id}`} style={S.iconBtn('var(--muted)', 'var(--surface)')}>
-                        <Download size={14} /> Invoice
-                      </button>
-                      <button type="button" onClick={() => handleInvoiceView(b)} disabled={invoiceBusy === `view-${b.id}`} style={S.iconBtn('var(--muted)', 'var(--surface)')}>
-                        <Eye size={14} /> View
-                      </button>
-                    </>
-                  )}
                   <a href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(b, shopName)}` : '#'} target="_blank" rel="noopener noreferrer" style={S.iconBtn('#25D366', 'rgba(37,211,102,0.1)')}>
                     <MessageCircle size={14} /> WA
                   </a>
@@ -317,17 +322,23 @@ export default function AdminBookings() {
         </div>
       )}
 
+      {!loading && filtered.length > PAGE_SIZE && (
+        <div className="admin-booking-pagination">
+          <button type="button" onClick={() => setPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>Prev</button>
+          <span>Page {currentPage} of {pageCount}</span>
+          <button type="button" onClick={() => setPage(prev => Math.min(pageCount, prev + 1))} disabled={currentPage === pageCount}>Next</button>
+        </div>
+      )}
+
       {selectedBooking && (
         <BookingDetailModal
           booking={selectedBooking}
           adminWhatsappNumber={adminWhatsappNumber}
           shopName={shopName}
           updating={updating}
-          invoiceBusy={invoiceBusy}
-          onInvoiceDownload={handleInvoiceDownload}
-          onInvoiceView={handleInvoiceView}
-          onInvoiceWhatsApp={handleInvoiceWhatsApp}
-          onInvoiceMail={handleInvoiceMail}
+          assignee={assigneeFor(selectedBooking)}
+          assigneeOptions={assigneeOptions}
+          onAssign={assignBooking}
           onClose={() => { setSelectedBooking(null); if (bookingId) navigate('/admin/bookings') }}
           onStatus={updateStatus}
           onDelete={deleteBooking}
@@ -358,7 +369,7 @@ export default function AdminBookings() {
   )
 }
 
-function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, invoiceBusy, onInvoiceDownload, onInvoiceView, onInvoiceWhatsApp, onInvoiceMail, onClose, onStatus, onDelete }) {
+function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, assignee, assigneeOptions, onAssign, onClose, onStatus, onDelete }) {
   const detailRows = [
     ['Booking ID', shortId(booking.id)],
     ['Owner', booking.ownerName || '-'],
@@ -373,6 +384,7 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
     ['Visit Charge', booking.visitCharge > 0 ? `Rs ${money(booking.visitCharge)}` : '-'],
     ['Estimated Total', booking.estimatedTotal > 0 ? `Rs ${money(booking.estimatedTotal)}` : '-'],
     ['Source', booking.isWalkIn ? 'Walk-in' : 'Online'],
+    ['Assigned To', getAssigneeLabel(assignee)],
     ['Amount Collected', booking.amountCollected > 0 ? `Rs ${money(booking.amountCollected)}` : '-'],
     ['Notes', booking.notes || '-'],
   ]
@@ -398,6 +410,14 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
           ))}
         </div>
 
+        <div className="admin-booking-assignee-panel">
+          <label>Assigned Team Member</label>
+          <select className="input" value={assignee?.id || OWNER_ASSIGNEE_ID} onChange={e => onAssign(booking, e.target.value)} disabled={booking.status !== 'confirmed' || updating === booking.id}>
+            {assigneeOptions.map(member => <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>)}
+          </select>
+          {booking.status !== 'confirmed' && <p>Assignments can be changed after an appointment is confirmed.</p>}
+        </div>
+
         <div className="admin-booking-detail-actions">
           {booking.status === 'pending' && (
             <button type="button" onClick={() => onStatus(booking, 'confirmed')} disabled={updating === booking.id} className="btn btn-secondary">
@@ -418,22 +438,6 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
             <button type="button" onClick={() => onDelete(booking)} disabled={updating === booking.id} className="btn btn-danger">
               <Trash2 size={15} /> Delete
             </button>
-          )}
-          {booking.status === 'completed' && (
-            <>
-              <button type="button" onClick={() => onInvoiceDownload(booking)} disabled={invoiceBusy === `download-${booking.id}`} className="btn btn-secondary">
-                <Download size={15} /> Generate Invoice
-              </button>
-              <button type="button" onClick={() => onInvoiceView(booking)} disabled={invoiceBusy === `view-${booking.id}`} className="btn btn-secondary">
-                <Eye size={15} /> View Invoice
-              </button>
-              <button type="button" onClick={() => onInvoiceWhatsApp(booking)} className="btn btn-secondary">
-                <MessageCircle size={15} /> Share Invoice
-              </button>
-              <button type="button" onClick={() => onInvoiceMail(booking)} className="btn btn-secondary">
-                <Mail size={15} /> Mail Invoice
-              </button>
-            </>
           )}
           <a className="btn btn-secondary" href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(booking, shopName)}` : '#'} target="_blank" rel="noopener noreferrer">
             <MessageCircle size={15} /> Booking WA

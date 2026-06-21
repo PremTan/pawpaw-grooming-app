@@ -34,6 +34,7 @@ import AdminContactInfo from './admin/AdminContactInfo'
 import AdminFooter from './admin/AdminFooter'
 import AdminBookingSettings from './admin/AdminBookingSettings'
 import AdminInvoices from './admin/AdminInvoices'
+import AdminTeam from './admin/AdminTeam'
 
 function ScrollToTop() {
   const { pathname, search, hash } = useLocation()
@@ -85,6 +86,7 @@ export default function App() {
         <Route path="contact-info" element={<AdminContactInfo />} />
         <Route path="footer" element={<AdminFooter />} />
         <Route path="booking-settings" element={<AdminBookingSettings />} />
+        <Route path="team" element={<AdminTeam />} />
       </Route>
 
       {/* Public — main layout */}

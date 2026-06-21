@@ -6,7 +6,7 @@ import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
 import { getBookingTypeLabel } from '../utils/bookingSettings'
-import { Calendar, Clock, Home, Plus, Store } from 'lucide-react'
+import { Calendar, Clock, Home, Plus, Store, UserRound } from 'lucide-react'
 
 const STATUS_BADGE = {
   pending:   'badge-pending',
@@ -16,6 +16,8 @@ const STATUS_BADGE = {
 }
 
 const STATUS_EMOJI = { pending: '⏳', confirmed: '✅', completed: '🎉', cancelled: '❌' }
+
+const assignedWorker = booking => booking.assignedTeamMemberName || (booking.status === 'confirmed' || booking.status === 'completed' ? 'Owner' : '')
 
 export default function MyBookings() {
   const { user } = useAuth()
@@ -112,6 +114,11 @@ export default function MyBookings() {
                           {(b.bookingType || 'store') === 'home' ? <Home size={11} /> : <Store size={11} />} {getBookingTypeLabel(b.bookingType || 'store')}
                         </span>
                       </div>
+                      {assignedWorker(b) && (
+                        <p style={{ color: 'var(--accent)', fontSize: '12px', marginTop: '8px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <UserRound size={12} /> Assigned to: {assignedWorker(b)}{b.assignedTeamMemberIsOwner ? ' (Owner)' : ''}
+                        </p>
+                      )}
                       {b.visitCharge > 0 && <p style={{ color: 'var(--accent)', fontSize: '12px', marginTop: '8px', fontWeight: 700 }}>Visit charge: Rs {Number(b.visitCharge).toLocaleString('en-IN')}</p>}
                       {b.estimatedTotal > 0 && <p style={{ color: 'var(--text)', fontSize: '12px', marginTop: '4px', fontWeight: 700 }}>Estimated total: Rs {Number(b.estimatedTotal).toLocaleString('en-IN')}+</p>}
                       {b.notes && <p style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '8px', fontStyle: 'italic' }}>"{b.notes}"</p>}

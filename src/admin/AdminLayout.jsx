@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { Link, Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Award, LayoutDashboard, CalendarCheck, CalendarClock, Home, MessageSquare, Users, Image, Images, Package, LogOut, ReceiptText, Scissors, MapPin, Share2, Menu, X } from 'lucide-react'
+import { Award, LayoutDashboard, CalendarCheck, CalendarClock, Home, MessageSquare, Users, UserRoundCog, Image, Images, Package, LogOut, ReceiptText, Scissors, MapPin, Share2, Menu, X } from 'lucide-react'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import NotificationBell from '../components/NotificationBell'
 import BrandLogo from '../components/BrandLogo'
@@ -13,6 +13,7 @@ const LINKS = [
   { to:'/admin/invoices',  label:'Invoices',   icon:<ReceiptText size={17}/> },
   { to:'/admin/booking-settings', label:'Booking Settings', icon:<CalendarClock size={17}/> },
   { to:'/admin/customers', label:'Customers',  icon:<Users size={17}/> },
+  { to:'/admin/team', label:'Team', icon:<UserRoundCog size={17}/> },
   { to:'/admin/services',  label:'Services',   icon:<Scissors size={17}/> },
   { to:'/admin/packages',  label:'Packages',   icon:<Package size={17}/> },
   { to:'/admin/why-choose-us', label:'Why Choose Us', icon:<Award size={17}/> },
