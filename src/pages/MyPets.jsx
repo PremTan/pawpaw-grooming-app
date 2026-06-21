@@ -120,7 +120,7 @@ export default function MyPets() {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
 
   const selectedPet = useMemo(
-    () => pets.find(pet => pet.id === selectedId) || pets[0] || null,
+    () => pets.find(pet => pet.id === selectedId) || null,
     [pets, selectedId]
   )
 
@@ -134,9 +134,6 @@ export default function MyPets() {
     fetchPets()
   }, [user])
 
-  useEffect(() => {
-    if (!selectedId && pets.length > 0) setSelectedId(pets[0].id)
-  }, [pets, selectedId])
 
   async function fetchPets() {
     setLoading(true)
@@ -270,22 +267,21 @@ export default function MyPets() {
         updatedAt: serverTimestamp(),
       }
 
-      let nextSelectedId = editingId
       if (editingId) {
         await updateDoc(doc(db, 'pets', editingId), cleanPet)
         setMessage('Pet profile updated.')
       } else {
-        const ref = await addDoc(collection(db, 'pets'), {
+        await addDoc(collection(db, 'pets'), {
           ...cleanPet,
           createdAt: serverTimestamp(),
         })
-        nextSelectedId = ref.id
         setMessage('Pet profile added.')
       }
 
+      const keepSelectedId = editingId
       closeForm()
       await fetchPets()
-      setSelectedId(nextSelectedId)
+      setSelectedId(keepSelectedId)
     } catch (err) {
       setError(err.message || 'Could not save pet.')
     }
@@ -398,8 +394,9 @@ export default function MyPets() {
             )}
           </aside>
 
-          <main>
-            {showForm ? (
+          {(showForm || selectedPet || pets.length === 0) && (
+            <main>
+              {showForm ? (
               <form onSubmit={savePet} className="pet-detail-card">
                 <div className="pet-detail-head">
                   <div>
@@ -542,17 +539,18 @@ export default function MyPets() {
                   <p>{selectedPet.notes || 'No notes added yet.'}</p>
                 </div>
               </section>
-            ) : (
-              <section className="pet-detail-card empty-detail">
-                <ImagePlus size={34} />
-                <h2>Add a pet profile</h2>
-                <p>Create a saved profile with photo, DOB, weight, and grooming notes.</p>
-                <button type="button" onClick={openAddForm} className="btn btn-primary">
-                  <Plus size={16} /> Add Pet
-                </button>
-              </section>
-            )}
-          </main>
+              ) : (
+                <section className="pet-detail-card empty-detail">
+                  <ImagePlus size={34} />
+                  <h2>Add a pet profile</h2>
+                  <p>Create a saved profile with photo, DOB, weight, and grooming notes.</p>
+                  <button type="button" onClick={openAddForm} className="btn btn-primary">
+                    <Plus size={16} /> Add Pet
+                  </button>
+                </section>
+              )}
+            </main>
+          )}
         </div>
       </div>
 
