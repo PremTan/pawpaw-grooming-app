@@ -1,29 +1,58 @@
 // src/pages/MyBookings.jsx
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore'
+import { Calendar, ChevronRight, Clock, Home, Plus, Store, UserRound, X } from 'lucide-react'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
 import { getBookingTypeLabel } from '../utils/bookingSettings'
-import { Calendar, Clock, Home, Plus, Store, UserRound } from 'lucide-react'
+import { SERVICES } from '../utils/services'
 
 const STATUS_BADGE = {
-  pending:   'badge-pending',
+  pending: 'badge-pending',
   confirmed: 'badge-confirmed',
   completed: 'badge-completed',
   cancelled: 'badge-cancelled',
 }
 
-const STATUS_EMOJI = { pending: '⏳', confirmed: '✅', completed: '🎉', cancelled: '❌' }
+const STATUS_FILTERS = ['all', 'pending', 'confirmed', 'completed', 'cancelled']
 
+const statusLabel = status => status === 'all' ? 'All' : (status || 'pending').charAt(0).toUpperCase() + (status || 'pending').slice(1)
+const money = value => Number(value || 0).toLocaleString('en-IN')
+const shortId = id => id ? `#${id.slice(0, 8).toUpperCase()}` : '-'
 const assignedWorker = booking => booking.assignedTeamMemberName || (booking.status === 'confirmed' || booking.status === 'completed' ? 'Owner' : '')
+
+function serviceIdsFor(booking) {
+  if (Array.isArray(booking.serviceIds) && booking.serviceIds.length) return booking.serviceIds
+  return booking.serviceId ? [booking.serviceId] : []
+}
+
+function serviceNamesFor(booking) {
+  if (Array.isArray(booking.serviceNames) && booking.serviceNames.length) return booking.serviceNames
+  const ids = serviceIdsFor(booking)
+  const names = ids.map(id => SERVICES.find(service => service.id === id)?.name).filter(Boolean)
+  if (names.length) return names
+  return booking.serviceName ? [booking.serviceName] : []
+}
+
+function appointmentTitle(booking) {
+  const serviceNames = serviceNamesFor(booking)
+  const packageNames = Array.isArray(booking.packageNames) ? booking.packageNames : []
+  const labels = [...serviceNames, ...packageNames].filter(Boolean)
+  return labels.length ? labels.join(', ') : booking.serviceName || 'Appointment'
+}
+
+function petLine(booking) {
+  return [booking.petName, booking.petBreed].filter(Boolean).join(' - ') || 'Pet details not added'
+}
 
 export default function MyBookings() {
   const { user } = useAuth()
   const [bookings, setBookings] = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [filter, setFilter]     = useState('all')
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('all')
+  const [selectedBooking, setSelectedBooking] = useState(null)
 
   useEffect(() => {
     async function fetch() {
@@ -32,7 +61,6 @@ export default function MyBookings() {
         const snap = await getDocs(q)
         setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })))
       } catch {
-        // Fallback without orderBy
         try {
           const q2 = query(collection(db, 'bookings'), where('userId', '==', user.uid))
           const snap2 = await getDocs(q2)
@@ -46,103 +74,444 @@ export default function MyBookings() {
     fetch()
   }, [user])
 
-  const filtered = filter === 'all' ? bookings : bookings.filter(b => b.status === filter)
+  const filtered = useMemo(
+    () => filter === 'all' ? bookings : bookings.filter(booking => booking.status === filter),
+    [bookings, filter]
+  )
 
   return (
-    <div style={{ background: 'var(--bg)', paddingTop: '80px', minHeight: '100vh' }}>
-      <div style={{ maxWidth: '760px', margin: '0 auto', padding: '40px 20px 80px' }}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '28px', flexWrap: 'wrap', gap: '12px' }}>
+    <div className="my-bookings-page">
+      <div className="my-bookings-shell">
+        <div className="my-bookings-header">
           <div>
-            <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>My Bookings</h1>
-            <p style={{ color: 'var(--muted)', fontSize: '13px' }}>{bookings.length} total appointment{bookings.length !== 1 ? 's' : ''}</p>
+            <h1>My Bookings</h1>
+            <p>{bookings.length} total appointment{bookings.length !== 1 ? 's' : ''}</p>
           </div>
-          <Link to="/book" className="btn btn-primary" style={{ fontSize: '13px', padding: '10px 18px' }}>
+          <Link to="/book" className="btn btn-primary my-bookings-new">
             <Plus size={16} /> New Booking
           </Link>
         </div>
 
-        {/* Filter tabs */}
-        <div style={{ display: 'flex', gap: '6px', marginBottom: '24px', background: 'var(--surface)', padding: '4px', borderRadius: '12px', border: '1px solid var(--border)', flexWrap: 'wrap' }}>
-          {['all', 'pending', 'confirmed', 'completed', 'cancelled'].map(f => (
-            <button key={f} onClick={() => setFilter(f)}
-              style={{
-                padding: '7px 14px', borderRadius: '9px', fontSize: '12px', fontWeight: filter === f ? 700 : 400, cursor: 'pointer', border: 'none',
-                background: filter === f ? 'var(--accent-bg)' : 'transparent',
-                color: filter === f ? 'var(--accent)' : 'var(--muted)',
-                textTransform: 'capitalize', transition: 'all 0.15s',
-              }}
+        <div className="my-bookings-filters" role="tablist" aria-label="Booking status filters">
+          {STATUS_FILTERS.map(item => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setFilter(item)}
+              className={filter === item ? 'active' : ''}
             >
-              {STATUS_EMOJI[f] || '📋'} {f}
+              {statusLabel(item)}
             </button>
           ))}
         </div>
 
         {loading ? <Spinner text="Loading your bookings..." /> : filtered.length === 0 ? (
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '60px 20px', textAlign: 'center' }}>
-            <div style={{ fontSize: '52px', marginBottom: '16px' }}>🐾</div>
-            <p style={{ color: 'var(--text)', fontWeight: 600, fontSize: '18px', marginBottom: '8px' }}>No bookings yet</p>
-            <p style={{ color: 'var(--muted)', fontSize: '14px', marginBottom: '24px' }}>Book your first grooming appointment!</p>
-            <Link to="/book" className="btn btn-primary" style={{ display: 'inline-flex' }}>Book Now</Link>
+          <div className="my-bookings-empty">
+            <p>No bookings found</p>
+            <span>{filter === 'all' ? 'Book your first grooming appointment.' : `No ${filter} appointments right now.`}</span>
+            <Link to="/book" className="btn btn-primary">Book Now</Link>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {filtered.map(b => (
-              <div key={b.id} className="card" style={{ padding: '22px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', gap: '14px', flex: 1, minWidth: 0 }}>
-                    <div style={{ width: '46px', height: '46px', borderRadius: '14px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>
-                      ✂️
-                    </div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <h3 style={{ fontWeight: 700, color: 'var(--text)', fontSize: '15px', marginBottom: '3px' }}>{b.serviceName}</h3>
-                      <p style={{ color: 'var(--muted)', fontSize: '13px', marginBottom: '8px' }}>
-                        {b.petName} · {b.petType}{b.petBreed ? ` · ${b.petBreed}` : ''}
-                      </p>
-                      {b.packageNames?.length > 0 && (
-                        <p style={{ color: 'var(--accent)', fontSize: '12px', marginBottom: '8px' }}>+ {b.packageNames.join(', ')}</p>
-                      )}
-                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                        <span style={{ color: 'var(--muted)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Calendar size={11} /> {b.date}
-                        </span>
-                        <span style={{ color: 'var(--muted)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Clock size={11} /> {b.slot}
-                        </span>
-                        <span style={{ color: 'var(--muted)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          {(b.bookingType || 'store') === 'home' ? <Home size={11} /> : <Store size={11} />} {getBookingTypeLabel(b.bookingType || 'store')}
-                        </span>
-                      </div>
-                      {assignedWorker(b) && (
-                        <p style={{ color: 'var(--accent)', fontSize: '12px', marginTop: '8px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <UserRound size={12} /> Assigned to: {assignedWorker(b)}{b.assignedTeamMemberIsOwner ? ' (Owner)' : ''}
-                        </p>
-                      )}
-                      {b.visitCharge > 0 && <p style={{ color: 'var(--accent)', fontSize: '12px', marginTop: '8px', fontWeight: 700 }}>Visit charge: Rs {Number(b.visitCharge).toLocaleString('en-IN')}</p>}
-                      {b.estimatedTotal > 0 && <p style={{ color: 'var(--text)', fontSize: '12px', marginTop: '4px', fontWeight: 700 }}>Estimated total: Rs {Number(b.estimatedTotal).toLocaleString('en-IN')}+</p>}
-                      {b.notes && <p style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '8px', fontStyle: 'italic' }}>"{b.notes}"</p>}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px', flexShrink: 0 }}>
-                    <span className={`badge ${STATUS_BADGE[b.status] || 'badge-pending'}`} style={{ textTransform: 'capitalize' }}>
-                      {STATUS_EMOJI[b.status]} {b.status}
-                    </span>
-                    <span style={{ color: 'var(--muted)', fontSize: '11px', fontFamily: '"DM Mono",monospace' }}>
-                      #{b.id.slice(0, 8).toUpperCase()}
-                    </span>
-                    {b.amountCollected > 0 && (
-                      <span style={{ color: '#34d399', fontSize: '12px', fontFamily: '"DM Mono",monospace', fontWeight: 700 }}>
-                        Paid ₹{parseFloat(b.amountCollected).toLocaleString('en-IN')}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
+          <div className="my-bookings-list">
+            {filtered.map(booking => (
+              <button key={booking.id} type="button" className="my-booking-row" onClick={() => setSelectedBooking(booking)}>
+                <span className="my-booking-date">
+                  <strong>{booking.date || '-'}</strong>
+                  <small>{booking.slot || '-'}</small>
+                </span>
+                <span className="my-booking-main">
+                  <strong>{appointmentTitle(booking)}</strong>
+                  <small>{petLine(booking)}</small>
+                </span>
+                <span className={`badge ${STATUS_BADGE[booking.status] || 'badge-pending'} my-booking-status`}>
+                  {statusLabel(booking.status)}
+                </span>
+                <ChevronRight size={17} className="my-booking-chevron" />
+              </button>
             ))}
           </div>
         )}
       </div>
+
+      {selectedBooking && (
+        <div className="my-booking-modal-overlay" onClick={() => setSelectedBooking(null)}>
+          <section className="my-booking-modal" onClick={event => event.stopPropagation()}>
+            <div className="my-booking-modal-head">
+              <div>
+                <span className={`badge ${STATUS_BADGE[selectedBooking.status] || 'badge-pending'}`}>{statusLabel(selectedBooking.status)}</span>
+                <h2>{appointmentTitle(selectedBooking)}</h2>
+                <p>{shortId(selectedBooking.id)}</p>
+              </div>
+              <button type="button" onClick={() => setSelectedBooking(null)} aria-label="Close booking details">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="my-booking-detail-grid">
+              <Detail label="Pet" value={selectedBooking.petName || '-'} />
+              <Detail label="Breed" value={selectedBooking.petBreed || selectedBooking.petType || '-'} />
+              <Detail label="Date" value={selectedBooking.date || '-'} icon={<Calendar size={15} />} />
+              <Detail label="Time" value={selectedBooking.slot || '-'} icon={<Clock size={15} />} />
+              <Detail label="Visit" value={getBookingTypeLabel(selectedBooking.bookingType || 'store')} icon={(selectedBooking.bookingType || 'store') === 'home' ? <Home size={15} /> : <Store size={15} />} />
+              {assignedWorker(selectedBooking) && <Detail label="Assigned To" value={`${assignedWorker(selectedBooking)}${selectedBooking.assignedTeamMemberIsOwner ? ' (Owner)' : ''}`} icon={<UserRound size={15} />} />}
+              {selectedBooking.packageNames?.length > 0 && <Detail label="Packages" value={selectedBooking.packageNames.join(', ')} />}
+              {serviceNamesFor(selectedBooking).length > 0 && <Detail label="Services" value={serviceNamesFor(selectedBooking).join(', ')} />}
+              {Number(selectedBooking.visitCharge || 0) > 0 && <Detail label="Visit Charge" value={`Rs ${money(selectedBooking.visitCharge)}`} />}
+              {Number(selectedBooking.estimatedTotal || 0) > 0 && <Detail label="Estimated Total" value={`Rs ${money(selectedBooking.estimatedTotal)}+`} />}
+              {Number(selectedBooking.amountCollected || 0) > 0 && <Detail label="Paid" value={`Rs ${money(selectedBooking.amountCollected)}`} />}
+            </div>
+
+            {selectedBooking.address && (
+              <div className="my-booking-detail-note">
+                <strong>Address</strong>
+                <p>{selectedBooking.address}</p>
+              </div>
+            )}
+            {selectedBooking.notes && (
+              <div className="my-booking-detail-note">
+                <strong>Notes</strong>
+                <p>{selectedBooking.notes}</p>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      <style>{`
+        .my-bookings-page {
+          background: var(--bg);
+          min-height: 100vh;
+          padding-top: 80px;
+        }
+
+        .my-bookings-shell {
+          width: min(760px, 100%);
+          margin: 0 auto;
+          padding: 40px 20px 80px;
+        }
+
+        .my-bookings-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 14px;
+          margin-bottom: 22px;
+        }
+
+        .my-bookings-header h1 {
+          font-family: 'Playfair Display', serif;
+          font-size: clamp(32px, 8vw, 46px);
+          line-height: 1;
+          font-weight: 800;
+          color: var(--text);
+          margin-bottom: 8px;
+          letter-spacing: 0;
+        }
+
+        .my-bookings-header p {
+          color: var(--muted);
+          font-size: 14px;
+        }
+
+        .my-bookings-new {
+          font-size: 13px;
+          padding: 10px 16px;
+          flex-shrink: 0;
+        }
+
+        .my-bookings-filters {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 18px;
+          overflow-x: auto;
+          padding-bottom: 4px;
+        }
+
+        .my-bookings-filters button {
+          border: 1px solid var(--border);
+          background: var(--card);
+          color: var(--muted);
+          border-radius: 999px;
+          padding: 9px 14px;
+          font-size: 13px;
+          font-weight: 700;
+          white-space: nowrap;
+          cursor: pointer;
+        }
+
+        .my-bookings-filters button.active {
+          border-color: var(--accent-border);
+          background: var(--accent-bg);
+          color: var(--accent);
+        }
+
+        .my-bookings-list {
+          display: grid;
+          gap: 10px;
+        }
+
+        .my-booking-row {
+          width: 100%;
+          display: grid;
+          grid-template-columns: minmax(84px, 112px) minmax(0, 1fr) auto 18px;
+          gap: 12px;
+          align-items: center;
+          text-align: left;
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          padding: 14px;
+          cursor: pointer;
+          box-shadow: 0 12px 34px rgba(0,0,0,0.05);
+        }
+
+        .my-booking-row:hover,
+        .my-booking-row:focus-visible {
+          border-color: var(--accent);
+          outline: none;
+        }
+
+        .my-booking-date,
+        .my-booking-main {
+          min-width: 0;
+        }
+
+        .my-booking-date strong,
+        .my-booking-date small,
+        .my-booking-main strong,
+        .my-booking-main small {
+          display: block;
+        }
+
+        .my-booking-date strong {
+          color: var(--text);
+          font-size: 13px;
+          font-weight: 800;
+        }
+
+        .my-booking-date small {
+          color: var(--muted);
+          font-size: 12px;
+          margin-top: 4px;
+        }
+
+        .my-booking-main strong {
+          color: var(--text);
+          font-size: 15px;
+          font-weight: 900;
+          line-height: 1.35;
+          overflow-wrap: anywhere;
+        }
+
+        .my-booking-main small {
+          color: var(--muted);
+          font-size: 13px;
+          margin-top: 5px;
+          overflow-wrap: anywhere;
+        }
+
+        .my-booking-status {
+          justify-self: end;
+          text-transform: capitalize;
+          white-space: nowrap;
+        }
+
+        .my-booking-chevron {
+          color: var(--muted);
+        }
+
+        .my-bookings-empty {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          padding: 38px 18px;
+          text-align: center;
+        }
+
+        .my-bookings-empty p {
+          color: var(--text);
+          font-size: 18px;
+          font-weight: 900;
+          margin-bottom: 8px;
+        }
+
+        .my-bookings-empty span {
+          display: block;
+          color: var(--muted);
+          font-size: 14px;
+          margin-bottom: 20px;
+        }
+
+        .my-booking-modal-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 1000;
+          background: rgba(0,0,0,0.36);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 18px;
+        }
+
+        .my-booking-modal {
+          width: min(560px, 100%);
+          max-height: min(720px, calc(100vh - 36px));
+          overflow: auto;
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 18px;
+          padding: 22px;
+          box-shadow: 0 24px 70px rgba(0,0,0,0.22);
+        }
+
+        .my-booking-modal-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: flex-start;
+          margin-bottom: 18px;
+        }
+
+        .my-booking-modal-head h2 {
+          color: var(--text);
+          font-size: 22px;
+          font-weight: 900;
+          line-height: 1.25;
+          margin: 10px 0 4px;
+          overflow-wrap: anywhere;
+        }
+
+        .my-booking-modal-head p {
+          color: var(--muted);
+          font-family: 'DM Mono', monospace;
+          font-size: 12px;
+        }
+
+        .my-booking-modal-head button {
+          width: 38px;
+          height: 38px;
+          border-radius: 11px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--muted);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          flex-shrink: 0;
+        }
+
+        .my-booking-detail-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .my-booking-detail-item,
+        .my-booking-detail-note {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 13px;
+        }
+
+        .my-booking-detail-item span,
+        .my-booking-detail-note strong {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          color: var(--muted);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          margin-bottom: 7px;
+        }
+
+        .my-booking-detail-item b,
+        .my-booking-detail-note p {
+          color: var(--text);
+          font-size: 14px;
+          font-weight: 800;
+          line-height: 1.45;
+          overflow-wrap: anywhere;
+        }
+
+        .my-booking-detail-note {
+          margin-top: 10px;
+        }
+
+        @media (max-width: 640px) {
+          .my-bookings-shell {
+            padding: 32px 16px 70px;
+          }
+
+          .my-bookings-header {
+            display: grid;
+          }
+
+          .my-bookings-new {
+            width: fit-content;
+          }
+
+          .my-booking-row {
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px;
+            padding: 13px;
+          }
+
+          .my-booking-date {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+          }
+
+          .my-booking-date strong,
+          .my-booking-date small {
+            margin: 0;
+          }
+
+          .my-booking-main {
+            grid-column: 1;
+          }
+
+          .my-booking-status {
+            grid-column: 2;
+            grid-row: 2;
+            align-self: start;
+          }
+
+          .my-booking-chevron {
+            display: none;
+          }
+
+          .my-booking-modal-overlay {
+            align-items: flex-end;
+            padding: 0;
+          }
+
+          .my-booking-modal {
+            width: 100%;
+            max-height: 86vh;
+            border-radius: 18px 18px 0 0;
+            padding: 18px;
+          }
+
+          .my-booking-detail-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+function Detail({ label, value, icon }) {
+  return (
+    <div className="my-booking-detail-item">
+      <span>{icon}{label}</span>
+      <b>{value}</b>
     </div>
   )
 }
