@@ -1,6 +1,6 @@
 // src/admin/AdminDashboard.jsx
 import { useEffect, useMemo, useState } from 'react'
-import { collection, getDocs, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore'
+import { collection, getDocs, addDoc, serverTimestamp, doc, setDoc, orderBy, query } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
 import { BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Store, UserCheck, X } from 'lucide-react'
@@ -10,8 +10,9 @@ import { db } from '../firebase'
 import { calculatePublicStats } from '../utils/publicStats'
 import { BOOKING_STATUS, PET_TYPES, SERVICES } from '../utils/services'
 import { fetchBookingSettings } from '../utils/bookingSettings'
+import { OWNER_ASSIGNEE_ID, buildAssigneePatch, getAssigneeLabel, getOwnerAssignee } from '../utils/teamMembers'
 
-const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: 'walkin', userEmail: 'walkin@offline' }
+const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', assignedTeamMemberId: OWNER_ASSIGNEE_ID, date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: 'walkin', userEmail: 'walkin@offline' }
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
@@ -97,6 +98,7 @@ export default function AdminDashboard() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [bookingSettings, setBookingSettings] = useState(null)
+  const [teamMembers, setTeamMembers] = useState([])
   const today = format(startOfToday(), 'yyyy-MM-dd')
 
   const fetchData = async () => {
@@ -188,6 +190,25 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchData() }, [])
 
+  useEffect(() => {
+    async function fetchTeamMembers() {
+      try {
+        const snap = await getDocs(query(collection(db, 'teamMembers'), orderBy('createdAt', 'desc')))
+        setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      } catch {
+        try {
+          const snap = await getDocs(collection(db, 'teamMembers'))
+          setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+        } catch {}
+      }
+    }
+    fetchTeamMembers()
+  }, [])
+
+  const ownerAssignee = useMemo(() => getOwnerAssignee(user), [user])
+  const assignableTeamMembers = useMemo(() => teamMembers.filter(member => member.active !== false), [teamMembers])
+  const assigneeOptions = useMemo(() => [ownerAssignee, ...assignableTeamMembers], [ownerAssignee, assignableTeamMembers])
+
   const walkinVisitCharge = () => {
     if (walkin.visitCharge !== '') return Number(walkin.visitCharge || 0) || 0
     if (!bookingSettings?.fixedVisitCharges) return 0
@@ -236,10 +257,12 @@ export default function AdminDashboard() {
     setSaving(true); setError('')
     try {
       const svc = SERVICES.find(s => s.id === serviceId)
+      const assignee = assigneeOptions.find(item => item.id === walkin.assignedTeamMemberId) || ownerAssignee
       const visitCharge = walkinVisitCharge()
       const totalCollected = walkin.amountCollected || walkin.visitCharge !== '' ? walkinServiceAmount + visitCharge : ''
       await addDoc(collection(db, 'bookings'), {
         ...walkin,
+        ...buildAssigneePatch(assignee),
         amountCollected: totalCollected,
         serviceTotal: walkinServiceAmount,
         visitCharge,
@@ -455,6 +478,12 @@ export default function AdminDashboard() {
                   <select className="input" value={walkin.serviceId} onChange={e => upd('serviceId', e.target.value)}>
                     <option value="">Select a service</option>
                     {SERVICES.map(s => <option key={s.id} value={s.id}>{s.name} - {s.price}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Assigned Team Member</label>
+                  <select className="input" value={walkin.assignedTeamMemberId} onChange={e => upd('assignedTeamMemberId', e.target.value)}>
+                    {assigneeOptions.map(member => <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>)}
                   </select>
                 </div>
                 <div>
