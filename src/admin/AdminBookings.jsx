@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc } from 'firebase/firestore'
-import { Calendar, CheckCircle2, Clock, IndianRupee, MessageCircle, Phone, Search, Trash2, X } from 'lucide-react'
+import { Calendar, CheckCircle2, Clock, Download, Eye, IndianRupee, Mail, MessageCircle, Phone, Search, Trash2, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import { useNotifications } from '../context/NotificationContext'
 import { db } from '../firebase'
@@ -10,6 +10,7 @@ import { syncPublicStats } from '../utils/publicStats'
 import { SERVICES, buildWhatsAppMessage } from '../utils/services'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { getBookingTypeLabel } from '../utils/bookingSettings'
+import { downloadInvoicePdf, getInvoiceSummary, viewInvoicePdf } from '../utils/invoicePdf'
 
 const STATUS_OPTS = ['all', 'pending', 'confirmed', 'completed', 'cancelled']
 const BADGE = { pending: 'badge-pending', confirmed: 'badge-confirmed', completed: 'badge-completed', cancelled: 'badge-cancelled' }
@@ -35,8 +36,10 @@ export default function AdminBookings() {
   const [cashModal, setCashModal] = useState(null)
   const [cashAmt, setCashAmt] = useState('')
   const [selectedBooking, setSelectedBooking] = useState(null)
+  const [invoiceBusy, setInvoiceBusy] = useState('')
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Pet Grooming')
+  const [businessInfo, setBusinessInfo] = useState(null)
 
   const fetchBookings = async () => {
     setLoading(true)
@@ -70,6 +73,7 @@ export default function AdminBookings() {
       const info = await fetchBusinessInfo(db)
       setAdminWhatsappNumber(info.whatsappNumber || '')
       setShopName(info.contact.shopName || 'Pet Grooming')
+      setBusinessInfo(info)
     }
     fetchWhatsapp()
   }, [])
@@ -174,6 +178,45 @@ export default function AdminBookings() {
   }
 
   const stop = (event) => event.stopPropagation()
+  const invoiceInfo = businessInfo || { contact: { shopName }, footer: {}, whatsappNumber: adminWhatsappNumber }
+
+  const runInvoiceTask = async (key, task) => {
+    setInvoiceBusy(key)
+    try {
+      await task()
+    } catch {
+      alert('Could not generate invoice. Please try again.')
+    } finally {
+      setInvoiceBusy('')
+    }
+  }
+
+  const canGenerateInvoice = booking => booking?.status === 'completed'
+  const requireCompletedInvoice = booking => {
+    if (canGenerateInvoice(booking)) return true
+    alert('Invoice can be generated only after the appointment is marked completed.')
+    return false
+  }
+
+  const handleInvoiceDownload = booking => {
+    if (!requireCompletedInvoice(booking)) return
+    runInvoiceTask(`download-${booking.id}`, () => downloadInvoicePdf(booking, invoiceInfo))
+  }
+  const handleInvoiceView = booking => {
+    if (!requireCompletedInvoice(booking)) return
+    runInvoiceTask(`view-${booking.id}`, () => viewInvoicePdf(booking, invoiceInfo))
+  }
+  const handleInvoiceWhatsApp = booking => {
+    if (!requireCompletedInvoice(booking)) return
+    const text = encodeURIComponent(getInvoiceSummary(booking, invoiceInfo))
+    window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer')
+  }
+  const handleInvoiceMail = booking => {
+    if (!requireCompletedInvoice(booking)) return
+    const subject = encodeURIComponent(`Invoice ${booking.ownerName || shortId(booking.id)}`)
+    const body = encodeURIComponent(getInvoiceSummary(booking, invoiceInfo))
+    window.location.href = `mailto:?subject=${subject}&body=${body}`
+  }
 
   const S = {
     meta: { display: 'inline-flex', alignItems: 'center', gap: '5px', minWidth: 0 },
@@ -254,6 +297,16 @@ export default function AdminBookings() {
                       <Trash2 size={14} /> Delete
                     </button>
                   )}
+                  {canGenerateInvoice(b) && (
+                    <>
+                      <button type="button" onClick={() => handleInvoiceDownload(b)} disabled={invoiceBusy === `download-${b.id}`} style={S.iconBtn('var(--muted)', 'var(--surface)')}>
+                        <Download size={14} /> Invoice
+                      </button>
+                      <button type="button" onClick={() => handleInvoiceView(b)} disabled={invoiceBusy === `view-${b.id}`} style={S.iconBtn('var(--muted)', 'var(--surface)')}>
+                        <Eye size={14} /> View
+                      </button>
+                    </>
+                  )}
                   <a href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(b, shopName)}` : '#'} target="_blank" rel="noopener noreferrer" style={S.iconBtn('#25D366', 'rgba(37,211,102,0.1)')}>
                     <MessageCircle size={14} /> WA
                   </a>
@@ -270,6 +323,11 @@ export default function AdminBookings() {
           adminWhatsappNumber={adminWhatsappNumber}
           shopName={shopName}
           updating={updating}
+          invoiceBusy={invoiceBusy}
+          onInvoiceDownload={handleInvoiceDownload}
+          onInvoiceView={handleInvoiceView}
+          onInvoiceWhatsApp={handleInvoiceWhatsApp}
+          onInvoiceMail={handleInvoiceMail}
           onClose={() => { setSelectedBooking(null); if (bookingId) navigate('/admin/bookings') }}
           onStatus={updateStatus}
           onDelete={deleteBooking}
@@ -300,7 +358,7 @@ export default function AdminBookings() {
   )
 }
 
-function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, onClose, onStatus, onDelete }) {
+function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, invoiceBusy, onInvoiceDownload, onInvoiceView, onInvoiceWhatsApp, onInvoiceMail, onClose, onStatus, onDelete }) {
   const detailRows = [
     ['Booking ID', shortId(booking.id)],
     ['Owner', booking.ownerName || '-'],
@@ -361,12 +419,30 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
               <Trash2 size={15} /> Delete
             </button>
           )}
+          {booking.status === 'completed' && (
+            <>
+              <button type="button" onClick={() => onInvoiceDownload(booking)} disabled={invoiceBusy === `download-${booking.id}`} className="btn btn-secondary">
+                <Download size={15} /> Generate Invoice
+              </button>
+              <button type="button" onClick={() => onInvoiceView(booking)} disabled={invoiceBusy === `view-${booking.id}`} className="btn btn-secondary">
+                <Eye size={15} /> View Invoice
+              </button>
+              <button type="button" onClick={() => onInvoiceWhatsApp(booking)} className="btn btn-secondary">
+                <MessageCircle size={15} /> Share Invoice
+              </button>
+              <button type="button" onClick={() => onInvoiceMail(booking)} className="btn btn-secondary">
+                <Mail size={15} /> Mail Invoice
+              </button>
+            </>
+          )}
           <a className="btn btn-secondary" href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(booking, shopName)}` : '#'} target="_blank" rel="noopener noreferrer">
-            <MessageCircle size={15} /> WhatsApp
+            <MessageCircle size={15} /> Booking WA
           </a>
         </div>
       </div>
     </div>
   )
 }
+
+
 

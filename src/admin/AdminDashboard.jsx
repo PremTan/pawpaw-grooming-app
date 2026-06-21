@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
-import { BarChart3, Calendar, CalendarCheck, IndianRupee, Plus, UserCheck, X } from 'lucide-react'
+import { BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Store, UserCheck, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
@@ -11,7 +11,7 @@ import { calculatePublicStats } from '../utils/publicStats'
 import { BOOKING_STATUS, PET_TYPES, SERVICES } from '../utils/services'
 import { fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
 
-const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', notes: '', amountCollected: '' }
+const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '' }
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
@@ -189,22 +189,37 @@ export default function AdminDashboard() {
   useEffect(() => { fetchData() }, [])
 
   const walkinAvailability = getAvailabilityForDate(bookingSettings || undefined, walkin.date)
-  const walkinSlots = walkinAvailability.storeSlots
+  const walkinSlots = walkin.bookingType === 'home' ? walkinAvailability.homeSlots : walkinAvailability.storeSlots
+  const walkinVisitCharge = () => {
+    if (walkin.visitCharge !== '') return Number(walkin.visitCharge || 0) || 0
+    if (!bookingSettings?.fixedVisitCharges) return 0
+    const raw = walkin.bookingType === 'home' ? bookingSettings.homeVisitCharge : bookingSettings.centerVisitCharge
+    return Number(raw || 0) || 0
+  }
+  const walkinServiceAmount = Number(walkin.amountCollected || 0) || 0
+  const walkinTotal = walkinServiceAmount + walkinVisitCharge()
 
   const upd = (k, v) => setWalkin(p => ({ ...p, [k]: v }))
 
   const handleSave = async () => {
     const { ownerName, phone, petName, serviceId, date, slot } = walkin
     if (!ownerName || !phone || !petName || !serviceId || !date || !slot) { setError('Please fill all required fields *'); return }
+    if (walkin.bookingType === 'home' && !walkin.address.trim()) { setError('Please enter home visit address'); return }
     setSaving(true); setError('')
     try {
       const svc = SERVICES.find(s => s.id === serviceId)
+      const visitCharge = walkinVisitCharge()
+      const totalCollected = walkin.amountCollected || walkin.visitCharge !== '' ? walkinServiceAmount + visitCharge : ''
       await addDoc(collection(db, 'bookings'), {
         ...walkin,
-        amountCollected: walkin.amountCollected ? parseFloat(walkin.amountCollected) : '',
+        amountCollected: totalCollected,
+        serviceTotal: walkinServiceAmount,
+        visitCharge,
+        estimatedTotal: walkinServiceAmount + visitCharge,
         serviceName: svc?.name || '',
+        serviceIds: [serviceId],
         userId: 'walkin', userEmail: 'walkin@offline', isWalkIn: true,
-        status: walkin.amountCollected ? BOOKING_STATUS.COMPLETED : BOOKING_STATUS.CONFIRMED,
+        status: totalCollected ? BOOKING_STATUS.COMPLETED : BOOKING_STATUS.CONFIRMED,
         createdAt: serverTimestamp(),
       })
       setSuccess(true); setWalkin(EMPTY); await fetchData()
@@ -354,14 +369,14 @@ export default function AdminDashboard() {
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-box" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
-            <div style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div className="modal-box walkin-modal" onClick={e => e.stopPropagation()}>
+            <div className="walkin-modal-body">
+              <div className="walkin-modal-head">
                 <div>
                   <h2 style={{ fontFamily: '"Playfair Display",serif', fontWeight: 700, fontSize: '20px', color: 'var(--text)' }}>Add Walk-in / Offline</h2>
                   <p style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '3px' }}>Record an offline or phone appointment</p>
                 </div>
-                <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer' }}><X size={20} /></button>
+                <button type="button" className="walkin-modal-close" onClick={() => setShowModal(false)} aria-label="Close offline appointment"><X size={20} /></button>
               </div>
 
               {success && <div style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399', fontSize: '13px', padding: '12px', borderRadius: '10px', marginBottom: '16px' }}>Walk-in booking saved!</div>}
@@ -404,6 +419,23 @@ export default function AdminDashboard() {
                     {SERVICES.map(s => <option key={s.id} value={s.id}>{s.name} - {s.price}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Visit Type *</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
+                    <button type="button" onClick={() => setWalkin(prev => ({ ...prev, bookingType: 'store', address: '', slot: '', visitCharge: bookingSettings?.fixedVisitCharges ? String(bookingSettings.centerVisitCharge || '') : prev.visitCharge }))} className={walkin.bookingType === 'store' ? 'btn btn-primary' : 'btn btn-secondary'}>
+                      <Store size={15} /> In Store
+                    </button>
+                    <button type="button" onClick={() => setWalkin(prev => ({ ...prev, bookingType: 'home', slot: '', visitCharge: bookingSettings?.fixedVisitCharges ? String(bookingSettings.homeVisitCharge || '') : prev.visitCharge }))} className={walkin.bookingType === 'home' ? 'btn btn-primary' : 'btn btn-secondary'}>
+                      <Home size={15} /> At Home
+                    </button>
+                  </div>
+                </div>
+                {walkin.bookingType === 'home' && (
+                  <div>
+                    <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Home Visit Address *</label>
+                    <textarea className="input" rows={2} placeholder="Complete address" value={walkin.address} onChange={e => upd('address', e.target.value)} />
+                  </div>
+                )}
                 <div className="admin-form-grid">
                   <div>
                     <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Date *</label>
@@ -417,16 +449,30 @@ export default function AdminDashboard() {
                     </select>
                   </div>
                 </div>
-                <div>
-                  <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>
-                    Amount Collected (Rs) <span style={{ color: 'var(--muted)', fontWeight: 400, textTransform: 'none' }}>- leave empty if not collected yet</span>
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }}>Rs</span>
-                    <input className="input" style={{ paddingLeft: '36px' }} type="number" min="0" placeholder="e.g. 600" value={walkin.amountCollected} onChange={e => upd('amountCollected', e.target.value)} />
+                <div className="admin-form-grid">
+                  <div>
+                    <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>
+                      Service Amount (Rs) <span style={{ color: 'var(--muted)', fontWeight: 400, textTransform: 'none' }}>- leave empty if not collected yet</span>
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }}>Rs</span>
+                      <input className="input" style={{ paddingLeft: '36px' }} type="number" min="0" placeholder="e.g. 600" value={walkin.amountCollected} onChange={e => upd('amountCollected', e.target.value)} />
+                    </div>
                   </div>
-                  {walkin.amountCollected && <p style={{ color: '#34d399', fontSize: '12px', marginTop: '6px' }}>Status will auto-set to Completed</p>}
+                  <div>
+                    <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Visit Charge (Rs)</label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }}>Rs</span>
+                      <input className="input" style={{ paddingLeft: '36px' }} type="number" min="0" placeholder="0" value={walkin.visitCharge} onChange={e => upd('visitCharge', e.target.value)} />
+                    </div>
+                  </div>
                 </div>
+                {(walkin.amountCollected || walkin.visitCharge !== '') && (
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                    <span style={{ color: 'var(--muted)', fontSize: '13px' }}>Total collected and status will auto-set to Completed</span>
+                    <strong style={{ color: 'var(--text)' }}>Rs {money(walkinTotal)}</strong>
+                  </div>
+                )}
                 <div>
                   <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Notes (optional)</label>
                   <textarea className="input" style={{ resize: 'none' }} rows={2} placeholder="Any notes..." value={walkin.notes} onChange={e => upd('notes', e.target.value)} />
@@ -445,6 +491,10 @@ export default function AdminDashboard() {
     </div>
   )
 }
+
+
+
+
 
 
 

@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { Link, Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Award, LayoutDashboard, CalendarCheck, CalendarClock, Home, MessageSquare, Users, Image, Images, Package, LogOut, Scissors, MapPin, Share2, Menu, X } from 'lucide-react'
+import { Award, LayoutDashboard, CalendarCheck, CalendarClock, Home, MessageSquare, Users, Image, Images, Package, LogOut, ReceiptText, Scissors, MapPin, Share2, Menu, X } from 'lucide-react'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import NotificationBell from '../components/NotificationBell'
 import BrandLogo from '../components/BrandLogo'
@@ -10,6 +10,7 @@ import BrandLogo from '../components/BrandLogo'
 const LINKS = [
   { to:'/admin',           label:'Dashboard',  icon:<LayoutDashboard size={17}/>, end:true },
   { to:'/admin/bookings',  label:'Bookings',   icon:<CalendarCheck size={17}/> },
+  { to:'/admin/invoices',  label:'Invoices',   icon:<ReceiptText size={17}/> },
   { to:'/admin/booking-settings', label:'Booking Settings', icon:<CalendarClock size={17}/> },
   { to:'/admin/customers', label:'Customers',  icon:<Users size={17}/> },
   { to:'/admin/services',  label:'Services',   icon:<Scissors size={17}/> },
@@ -103,4 +104,5 @@ export default function AdminLayout() {
     </div>
   )
 }
+
 

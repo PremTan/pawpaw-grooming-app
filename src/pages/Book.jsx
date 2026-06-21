@@ -1,5 +1,5 @@
 // src/pages/Book.jsx
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -33,6 +33,8 @@ export default function Book() {
   const preService = searchParams.get('service') || ''
   const prePackage = searchParams.get('package') || ''
 
+  const bookingTopRef = useRef(null)
+
   const [step, setStep] = useState(1)
   const [packages, setPackages] = useState([])
   const [pets, setPets] = useState([])
@@ -53,6 +55,10 @@ export default function Book() {
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Pet Grooming')
   const [bookingSettings, setBookingSettings] = useState(null)
+
+  useEffect(() => {
+    bookingTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [step, done])
 
   // Fetch packages and admin UID
   useEffect(() => {
@@ -290,7 +296,7 @@ export default function Book() {
 
   if (done && bookingRef) return (
     <div style={S.page}>
-      <div style={{ ...S.wrap, textAlign: 'center' }}>
+      <div ref={bookingTopRef} style={{ ...S.wrap, textAlign: 'center' }}>
         <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(52,211,153,0.1)', border: '2px solid rgba(52,211,153,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', color: '#34d399' }}>
           <CheckCircle size={36} />
         </div>
@@ -327,7 +333,7 @@ export default function Book() {
 
   return (
     <div style={S.page}>
-      <div style={S.wrap}>
+      <div ref={bookingTopRef} style={S.wrap}>
         <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Book Appointment</h1>
         <p style={{ color: 'var(--muted)', marginBottom: '28px', fontSize: '14px' }}>Fill the details below to schedule your visit</p>
 
@@ -650,7 +656,4 @@ export default function Book() {
     </div>
   )
 }
-
-
-
 

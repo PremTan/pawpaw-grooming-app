@@ -33,6 +33,7 @@ import AdminWhyChooseUs from './admin/AdminWhyChooseUs'
 import AdminContactInfo from './admin/AdminContactInfo'
 import AdminFooter from './admin/AdminFooter'
 import AdminBookingSettings from './admin/AdminBookingSettings'
+import AdminInvoices from './admin/AdminInvoices'
 
 function ScrollToTop() {
   const { pathname, search, hash } = useLocation()
@@ -73,6 +74,7 @@ export default function App() {
         <Route index            element={<AdminDashboard />} />
         <Route path="bookings"  element={<AdminBookings />} />
         <Route path="bookings/:bookingId" element={<AdminBookings />} />
+        <Route path="invoices" element={<AdminInvoices />} />
         <Route path="reviews"   element={<AdminReviews />} />
         <Route path="customers" element={<AdminCustomers />} />
         <Route path="services"  element={<AdminServices />} />
@@ -111,6 +113,7 @@ export default function App() {
     </>
   )
 }
+
 
 
 
