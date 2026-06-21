@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc } from 'firebase/firestore'
 import { Calendar, CheckCircle2, Clock, IndianRupee, MessageCircle, Phone, Search, Trash2, UserRound, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
+import ConfirmModal from '../components/ConfirmModal'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import { db } from '../firebase'
@@ -43,6 +44,7 @@ export default function AdminBookings() {
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Pet Grooming')
   const [teamMembers, setTeamMembers] = useState([])
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const fetchBookings = async () => {
     setLoading(true)
@@ -215,12 +217,12 @@ export default function AdminBookings() {
 
   const deleteBooking = async (b) => {
     if (!b?.id) return
-    if (!window.confirm(`Delete booking ${shortId(b.id)}? This will remove it from booking counts and collected earnings.`)) return
     setUpdating(b.id)
     try {
       await deleteDoc(doc(db, 'bookings', b.id))
       setBookings(prev => prev.filter(x => x.id !== b.id))
       setSelectedBooking(prev => prev?.id === b.id ? null : prev)
+      setDeleteTarget(null)
       await syncPublicStats(db)
     } catch {}
     setUpdating(null)
@@ -308,7 +310,7 @@ export default function AdminBookings() {
                     </button>
                   )}
                   {['completed', 'cancelled'].includes(b.status) && (
-                    <button type="button" onClick={() => deleteBooking(b)} disabled={updating === b.id} style={S.iconBtn('#ef4444', 'rgba(239,68,68,0.1)')}>
+                    <button type="button" onClick={() => setDeleteTarget(b)} disabled={updating === b.id} style={S.iconBtn('#ef4444', 'rgba(239,68,68,0.1)')}>
                       <Trash2 size={14} /> Delete
                     </button>
                   )}
@@ -341,9 +343,19 @@ export default function AdminBookings() {
           onAssign={assignBooking}
           onClose={() => { setSelectedBooking(null); if (bookingId) navigate('/admin/bookings') }}
           onStatus={updateStatus}
-          onDelete={deleteBooking}
+          onDelete={setDeleteTarget}
         />
       )}
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Delete booking?"
+        message={deleteTarget ? `Delete booking ${shortId(deleteTarget.id)}? This will remove it from booking counts and collected earnings.` : ''}
+        confirmText="Delete"
+        loading={!!deleteTarget && updating === deleteTarget.id}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && deleteBooking(deleteTarget)}
+      />
 
       {cashModal && (
         <div className="modal-overlay" onClick={() => setCashModal(null)}>

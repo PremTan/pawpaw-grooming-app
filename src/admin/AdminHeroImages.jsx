@@ -4,6 +4,7 @@ import { ImagePlus, Save, Trash2, Upload, X } from 'lucide-react'
 import { db } from '../firebase'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import Spinner from '../components/Spinner'
+import ConfirmModal from '../components/ConfirmModal'
 
 const EMPTY_IMAGES = Array.from({ length: 5 }, () => ({ url: '', alt: '' }))
 
@@ -16,6 +17,7 @@ export default function AdminHeroImages() {
   const [hasSavedImages, setHasSavedImages] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
     async function fetchImages() {
@@ -86,7 +88,6 @@ export default function AdminHeroImages() {
   }
 
   const deleteCustomImages = async () => {
-    if (!confirm('Delete custom hero images?')) return
     setError('')
     setMessage('')
     setDeleting(true)
@@ -94,6 +95,7 @@ export default function AdminHeroImages() {
       await deleteDoc(doc(db, 'settings', 'heroImages'))
       setImages(EMPTY_IMAGES)
       setHasSavedImages(false)
+      setConfirmDelete(false)
       setMessage('Custom hero images deleted.')
     } catch (err) {
       setError(err.message || 'Could not delete custom hero images.')
@@ -114,7 +116,7 @@ export default function AdminHeroImages() {
         </div>
         <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}>
           {hasSavedImages && (
-            <button onClick={deleteCustomImages} disabled={deleting || saving || uploading !== null} className="btn btn-danger" style={{ fontSize:'13px', padding:'10px 18px' }}>
+            <button onClick={() => setConfirmDelete(true)} disabled={deleting || saving || uploading !== null} className="btn btn-danger" style={{ fontSize:'13px', padding:'10px 18px' }}>
               <Trash2 size={16}/> {deleting ? 'Deleting...' : 'Delete Custom Images'}
             </button>
           )}
@@ -168,6 +170,15 @@ export default function AdminHeroImages() {
           </div>
         ))}
       </div>
+      <ConfirmModal
+        open={confirmDelete}
+        title="Delete custom hero images?"
+        message="Are you sure you want to delete the saved hero images?"
+        confirmText="Delete"
+        loading={deleting}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={deleteCustomImages}
+      />
     </div>
   )
 }

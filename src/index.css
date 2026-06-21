@@ -354,6 +354,81 @@
     animation: slideUp 0.3s cubic-bezier(0.22,1,0.36,1);
   }
 
+  .confirm-modal {
+    max-width: 420px;
+    padding: 22px;
+    overflow: visible;
+  }
+
+  .confirm-modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+
+  .confirm-modal-head > button {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .confirm-modal-icon {
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    color: var(--accent);
+    background: var(--accent-bg);
+    border: 1px solid var(--accent-border);
+  }
+
+  .confirm-modal-icon.danger {
+    color: #ef4444;
+    background: rgba(239,68,68,0.1);
+    border-color: rgba(239,68,68,0.2);
+  }
+
+  .confirm-modal h2 {
+    color: var(--text);
+    font-size: 20px;
+    font-weight: 900;
+    margin-bottom: 8px;
+  }
+
+  .confirm-modal p {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .confirm-modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  @media (max-width: 420px) {
+    .confirm-modal {
+      padding: 18px;
+    }
+
+    .confirm-modal-actions {
+      grid-template-columns: 1fr;
+    }
+  }
+
   /* ── Toast ── */
   .toast {
     position: fixed;

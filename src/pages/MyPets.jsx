@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import Cropper from 'react-easy-crop'
 import {
   addDoc,
   collection,
@@ -27,6 +28,7 @@ import {
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
+import ConfirmModal from '../components/ConfirmModal'
 import { CAT_BREEDS, DOG_BREEDS, PET_TYPES } from '../utils/services'
 import { uploadToCloudinary } from '../utils/cloudinary'
 
@@ -64,6 +66,40 @@ function petSummary(pet) {
   return [pet.type, pet.breed].filter(Boolean).join(' - ') || 'Pet profile'
 }
 
+function getCroppedImg(imageSrc, pixelCrop) {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => {
+      const canvas = document.createElement('canvas')
+      const size = Math.min(pixelCrop.width, pixelCrop.height)
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(
+        image,
+        pixelCrop.x,
+        pixelCrop.y,
+        pixelCrop.width,
+        pixelCrop.height,
+        0,
+        0,
+        size,
+        size
+      )
+      canvas.toBlob(blob => {
+        if (!blob) {
+          reject(new Error('Could not crop image.'))
+          return
+        }
+        resolve(new File([blob], `pet-photo-${Date.now()}.jpg`, { type: 'image/jpeg' }))
+      }, 'image/jpeg', 0.92)
+    }
+    image.onerror = reject
+    image.src = imageSrc
+  })
+}
+
 export default function MyPets() {
   const { user } = useAuth()
   const [pets, setPets] = useState([])
@@ -77,6 +113,11 @@ export default function MyPets() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [cropData, setCropData] = useState(null)
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
 
   const selectedPet = useMemo(
     () => pets.find(pet => pet.id === selectedId) || pets[0] || null,
@@ -160,6 +201,7 @@ export default function MyPets() {
 
   const choosePhoto = (event) => {
     const file = event.target.files?.[0]
+    event.target.value = ''
     if (!file) return
 
     if (!file.type.startsWith('image/')) {
@@ -167,8 +209,34 @@ export default function MyPets() {
       return
     }
 
-    setPhotoFile(file)
-    setPhotoPreview(URL.createObjectURL(file))
+    const reader = new FileReader()
+    reader.onload = () => {
+      setCropData(reader.result)
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setError('')
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const onCropComplete = useCallback((_, nextPixels) => {
+    setCroppedAreaPixels(nextPixels)
+  }, [])
+
+  const confirmCrop = async () => {
+    if (!cropData || !croppedAreaPixels) return
+    try {
+      const croppedFile = await getCroppedImg(cropData, croppedAreaPixels)
+      setPhotoFile(croppedFile)
+      setPhotoPreview(URL.createObjectURL(croppedFile))
+      setCropData(null)
+    } catch (err) {
+      setError(err.message || 'Could not crop image.')
+    }
+  }
+
+  const cancelCrop = () => {
+    setCropData(null)
     setError('')
   }
 
@@ -225,7 +293,6 @@ export default function MyPets() {
   }
 
   const removePet = async (pet) => {
-    if (!window.confirm(`Delete ${pet.name}?`)) return
     setMessage('')
     setError('')
     try {
@@ -233,6 +300,7 @@ export default function MyPets() {
       setPets(prev => prev.filter(item => item.id !== pet.id))
       if (editingId === pet.id) closeForm()
       if (selectedId === pet.id) setSelectedId('')
+      setDeleteTarget(null)
       setMessage('Pet deleted.')
     } catch (err) {
       setError(err.message || 'Could not delete pet.')
@@ -444,7 +512,7 @@ export default function MyPets() {
                     <button type="button" onClick={() => startEdit(selectedPet)} className="btn btn-secondary" style={{ padding: '10px 14px', fontSize: '13px' }}>
                       <Edit3 size={15} /> Edit
                     </button>
-                    <button type="button" onClick={() => removePet(selectedPet)} className="btn btn-danger" style={{ padding: '10px 12px' }}>
+                    <button type="button" onClick={() => setDeleteTarget(selectedPet)} className="btn btn-danger" style={{ padding: '10px 12px' }}>
                       <Trash2 size={15} />
                     </button>
                   </div>
@@ -488,7 +556,119 @@ export default function MyPets() {
         </div>
       </div>
 
+      {cropData && (
+        <div className="modal-overlay pet-crop-overlay" onClick={cancelCrop}>
+          <div className="modal-box pet-crop-modal" onClick={event => event.stopPropagation()}>
+            <div className="pet-crop-head">
+              <div>
+                <h2>Crop Photo</h2>
+                <p>Adjust the photo before saving it to the pet profile.</p>
+              </div>
+              <button type="button" onClick={cancelCrop} aria-label="Close cropper"><X size={18} /></button>
+            </div>
+            <div className="pet-crop-stage">
+              <Cropper
+                image={cropData}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="rect"
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={onCropComplete}
+              />
+            </div>
+            <label className="pet-crop-zoom">
+              Zoom
+              <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={event => setZoom(Number(event.target.value))} />
+            </label>
+            <div className="pet-crop-actions">
+              <button type="button" className="btn btn-secondary" onClick={cancelCrop}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={confirmCrop}>Use Photo</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Delete pet profile?"
+        message={deleteTarget ? `Are you sure you want to delete ${deleteTarget.name}? This cannot be undone.` : ''}
+        confirmText="Delete"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && removePet(deleteTarget)}
+      />
+
       <style>{`
+        .pet-crop-modal {
+          max-width: 560px;
+          overflow: hidden;
+        }
+
+        .pet-crop-head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 14px;
+          padding: 18px 18px 0;
+        }
+
+        .pet-crop-head h2 {
+          color: var(--text);
+          font-size: 18px;
+          font-weight: 900;
+        }
+
+        .pet-crop-head p {
+          color: var(--muted);
+          font-size: 12px;
+          margin-top: 4px;
+        }
+
+        .pet-crop-head button {
+          width: 34px;
+          height: 34px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 8px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--muted);
+          cursor: pointer;
+        }
+
+        .pet-crop-stage {
+          position: relative;
+          width: 100%;
+          height: min(62vh, 420px);
+          min-height: 300px;
+          margin-top: 16px;
+          background: #111;
+        }
+
+        .pet-crop-zoom {
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr);
+          gap: 12px;
+          align-items: center;
+          padding: 16px 18px 0;
+          color: var(--muted);
+          font-size: 12px;
+          font-weight: 800;
+        }
+
+        .pet-crop-zoom input {
+          accent-color: var(--accent);
+        }
+
+        .pet-crop-actions {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          padding: 16px 18px 18px;
+        }
+
         .pets-hero {
           display: flex;
           align-items: flex-start;

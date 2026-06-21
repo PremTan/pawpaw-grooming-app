@@ -9,9 +9,9 @@ import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { calculatePublicStats } from '../utils/publicStats'
 import { BOOKING_STATUS, PET_TYPES, SERVICES } from '../utils/services'
-import { fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
+import { fetchBookingSettings } from '../utils/bookingSettings'
 
-const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '' }
+const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: 'walkin', userEmail: 'walkin@offline' }
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
@@ -188,8 +188,6 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchData() }, [])
 
-  const walkinAvailability = getAvailabilityForDate(bookingSettings || undefined, walkin.date)
-  const walkinSlots = walkin.bookingType === 'home' ? walkinAvailability.homeSlots : walkinAvailability.storeSlots
   const walkinVisitCharge = () => {
     if (walkin.visitCharge !== '') return Number(walkin.visitCharge || 0) || 0
     if (!bookingSettings?.fixedVisitCharges) return 0
@@ -198,6 +196,36 @@ export default function AdminDashboard() {
   }
   const walkinServiceAmount = Number(walkin.amountCollected || 0) || 0
   const walkinTotal = walkinServiceAmount + walkinVisitCharge()
+
+  const walkinCustomers = useMemo(() => {
+    const map = new Map()
+    data.bookings.forEach(booking => {
+      const key = booking.userId && booking.userId !== 'walkin' ? booking.userId : (booking.phone || booking.ownerName || booking.userEmail)
+      if (!key || map.has(key)) return
+      map.set(key, booking)
+    })
+    return Array.from(map.values()).sort((a, b) => (a.ownerName || '').localeCompare(b.ownerName || ''))
+  }, [data.bookings])
+
+  const applyWalkinCustomer = key => {
+    if (!key) {
+      setWalkin(prev => ({ ...prev, ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', address: '', userId: 'walkin', userEmail: 'walkin@offline' }))
+      return
+    }
+    const customer = walkinCustomers.find(item => (item.userId && item.userId !== 'walkin' ? item.userId : (item.phone || item.ownerName || item.userEmail)) === key)
+    if (!customer) return
+    setWalkin(prev => ({
+      ...prev,
+      ownerName: customer.ownerName || '',
+      phone: customer.phone || '',
+      petName: customer.petName || '',
+      petType: customer.petType || 'Dog',
+      petBreed: customer.petBreed || '',
+      address: customer.address || '',
+      userId: customer.userId && customer.userId !== 'walkin' ? customer.userId : 'walkin',
+      userEmail: customer.userEmail || (customer.userId && customer.userId !== 'walkin' ? '' : 'walkin@offline'),
+    }))
+  }
 
   const upd = (k, v) => setWalkin(p => ({ ...p, [k]: v }))
 
@@ -218,7 +246,7 @@ export default function AdminDashboard() {
         estimatedTotal: walkinServiceAmount + visitCharge,
         serviceName: svc?.name || '',
         serviceIds: [serviceId],
-        userId: 'walkin', userEmail: 'walkin@offline', isWalkIn: true,
+        userId: walkin.userId || 'walkin', userEmail: walkin.userEmail || 'walkin@offline', isWalkIn: true,
         status: totalCollected ? BOOKING_STATUS.COMPLETED : BOOKING_STATUS.CONFIRMED,
         createdAt: serverTimestamp(),
       })
@@ -390,6 +418,16 @@ export default function AdminDashboard() {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Existing Customer</label>
+                  <select className="input" onChange={e => applyWalkinCustomer(e.target.value)} defaultValue="">
+                    <option value="">New walk-in customer</option>
+                    {walkinCustomers.map(customer => {
+                      const key = customer.userId && customer.userId !== 'walkin' ? customer.userId : (customer.phone || customer.ownerName || customer.userEmail)
+                      return <option key={key} value={key}>{customer.ownerName || 'Customer'} - {customer.phone || customer.userEmail || '-'}</option>
+                    })}
+                  </select>
+                </div>
                 <div className="admin-form-grid">
                   <div>
                     <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Owner Name *</label>
@@ -422,10 +460,10 @@ export default function AdminDashboard() {
                 <div>
                   <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Visit Type *</label>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
-                    <button type="button" onClick={() => setWalkin(prev => ({ ...prev, bookingType: 'store', address: '', slot: '', visitCharge: bookingSettings?.fixedVisitCharges ? String(bookingSettings.centerVisitCharge || '') : prev.visitCharge }))} className={walkin.bookingType === 'store' ? 'btn btn-primary' : 'btn btn-secondary'}>
+                    <button type="button" onClick={() => setWalkin(prev => ({ ...prev, bookingType: 'store', address: '', visitCharge: bookingSettings?.fixedVisitCharges ? String(bookingSettings.centerVisitCharge || '') : prev.visitCharge }))} className={walkin.bookingType === 'store' ? 'btn btn-primary' : 'btn btn-secondary'}>
                       <Store size={15} /> In Store
                     </button>
-                    <button type="button" onClick={() => setWalkin(prev => ({ ...prev, bookingType: 'home', slot: '', visitCharge: bookingSettings?.fixedVisitCharges ? String(bookingSettings.homeVisitCharge || '') : prev.visitCharge }))} className={walkin.bookingType === 'home' ? 'btn btn-primary' : 'btn btn-secondary'}>
+                    <button type="button" onClick={() => setWalkin(prev => ({ ...prev, bookingType: 'home', visitCharge: bookingSettings?.fixedVisitCharges ? String(bookingSettings.homeVisitCharge || '') : prev.visitCharge }))} className={walkin.bookingType === 'home' ? 'btn btn-primary' : 'btn btn-secondary'}>
                       <Home size={15} /> At Home
                     </button>
                   </div>
@@ -439,14 +477,11 @@ export default function AdminDashboard() {
                 <div className="admin-form-grid">
                   <div>
                     <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Date *</label>
-                    <input type="date" className="input" value={walkin.date} onChange={e => setWalkin(prev => ({ ...prev, date: e.target.value, slot: '' }))} />
+                    <input type="date" className="input" value={walkin.date} onChange={e => upd('date', e.target.value)} />
                   </div>
                   <div>
-                    <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Time Slot *</label>
-                    <select className="input" value={walkin.slot} onChange={e => upd('slot', e.target.value)}>
-                      <option value="">Select slot</option>
-                      {walkinSlots.map(t => <option key={t}>{t}</option>)}
-                    </select>
+                    <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Time *</label>
+                    <input type="time" className="input" value={walkin.slot} onChange={e => upd('slot', e.target.value)} />
                   </div>
                 </div>
                 <div className="admin-form-grid">

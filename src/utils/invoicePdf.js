@@ -45,6 +45,26 @@ export async function createInvoicePdfBlob(booking, businessInfo = {}) {
   return blob
 }
 
+
+export async function createInvoicePdfFile(booking, businessInfo = {}) {
+  const blob = await createInvoicePdfBlob(booking, businessInfo)
+  return new File([blob], getInvoiceFileName(booking), { type: 'application/pdf' })
+}
+
+export async function shareInvoicePdfFile(booking, businessInfo = {}, title = 'Share Invoice PDF') {
+  const file = await createInvoicePdfFile(booking, businessInfo)
+  if (navigator.canShare?.({ files: [file] })) {
+    await navigator.share({
+      title,
+      text: `${businessInfo.contact?.shopName || 'Paw Paw'} invoice ${getInvoiceNumber(booking)}`,
+      files: [file],
+    })
+    return true
+  }
+
+  await downloadInvoicePdf(booking, businessInfo)
+  return false
+}
 export async function downloadInvoicePdf(booking, businessInfo = {}) {
   const blob = await createInvoicePdfBlob(booking, businessInfo)
   const url = URL.createObjectURL(blob)

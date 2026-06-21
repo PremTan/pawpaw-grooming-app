@@ -3,6 +3,7 @@ import { Award, Clock, Save, Shield, Star, Trash2 } from 'lucide-react'
 import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
+import ConfirmModal from '../components/ConfirmModal'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
 
 const ICONS = [
@@ -19,6 +20,7 @@ export default function AdminWhyChooseUs() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [hasSavedContent, setHasSavedContent] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
 
   useEffect(() => {
     async function fetchContent() {
@@ -71,7 +73,6 @@ export default function AdminWhyChooseUs() {
   }
 
   const reset = async () => {
-    if (!confirm('Reset these cards to the default home page content?')) return
     setError('')
     setMessage('')
     setSaving(true)
@@ -79,6 +80,7 @@ export default function AdminWhyChooseUs() {
       await deleteDoc(doc(db, 'settings', 'whyChooseUs'))
       setFeatures(DEFAULT_FEATURES)
       setHasSavedContent(false)
+      setConfirmReset(false)
       setMessage('Default cards restored.')
     } catch (err) {
       setError(err.message || 'Could not reset content.')
@@ -107,7 +109,7 @@ export default function AdminWhyChooseUs() {
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           {hasSavedContent && (
-            <button onClick={reset} disabled={saving} className="btn btn-secondary" style={{ fontSize: '13px', padding: '10px 16px' }}>
+            <button onClick={() => setConfirmReset(true)} disabled={saving} className="btn btn-secondary" style={{ fontSize: '13px', padding: '10px 16px' }}>
               <Trash2 size={16} /> Reset
             </button>
           )}
@@ -152,6 +154,16 @@ export default function AdminWhyChooseUs() {
           </div>
         ))}
       </div>
+      <ConfirmModal
+        open={confirmReset}
+        title="Reset cards?"
+        message="Are you sure you want to reset these cards to the default home page content?"
+        confirmText="Reset"
+        danger={false}
+        loading={saving}
+        onCancel={() => setConfirmReset(false)}
+        onConfirm={reset}
+      />
     </div>
   )
 }

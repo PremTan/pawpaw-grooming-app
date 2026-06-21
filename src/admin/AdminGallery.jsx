@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, orderBy, query, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
+import ConfirmModal from '../components/ConfirmModal'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { Plus, X, Trash2, Image, Upload, Pencil } from 'lucide-react'
 
@@ -22,6 +23,7 @@ export default function AdminGallery() {
   const [lightbox, setLightbox] = useState(null)
   const [filterCat, setFilterCat] = useState('all')
   const [editingId, setEditingId] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const fetchImages = async () => {
     try {
@@ -68,9 +70,8 @@ export default function AdminGallery() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this image?')) return
     setDeleting(id)
-    try { await deleteDoc(doc(db,'gallery',id)); setImages(p => p.filter(i => i.id!==id)) } catch {}
+    try { await deleteDoc(doc(db,'gallery',id)); setImages(p => p.filter(i => i.id!==id)); setDeleteTarget(null) } catch {}
     setDeleting(null)
   }
 
@@ -139,7 +140,7 @@ export default function AdminGallery() {
               >
                 <Pencil size={13}/>
               </button>
-              <button onClick={() => handleDelete(img.id)} disabled={deleting===img.id}
+              <button onClick={() => setDeleteTarget(img)} disabled={deleting===img.id}
                 // style={{ position:'absolute', top:'6px', right:'6px', background:'rgba(0,0,0,0.7)', border:'none', color:'#fff', width:'28px', height:'28px', borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', opacity:0, transition:'opacity 0.2s' }}
                 // onMouseEnter={e => e.currentTarget.style.opacity='1'} onFocus={e => e.currentTarget.style.opacity='1'}
                 style={{ position:'absolute', top:'6px', right:'6px', background:'rgba(0,0,0,0.7)', border:'none', color:'#fff', width:'28px', height:'28px', borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}
@@ -222,6 +223,16 @@ export default function AdminGallery() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Delete image?"
+        message="Are you sure you want to delete this gallery image?"
+        confirmText="Delete"
+        loading={!!deleteTarget && deleting === deleteTarget.id}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget.id)}
+      />
 
       {/* Lightbox */}
       {lightbox && (

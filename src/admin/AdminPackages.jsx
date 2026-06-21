@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
+import ConfirmModal from '../components/ConfirmModal'
 import { Plus, X, Pencil, Trash2, Package } from 'lucide-react'
 
 const EMPTY = { name:'', description:'', services:[], priceRange:'', price:'', duration:'', active:true }
@@ -15,6 +16,7 @@ export default function AdminPackages() {
   const [editId, setEditId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [svcInput, setSvcInput] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const fetch = async () => {
     try {
@@ -48,8 +50,7 @@ export default function AdminPackages() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this package?')) return
-    await deleteDoc(doc(db,'packages',id)); setPackages(p => p.filter(x => x.id!==id))
+    await deleteDoc(doc(db,'packages',id)); setPackages(p => p.filter(x => x.id!==id)); setDeleteTarget(null)
   }
 
   const toggleActive = async (pkg) => {
@@ -90,7 +91,7 @@ export default function AdminPackages() {
                 </div>
                 <div style={{ display:'flex', gap:'6px' }}>
                   <button onClick={() => openEdit(pkg)} style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', padding:'4px' }}><Pencil size={14}/></button>
-                  <button onClick={() => handleDelete(pkg.id)} style={{ background:'none', border:'none', color:'rgba(239,68,68,0.5)', cursor:'pointer', padding:'4px' }}
+                  <button onClick={() => setDeleteTarget(pkg)} style={{ background:'none', border:'none', color:'rgba(239,68,68,0.5)', cursor:'pointer', padding:'4px' }}
                     onMouseEnter={e=>e.currentTarget.style.color='#ef4444'} onMouseLeave={e=>e.currentTarget.style.color='rgba(239,68,68,0.5)'}>
                     <Trash2 size={14}/>
                   </button>
@@ -123,6 +124,15 @@ export default function AdminPackages() {
           ))}
         </div>
       )}
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Delete package?"
+        message={deleteTarget ? `Are you sure you want to delete ${deleteTarget.name}?` : ''}
+        confirmText="Delete"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget.id)}
+      />
 
       {/* Add/Edit Modal */}
       {showModal && (

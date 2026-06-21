@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs, orderBy, query } from 'firebase/firestore'
-import { Download, Eye, Mail, MessageCircle, ReceiptText } from 'lucide-react'
+import { Download, Eye, MessageCircle, ReceiptText } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import { db } from '../firebase'
 import { PET_TYPES } from '../utils/services'
 import { fetchBusinessInfo } from '../utils/businessInfo'
-import { downloadInvoicePdf, getInvoiceSummary, viewInvoicePdf } from '../utils/invoicePdf'
+import { downloadInvoicePdf, shareInvoicePdfFile, viewInvoicePdf } from '../utils/invoicePdf'
 import { getBookingTypeLabel } from '../utils/bookingSettings'
 
 const blankCustom = {
@@ -143,17 +143,18 @@ export default function AdminInvoices() {
     }
   }
 
-  const shareWhatsApp = () => {
+  const sharePdf = async (key) => {
     if (!generated?.booking) return
-    const text = encodeURIComponent(getInvoiceSummary(generated.booking, invoiceInfo))
-    window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer')
-  }
-
-  const shareMail = () => {
-    if (!generated?.booking) return
-    const subject = encodeURIComponent(`Invoice ${generated.booking.ownerName || ''}`)
-    const body = encodeURIComponent(getInvoiceSummary(generated.booking, invoiceInfo))
-    window.location.href = `mailto:?subject=${subject}&body=${body}`
+    setBusy(key)
+    setError('')
+    try {
+      const shared = await shareInvoicePdfFile(generated.booking, invoiceInfo, `Invoice ${generated.booking.ownerName || ''}`)
+      if (!shared) setError('This browser cannot attach PDFs directly to share. The PDF was downloaded; attach it from Downloads.')
+    } catch (err) {
+      if (err?.name !== 'AbortError') setError('Could not share invoice PDF. Please download and attach it manually.')
+    } finally {
+      setBusy('')
+    }
   }
 
   if (loading) return <div style={{ padding: '28px' }}><Spinner text="Loading invoices..." /></div>
@@ -227,8 +228,7 @@ export default function AdminInvoices() {
               <div style={{ display: 'grid', gap: '10px' }}>
                 <button type="button" className="btn btn-secondary" disabled={busy === 'view'} onClick={() => run('view', viewInvoicePdf)}><Eye size={15} /> View</button>
                 <button type="button" className="btn btn-secondary" disabled={busy === 'download'} onClick={() => run('download', downloadInvoicePdf)}><Download size={15} /> Download</button>
-                <button type="button" className="btn btn-secondary" onClick={shareWhatsApp}><MessageCircle size={15} /> Share on WhatsApp</button>
-                <button type="button" className="btn btn-secondary" onClick={shareMail}><Mail size={15} /> Mail</button>
+                <button type="button" className="btn btn-secondary" disabled={busy === 'whatsapp'} onClick={() => sharePdf('whatsapp')}><MessageCircle size={15} /> Share PDF</button>
               </div>
             </div>
           ) : (

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { collection, getDocs, doc, deleteDoc, query, orderBy } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
+import ConfirmModal from '../components/ConfirmModal'
 import { Trash2 } from 'lucide-react'
 
 function Stars({ value }) {
@@ -13,6 +14,7 @@ export default function AdminReviews() {
   const [reviews, setReviews]   = useState([])
   const [loading, setLoading]   = useState(true)
   const [deleting, setDeleting] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const fetchReviews = async () => {
     try {
@@ -24,9 +26,8 @@ export default function AdminReviews() {
   useEffect(() => { fetchReviews() }, [])
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this review?')) return
     setDeleting(id)
-    try { await deleteDoc(doc(db, 'reviews', id)); setReviews(prev => prev.filter(r => r.id !== id)) } catch {}
+    try { await deleteDoc(doc(db, 'reviews', id)); setReviews(prev => prev.filter(r => r.id !== id)); setDeleteTarget(null) } catch {}
     setDeleting(null)
   }
 
@@ -60,7 +61,7 @@ export default function AdminReviews() {
                       {r.petName && <span style={{ color:'var(--muted)', fontSize:'12px' }}>· {r.petName}'s parent</span>}
                       <Stars value={r.rating} />
                     </div>
-                    <button onClick={() => handleDelete(r.id)} disabled={deleting===r.id}
+                    <button onClick={() => setDeleteTarget(r)} disabled={deleting===r.id}
                       style={{ background:'none', border:'none', color:'rgba(239,68,68,0.5)', cursor:'pointer', padding:'4px', borderRadius:'6px', transition:'all 0.15s' }}
                       onMouseEnter={e => e.currentTarget.style.color='#ef4444'}
                       onMouseLeave={e => e.currentTarget.style.color='rgba(239,68,68,0.5)'}
@@ -79,6 +80,15 @@ export default function AdminReviews() {
           ))}
         </div>
       )}
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Delete review?"
+        message="Are you sure you want to delete this review?"
+        confirmText="Delete"
+        loading={!!deleteTarget && deleting === deleteTarget.id}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget.id)}
+      />
     </div>
   )
 }
