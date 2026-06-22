@@ -39,7 +39,7 @@ export function NotificationProvider({ children }) {
     if (!user || !canUseBrowserNotifications() || window.Notification.permission !== 'granted') return
     registerFcmToken(user).then(result => setFcmStatus(result.ok ? 'registered' : result.reason)).catch(err => {
       console.warn('FCM registration failed:', err)
-      setFcmStatus('error')
+      setFcmStatus(err?.code || err?.message || 'error')
     })
   }, [user])
 
@@ -153,3 +153,4 @@ export function NotificationProvider({ children }) {
 }
 
 export const useNotifications = () => useContext(NotifContext)
+

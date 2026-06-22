@@ -4,6 +4,7 @@ import { ADMIN_EMAIL, app, db } from '../firebase'
 
 const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY || ''
 const swPath = '/firebase-messaging-sw.js'
+const shortError = (prefix, err) => `${prefix}:${err?.code || err?.name || err?.message || 'error'}`.slice(0, 90)
 
 export async function registerFcmToken(user) {
   if (!user?.uid || !vapidKey) return { ok: false, reason: !vapidKey ? 'missing-vapid-key' : 'missing-user' }
@@ -12,28 +13,53 @@ export async function registerFcmToken(user) {
   const supported = await isSupported().catch(() => false)
   if (!supported) return { ok: false, reason: 'unsupported-fcm' }
 
-  const permission = Notification.permission === 'granted'
-    ? 'granted'
-    : await Notification.requestPermission()
+  let permission = Notification.permission
+  if (permission === 'default') {
+    try {
+      permission = await Notification.requestPermission()
+    } catch (err) {
+      console.warn('Notification permission request failed:', err)
+      return { ok: false, reason: shortError('permission', err) }
+    }
+  }
 
   if (permission !== 'granted') return { ok: false, reason: permission }
 
-  const registration = await navigator.serviceWorker.register(swPath)
-  const messaging = getMessaging(app)
-  const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration })
+  let registration
+  try {
+    registration = await navigator.serviceWorker.register(swPath)
+    await navigator.serviceWorker.ready
+  } catch (err) {
+    console.warn('FCM service worker registration failed:', err)
+    return { ok: false, reason: shortError('sw', err) }
+  }
+
+  let token
+  try {
+    const messaging = getMessaging(app)
+    token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration })
+  } catch (err) {
+    console.warn('FCM token fetch failed:', err)
+    return { ok: false, reason: shortError('token', err) }
+  }
 
   if (!token) return { ok: false, reason: 'empty-token' }
 
-  await setDoc(doc(db, 'fcmTokens', token), {
-    token,
-    userId: user.uid,
-    userEmail: user.email || '',
-    isAdmin: user.email === ADMIN_EMAIL,
-    active: true,
-    platform: navigator.userAgent || '',
-    updatedAt: serverTimestamp(),
-    createdAt: serverTimestamp(),
-  }, { merge: true })
+  try {
+    await setDoc(doc(db, 'fcmTokens', token), {
+      token,
+      userId: user.uid,
+      userEmail: user.email || '',
+      isAdmin: user.email === ADMIN_EMAIL,
+      active: true,
+      platform: navigator.userAgent || '',
+      updatedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    }, { merge: true })
+  } catch (err) {
+    console.warn('FCM token Firestore save failed:', err)
+    return { ok: false, reason: shortError('firestore', err) }
+  }
 
   return { ok: true, token }
 }
