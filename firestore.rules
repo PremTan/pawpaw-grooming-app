@@ -65,6 +65,9 @@ service cloud.firestore {
       allow delete: if isAdmin() ||
                     (request.auth != null && request.auth.uid == resource.data.userId);
     }
+    match /pushReceipts/{id} {
+      allow read, write: if isAdmin();
+    }
     match /gallery/{id} {
       allow read: if true;
       allow write: if isAdmin();
@@ -90,6 +93,7 @@ service cloud.firestore {
     }
   }
 }
+
 
 
 

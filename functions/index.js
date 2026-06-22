@@ -9,8 +9,14 @@ initializeApp()
 const db = getFirestore()
 const messaging = getMessaging()
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL || 'premtandalekar12345@gmail.com'
+const APP_URL = (process.env.APP_URL || 'https://pawpaw-grooming-app.vercel.app').replace(/\/$/, '')
 
 const compact = value => String(value || '').trim()
+const absoluteUrl = value => {
+  const target = compact(value) || '/'
+  if (/^https?:\/\//i.test(target)) return target
+  return APP_URL + (target.startsWith('/') ? target : '/' + target)
+}
 
 async function getTokens({ userId = '', userEmail = '' }) {
   const refs = new Map()
@@ -53,21 +59,30 @@ async function pruneInvalidTokens(tokens, responses) {
   if (count) await batch.commit()
 }
 
-async function sendPushToRecipient({ userId = '', userEmail = '', title, message, type = 'info', bookingId = '', actionUrl = '/' }) {
+async function sendPushToRecipient({ notificationId = '', userId = '', userEmail = '', title, message, type = 'info', bookingId = '', actionUrl = '/' }) {
   const recipients = await getTokens({ userId, userEmail })
   const tokens = recipients.map(item => item.id).filter(Boolean)
 
   if (!tokens.length) {
     logger.info('No FCM tokens for notification recipient', { userId, userEmail, title })
+    if (notificationId) {
+      await db.collection('pushReceipts').doc(notificationId).set({
+        userId, userEmail, title, tokenCount: 0, successCount: 0, failureCount: 0, reason: 'no-tokens', updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true })
+    }
     return { successCount: 0, failureCount: 0 }
   }
 
   const cleanTitle = compact(title) || 'Paw Paw Pet Grooming'
   const cleanBody = compact(message)
-  const cleanActionUrl = compact(actionUrl) || '/'
+  const cleanActionUrl = absoluteUrl(actionUrl)
 
   const response = await messaging.sendEachForMulticast({
     tokens,
+    notification: {
+      title: cleanTitle,
+      body: cleanBody,
+    },
     data: {
       title: cleanTitle,
       body: cleanBody,
@@ -92,6 +107,11 @@ async function sendPushToRecipient({ userId = '', userEmail = '', title, message
   })
 
   await pruneInvalidTokens(recipients, response.responses)
+  if (notificationId) {
+    await db.collection('pushReceipts').doc(notificationId).set({
+      userId, userEmail, title: cleanTitle, tokenCount: tokens.length, successCount: response.successCount, failureCount: response.failureCount, errors: response.responses.filter(item => !item.success).map(item => item.error?.code || item.error?.message || 'unknown'), updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true })
+  }
   logger.info('FCM push sent', { userId, userEmail, successCount: response.successCount, failureCount: response.failureCount })
   return response
 }
@@ -101,6 +121,7 @@ exports.sendPushOnNotificationCreated = onDocumentCreated('notifications/{notifi
   if (!data) return
 
   await sendPushToRecipient({
+    notificationId: event.params.notificationId,
     userId: data.userId || '',
     userEmail: data.userEmail || '',
     title: data.title || 'Paw Paw Pet Grooming',
@@ -135,3 +156,5 @@ exports.notifyAdminOnBookingCreated = onDocumentCreated('bookings/{bookingId}', 
     createdAt: FieldValue.serverTimestamp(),
   }, { merge: true })
 })
+
+

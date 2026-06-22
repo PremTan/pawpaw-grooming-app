@@ -59,7 +59,8 @@ messaging.onBackgroundMessage((payload) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification?.data?.url || '/';
+  const rawUrl = event.notification?.data?.url || '/';
+  const url = rawUrl.startsWith('http') ? rawUrl : new URL(rawUrl, self.location.origin).href;
   event.waitUntil(clients.openWindow(url));
 });
 `
@@ -68,3 +69,4 @@ const outPath = path.join(root, 'public', 'firebase-messaging-sw.js')
 fs.mkdirSync(path.dirname(outPath), { recursive: true })
 fs.writeFileSync(outPath, content)
 console.log(`[fcm-sw] Wrote ${path.relative(root, outPath)}`)
+
