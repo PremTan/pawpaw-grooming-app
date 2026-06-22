@@ -1,10 +1,9 @@
 // src/pages/Book.jsx
 import { useState, useEffect, useRef } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc } from 'firebase/firestore'
-import { db } from '../firebase'
+import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore'
+import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
-import { useNotifications } from '../context/NotificationContext'
 import { SERVICES, PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
 import { Calendar, Clock, CheckCircle, ChevronLeft, Home, Plus, Store, X } from 'lucide-react'
 import { format, addDays, startOfToday } from 'date-fns'
@@ -25,7 +24,6 @@ const getPackageBasePrice = (pkg) => {
 
 export default function Book() {
   const { user } = useAuth()
-  const { sendNotification } = useNotifications()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const preService = searchParams.get('service') || ''
@@ -244,6 +242,20 @@ export default function Book() {
       }
       const ref = await addDoc(collection(db, 'bookings'), bookingData)
       setBookingRef({ id: ref.id, ...bookingData })
+
+      if (ADMIN_EMAIL) {
+        await setDoc(doc(db, 'notifications', 'booking_admin_' + ref.id), {
+          userId: '',
+          userEmail: ADMIN_EMAIL,
+          title: 'New booking from ' + form.ownerName,
+          message: bookingLabel + ' - ' + form.petName + ' - ' + form.date + ' ' + form.slot,
+          type: 'booking',
+          bookingId: ref.id,
+          actionUrl: '/admin/bookings/' + ref.id,
+          read: false,
+          createdAt: serverTimestamp(),
+        }, { merge: true })
+      }
 
 
 
@@ -636,6 +648,7 @@ export default function Book() {
     </div>
   )
 }
+
 
 
 

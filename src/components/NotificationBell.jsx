@@ -16,7 +16,7 @@ const TYPE_ICON = {
 }
 
 export default function NotificationBell() {
-  const { notifications, unreadCount, markAllRead, markRead, requestBrowserPermission, notificationError } = useNotifications()
+  const { notifications, unreadCount, markAllRead, markRead, requestBrowserPermission, notificationError, fcmStatus } = useNotifications()
   const { isAdmin } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -81,6 +81,12 @@ export default function NotificationBell() {
             </div>
           </div>
 
+          {fcmStatus && !['idle', 'registered'].includes(fcmStatus) && (
+            <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', color: '#ef4444', fontSize: '11px', lineHeight: 1.4 }}>
+              Push not active: {fcmStatus}
+            </div>
+          )}
+
           <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
             {notificationError ? (
               <div className="py-10 text-center" style={{ padding: '32px 18px' }}>
@@ -136,3 +142,4 @@ export default function NotificationBell() {
     </div>
   )
 }
+

@@ -17,14 +17,18 @@ async function getTokens({ userId = '', userEmail = '' }) {
 
   async function addSnapshot(query) {
     const snap = await query.get()
-    snap.docs.forEach(doc => refs.set(doc.id, { id: doc.id, ...doc.data() }))
+    snap.docs.forEach(doc => {
+      const data = doc.data()
+      if (data.active === false) return
+      refs.set(doc.id, { id: doc.id, ...data })
+    })
   }
 
   if (userId) {
-    await addSnapshot(db.collection('fcmTokens').where('userId', '==', userId).where('active', '==', true))
+    await addSnapshot(db.collection('fcmTokens').where('userId', '==', userId))
   }
   if (userEmail) {
-    await addSnapshot(db.collection('fcmTokens').where('userEmail', '==', userEmail).where('active', '==', true))
+    await addSnapshot(db.collection('fcmTokens').where('userEmail', '==', userEmail))
   }
 
   return Array.from(refs.values())
@@ -58,28 +62,31 @@ async function sendPushToRecipient({ userId = '', userEmail = '', title, message
     return { successCount: 0, failureCount: 0 }
   }
 
+  const cleanTitle = compact(title) || 'Paw Paw Pet Grooming'
+  const cleanBody = compact(message)
+  const cleanActionUrl = compact(actionUrl) || '/'
+
   const response = await messaging.sendEachForMulticast({
     tokens,
-    notification: {
-      title: compact(title) || 'Paw Paw Pet Grooming',
-      body: compact(message),
-    },
     data: {
-      title: compact(title),
-      body: compact(message),
+      title: cleanTitle,
+      body: cleanBody,
       type: compact(type),
       bookingId: compact(bookingId),
-      actionUrl: compact(actionUrl) || '/',
+      actionUrl: cleanActionUrl,
     },
     webpush: {
       fcmOptions: {
-        link: compact(actionUrl) || '/',
+        link: cleanActionUrl,
       },
       notification: {
+        title: cleanTitle,
+        body: cleanBody,
         icon: '/favicon.svg',
         badge: '/favicon.svg',
         tag: compact(bookingId) || undefined,
         renotify: true,
+        requireInteraction: false,
       },
     },
   })
@@ -116,7 +123,7 @@ exports.notifyAdminOnBookingCreated = onDocumentCreated('bookings/{bookingId}', 
   const ownerName = compact(booking.ownerName) || 'Customer'
   const dateTime = [compact(booking.date), compact(booking.slot)].filter(Boolean).join(' ')
 
-  await db.collection('notifications').add({
+  await db.collection('notifications').doc(`booking_admin_${bookingId}`).set({
     userId: adminUid,
     userEmail: ADMIN_EMAIL,
     title: `New booking from ${ownerName}`,
@@ -126,5 +133,5 @@ exports.notifyAdminOnBookingCreated = onDocumentCreated('bookings/{bookingId}', 
     actionUrl: `/admin/bookings/${bookingId}`,
     read: false,
     createdAt: FieldValue.serverTimestamp(),
-  })
+  }, { merge: true })
 })
