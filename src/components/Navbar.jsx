@@ -202,6 +202,16 @@ export default function Navbar() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }} className="mobile-nav">
               <ThemeSwitcher />
               {user && <NotificationBell />}
+              {isAdmin && (
+                <Link
+                  to="/admin"
+                  aria-label="Dashboard"
+                  title="Dashboard"
+                  style={{ background: location.pathname.startsWith('/admin') ? 'var(--accent)' : 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '10px', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: location.pathname.startsWith('/admin') ? '#000' : 'var(--accent)', textDecoration: 'none' }}
+                >
+                  <LayoutDashboard size={18} />
+                </Link>
+              )}
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
                 style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '10px', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent)' }}
