@@ -19,7 +19,7 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
-const app = initializeApp(firebaseConfig)
+export const app = initializeApp(firebaseConfig)
 
 export const auth = getAuth(app)
 export const db   = getFirestore(app)
@@ -36,3 +36,4 @@ onAuthStateChanged(auth, (user) => {
 
 // Admin email — must match VITE_ADMIN_EMAIL in .env
 export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || ''
+

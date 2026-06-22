@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc } from 'firebase/firestore'
-import { ADMIN_EMAIL, db } from '../firebase'
+import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import { SERVICES, PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
@@ -49,7 +49,6 @@ export default function Book() {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [bookingRef, setBookingRef] = useState(null)
-  const [adminUid, setAdminUid] = useState('')
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Pet Grooming')
   const [bookingSettings, setBookingSettings] = useState(null)
@@ -58,7 +57,7 @@ export default function Book() {
     bookingTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [step, done])
 
-  // Fetch packages and admin UID
+  // Fetch packages and service details
   useEffect(() => {
     async function init() {
       try {
@@ -70,9 +69,6 @@ export default function Book() {
         dSnap.docs.forEach(d => { details[d.id] = { id: d.id, ...d.data() } })
         setServiceDetails(details)
         setPackages(pSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.active !== false))
-        // Load admin uid from settings doc if exists
-        const settSnap = await getDoc(doc(db, 'settings', 'general'))
-        if (settSnap.exists()) setAdminUid(settSnap.data().adminUid || '')
       } catch {}
     }
     init()
@@ -249,23 +245,7 @@ export default function Book() {
       const ref = await addDoc(collection(db, 'bookings'), bookingData)
       setBookingRef({ id: ref.id, ...bookingData })
 
-      let ownerUid = adminUid
-      if (!ownerUid) {
-        const settSnap = await getDoc(doc(db, 'settings', 'general'))
-        ownerUid = settSnap.exists() ? settSnap.data().adminUid || '' : ''
-        if (ownerUid) setAdminUid(ownerUid)
-      }
 
-      if (ownerUid || ADMIN_EMAIL) {
-        await sendNotification(ownerUid, {
-          userEmail: ADMIN_EMAIL,
-          title: `New booking from ${form.ownerName}`,
-          message: `${bookingLabel} - ${form.petName} - ${form.date} ${form.slot}`,
-          type: 'booking',
-          bookingId: ref.id,
-          actionUrl: `/admin/bookings/${ref.id}`,
-        })
-      }
 
       setDone(true)
     } catch { alert('Booking failed. Please try again.') }
@@ -656,6 +636,8 @@ export default function Book() {
     </div>
   )
 }
+
+
 
 
 

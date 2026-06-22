@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from './AuthContext'
+import { listenForForegroundMessages, registerFcmToken } from '../utils/fcm'
 
 const NotifContext = createContext(null)
 const canUseBrowserNotifications = () => typeof window !== 'undefined' && 'Notification' in window
@@ -16,6 +17,7 @@ export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState([])
   const [notificationError, setNotificationError] = useState('')
   const [browserPermission, setBrowserPermission] = useState(() => canUseBrowserNotifications() ? window.Notification.permission : 'unsupported')
+  const [fcmStatus, setFcmStatus] = useState('idle')
   const seenIdsRef = useRef(new Set())
   const initializedRef = useRef(false)
   const unreadCount = notifications.filter(n => !n.read).length
@@ -34,6 +36,26 @@ export function NotificationProvider({ children }) {
   }
 
   useEffect(() => {
+    if (!user || !canUseBrowserNotifications() || window.Notification.permission !== 'granted') return
+    registerFcmToken(user).then(result => setFcmStatus(result.ok ? 'registered' : result.reason)).catch(err => {
+      console.warn('FCM registration failed:', err)
+      setFcmStatus('error')
+    })
+  }, [user])
+
+  useEffect(() => {
+    let unsubscribe = () => {}
+    listenForForegroundMessages(payload => {
+      showBrowserNotification({
+        title: payload.notification?.title || payload.data?.title || 'Paw Paw Pet Grooming',
+        message: payload.notification?.body || payload.data?.body || '',
+        bookingId: payload.data?.bookingId || '',
+      })
+    }).then(nextUnsubscribe => { unsubscribe = nextUnsubscribe }).catch(err => console.warn('FCM foreground listener failed:', err))
+    return () => unsubscribe()
+  }, [])
+
+  useEffect(() => {
     if (!user) {
       setNotifications([])
       setNotificationError('')
@@ -48,12 +70,6 @@ export function NotificationProvider({ children }) {
       Object.values(sources).flat().forEach(notification => map.set(notification.id, notification))
       const rows = Array.from(map.values()).sort((a, b) => createdAtMs(b) - createdAtMs(a))
       setNotifications(rows)
-
-      if (initializedRef.current) {
-        rows
-          .filter(n => !n.read && !seenIdsRef.current.has(n.id))
-          .forEach(showBrowserNotification)
-      }
       seenIdsRef.current = new Set(rows.map(n => n.id))
     }
 
@@ -84,14 +100,13 @@ export function NotificationProvider({ children }) {
   const requestBrowserPermission = async () => {
     if (!canUseBrowserNotifications()) {
       setBrowserPermission('unsupported')
+      setFcmStatus('unsupported-browser')
       return 'unsupported'
     }
-    if (window.Notification.permission === 'default') {
-      const permission = await window.Notification.requestPermission()
-      setBrowserPermission(permission)
-      return permission
-    }
+
+    const result = await registerFcmToken(user)
     setBrowserPermission(window.Notification.permission)
+    setFcmStatus(result.ok ? 'registered' : result.reason)
     return window.Notification.permission
   }
 
@@ -131,11 +146,10 @@ export function NotificationProvider({ children }) {
   }
 
   return (
-    <NotifContext.Provider value={{ notifications, unreadCount, markAllRead, markRead, sendNotification, requestBrowserPermission, browserPermission, notificationError }}>
+    <NotifContext.Provider value={{ notifications, unreadCount, markAllRead, markRead, sendNotification, requestBrowserPermission, browserPermission, notificationError, fcmStatus }}>
       {children}
     </NotifContext.Provider>
   )
 }
 
 export const useNotifications = () => useContext(NotifContext)
-

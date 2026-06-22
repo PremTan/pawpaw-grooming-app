@@ -16,3 +16,6 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Generated from Firebase env vars
+public/firebase-messaging-sw.js
