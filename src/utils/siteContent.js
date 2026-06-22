@@ -1,4 +1,3 @@
-export const DAYS_OPEN = 0
 export const WORKING_HOURS = ''
 
 export const DEFAULT_FEATURES = [

@@ -3,7 +3,7 @@ import { CalendarOff, Clock, Copy, Home, Minus, Plus, Save, Store, Trash2 } from
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
-import { DAYS, DURATION_OPTIONS, VISIT_MODES, normalizeBookingSettings } from '../utils/bookingSettings'
+import { DAYS, DURATION_OPTIONS, VISIT_MODES, countOpenDays, normalizeBookingSettings } from '../utils/bookingSettings'
 
 const MAX_WINDOWS = 4
 const emptyWindow = () => ({ start: '09:00', end: '18:00', mode: 'center' })
@@ -84,10 +84,21 @@ export default function AdminBookingSettings() {
     setError('')
     setMessage('')
     try {
-      await setDoc(doc(db, 'settings', 'bookingSettings'), {
-        ...settings,
-        updatedAt: serverTimestamp(),
-      }, { merge: true })
+      const daysOpen = countOpenDays(settings)
+      await Promise.all([
+        setDoc(doc(db, 'settings', 'bookingSettings'), {
+          ...settings,
+          updatedAt: serverTimestamp(),
+        }, { merge: true }),
+        setDoc(doc(db, 'settings', 'homeStats'), {
+          daysOpen,
+          updatedAt: serverTimestamp(),
+        }, { merge: true }),
+        setDoc(doc(db, 'settings', 'general'), {
+          daysOpen,
+          statsUpdatedAt: serverTimestamp(),
+        }, { merge: true }),
+      ])
       setMessage('Booking availability updated successfully.')
     } catch (err) {
       setError(err.message || 'Could not save booking settings.')

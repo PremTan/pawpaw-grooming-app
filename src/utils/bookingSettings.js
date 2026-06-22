@@ -113,6 +113,10 @@ export function normalizeBookingSettings(data = {}) {
   }
 }
 
+export function countOpenDays(settings) {
+  const normalized = normalizeBookingSettings(settings)
+  return DAYS.filter(day => normalized.weekly[day.key]?.open !== false).length
+}
 export async function fetchBookingSettings(db) {
   try {
     const snap = await getDoc(doc(db, 'settings', 'bookingSettings'))

@@ -172,7 +172,7 @@ export default function AdminDashboard() {
         bookings,
       })
 
-      const publicStats = calculatePublicStats(bookings, reviews)
+      const publicStats = calculatePublicStats(bookings, reviews, settings)
       await Promise.all([
         setDoc(doc(db, 'settings', 'homeStats'), { ...publicStats, updatedAt: serverTimestamp() }, { merge: true }),
         setDoc(doc(db, 'settings', 'general'), {

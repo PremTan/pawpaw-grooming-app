@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs, query, orderBy, limit } from 'firebase/firestore'
 import { db } from '../firebase'
 import { SERVICES } from '../utils/services'
-import { DAYS_OPEN, DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
+import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
+import { countOpenDays } from '../utils/bookingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
 import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart } from 'lucide-react'
 
@@ -263,7 +264,7 @@ function HeroSlider() {
 }
 
 export default function Home() {
-  const [stats, setStats]   = useState({ totalBookings: 0, totalReviews: 0, avgRating: 5, daysOpen: DAYS_OPEN })
+  const [stats, setStats]   = useState({ totalBookings: 0, totalReviews: 0, avgRating: 5, daysOpen: 7 })
   const [reviews, setReviews] = useState([])
   const [serviceDetails, setServiceDetails] = useState({})
   const [galleryImages, setGalleryImages] = useState([])
@@ -318,11 +319,14 @@ export default function Home() {
         const publicStats = homeStatsResult.status === 'fulfilled' && homeStatsResult.value.exists()
           ? homeStatsResult.value.data()
           : {}
+        const scheduleDaysOpen = businessInfoResult.status === 'fulfilled'
+          ? countOpenDays(businessInfoResult.value.bookingSettings)
+          : null
         setStats({
           totalBookings: Number(publicStats.totalBookings ?? (bookingsResult.status === 'fulfilled' ? bookingsResult.value.size : 0)),
           totalReviews: Number(publicStats.totalReviews ?? allRevs.length),
           avgRating: publicStats.avgRating ?? avg,
-          daysOpen: Number(publicStats.daysOpen ?? DAYS_OPEN),
+          daysOpen: scheduleDaysOpen ?? Number(publicStats.daysOpen ?? 7),
         })
         setReviews(revs)
         setServiceDetails(details)
@@ -390,7 +394,7 @@ export default function Home() {
             { val: `${stats.totalBookings}${stats.totalBookings > 0 ? '+' : ''}`, label: 'Total Bookings' },
             { val: `${stats.avgRating}★`,     label: 'Average Rating' },
             { val: `${stats.totalReviews}${stats.totalReviews > 0 ? '+' : ''}`,  label: 'Happy Customers' },
-            { val: String(stats.daysOpen || DAYS_OPEN),                        label: 'Days a Week' },
+            { val: String(stats.daysOpen),                                  label: 'Days a Week' },
           ].map((s, i) => (
             <div key={i} style={{ textAlign: 'center' }}>
               <div style={{ fontFamily: '"Playfair Display",serif', fontSize: '28px', fontWeight: 800, background: 'var(--gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>

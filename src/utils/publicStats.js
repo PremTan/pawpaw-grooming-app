@@ -1,7 +1,7 @@
 import { collection, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore'
-import { DAYS_OPEN } from './siteContent'
+import { countOpenDays, fetchBookingSettings } from './bookingSettings'
 
-export function calculatePublicStats(bookings, reviews) {
+export function calculatePublicStats(bookings, reviews, bookingSettings) {
   const avgRating = reviews.length
     ? (reviews.reduce((sum, review) => sum + (review.rating || 5), 0) / reviews.length).toFixed(1)
     : 5.0
@@ -10,18 +10,19 @@ export function calculatePublicStats(bookings, reviews) {
     totalBookings: bookings.length,
     totalReviews: reviews.length,
     avgRating,
-    daysOpen: DAYS_OPEN,
+    daysOpen: countOpenDays(bookingSettings),
   }
 }
 
 export async function syncPublicStats(db) {
-  const [bookingsSnap, reviewsSnap] = await Promise.all([
+  const [bookingsSnap, reviewsSnap, bookingSettings] = await Promise.all([
     getDocs(collection(db, 'bookings')),
     getDocs(collection(db, 'reviews')),
+    fetchBookingSettings(db),
   ])
   const bookings = bookingsSnap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
   const reviews = reviewsSnap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
-  const stats = calculatePublicStats(bookings, reviews)
+  const stats = calculatePublicStats(bookings, reviews, bookingSettings)
 
   await setDoc(doc(db, 'settings', 'homeStats'), {
     ...stats,
