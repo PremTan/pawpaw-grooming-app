@@ -4,7 +4,6 @@ import { DAYS, fetchBookingSettings, formatTimeWindow, normalizeBookingSettings 
 export const EMPTY_CONTACT_INFO = {
   whatsappNumber: '',
   address: '',
-  hours: '',
   shopName: '',
   logoUrl: '',
 }
@@ -32,7 +31,7 @@ export async function fetchBusinessInfo(db) {
     footer,
     bookingSettings,
     whatsappNumber: contact.whatsappNumber || whatsappPhone || '',
-    hoursText: contact.hours || formatBusinessHours(bookingSettings),
+    hoursText: formatBusinessHours(bookingSettings),
   }
 }
 
@@ -46,7 +45,7 @@ export function formatBusinessHours(settings) {
     .map(formatTimeWindow)
     .filter(Boolean)
   const uniqueWindows = Array.from(new Set(windows))
-  const dayLabel = openDays.length === 7 ? 'Open all week' : openDays.map(day => day.label.slice(0, 3)).join(', ')
+  const dayLabel = openDays.length === 7 ? 'Open all week' : `Open ${openDays.length} days a week`
 
   return uniqueWindows.length ? `${dayLabel}: ${uniqueWindows.join(', ')}` : dayLabel
 }

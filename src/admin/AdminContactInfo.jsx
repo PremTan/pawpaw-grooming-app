@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Phone, MapPin, Clock, Save, Image as ImageIcon, Upload, X } from 'lucide-react'
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { deleteField, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 import BrandLogo from '../components/BrandLogo'
@@ -9,7 +9,6 @@ import { uploadToCloudinary } from '../utils/cloudinary'
 const DEFAULT_CONTACT = {
   whatsappNumber: '',
   address: '',
-  hours: '',
   shopName: '',
   logoUrl: '',
 }
@@ -59,7 +58,7 @@ export default function AdminContactInfo() {
     setError('')
     setMessage('')
 
-    if (!contact.whatsappNumber.trim() || !contact.address.trim() || !contact.hours.trim()) {
+    if (!contact.whatsappNumber.trim() || !contact.address.trim()) {
       setError('Please fill in all required fields.')
       return
     }
@@ -69,7 +68,7 @@ export default function AdminContactInfo() {
       await setDoc(doc(db, 'settings', 'contactInfo'), {
         whatsappNumber: contact.whatsappNumber.trim(),
         address: contact.address.trim(),
-        hours: contact.hours.trim(),
+        hours: deleteField(),
         shopName: contact.shopName.trim(),
         logoUrl: contact.logoUrl?.trim() || '',
         updatedAt: serverTimestamp(),
@@ -213,20 +212,11 @@ export default function AdminContactInfo() {
             style={{ ...inputStyle, resize: 'vertical', minHeight: '80px' }}
           />
         </div>
-
-        {/* Opening Hours */}
-        <div>
-          <label style={labelStyle}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Clock size={12} /> Opening Hours
-            </span>
-          </label>
-          <textarea
-            value={contact.hours}
-            onChange={e => updateField('hours', e.target.value)}
-            placeholder="Enter opening hours or leave booking schedule to show public hours"
-            style={{ ...inputStyle, resize: 'vertical', minHeight: '60px' }}
-          />
+        <div style={{ padding: '14px', border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--surface)', color: 'var(--muted)', fontSize: '12px', lineHeight: 1.6 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text)', fontWeight: 700, marginBottom: '4px' }}>
+            <Clock size={14} /> Hours managed in Booking Settings
+          </span>
+          Public opening hours and days are calculated from the weekly time windows in Booking Settings.
         </div>
       </div>
 
@@ -267,11 +257,7 @@ export default function AdminContactInfo() {
             <a href={`tel:${contact.whatsappNumber}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>
               {contact.whatsappNumber}
             </a>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', fontSize: '13px' }}>
-            <Clock size={16} style={{ color: 'var(--accent)', marginTop: '2px', flexShrink: 0 }} />
-            <span style={{ color: 'var(--muted)' }}>{contact.hours}</span>
-          </div>
+          </div>
         </div>
       </div>
     </div>

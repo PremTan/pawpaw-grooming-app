@@ -44,7 +44,7 @@ export default function Footer() {
             <p style={{ color: 'var(--muted)', fontSize: '13px', lineHeight: 1.7, marginBottom: '20px' }}>
               {footer.tagline}
             </p>
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
               {footer.socials && footer.socials.map((social, i) => (
                 <a key={i} href={social.url} target="_blank" rel="noopener noreferrer"
                   style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', transition: 'all 0.2s', textDecoration: 'none' }}
@@ -53,6 +53,9 @@ export default function Footer() {
                 </a>
               ))}
             </div>
+            <Link to="/book" className="btn btn-primary" style={{ justifyContent: 'center', fontSize: '13px', width: 'fit-content', minWidth: '180px' }}>
+              Book Appointment
+            </Link>
           </div>
 
           {/* Quick Links */}
@@ -111,19 +114,6 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Hours */}
-          <div>
-            <h4 style={{ color: 'var(--text)', fontWeight: 700, marginBottom: '16px', fontSize: '14px' }}>Working Hours</h4>
-            {hoursText && (
-              <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
-                <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>Working Hours</p>
-                <p style={{ color: 'var(--text)', fontSize: '15px', lineHeight: 1.5, fontWeight: 700 }}>{hoursText}</p>
-              </div>
-            )}
-            <Link to="/book" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: '13px' }}>
-              Book Appointment
-            </Link>
-          </div>
         </div>
 
         {/* Bottom */}
