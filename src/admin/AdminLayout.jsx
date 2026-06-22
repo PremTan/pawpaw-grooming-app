@@ -1,7 +1,9 @@
 // src/admin/AdminLayout.jsx
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { doc, setDoc } from 'firebase/firestore'
 import { useAuth } from '../context/AuthContext'
+import { db } from '../firebase'
 import { Award, LayoutDashboard, CalendarCheck, CalendarClock, Home, MessageSquare, Users, UserRoundCog, Image, Images, Package, LogOut, ReceiptText, Scissors, MapPin, Share2, Menu, X } from 'lucide-react'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import NotificationBell from '../components/NotificationBell'
@@ -28,6 +30,11 @@ export default function AdminLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    if (!user?.uid) return
+    setDoc(doc(db, 'settings', 'general'), { adminUid: user.uid }, { merge: true }).catch(() => {})
+  }, [user])
 
   const handleLogout = async () => { await logout(); setMenuOpen(false); navigate('/') }
   const closeMenu = () => setMenuOpen(false)

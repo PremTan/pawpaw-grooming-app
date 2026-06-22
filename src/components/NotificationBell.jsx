@@ -1,20 +1,24 @@
 // src/components/NotificationBell.jsx
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Bell, CheckCheck, X } from 'lucide-react'
 import { useNotifications } from '../context/NotificationContext'
+import { useAuth } from '../context/AuthContext'
 import { formatDistanceToNow } from 'date-fns'
 
 const TYPE_ICON = {
-  booking:   '📅',
-  confirmed: '✅',
-  completed: '🎉',
-  cancelled: '❌',
-  review:    '⭐',
-  info:      'ℹ️',
+  booking: 'New',
+  confirmed: 'OK',
+  completed: 'Done',
+  cancelled: 'X',
+  review: 'Star',
+  info: 'Info',
 }
 
 export default function NotificationBell() {
-  const { notifications, unreadCount, markAllRead, markRead } = useNotifications()
+  const { notifications, unreadCount, markAllRead, markRead, requestBrowserPermission } = useNotifications()
+  const { isAdmin } = useAuth()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -24,12 +28,36 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  const openPanel = () => {
+    const willOpen = !open
+    setOpen(willOpen)
+    if (willOpen) {
+      if (unreadCount > 0) markAllRead()
+      requestBrowserPermission?.()
+    }
+  }
+
+  const openNotification = async (notification) => {
+    await markRead(notification.id)
+    setOpen(false)
+
+    if (notification.actionUrl) {
+      navigate(notification.actionUrl)
+      return
+    }
+    if (notification.bookingId) {
+      navigate(isAdmin ? `/admin/bookings/${notification.bookingId}` : '/my-bookings')
+    }
+  }
+
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => { setOpen(!open); if (!open && unreadCount > 0) markAllRead() }}
+        type="button"
+        onClick={openPanel}
         className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105"
         style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', color: 'var(--accent)' }}
+        aria-label="Notifications"
       >
         <Bell size={16} />
         {unreadCount > 0 && (
@@ -42,40 +70,42 @@ export default function NotificationBell() {
           className="absolute right-0 mt-2 rounded-2xl shadow-2xl z-50 overflow-hidden"
           style={{ background: 'var(--card)', border: '1px solid var(--border)', width: '320px' }}
         >
-          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text)' }}>Notifications</span>
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
-                <button onClick={markAllRead} style={{ fontSize: '11px', color: 'var(--accent)', cursor: 'pointer' }}>
-                  Mark all read
+                <button type="button" onClick={markAllRead} style={{ fontSize: '11px', color: 'var(--accent)', cursor: 'pointer' }} aria-label="Mark all notifications read">
+                  <CheckCheck size={14} />
                 </button>
               )}
-              <button onClick={() => setOpen(false)} style={{ color: 'var(--muted)' }}>
+              <button type="button" onClick={() => setOpen(false)} style={{ color: 'var(--muted)' }} aria-label="Close notifications">
                 <X size={15} />
               </button>
             </div>
           </div>
 
-          {/* List */}
           <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
             {notifications.length === 0 ? (
               <div className="py-10 text-center">
-                <div style={{ fontSize: '32px', marginBottom: '8px' }}>🔔</div>
+                <Bell size={28} style={{ color: 'var(--muted)', margin: '0 auto 8px' }} />
                 <p style={{ color: 'var(--muted)', fontSize: '13px' }}>No notifications yet</p>
               </div>
             ) : (
               notifications.slice(0, 20).map(n => (
-                <div
+                <button
                   key={n.id}
-                  onClick={() => markRead(n.id)}
+                  type="button"
+                  onClick={() => openNotification(n)}
                   className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-all"
                   style={{
+                    width: '100%',
+                    textAlign: 'left',
                     background: n.read ? 'transparent' : 'var(--accent-bg)',
+                    border: 0,
                     borderBottom: '1px solid var(--border)',
                   }}
                 >
-                  <span style={{ fontSize: '18px', marginTop: '2px' }}>
+                  <span style={{ fontSize: '10px', marginTop: '3px', color: 'var(--accent)', fontWeight: 800, minWidth: '32px' }}>
                     {TYPE_ICON[n.type] || TYPE_ICON.info}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -92,7 +122,7 @@ export default function NotificationBell() {
                   {!n.read && (
                     <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--accent)', marginTop: '5px', shrink: 0 }} />
                   )}
-                </div>
+                </button>
               ))
             )}
           </div>

@@ -168,10 +168,11 @@ export default function AdminBookings() {
         }
         if (msgs[status]) {
           await sendNotification(b.userId, {
-            title: `Booking ${statusLabel(status)}`,
+            title: status === 'confirmed' ? 'Booking approved' : 'Booking cancelled',
             message: `${b.serviceName} on ${b.date} at ${b.slot} - ${msgs[status]}`,
             type: status,
             bookingId: b.id,
+            actionUrl: '/my-bookings',
           })
         }
       }
@@ -189,10 +190,11 @@ export default function AdminBookings() {
       await syncPublicStats(db)
       if (cashModal.userId && cashModal.userId !== 'walkin') {
         await sendNotification(cashModal.userId, {
-          title: 'Appointment Completed',
+          title: 'Appointment completed',
           message: `${cashModal.serviceName} for ${cashModal.petName} completed. Thank you!`,
           type: 'completed',
           bookingId: cashModal.id,
+          actionUrl: '/my-bookings',
         })
       }
     } catch {}

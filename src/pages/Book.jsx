@@ -11,8 +11,6 @@ import { format, addDays, startOfToday } from 'date-fns'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel } from '../utils/bookingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 
-const ADMIN_UID_KEY = 'admin_uid'
-
 const getPackageBasePrice = (pkg) => {
   if (typeof pkg.price === 'number') return pkg.price
 
@@ -251,19 +249,28 @@ export default function Book() {
       const ref = await addDoc(collection(db, 'bookings'), bookingData)
       setBookingRef({ id: ref.id, ...bookingData })
 
-      // Notify user
       await sendNotification(user.uid, {
-        title: 'Booking Received! 🐾',
+        title: 'Booking request received',
         message: `${bookingLabel} for ${form.petName} on ${form.date} at ${form.slot}`,
-        type: 'booking', bookingId: ref.id,
+        type: 'booking',
+        bookingId: ref.id,
+        actionUrl: '/my-bookings',
       })
 
-      // Notify admin if UID is set
-      if (adminUid) {
-        await sendNotification(adminUid, {
-          title: `New Booking from ${form.ownerName}`,
-          message: `${bookingLabel} · ${form.petName} · ${form.date} ${form.slot}`,
-          type: 'booking', bookingId: ref.id,
+      let ownerUid = adminUid
+      if (!ownerUid) {
+        const settSnap = await getDoc(doc(db, 'settings', 'general'))
+        ownerUid = settSnap.exists() ? settSnap.data().adminUid || '' : ''
+        if (ownerUid) setAdminUid(ownerUid)
+      }
+
+      if (ownerUid) {
+        await sendNotification(ownerUid, {
+          title: `New booking from ${form.ownerName}`,
+          message: `${bookingLabel} - ${form.petName} - ${form.date} ${form.slot}`,
+          type: 'booking',
+          bookingId: ref.id,
+          actionUrl: `/admin/bookings/${ref.id}`,
         })
       }
 
