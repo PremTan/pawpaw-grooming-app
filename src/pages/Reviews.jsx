@@ -21,7 +21,7 @@ function Stars({ value, onChange, readonly = false }) {
 }
 
 export default function Reviews() {
-  const { user } = useAuth()
+  const { user, isBlocked } = useAuth()
   const [reviews, setReviews]   = useState([])
   const [loading, setLoading]   = useState(true)
   const [form, setForm]         = useState({ rating: 5, comment: '', petName: '' })
@@ -41,7 +41,7 @@ export default function Reviews() {
   const dist = [5,4,3,2,1].map(n => ({ n, count: reviews.filter(r => r.rating === n).length, pct: reviews.length ? Math.round((reviews.filter(r => r.rating === n).length / reviews.length) * 100) : 0 }))
 
   const handleSubmit = async () => {
-    if (!form.comment.trim() || !user) return
+    if (isBlocked || !form.comment.trim() || !user) return
     setSubmitting(true)
     try {
       await addDoc(collection(db, 'reviews'), {
@@ -96,6 +96,11 @@ export default function Reviews() {
         {user ? (
           <div className="card" style={{ padding: '28px', marginBottom: '28px' }}>
             <h2 style={{ fontFamily: '"Playfair Display",serif', fontWeight: 700, fontSize: '20px', color: 'var(--text)', marginBottom: '20px' }}>Leave a Review</h2>
+            {isBlocked && (
+              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', fontSize: '13px', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px' }}>
+                Your account is blocked from publishing reviews.
+              </div>
+            )}
             {submitted && (
               <div style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399', fontSize: '13px', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px' }}>
                 ✓ Thank you! Your review has been published.
@@ -111,7 +116,7 @@ export default function Reviews() {
                 <label style={L}>Your Review *</label>
                 <textarea className="input" style={{ resize: 'none' }} rows={4} placeholder="Share your experience at Paw Paw Pet Grooming..." value={form.comment} onChange={e => setForm(p => ({ ...p, comment: e.target.value }))} />
               </div>
-              <button onClick={handleSubmit} disabled={submitting || !form.comment.trim()} className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
+              <button onClick={handleSubmit} disabled={isBlocked || submitting || !form.comment.trim()} className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
                 <Send size={15} /> {submitting ? 'Submitting…' : 'Submit Review'}
               </button>
             </div>

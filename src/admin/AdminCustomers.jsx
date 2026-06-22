@@ -1,44 +1,58 @@
 // src/admin/AdminCustomers.jsx
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { collection, getDocs } from 'firebase/firestore'
-import { Search, ChevronRight, X, Phone, CalendarDays } from 'lucide-react'
+import { collection, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore'
+import { Ban, CalendarDays, ChevronRight, Phone, Search, ShieldCheck, X } from 'lucide-react'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
 const statusClass = (status = 'pending') => status === 'confirmed' ? 'badge-confirmed' : status === 'completed' ? 'badge-completed' : status === 'cancelled' ? 'badge-cancelled' : 'badge-pending'
-const customerKey = (booking) => booking.phone || booking.userId || booking.id
+const customerKey = (booking) => booking.userId || booking.phone || booking.id
 
 export default function AdminCustomers() {
   const navigate = useNavigate()
   const [bookings, setBookings] = useState([])
+  const [profiles, setProfiles] = useState({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedKey, setSelectedKey] = useState(null)
+  const [savingBlock, setSavingBlock] = useState('')
+  const [blockError, setBlockError] = useState('')
 
   useEffect(() => {
-    async function fetchCustomers() {
-      try {
-        const snap = await getDocs(collection(db, 'bookings'))
-        setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-      } catch {}
-      setLoading(false)
-    }
     fetchCustomers()
   }, [])
+
+  async function fetchCustomers() {
+    setLoading(true)
+    try {
+      const [bookingSnap, profileSnap] = await Promise.all([
+        getDocs(collection(db, 'bookings')),
+        getDocs(collection(db, 'profiles')),
+      ])
+      const profileMap = {}
+      profileSnap.docs.forEach(item => { profileMap[item.id] = { id: item.id, ...item.data() } })
+      setBookings(bookingSnap.docs.map(d => ({ id: d.id, ...d.data() })))
+      setProfiles(profileMap)
+    } catch {}
+    setLoading(false)
+  }
 
   const customers = useMemo(() => {
     const map = {}
     bookings.forEach(booking => {
       const key = customerKey(booking)
+      const profile = booking.userId ? profiles[booking.userId] : null
       if (!map[key]) {
         map[key] = {
           key,
-          phone: booking.phone || '',
-          ownerName: booking.ownerName || 'Unknown',
+          phone: profile?.phone || booking.phone || '',
+          ownerName: profile?.name || booking.ownerName || 'Unknown',
           userId: booking.userId || '',
+          userEmail: profile?.email || booking.userEmail || '',
           isWalkIn: booking.isWalkIn,
+          blocked: profile?.blocked === true,
           bookings: [],
           pets: new Set(),
           totalSpent: 0,
@@ -47,18 +61,38 @@ export default function AdminCustomers() {
       map[key].bookings.push(booking)
       if (booking.petName) map[key].pets.add(booking.petName + ' (' + (booking.petType || 'Pet') + ')')
       if (booking.amountCollected) map[key].totalSpent += parseFloat(booking.amountCollected) || 0
-      if (booking.ownerName) map[key].ownerName = booking.ownerName
+      if (profile?.name || booking.ownerName) map[key].ownerName = profile?.name || booking.ownerName
+      if (profile?.phone || booking.phone) map[key].phone = profile?.phone || booking.phone
+      if (profile?.email || booking.userEmail) map[key].userEmail = profile?.email || booking.userEmail
+      if (profile?.blocked === true) map[key].blocked = true
       if (!booking.isWalkIn) map[key].isWalkIn = false
+    })
+
+    Object.values(profiles).forEach(profile => {
+      if (profile.blocked !== true || map[profile.id]) return
+      map[profile.id] = {
+        key: profile.id,
+        phone: profile.phone || '',
+        ownerName: profile.name || profile.email?.split('@')[0] || 'Unknown',
+        userId: profile.id,
+        userEmail: profile.email || '',
+        isWalkIn: false,
+        blocked: true,
+        bookings: [],
+        pets: new Set(),
+        totalSpent: 0,
+      }
     })
 
     let rows = Object.values(map).sort((a, b) => b.bookings.length - a.bookings.length)
     if (search.trim()) {
       const term = search.toLowerCase()
-      rows = rows.filter(c => c.ownerName.toLowerCase().includes(term) || c.phone.includes(term))
+      rows = rows.filter(c => c.ownerName.toLowerCase().includes(term) || c.phone.includes(term) || c.userEmail.toLowerCase().includes(term))
     }
     return rows
-  }, [bookings, search])
+  }, [bookings, profiles, search])
 
+  const activeCustomers = customers.filter(customer => !customer.blocked)
   const selected = selectedKey ? customers.find(customer => customer.key === selectedKey) : null
   const sortedBookings = selected ? [...selected.bookings].sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)) : []
 
@@ -67,41 +101,78 @@ export default function AdminCustomers() {
     navigate('/admin/bookings/' + bookingId)
   }
 
+  const toggleBlocked = async (customer) => {
+    if (!customer?.userId || savingBlock) return
+    const nextBlocked = !customer.blocked
+    setSavingBlock(customer.userId)
+    setBlockError('')
+    try {
+      await setDoc(doc(db, 'profiles', customer.userId), {
+        blocked: nextBlocked,
+        email: customer.userEmail || '',
+        name: customer.ownerName || '',
+        phone: customer.phone || '',
+        userId: customer.userId,
+        updatedAt: serverTimestamp(),
+        ...(nextBlocked ? { blockedAt: serverTimestamp() } : { unblockedAt: serverTimestamp() }),
+      }, { merge: true })
+      setProfiles(prev => ({
+        ...prev,
+        [customer.userId]: {
+          ...(prev[customer.userId] || {}),
+          id: customer.userId,
+          blocked: nextBlocked,
+          email: customer.userEmail || prev[customer.userId]?.email || '',
+          name: customer.ownerName || prev[customer.userId]?.name || '',
+          phone: customer.phone || prev[customer.userId]?.phone || '',
+          userId: customer.userId,
+        },
+      }))
+    } catch (err) {
+      setBlockError(err.message || 'Could not update customer block status.')
+    }
+    setSavingBlock('')
+  }
+
+  const renderCustomerCard = (customer) => (
+    <button key={customer.key} type="button" className="admin-customer-card" onClick={() => setSelectedKey(customer.key)}>
+      <div className="admin-customer-avatar">{customer.ownerName?.[0]?.toUpperCase() || '?'}</div>
+      <div className="admin-customer-main">
+        <div className="admin-customer-title">
+          <strong>{customer.ownerName || 'Unknown'}</strong>
+          <span className={customer.isWalkIn === false ? 'badge badge-online' : 'badge badge-walkin'}>{customer.isWalkIn === false ? 'Online' : 'Walk-in'}</span>
+        </div>
+        <p><Phone size={13} /> {customer.phone || 'No phone'}</p>
+        {customer.userEmail && <p>{customer.userEmail}</p>}
+        {[...customer.pets].length > 0 && <p>{[...customer.pets].slice(0, 2).join(', ')}{customer.pets.size > 2 ? ' +' + (customer.pets.size - 2) + ' more' : ''}</p>}
+      </div>
+      <div className="admin-customer-count">
+        <strong>{customer.bookings.length}</strong>
+        <span>Bookings</span>
+      </div>
+      <ChevronRight size={18} className="admin-customer-chevron" />
+    </button>
+  )
+
+
   return (
     <div className="admin-customers-page">
       <div className="admin-customers-head">
         <h1>Customers</h1>
-        <p>{customers.length} unique customers</p>
+        <p>{activeCustomers.length} active customers</p>
       </div>
 
       <div className="admin-customer-search">
         <Search size={15} />
-        <input className="input" placeholder="Search by name or phone..." value={search} onChange={e => setSearch(e.target.value)} />
+        <input className="input" placeholder="Search by name, phone or email..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      {loading ? <Spinner text="Loading customers..." /> : customers.length === 0 ? (
-        <div className="admin-customer-empty">No customers yet.</div>
+      {blockError && <div className="admin-customer-error">{blockError}</div>}
+
+      {loading ? <Spinner text="Loading customers..." /> : activeCustomers.length === 0 ? (
+        <div className="admin-customer-empty">No active customers found.</div>
       ) : (
-        <div className="admin-customer-list">
-          {customers.map(customer => (
-            <button key={customer.key} type="button" className="admin-customer-card" onClick={() => setSelectedKey(customer.key)}>
-              <div className="admin-customer-avatar">{customer.ownerName?.[0]?.toUpperCase() || '?'}</div>
-              <div className="admin-customer-main">
-                <div className="admin-customer-title">
-                  <strong>{customer.ownerName || 'Unknown'}</strong>
-                  <span className={customer.isWalkIn === false ? 'badge badge-online' : 'badge badge-walkin'}>{customer.isWalkIn === false ? 'Online' : 'Walk-in'}</span>
-                </div>
-                <p><Phone size={13} /> {customer.phone || 'No phone'}</p>
-                {[...customer.pets].length > 0 && <p>{[...customer.pets].slice(0, 2).join(', ')}{customer.pets.size > 2 ? ' +' + (customer.pets.size - 2) + ' more' : ''}</p>}
-              </div>
-              <div className="admin-customer-count">
-                <strong>{customer.bookings.length}</strong>
-                <span>Bookings</span>
-              </div>
-              <ChevronRight size={18} className="admin-customer-chevron" />
-            </button>
-          ))}
-        </div>
+        <div className="admin-customer-list">{activeCustomers.map(renderCustomerCard)}</div>
       )}
 
       {selected && (
@@ -112,8 +183,26 @@ export default function AdminCustomers() {
               <div>
                 <h2>{selected.ownerName}</h2>
                 <p><Phone size={14} /> {selected.phone || 'No phone'}</p>
+                {selected.userEmail && <p>{selected.userEmail}</p>}
               </div>
               <button type="button" onClick={() => setSelectedKey(null)} aria-label="Close customer details"><X size={20} /></button>
+            </div>
+
+            <div className="admin-customer-block-panel">
+              <div>
+                <strong>{selected.blocked ? 'Customer is blocked' : 'Customer is active'}</strong>
+                <p>{selected.blocked ? 'They can still log in, but booking, pet, review and profile writes are blocked.' : 'Block this online customer if repeated or fraudulent bookings happen.'}</p>
+              </div>
+              <button
+                type="button"
+                className={selected.blocked ? 'btn btn-secondary' : 'btn btn-danger'}
+                disabled={!selected.userId || savingBlock === selected.userId}
+                onClick={() => toggleBlocked(selected)}
+                title={!selected.userId ? 'Only online customers with a user account can be blocked.' : ''}
+              >
+                {selected.blocked ? <ShieldCheck size={15} /> : <Ban size={15} />}
+                {savingBlock === selected.userId ? 'Saving...' : selected.blocked ? 'Unblock' : 'Block'}
+              </button>
             </div>
 
             <div className="admin-customer-stats">
@@ -132,7 +221,9 @@ export default function AdminCustomers() {
             <section className="admin-customer-section">
               <h3><CalendarDays size={16} /> Booking History</h3>
               <div className="admin-customer-history">
-                {sortedBookings.map(booking => (
+                {sortedBookings.length === 0 ? (
+                  <div className="admin-customer-empty small">No booking history.</div>
+                ) : sortedBookings.map(booking => (
                   <button key={booking.id} type="button" className="admin-customer-booking" onClick={() => openBooking(booking.id)}>
                     <div>
                       <strong>{booking.serviceName || 'Service'}</strong>

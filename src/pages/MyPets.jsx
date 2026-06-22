@@ -101,7 +101,7 @@ function getCroppedImg(imageSrc, pixelCrop) {
 }
 
 export default function MyPets() {
-  const { user } = useAuth()
+  const { user, isBlocked } = useAuth()
   const [pets, setPets] = useState([])
   const [form, setForm] = useState(EMPTY_PET)
   const [selectedId, setSelectedId] = useState('')
@@ -159,6 +159,10 @@ export default function MyPets() {
   }
 
   const openAddForm = () => {
+    if (isBlocked) {
+      setError('Your account is blocked from adding pet profiles.')
+      return
+    }
     setForm(EMPTY_PET)
     setEditingId('')
     setPhotoFile(null)
@@ -177,6 +181,10 @@ export default function MyPets() {
   }
 
   const startEdit = (pet) => {
+    if (isBlocked) {
+      setError('Your account is blocked from editing pet profiles.')
+      return
+    }
     setSelectedId(pet.id)
     setForm({
       name: pet.name || '',
@@ -245,6 +253,10 @@ export default function MyPets() {
 
   const savePet = async (event) => {
     event.preventDefault()
+    if (isBlocked) {
+      setError('Your account is blocked from saving pet profiles.')
+      return
+    }
     if (!form.name.trim()) return
 
     setSaving(true)
@@ -289,6 +301,10 @@ export default function MyPets() {
   }
 
   const removePet = async (pet) => {
+    if (isBlocked) {
+      setError('Your account is blocked from deleting pet profiles.')
+      return
+    }
     setMessage('')
     setError('')
     try {
@@ -331,7 +347,7 @@ export default function MyPets() {
             <p style={{ color: 'var(--muted)', fontSize: '14px', maxWidth: '540px' }}>Keep grooming notes, birthdays, weight, and photos ready for faster bookings.</p>
           </div>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button type="button" onClick={openAddForm} className="btn btn-secondary" style={{ fontSize: '13px', padding: '10px 16px' }}>
+            <button type="button" onClick={openAddForm} disabled={isBlocked} className="btn btn-secondary" style={{ fontSize: '13px', padding: '10px 16px' }}>
               <Plus size={16} /> Add Pet
             </button>
             <Link to="/book" className="btn btn-primary" style={{ fontSize: '13px', padding: '10px 18px' }}>
@@ -339,6 +355,11 @@ export default function MyPets() {
             </Link>
           </div>
         </div>
+        {isBlocked && (
+          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', fontSize: '13px', padding: '12px 14px', borderRadius: '12px', marginBottom: '16px' }}>
+            Your account is blocked from adding, editing, or deleting pet profiles.
+          </div>
+        )}
 
         {(message || error) && (
           <div style={{ background: error ? 'rgba(239,68,68,0.1)' : 'rgba(52,211,153,0.1)', border: `1px solid ${error ? 'rgba(239,68,68,0.2)' : 'rgba(52,211,153,0.25)'}`, color: error ? '#ef4444' : '#34d399', fontSize: '13px', padding: '12px 14px', borderRadius: '12px', marginBottom: '16px' }}>
@@ -353,7 +374,7 @@ export default function MyPets() {
                 <h2 style={{ color: 'var(--text)', fontSize: '17px', fontWeight: 800 }}>Saved Pets</h2>
                 <p style={{ color: 'var(--muted)', fontSize: '12px' }}>{pets.length} profile{pets.length === 1 ? '' : 's'}</p>
               </div>
-              <button type="button" onClick={openAddForm} className="pet-icon-btn" aria-label="Add pet">
+              <button type="button" onClick={openAddForm} disabled={isBlocked} className="pet-icon-btn" aria-label="Add pet">
                 <Plus size={18} />
               </button>
             </div>
@@ -487,7 +508,7 @@ export default function MyPets() {
                   <button type="button" onClick={closeForm} className="btn btn-secondary">
                     Cancel
                   </button>
-                  <button type="submit" disabled={saving || !form.name.trim()} className="btn btn-primary">
+                  <button type="submit" disabled={isBlocked || saving || !form.name.trim()} className="btn btn-primary">
                     <Save size={16} /> {saving ? 'Saving...' : editingId ? 'Update Profile' : 'Save Pet'}
                   </button>
                 </div>

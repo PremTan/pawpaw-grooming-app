@@ -25,6 +25,7 @@ import AdminDashboard from './admin/AdminDashboard'
 import AdminBookings  from './admin/AdminBookings'
 import AdminReviews   from './admin/AdminReviews'
 import AdminCustomers from './admin/AdminCustomers'
+import AdminBlockedUsers from './admin/AdminBlockedUsers'
 import AdminGallery   from './admin/AdminGallery'
 import AdminPackages  from './admin/AdminPackages'
 import AdminHeroImages from './admin/AdminHeroImages'
@@ -78,6 +79,7 @@ export default function App() {
         <Route path="invoices" element={<AdminInvoices />} />
         <Route path="reviews"   element={<AdminReviews />} />
         <Route path="customers" element={<AdminCustomers />} />
+        <Route path="blocked-users" element={<AdminBlockedUsers />} />
         <Route path="services"  element={<AdminServices />} />
         <Route path="gallery"   element={<AdminGallery />} />
         <Route path="packages"  element={<AdminPackages />} />

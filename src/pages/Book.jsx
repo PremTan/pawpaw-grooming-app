@@ -23,7 +23,7 @@ const getPackageBasePrice = (pkg) => {
 }
 
 export default function Book() {
-  const { user } = useAuth()
+  const { user, isBlocked } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const preService = searchParams.get('service') || ''
@@ -216,6 +216,10 @@ export default function Book() {
   }
 
   const handleSubmit = async () => {
+    if (isBlocked) {
+      alert('Your account is blocked from booking. Please contact the admin.')
+      return
+    }
     if ((selectedServices.length === 0 && selectedPackages.length === 0) || !form.petName || !form.ownerName || !form.phone || !form.date || !form.slot || !availableSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim())) return
     setLoading(true)
     try {
@@ -328,6 +332,12 @@ export default function Book() {
       <div ref={bookingTopRef} style={S.wrap}>
         <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Book Appointment</h1>
         <p style={{ color: 'var(--muted)', marginBottom: '28px', fontSize: '14px' }}>Fill the details below to schedule your visit</p>
+
+        {isBlocked && (
+          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', fontSize: '13px', padding: '12px 14px', borderRadius: '12px', marginBottom: '18px' }}>
+            Your account is blocked from creating new bookings. You can still log in and view your account.
+          </div>
+        )}
 
         {/* Steps */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '28px', flexWrap: 'wrap' }}>
@@ -638,7 +648,7 @@ export default function Book() {
                 </div>
               )}
 
-              <button onClick={handleSubmit} disabled={!form.slot || !availableSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim()) || loading} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+              <button onClick={handleSubmit} disabled={isBlocked || !form.slot || !availableSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim()) || loading} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
                 {loading ? 'Booking…' : 'Confirm Booking'}
               </button>
             </div>

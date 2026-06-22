@@ -14,7 +14,7 @@ const EMPTY = {
 }
 
 export default function Profile() {
-  const { user } = useAuth()
+  const { user, isBlocked } = useAuth()
   const [form, setForm] = useState(EMPTY)
   const [passwords, setPasswords] = useState({ current: '', next: '', confirm: '' })
   const [loading, setLoading] = useState(true)
@@ -48,6 +48,10 @@ export default function Profile() {
   const update = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
 
   const saveProfile = async () => {
+    if (isBlocked) {
+      setError('Your account is blocked from updating profile details.')
+      return
+    }
     setSaving(true)
     setError('')
     setMessage('')
@@ -75,7 +79,7 @@ export default function Profile() {
   }
 
   const changePassword = async () => {
-    if (!canChangePassword) return
+    if (isBlocked || !canChangePassword) return
     setChangingPassword(true)
     setError('')
     setMessage('')
@@ -96,6 +100,11 @@ export default function Profile() {
   }
 
   const handlePhotoUpload = async (e) => {
+    if (isBlocked) {
+      setError('Your account is blocked from updating profile details.')
+      e.target.value = ''
+      return
+    }
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -140,6 +149,11 @@ export default function Profile() {
           <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>My Profile</h1>
           <p style={{ color: 'var(--muted)', fontSize: '13px' }}>Save your details once and use them for future bookings.</p>
         </div>
+        {isBlocked && (
+          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', fontSize: '13px', padding: '12px 14px', borderRadius: '12px', marginBottom: '16px' }}>
+            Your account is blocked from profile changes. You can still log in and view your details.
+          </div>
+        )}
 
         {(message || error) && (
           <div style={{ background: error ? 'rgba(239,68,68,0.1)' : 'rgba(52,211,153,0.1)', border: `1px solid ${error ? 'rgba(239,68,68,0.2)' : 'rgba(52,211,153,0.25)'}`, color: error ? '#ef4444' : '#34d399', fontSize: '13px', padding: '12px 14px', borderRadius: '12px', marginBottom: '16px' }}>
@@ -177,7 +191,7 @@ export default function Profile() {
                 type="file"
                 accept="image/*"
                 onChange={handlePhotoUpload}
-                disabled={uploadingPhoto}
+                disabled={isBlocked || uploadingPhoto}
                 style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
               />
               <button
@@ -190,17 +204,17 @@ export default function Profile() {
                   color: 'var(--accent)',
                   fontSize: '12px',
                   fontWeight: 500,
-                  cursor: uploadingPhoto ? 'not-allowed' : 'pointer',
+                  cursor: isBlocked || uploadingPhoto ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '6px',
-                  opacity: uploadingPhoto ? 0.6 : 1,
+                  opacity: isBlocked || uploadingPhoto ? 0.6 : 1,
                   transition: 'all 0.2s',
                 }}
-                onMouseEnter={(e) => { if (!uploadingPhoto) { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = 'white'; } }}
+                onMouseEnter={(e) => { if (!isBlocked && !uploadingPhoto) { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = 'white'; } }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent-bg)'; e.currentTarget.style.color = 'var(--accent)'; }}
-                disabled={uploadingPhoto}
+                disabled={isBlocked || uploadingPhoto}
               >
                 <Upload size={12} /> {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
               </button>
@@ -228,7 +242,7 @@ export default function Profile() {
             <textarea className="input" rows={3} style={{ resize: 'none' }} value={form.address} onChange={e => update('address', e.target.value)} placeholder="Home address or pickup details" />
           </div>
 
-          <button onClick={saveProfile} disabled={saving || !form.name.trim()} className="btn btn-primary" style={{ justifyContent: 'center' }}>
+          <button onClick={saveProfile} disabled={isBlocked || saving || !form.name.trim()} className="btn btn-primary" style={{ justifyContent: 'center' }}>
             <Save size={16} /> {saving ? 'Saving...' : 'Save Profile'}
           </button>
         </div>
@@ -257,7 +271,7 @@ export default function Profile() {
                 <label style={L}>Confirm New Password</label>
                 <input className="input" type="password" value={passwords.confirm} onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))} />
               </div>
-              <button onClick={changePassword} disabled={changingPassword || !passwords.current || !passwords.next || !passwords.confirm} className="btn btn-secondary" style={{ justifyContent: 'center' }}>
+              <button onClick={changePassword} disabled={isBlocked || changingPassword || !passwords.current || !passwords.next || !passwords.confirm} className="btn btn-secondary" style={{ justifyContent: 'center' }}>
                 <Lock size={16} /> {changingPassword ? 'Updating...' : 'Update Password'}
               </button>
             </>
