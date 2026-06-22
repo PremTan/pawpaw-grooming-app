@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc } from 'firebase/firestore'
-import { db } from '../firebase'
+import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import { SERVICES, PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
@@ -264,8 +264,9 @@ export default function Book() {
         if (ownerUid) setAdminUid(ownerUid)
       }
 
-      if (ownerUid) {
+      if (ownerUid || ADMIN_EMAIL) {
         await sendNotification(ownerUid, {
+          userEmail: ADMIN_EMAIL,
           title: `New booking from ${form.ownerName}`,
           message: `${bookingLabel} - ${form.petName} - ${form.date} ${form.slot}`,
           type: 'booking',
@@ -663,4 +664,5 @@ export default function Book() {
     </div>
   )
 }
+
 

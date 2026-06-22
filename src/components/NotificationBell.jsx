@@ -16,7 +16,7 @@ const TYPE_ICON = {
 }
 
 export default function NotificationBell() {
-  const { notifications, unreadCount, markAllRead, markRead, requestBrowserPermission } = useNotifications()
+  const { notifications, unreadCount, markAllRead, markRead, requestBrowserPermission, notificationError } = useNotifications()
   const { isAdmin } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -31,10 +31,7 @@ export default function NotificationBell() {
   const openPanel = () => {
     const willOpen = !open
     setOpen(willOpen)
-    if (willOpen) {
-      if (unreadCount > 0) markAllRead()
-      requestBrowserPermission?.()
-    }
+    if (willOpen) requestBrowserPermission?.()
   }
 
   const openNotification = async (notification) => {
@@ -67,8 +64,8 @@ export default function NotificationBell() {
 
       {open && (
         <div
-          className="absolute right-0 mt-2 rounded-2xl shadow-2xl z-50 overflow-hidden"
-          style={{ background: 'var(--card)', border: '1px solid var(--border)', width: '320px' }}
+          className="notification-panel rounded-2xl shadow-2xl overflow-hidden"
+          style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
         >
           <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text)' }}>Notifications</span>
@@ -85,7 +82,12 @@ export default function NotificationBell() {
           </div>
 
           <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
-            {notifications.length === 0 ? (
+            {notificationError ? (
+              <div className="py-10 text-center" style={{ padding: '32px 18px' }}>
+                <Bell size={28} style={{ color: '#ef4444', margin: '0 auto 8px' }} />
+                <p style={{ color: '#ef4444', fontSize: '13px', lineHeight: 1.45 }}>Notifications could not load. Check Firebase rules/indexes.</p>
+              </div>
+            ) : notifications.length === 0 ? (
               <div className="py-10 text-center">
                 <Bell size={28} style={{ color: 'var(--muted)', margin: '0 auto 8px' }} />
                 <p style={{ color: 'var(--muted)', fontSize: '13px' }}>No notifications yet</p>
