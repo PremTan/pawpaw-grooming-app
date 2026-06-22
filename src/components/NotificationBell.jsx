@@ -1,18 +1,18 @@
 // src/components/NotificationBell.jsx
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, CheckCheck, X } from 'lucide-react'
+import { Bell, CalendarClock, CheckCheck, CheckCircle2, Info, PartyPopper, Star, X, XCircle } from 'lucide-react'
 import { useNotifications } from '../context/NotificationContext'
 import { useAuth } from '../context/AuthContext'
 import { formatDistanceToNow } from 'date-fns'
 
 const TYPE_ICON = {
-  booking: 'New',
-  confirmed: 'OK',
-  completed: 'Done',
-  cancelled: 'X',
-  review: 'Star',
-  info: 'Info',
+  booking: CalendarClock,
+  confirmed: CheckCircle2,
+  completed: PartyPopper,
+  cancelled: XCircle,
+  review: Star,
+  info: Info,
 }
 
 export default function NotificationBell() {
@@ -93,39 +93,42 @@ export default function NotificationBell() {
                 <p style={{ color: 'var(--muted)', fontSize: '13px' }}>No notifications yet</p>
               </div>
             ) : (
-              notifications.slice(0, 20).map(n => (
-                <button
-                  key={n.id}
-                  type="button"
-                  onClick={() => openNotification(n)}
-                  className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-all"
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    background: n.read ? 'transparent' : 'var(--accent-bg)',
-                    border: 0,
-                    borderBottom: '1px solid var(--border)',
-                  }}
-                >
-                  <span style={{ fontSize: '10px', marginTop: '3px', color: 'var(--accent)', fontWeight: 800, minWidth: '32px' }}>
-                    {TYPE_ICON[n.type] || TYPE_ICON.info}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: '13px', fontWeight: n.read ? 400 : 600, color: 'var(--text)', marginBottom: '2px' }}>
-                      {n.title}
-                    </p>
-                    <p style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: 1.4 }}>{n.message}</p>
-                    {n.createdAt?.toDate && (
-                      <p style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
-                        {formatDistanceToNow(n.createdAt.toDate(), { addSuffix: true })}
+              notifications.slice(0, 20).map(n => {
+                const Icon = TYPE_ICON[n.type] || TYPE_ICON.info
+                return (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => openNotification(n)}
+                    className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-all"
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      background: n.read ? 'transparent' : 'var(--accent-bg)',
+                      border: 0,
+                      borderBottom: '1px solid var(--border)',
+                    }}
+                  >
+                    <span style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'var(--accent-bg)', color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }} aria-hidden="true">
+                      <Icon size={15} />
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: '13px', fontWeight: n.read ? 400 : 600, color: 'var(--text)', marginBottom: '2px' }}>
+                        {n.title}
                       </p>
+                      <p style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: 1.4 }}>{n.message}</p>
+                      {n.createdAt?.toDate && (
+                        <p style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
+                          {formatDistanceToNow(n.createdAt.toDate(), { addSuffix: true })}
+                        </p>
+                      )}
+                    </div>
+                    {!n.read && (
+                      <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--accent)', marginTop: '5px', shrink: 0 }} />
                     )}
-                  </div>
-                  {!n.read && (
-                    <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--accent)', marginTop: '5px', shrink: 0 }} />
-                  )}
-                </button>
-              ))
+                  </button>
+                )
+              })
             )}
           </div>
         </div>

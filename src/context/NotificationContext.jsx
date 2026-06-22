@@ -22,7 +22,6 @@ export function NotificationProvider({ children }) {
 
   const showBrowserNotification = (notification) => {
     if (!canUseBrowserNotifications() || window.Notification.permission !== 'granted') return
-    if (document.visibilityState === 'visible') return
 
     const toast = new window.Notification(notification.title || 'New notification', {
       body: notification.message || '',
@@ -139,3 +138,4 @@ export function NotificationProvider({ children }) {
 }
 
 export const useNotifications = () => useContext(NotifContext)
+

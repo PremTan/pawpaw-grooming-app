@@ -249,14 +249,6 @@ export default function Book() {
       const ref = await addDoc(collection(db, 'bookings'), bookingData)
       setBookingRef({ id: ref.id, ...bookingData })
 
-      await sendNotification(user.uid, {
-        title: 'Booking request received',
-        message: `${bookingLabel} for ${form.petName} on ${form.date} at ${form.slot}`,
-        type: 'booking',
-        bookingId: ref.id,
-        actionUrl: '/my-bookings',
-      })
-
       let ownerUid = adminUid
       if (!ownerUid) {
         const settSnap = await getDoc(doc(db, 'settings', 'general'))
@@ -664,5 +656,6 @@ export default function Book() {
     </div>
   )
 }
+
 
 
