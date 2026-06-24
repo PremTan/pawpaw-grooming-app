@@ -1,10 +1,9 @@
 // src/admin/AdminBookings.jsx
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc } from 'firebase/firestore'
-import { Calendar, CheckCircle2, Clock, IndianRupee, MessageCircle, Phone, Search, Trash2, UserRound, X } from 'lucide-react'
+import { collection, doc, getDocs, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { Calendar, CheckCircle2, Clock, IndianRupee, MessageCircle, Phone, Search, UserRound, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
-import ConfirmModal from '../components/ConfirmModal'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import { db } from '../firebase'
@@ -90,7 +89,6 @@ export default function AdminBookings() {
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Pet Grooming')
   const [teamMembers, setTeamMembers] = useState([])
-  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const fetchBookings = async () => {
     setLoading(true)
@@ -204,13 +202,15 @@ export default function AdminBookings() {
     setUpdating(b.id)
     try {
       const assignmentPatch = status === 'confirmed' && !b.assignedTeamMemberId ? buildAssigneePatch(ownerAssignee) : {}
-      await updateDoc(doc(db, 'bookings', b.id), { status, ...assignmentPatch })
-      patchBooking(b.id, { status, ...assignmentPatch })
+      const cancellationPatch = status === 'cancelled' ? { cancelledBy: 'admin', cancelledAt: serverTimestamp(), updatedAt: serverTimestamp() } : {}
+      const localCancellationPatch = status === 'cancelled' ? { cancelledBy: 'admin', cancelledAt: new Date(), updatedAt: new Date() } : {}
+      await updateDoc(doc(db, 'bookings', b.id), { status, ...assignmentPatch, ...cancellationPatch })
+      patchBooking(b.id, { status, ...assignmentPatch, ...localCancellationPatch })
       await syncPublicStats(db)
       if (b.userId && b.userId !== 'walkin') {
         const msgs = {
           confirmed: 'Your booking has been approved.',
-          cancelled: 'Your booking was cancelled.',
+          cancelled: 'Your booking was cancelled by Paw Paw.',
         }
         if (msgs[status]) {
           await sendNotification(b.userId, {
@@ -262,20 +262,6 @@ export default function AdminBookings() {
     }
     setUpdating(null)
   }
-
-  const deleteBooking = async (b) => {
-    if (!b?.id) return
-    setUpdating(b.id)
-    try {
-      await deleteDoc(doc(db, 'bookings', b.id))
-      setBookings(prev => prev.filter(x => x.id !== b.id))
-      setSelectedBooking(prev => prev?.id === b.id ? null : prev)
-      setDeleteTarget(null)
-      await syncPublicStats(db)
-    } catch {}
-    setUpdating(null)
-  }
-
   const stop = (event) => event.stopPropagation()
   const S = {
     meta: { display: 'inline-flex', alignItems: 'center', gap: '5px', minWidth: 0 },
@@ -356,12 +342,7 @@ export default function AdminBookings() {
                     <button type="button" onClick={() => updateStatus(b, 'cancelled')} disabled={updating === b.id} style={S.iconBtn('#ef4444', 'rgba(239,68,68,0.1)')}>
                       <X size={14} /> Cancel
                     </button>
-                  )}
-                  {['completed', 'cancelled'].includes(b.status) && (
-                    <button type="button" onClick={() => setDeleteTarget(b)} disabled={updating === b.id} style={S.iconBtn('#ef4444', 'rgba(239,68,68,0.1)')}>
-                      <Trash2 size={14} /> Delete
-                    </button>
-                  )}
+                  )}
                   <a href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(b, shopName)}` : '#'} target="_blank" rel="noopener noreferrer" style={S.iconBtn('#25D366', 'rgba(37,211,102,0.1)')}>
                     <MessageCircle size={14} /> WA
                   </a>
@@ -391,19 +372,8 @@ export default function AdminBookings() {
           onAssign={assignBooking}
           onClose={() => { setSelectedBooking(null); if (bookingId) navigate('/admin/bookings') }}
           onStatus={updateStatus}
-          onDelete={setDeleteTarget}
         />
       )}
-
-      <ConfirmModal
-        open={!!deleteTarget}
-        title="Delete booking?"
-        message={deleteTarget ? `Delete booking ${shortId(deleteTarget.id)}? This will remove it from booking counts and collected earnings.` : ''}
-        confirmText="Delete"
-        loading={!!deleteTarget && updating === deleteTarget.id}
-        onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget && deleteBooking(deleteTarget)}
-      />
 
       {cashModal && (
         <div className="modal-overlay" onClick={() => setCashModal(null)}>
@@ -429,7 +399,13 @@ export default function AdminBookings() {
   )
 }
 
-function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, assignee, assigneeOptions, onAssign, onClose, onStatus, onDelete }) {
+function cancellationActor(booking) {
+  if (booking.cancelledBy === 'admin') return 'Paw Paw'
+  if (booking.cancelledBy === 'user') return booking.ownerName || 'Customer'
+  return '-'
+}
+
+function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, assignee, assigneeOptions, onAssign, onClose, onStatus }) {
   const detailRows = [
     ['Booking ID', shortId(booking.id)],
     ['Owner', booking.ownerName || '-'],
@@ -448,6 +424,10 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
     ['Source', booking.isWalkIn ? 'Walk-in' : 'Online'],
     ['Assigned To', getAssigneeLabel(assignee)],
     ['Amount Collected', booking.amountCollected > 0 ? `Rs ${money(booking.amountCollected)}` : '-'],
+    ...(booking.status === 'cancelled' ? [
+      ['Cancelled By', cancellationActor(booking)],
+      ['Cancelled At', formatDateTime(booking.cancelledAt)],
+    ] : []),
     ['Notes', booking.notes || '-'],
   ]
 
@@ -495,12 +475,7 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
             <button type="button" onClick={() => onStatus(booking, 'cancelled')} disabled={updating === booking.id} className="btn btn-danger">
               <X size={15} /> Cancel
             </button>
-          )}
-          {['completed', 'cancelled'].includes(booking.status) && (
-            <button type="button" onClick={() => onDelete(booking)} disabled={updating === booking.id} className="btn btn-danger">
-              <Trash2 size={15} /> Delete
-            </button>
-          )}
+          )}
           <a className="btn btn-secondary" href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(booking, shopName)}` : '#'} target="_blank" rel="noopener noreferrer">
             <MessageCircle size={15} /> Booking WA
           </a>
@@ -509,6 +484,9 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
     </div>
   )
 }
+
+
+
 
 
 

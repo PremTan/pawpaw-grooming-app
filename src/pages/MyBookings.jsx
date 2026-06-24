@@ -6,7 +6,8 @@ import { Calendar, ChevronRight, Clock, Home, Plus, Store, UserRound, X } from '
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
-import { fetchBookingSettings, getBookingTypeLabel } from '../utils/bookingSettings'
+import ConfirmModal from '../components/ConfirmModal'
+import { getBookingTypeLabel } from '../utils/bookingSettings'
 import { SERVICES } from '../utils/services'
 
 const STATUS_BADGE = {
@@ -71,12 +72,8 @@ function formatAppointmentStart(booking) {
   return formatDateTime(parseAppointmentStart(booking))
 }
 
-function canCancelBooking(booking, cutoffMinutes) {
-  if (booking.status === 'pending') return true
-  if (booking.status !== 'confirmed') return false
-  const start = parseAppointmentStart(booking)
-  if (!start) return false
-  return start.getTime() - Date.now() >= Math.max(0, Number(cutoffMinutes ?? 60)) * 60000
+function canCancelBooking(booking) {
+  return booking.status === 'pending'
 }
 function serviceIdsFor(booking) {
   if (Array.isArray(booking.serviceIds) && booking.serviceIds.length) return booking.serviceIds
@@ -108,12 +105,8 @@ export default function MyBookings() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [selectedBooking, setSelectedBooking] = useState(null)
-  const [bookingSettings, setBookingSettings] = useState(null)
   const [cancellingId, setCancellingId] = useState('')
-
-  useEffect(() => {
-    fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
-  }, [])
+  const [cancelTarget, setCancelTarget] = useState(null)
 
   useEffect(() => {
     async function fetch() {
@@ -141,18 +134,19 @@ export default function MyBookings() {
   )
 
   const cancelBooking = async (booking) => {
-    if (!canCancelBooking(booking, bookingSettings?.cancellationCutoffMinutes)) return
-    if (!window.confirm('Cancel this booking?')) return
+    if (!canCancelBooking(booking)) return
     setCancellingId(booking.id)
     try {
       await setDoc(doc(db, 'bookings', booking.id), {
         status: 'cancelled',
         cancelledBy: 'user',
         cancelledAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       }, { merge: true })
-      const patch = { status: 'cancelled', cancelledBy: 'user', cancelledAt: new Date() }
+      const patch = { status: 'cancelled', cancelledBy: 'user', cancelledAt: new Date(), updatedAt: new Date() }
       setBookings(prev => prev.map(item => item.id === booking.id ? { ...item, ...patch } : item))
       setSelectedBooking(prev => prev?.id === booking.id ? { ...prev, ...patch } : prev)
+      setCancelTarget(null)
     } catch (err) {
       console.error("FIREBASE ERROR:", err);
       alert('Could not cancel booking. Please try again.')
@@ -235,6 +229,8 @@ export default function MyBookings() {
               <Detail label="Time" value={formatSlot(selectedBooking.slot)} icon={<Clock size={15} />} />
               <Detail label="Request Sent" value={formatDateTime(selectedBooking.createdAt)} />
               <Detail label="Appointment Date & Time" value={formatAppointmentStart(selectedBooking)} />
+              {selectedBooking.status === 'cancelled' && <Detail label="Cancelled By" value={selectedBooking.cancelledBy === 'admin' ? 'Paw Paw' : 'You'} />}
+              {selectedBooking.status === 'cancelled' && <Detail label="Cancelled At" value={formatDateTime(selectedBooking.cancelledAt)} />}
               <Detail label="Visit" value={getBookingTypeLabel(selectedBooking.bookingType || 'store')} icon={(selectedBooking.bookingType || 'store') === 'home' ? <Home size={15} /> : <Store size={15} />} />
               {assignedWorker(selectedBooking) && <Detail label="Assigned To" value={`${assignedWorker(selectedBooking)}${selectedBooking.assignedTeamMemberIsOwner ? ' (Owner)' : ''}`} icon={<UserRound size={15} />} />}
               {selectedBooking.packageNames?.length > 0 && <Detail label="Packages" value={selectedBooking.packageNames.join(', ')} />}
@@ -250,12 +246,12 @@ export default function MyBookings() {
                 <p>{selectedBooking.address}</p>
               </div>
             )}
-            {canCancelBooking(selectedBooking, bookingSettings?.cancellationCutoffMinutes) && (
+            {canCancelBooking(selectedBooking) && (
               <button
                 type="button"
                 className="btn btn-danger my-booking-cancel-btn"
                 disabled={cancellingId === selectedBooking.id}
-                onClick={() => cancelBooking(selectedBooking)}
+                onClick={() => setCancelTarget(selectedBooking)}
               >
                 <X size={15} /> {cancellingId === selectedBooking.id ? 'Cancelling...' : 'Cancel Booking'}
               </button>
@@ -271,6 +267,17 @@ export default function MyBookings() {
         </div>
       )}
 
+
+      <ConfirmModal
+        open={!!cancelTarget}
+        title="Cancel booking?"
+        message={cancelTarget ? `Are you sure you want to cancel ${appointmentTitle(cancelTarget)} for ${cancelTarget.date || 'this date'} at ${formatSlot(cancelTarget.slot)}?` : ''}
+        confirmText="Yes, cancel"
+        cancelText="Keep booking"
+        loading={!!cancelTarget && cancellingId === cancelTarget.id}
+        onCancel={() => setCancelTarget(null)}
+        onConfirm={() => cancelTarget && cancelBooking(cancelTarget)}
+      />
       <style>{`
         .my-bookings-page {
           background: var(--bg);
@@ -621,6 +628,9 @@ function Detail({ label, value, icon }) {
     </div>
   )
 }
+
+
+
 
 
 
