@@ -6,6 +6,7 @@ export const EMPTY_CONTACT_INFO = {
   address: '',
   shopName: '',
   logoUrl: '',
+  googleReviewUrl: '',
 }
 
 export const EMPTY_FOOTER_INFO = {
@@ -54,3 +55,5 @@ export function buildGeneralWhatsAppMessage(shopName) {
   const name = shopName || 'Pet Grooming'
   return encodeURIComponent(`Hi ${name}, I am interested in booking a service for my pet. Could you help me with more details?`)
 }
+
+

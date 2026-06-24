@@ -11,6 +11,7 @@ const DEFAULT_CONTACT = {
   address: '',
   shopName: '',
   logoUrl: '',
+  googleReviewUrl: '',
 }
 
 export default function AdminContactInfo() {
@@ -71,6 +72,7 @@ export default function AdminContactInfo() {
         hours: deleteField(),
         shopName: contact.shopName.trim(),
         logoUrl: contact.logoUrl?.trim() || '',
+        googleReviewUrl: contact.googleReviewUrl?.trim() || '',
         updatedAt: serverTimestamp(),
       }, { merge: true })
       setMessage('Contact information updated successfully!')
@@ -198,6 +200,25 @@ export default function AdminContactInfo() {
           </p>
         </div>
 
+        {/* Google Review Link */}
+        <div>
+          <label style={labelStyle}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              Google Review Link
+            </span>
+          </label>
+          <input
+            type="url"
+            value={contact.googleReviewUrl || ''}
+            onChange={e => updateField('googleReviewUrl', e.target.value)}
+            placeholder="Paste your Google review link"
+            style={inputStyle}
+          />
+          <p style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
+            Used by the Rate us on Google button in the reviews section.
+          </p>
+        </div>
+
         {/* Address */}
         <div>
           <label style={labelStyle}>
@@ -263,6 +284,8 @@ export default function AdminContactInfo() {
     </div>
   )
 }
+
+
 
 
 

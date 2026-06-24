@@ -66,6 +66,13 @@ function AdminRoute({ children }) {
   return children
 }
 
+function AdminHomeRedirect({ children }) {
+  const { isAdmin, loading } = useAuth()
+  if (loading) return <Spinner text="Loading..." />
+  if (isAdmin) return <Navigate to="/admin" replace />
+  return children
+}
+
 export default function App() {
   return (
     <>
@@ -97,7 +104,7 @@ export default function App() {
           <Navbar />
           <main style={{ flex: 1 }}>
             <Routes>
-              <Route path="/"           element={<Home />} />
+              <Route path="/"           element={<AdminHomeRedirect><Home /></AdminHomeRedirect>} />
               <Route path="/services"   element={<Services />} />
               <Route path="/services/:serviceId" element={<ServiceDetail />} />
               <Route path="/reviews"    element={<Reviews />} />
@@ -117,6 +124,7 @@ export default function App() {
     </>
   )
 }
+
 
 
 

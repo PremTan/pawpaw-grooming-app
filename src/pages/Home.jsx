@@ -7,7 +7,7 @@ import { SERVICES } from '../utils/services'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
 import { countOpenDays } from '../utils/bookingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
-import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart } from 'lucide-react'
+import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink } from 'lucide-react'
 
 const SLIDES = [
   {
@@ -276,6 +276,7 @@ export default function Home() {
   const [contactAddress, setContactAddress] = useState('')
   const [contactHours, setContactHours] = useState('')
   const [shopName, setShopName] = useState('Pet Grooming')
+  const [googleReviewUrl, setGoogleReviewUrl] = useState('')
 
   useEffect(() => {
     async function fetchStats() {
@@ -358,6 +359,7 @@ export default function Home() {
           setContactAddress(info.contact.address || '')
           setContactHours(info.hoursText || '')
           setShopName(info.contact.shopName || 'Pet Grooming')
+          setGoogleReviewUrl(info.contact.googleReviewUrl || '')
         }
       } catch {}
     }
@@ -590,7 +592,7 @@ export default function Home() {
 
       {/* Reviews section */}
       {reviews.length > 0 && (
-        <div style={{ padding: '70px 0' }}>
+        <div style={{ padding: '44px 0 52px' }}>
           <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
             <div style={{ textAlign: 'center', marginBottom: '44px' }}>
               <p className="section-label" style={{ marginBottom: '10px' }}>What Customers Say</p>
@@ -624,7 +626,14 @@ export default function Home() {
               ))}
             </div>
             <div style={{ textAlign: 'center', marginTop: '32px' }}>
-              <Link to="/reviews" className="btn btn-secondary">See All Reviews <ArrowRight size={15} /></Link>
+              <div style={{ display: 'inline-flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <Link to="/reviews" className="btn btn-secondary">See All Reviews <ArrowRight size={15} /></Link>
+                {googleReviewUrl && (
+                  <a href={googleReviewUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
+                    Rate Us on Google <ExternalLink size={15} />
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -706,6 +715,10 @@ export default function Home() {
     </div>
   )
 }
+
+
+
+
 
 
 

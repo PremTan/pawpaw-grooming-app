@@ -81,6 +81,7 @@ export default function Navbar() {
 
   const userLinks = [
     { path: '/book', label: 'Book', icon: <Calendar size={14} /> },
+    { path: '/my-bookings', label: 'My Bookings', icon: <Calendar size={14} /> },
     { path: '/my-pets', label: 'My Pets', icon: <PawPrint size={14} /> },
     { path: '/profile', label: 'Profile', icon: <User size={14} /> },
   ]
@@ -253,9 +254,7 @@ export default function Navbar() {
                     {link.icon} {link.label}
                   </Link>
                 ))}
-                <Link to="/my-bookings" onClick={() => setMenuOpen(false)} style={mobileLinkStyle(isActive('/my-bookings'))}>
-                  <Calendar size={14} /> My Bookings
-                </Link>
+
                 {isAdmin && (
                   <Link to="/admin" onClick={() => setMenuOpen(false)} style={mobileLinkStyle(location.pathname.startsWith('/admin'))}>
                     <LayoutDashboard size={14} /> Dashboard
@@ -356,5 +355,8 @@ export default function Navbar() {
     </>
   )
 }
+
+
+
 
 

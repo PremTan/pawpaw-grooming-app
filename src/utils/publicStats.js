@@ -5,12 +5,22 @@ export function calculatePublicStats(bookings, reviews, bookingSettings) {
   const avgRating = reviews.length
     ? (reviews.reduce((sum, review) => sum + (review.rating || 5), 0) / reviews.length).toFixed(1)
     : 5.0
+  const perServiceBookings = {}
+  bookings.forEach(booking => {
+    const ids = Array.isArray(booking.serviceIds) && booking.serviceIds.length
+      ? booking.serviceIds
+      : booking.serviceId ? [booking.serviceId] : []
+    ids.forEach(id => {
+      perServiceBookings[id] = (perServiceBookings[id] || 0) + 1
+    })
+  })
 
   return {
     totalBookings: bookings.length,
     totalReviews: reviews.length,
     avgRating,
     daysOpen: countOpenDays(bookingSettings),
+    perServiceBookings,
   }
 }
 
@@ -39,3 +49,4 @@ export async function syncPublicStats(db) {
 
   return stats
 }
+

@@ -1,7 +1,7 @@
 // src/pages/Book.jsx
 import { useState, useEffect, useRef } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore'
+import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc, setDoc, Timestamp } from 'firebase/firestore'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { SERVICES, PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
@@ -10,6 +10,17 @@ import { format, addDays, startOfToday } from 'date-fns'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel } from '../utils/bookingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 
+const parseSlotStart = (dateString, slotLabel) => {
+  const match = String(slotLabel || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (!dateString || !match) return null
+  let hour = Number(match[1])
+  const minute = Number(match[2])
+  const suffix = match[3].toUpperCase()
+  if (suffix === 'PM' && hour !== 12) hour += 12
+  if (suffix === 'AM' && hour === 12) hour = 0
+  const date = new Date(`${dateString}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`)
+  return Number.isNaN(date.getTime()) ? null : date
+}
 const getPackageBasePrice = (pkg) => {
   if (typeof pkg.price === 'number') return pkg.price
 
@@ -658,6 +669,10 @@ export default function Book() {
     </div>
   )
 }
+
+
+
+
 
 
 

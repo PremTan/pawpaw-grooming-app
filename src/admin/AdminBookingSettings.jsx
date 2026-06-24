@@ -114,6 +114,10 @@ export default function AdminBookingSettings() {
     updateRoot({ slotCapacity: Math.max(1, Math.min(20, Number(settings.slotCapacity || 1) + amount)) })
   }
 
+  const stepCancellationCutoff = (amount) => {
+    updateRoot({ cancellationCutoffMinutes: Math.max(0, Math.min(1440, Number(settings.cancellationCutoffMinutes || 0) + amount)) })
+  }
+
   if (loading) return <div style={{ padding: '28px' }}><Spinner text="Loading booking settings..." /></div>
 
   return (
@@ -233,6 +237,24 @@ export default function AdminBookingSettings() {
           </section>
 
           <section className="booking-panel">
+            <h2>Cancellation</h2>
+            <p>Confirmed bookings can be cancelled by users until this many minutes before start time. Pending bookings can always be cancelled.</p>
+            <div className="stepper-row">
+              <button type="button" onClick={() => stepCancellationCutoff(-15)}><Minus size={16} /></button>
+              <strong>{settings.cancellationCutoffMinutes} min</strong>
+              <button type="button" onClick={() => stepCancellationCutoff(15)}><Plus size={16} /></button>
+            </div>
+            <input
+              type="number"
+              min="0"
+              max="1440"
+              value={settings.cancellationCutoffMinutes}
+              onChange={e => updateRoot({ cancellationCutoffMinutes: Math.max(0, Number(e.target.value || 0)) })}
+              style={{ marginTop: '12px', width: '100%', border: '1px solid var(--border)', borderRadius: '10px', background: 'var(--card)', color: 'var(--text)', padding: '10px 11px', font: 'inherit' }}
+            />
+          </section>
+
+          <section className="booking-panel">
             <h2>Payments</h2>
             {[['prepaid', 'Prepaid only', 'Clients must pay in advance while booking.'], ['cash', 'Pay in Cash', 'Clients pay during or after service.'], ['both', 'Prepaid and Pay in Cash', 'Clients can choose either option.']].map(([value, title, help]) => (
               <label key={value} className={`radio-card${settings.paymentMode === value ? ' active' : ''}`}>
@@ -336,3 +358,4 @@ export default function AdminBookingSettings() {
     </div>
   )
 }
+

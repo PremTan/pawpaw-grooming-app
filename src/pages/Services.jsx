@@ -1,7 +1,7 @@
 // src/pages/Services.jsx
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, getDocs } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { SERVICES } from '../utils/services'
 import { Calendar, Clock, TrendingUp, Package } from 'lucide-react'
@@ -18,14 +18,13 @@ export default function Services() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [bSnap, pSnap, dSnap, businessInfo] = await Promise.all([
-          getDocs(collection(db, 'bookings')),
+        const [statsSnap, pSnap, dSnap, businessInfo] = await Promise.all([
+          getDoc(doc(db, 'settings', 'homeStats')),
           getDocs(collection(db, 'packages')),
           getDocs(collection(db, 'serviceDetails')),
           fetchBusinessInfo(db),
         ])
-        const c = {}
-        bSnap.docs.forEach(d => { const s = d.data().serviceId; if (s) c[s] = (c[s] || 0) + 1 })
+        const c = statsSnap.exists() && statsSnap.data().perServiceBookings ? statsSnap.data().perServiceBookings : {}
         const details = {}
         dSnap.docs.forEach(d => { details[d.id] = { id: d.id, ...d.data() } })
         setCounts(c)
@@ -67,9 +66,14 @@ export default function Services() {
                   duration: detail?.duration || baseService.duration,
                   price: detail?.price || baseService.price,
                 }
+                const bookingCount = Number(counts[service.id] || 0)
+                const maxBookings = Math.max(...Object.values(counts).map(Number), 1)
+                const popularityLabel = bookingCount >= maxBookings && bookingCount > 0
+                  ? 'Trending'
+                  : bookingCount > 0 ? 'Fav of pet parents' : 'New pick'
 
                 return (
-                <Link key={service.id} to={`/services/${service.id}`} className="card card-hover fade-up" style={{ padding: '28px', animationDelay: `${i * 0.07}s`, textDecoration: 'none', display: 'block' }}>
+                <div key={service.id} className="card card-hover fade-up" style={{ padding: '28px', animationDelay: `${i * 0.07}s`, textDecoration: 'none', display: 'flex', flexDirection: 'column' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                       <div style={{ width: '56px', height: '56px', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px', background: `${service.color}18`, border: `1px solid ${service.color}30`, flexShrink: 0 }}>
@@ -81,9 +85,9 @@ export default function Services() {
                           <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}>
                             <Clock size={11} /> {service.duration}
                           </span>
-                          {counts[service.id] > 0 && (
+                          {bookingCount > 0 && (
                             <span style={{ color: '#34d399', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                              <TrendingUp size={11} /> {counts[service.id]} bookings
+                              <TrendingUp size={11} /> {bookingCount} bookings
                             </span>
                           )}
                         </div>
@@ -92,13 +96,17 @@ export default function Services() {
                     <span style={{ color: 'var(--accent)', fontFamily: '"DM Mono",monospace', fontWeight: 700, fontSize: '13px', whiteSpace: 'nowrap' }}>{service.price}</span>
                   </div>
 
-                  <p style={{ color: 'var(--muted)', fontSize: '13px', lineHeight: 1.7, marginBottom: '18px' }}>{service.description}</p>
+                  <p style={{ color: 'var(--muted)', fontSize: '13px', lineHeight: 1.7, marginBottom: '14px' }}>{service.description}</p>
+
+                  <span style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--accent)', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '999px', padding: '5px 9px', fontSize: '11px', fontWeight: 800, marginBottom: '16px' }}>
+                    <TrendingUp size={11} /> {popularityLabel}
+                  </span>
 
                   {/* Popularity bar */}
                   <div style={{ marginBottom: '18px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--muted)', marginBottom: '6px' }}>
                       <span>Popularity</span>
-                      <span>{counts[service.id] || 0} bookings</span>
+                      <span>{bookingCount} bookings</span>
                     </div>
                     <div style={{ height: '4px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden' }}>
                       <div style={{
@@ -109,10 +117,15 @@ export default function Services() {
                     </div>
                   </div>
 
-                  <span className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: '13px', padding: '10px' }}>
-                    View Details
-                  </span>
-                </Link>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: 'auto' }}>
+                    <Link to={`/services/${service.id}`} className="btn btn-secondary" style={{ justifyContent: 'center', fontSize: '13px', padding: '10px', textDecoration: 'none' }}>
+                      View Details
+                    </Link>
+                    <Link to={`/book?service=${service.id}`} className="btn btn-primary" style={{ justifyContent: 'center', fontSize: '13px', padding: '10px', textDecoration: 'none' }}>
+                      Book This Service
+                    </Link>
+                  </div>
+                </div>
               )})}
             </div>
 
@@ -177,3 +190,7 @@ export default function Services() {
     </div>
   )
 }
+
+
+
+

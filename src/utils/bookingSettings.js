@@ -207,3 +207,4 @@ export function getWorkingStatus(settings, now = new Date()) {
 function dateKeyLocal(date) {
   return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
 }
+
