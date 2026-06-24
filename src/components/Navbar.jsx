@@ -90,9 +90,9 @@ export default function Navbar() {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    padding: '7px 13px',
+    padding: '7px 10px',
     borderRadius: '9px',
-    fontSize: '13px',
+    fontSize: '12px',
     fontWeight: active ? 600 : 400,
     color: active ? 'var(--accent)' : 'var(--muted)',
     background: active ? 'var(--accent-bg)' : 'transparent',
@@ -119,13 +119,13 @@ export default function Navbar() {
   return (
     <>
       <nav className="navbar" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50 }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
+        <div style={{ width: '100%', maxWidth: '100%', margin: '0 auto', padding: '0 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', height: '64px', gap: '8px' }}>
             <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', marginRight: '8px', flexShrink: 0 }}>
               <BrandLogo size="nav" />
             </Link>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }} className="desktop-nav">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flex: 1, minWidth: 0, overflow: 'hidden' }} className="desktop-nav">
               {navLinks.map((link) => (
                 <Link key={link.path} to={link.path} className="nav-link-animated" style={linkStyle(isActive(link.path))}>
                   {link.icon} {link.label}
@@ -143,7 +143,7 @@ export default function Navbar() {
               ))}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }} className="desktop-nav">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }} className="desktop-nav">
               <ThemeSwitcher />
               {user && <NotificationBell />}
 
@@ -160,7 +160,7 @@ export default function Navbar() {
                         {(user.displayName || user.email || 'U')[0].toUpperCase()}
                       </div>
                     )}
-                    <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text)', maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text)', maxWidth: '86px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {user.displayName || user.email?.split('@')[0]}
                     </span>
                     <ChevronDown size={13} style={{ color: 'var(--muted)' }} />
@@ -173,7 +173,7 @@ export default function Navbar() {
                         {hasGoogleOnly && (
                           <button
                             onClick={() => { setShowPwModal(true); setDropOpen(false) }}
-                            style={{ width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: '9px', fontSize: '13px', color: 'var(--accent)', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.15s' }}
+                            style={{ width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: '9px', fontSize: '12px', color: 'var(--accent)', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.15s' }}
                             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-bg)' }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                           >
@@ -182,7 +182,7 @@ export default function Navbar() {
                         )}
                         <button
                           onClick={handleLogout}
-                          style={{ width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: '9px', fontSize: '13px', color: '#ef4444', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.15s' }}
+                          style={{ width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: '9px', fontSize: '12px', color: '#ef4444', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.15s' }}
                           onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)' }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                         >
@@ -239,12 +239,12 @@ export default function Navbar() {
                   {user.photoURL ? (
                     <img src={user.photoURL} alt="" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
                   ) : (
-                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, color: '#000' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, color: '#000' }}>
                       {(user.displayName || user.email || 'U')[0].toUpperCase()}
                     </div>
                   )}
                   <div>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>{user.displayName || user.email?.split('@')[0]}</div>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>{user.displayName || user.email?.split('@')[0]}</div>
                     <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{user.email}</div>
                   </div>
                 </div>
@@ -355,6 +355,7 @@ export default function Navbar() {
     </>
   )
 }
+
 
 
 

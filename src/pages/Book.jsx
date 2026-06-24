@@ -21,17 +21,25 @@ const parseSlotStart = (dateString, slotLabel) => {
   const date = new Date(`${dateString}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`)
   return Number.isNaN(date.getTime()) ? null : date
 }
-const getPackageBasePrice = (pkg) => {
-  if (typeof pkg.price === 'number') return pkg.price
 
-  const priceText = String(pkg.price || pkg.priceRange || '')
-  const values = priceText
-    .match(/\d[\d,]*(?:\.\d+)?/g)
-    ?.map(value => Number(value.replace(/,/g, '')))
-    .filter(value => Number.isFinite(value) && value > 0) || []
+const dateKeyLocal = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
-  return values.length ? Math.min(...values) : 0
+const isFutureSlotForDate = (dateString, slotLabel) => {
+  const start = parseSlotStart(dateString, slotLabel)
+  if (!start) return false
+  return start.getTime() > Date.now()
 }
+
+const getPriceRange = (value) => {
+  const values = String(value || '')
+    .match(/\d[\d,]*(?:\.\d+)?/g)
+    ?.map(item => Number(item.replace(/,/g, '')))
+    .filter(item => Number.isFinite(item) && item > 0) || []
+  if (!values.length) return { min: 0, max: 0 }
+  return { min: Math.min(...values), max: Math.max(...values) }
+}
+
+const getPackagePriceRange = (pkg) => getPriceRange(pkg.priceRange || pkg.price)
 
 export default function Book() {
   const { user, isBlocked } = useAuth()
@@ -156,6 +164,8 @@ export default function Book() {
 
   const availability = getAvailabilityForDate(bookingSettings || undefined, form.date)
   const availableSlots = form.bookingType === 'home' ? availability.homeSlots : availability.storeSlots
+  const isToday = form.date === dateKeyLocal()
+  const bookableSlots = isToday ? availableSlots.filter(slot => isFutureSlotForDate(form.date, slot)) : availableSlots
   const visitOptions = [
     { type: 'store', label: 'In Store', icon: <Store size={15} />, slots: availability.storeSlots },
     { type: 'home', label: 'Home Visit', icon: <Home size={15} />, slots: availability.homeSlots },
@@ -207,11 +217,20 @@ export default function Book() {
     })
   }
 
-  const serviceTotal = () => {
-    let base = selectedServiceList.reduce((sum, service) => sum + (service.basePrice || 0), 0)
-    selectedPkgs.forEach(p => { base += getPackageBasePrice(p) })
-    return base
-  }
+  const servicePriceRange = () => selectedServiceList.reduce((total, service) => {
+    const range = getPriceRange(service.price)
+    const fallback = Number(service.basePrice || 0)
+    const min = range.min || fallback
+    const max = range.max || min
+    return { min: total.min + min, max: total.max + max }
+  }, { min: 0, max: 0 })
+
+  const packagePriceRange = () => selectedPkgs.reduce((total, pkg) => {
+    const range = getPackagePriceRange(pkg)
+    return { min: total.min + range.min, max: total.max + (range.max || range.min) }
+  }, { min: 0, max: 0 })
+
+  const serviceTotal = () => servicePriceRange().min + packagePriceRange().min
 
   const visitCharge = () => {
     if (!bookingSettings?.fixedVisitCharges) return 0
@@ -221,9 +240,13 @@ export default function Book() {
 
   const totalAmount = () => serviceTotal() + visitCharge()
 
+  const totalAmountMax = () => servicePriceRange().max + packagePriceRange().max + visitCharge()
+
   const totalPrice = () => {
-    const total = totalAmount()
-    return total > 0 ? `Rs ${total}+` : selectedService?.price || ''
+    const min = totalAmount()
+    const max = totalAmountMax()
+    if (min > 0 && max > min) return `Rs ${min} - Rs ${max}+`
+    return min > 0 ? `Rs ${min}+` : selectedService?.price || ''
   }
 
   const handleSubmit = async () => {
@@ -231,10 +254,11 @@ export default function Book() {
       alert('Your account is blocked from booking. Please contact the admin.')
       return
     }
-    if ((selectedServices.length === 0 && selectedPackages.length === 0) || !form.petName || !form.ownerName || !form.phone || !form.date || !form.slot || !availableSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim())) return
+    if ((selectedServices.length === 0 && selectedPackages.length === 0) || !form.petName || !form.ownerName || !form.phone || !form.date || !form.slot || !bookableSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim())) return
     setLoading(true)
     try {
       const breed = form.customBreed || form.petBreed
+      const bookingStart = parseSlotStart(form.date, form.slot)
       const bookingData = {
         ...form, serviceId: selectedServices[0] || '', petBreed: breed,
         petId: selectedPetId,
@@ -251,31 +275,20 @@ export default function Book() {
         serviceTotal: serviceTotal(),
         visitCharge: visitCharge(),
         estimatedTotal: totalAmount(),
+        estimatedTotalMax: totalAmountMax(),
         isWalkIn: false,
         status: BOOKING_STATUS.PENDING,
+        bookingStartAt: bookingStart ? Timestamp.fromDate(bookingStart) : null,
         createdAt: serverTimestamp(),
       }
       const ref = await addDoc(collection(db, 'bookings'), bookingData)
       setBookingRef({ id: ref.id, ...bookingData })
 
-      if (ADMIN_EMAIL) {
-        await setDoc(doc(db, 'notifications', 'booking_admin_' + ref.id), {
-          userId: '',
-          userEmail: ADMIN_EMAIL,
-          title: 'New booking from ' + form.ownerName,
-          message: bookingLabel + ' - ' + form.petName + ' - ' + form.date + ' ' + form.slot,
-          type: 'booking',
-          bookingId: ref.id,
-          actionUrl: '/admin/bookings/' + ref.id,
-          read: false,
-          createdAt: serverTimestamp(),
-        }, { merge: true })
-      }
 
 
 
       setDone(true)
-    } catch { alert('Booking failed. Please try again.') }
+    } catch (err) { alert(err?.message || 'Booking failed. Please try again.') }
     setLoading(false)
   }
 
@@ -620,7 +633,7 @@ export default function Book() {
               <div style={{ marginBottom: '20px' }}>
                 <label style={S.label}><Clock size={11} style={{ display: 'inline', marginRight: '4px' }} /> Time Slot *</label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '8px' }}>
-                  {availableSlots.map(slot => (
+                  {bookableSlots.map(slot => (
                     <button key={slot} disabled={bookedSlots.includes(slot)} onClick={() => update('slot', slot)}
                       className={`slot-btn${form.slot === slot ? ' selected' : ''}`}
                       style={{ opacity: bookedSlots.includes(slot) ? 0.3 : 1 }}
@@ -629,10 +642,10 @@ export default function Book() {
                     </button>
                   ))}
                 </div>
-                {availableSlots.length === 0 ? (
-                  <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '8px' }}>No slots are enabled for this visit type.</p>
+                {bookableSlots.length === 0 ? (
+                  <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '8px' }}>No future slots are available for this visit type today.</p>
                 ) : (
-                  <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>Faded slots are already booked. Slots are managed by admin.</p>
+                  <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>Faded slots are already booked. Past slots are hidden automatically.</p>
                 )}
               </div>
 
@@ -642,7 +655,7 @@ export default function Book() {
                   {[
                     { k: 'Service', v: serviceLabel },
                     { k: 'Package', v: !serviceLabel && selectedPkgs.length > 0 ? selectedPkgs.map(p => p.name).join(', ') : null },
-                    { k: 'Add-ons', v: selectedPkgs.length > 0 ? selectedPkgs.map(p => p.name).join(', ') : null },
+                    { k: 'Add-ons', v: serviceLabel && selectedPkgs.length > 0 ? selectedPkgs.map(p => p.name).join(', ') : null },
                     { k: 'Pet',     v: `${form.petName} (${form.petType})` },
                     { k: 'Visit Type', v: getBookingTypeLabel(form.bookingType) },
                     { k: 'Date',    v: form.date },
@@ -659,7 +672,7 @@ export default function Book() {
                 </div>
               )}
 
-              <button onClick={handleSubmit} disabled={isBlocked || !form.slot || !availableSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim()) || loading} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+              <button onClick={handleSubmit} disabled={isBlocked || !form.slot || !bookableSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim()) || loading} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
                 {loading ? 'Booking…' : 'Confirm Booking'}
               </button>
             </div>
@@ -669,6 +682,10 @@ export default function Book() {
     </div>
   )
 }
+
+
+
+
 
 
 

@@ -25,6 +25,7 @@ export const DEFAULT_BOOKING_SETTINGS = {
   fixedVisitCharges: false,
   homeVisitCharge: '',
   centerVisitCharge: '',
+  cancellationCutoffMinutes: 60,
   paymentMode: 'cash',
   weekly: DAYS.reduce((acc, day) => ({
     ...acc,
@@ -107,6 +108,7 @@ export function normalizeBookingSettings(data = {}) {
     fixedVisitCharges: data.fixedVisitCharges === true,
     homeVisitCharge: data.homeVisitCharge ?? '',
     centerVisitCharge: data.centerVisitCharge ?? '',
+    cancellationCutoffMinutes: Math.max(0, Number(data.cancellationCutoffMinutes ?? 60)),
     paymentMode: ['prepaid', 'cash', 'both'].includes(data.paymentMode) ? data.paymentMode : 'cash',
     weekly,
     holidays: Array.isArray(data.holidays) ? data.holidays.filter(Boolean) : [],
@@ -207,4 +209,5 @@ export function getWorkingStatus(settings, now = new Date()) {
 function dateKeyLocal(date) {
   return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
 }
+
 

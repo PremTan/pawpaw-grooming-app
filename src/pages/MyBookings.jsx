@@ -1,12 +1,12 @@
 // src/pages/MyBookings.jsx
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore'
+import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { Calendar, ChevronRight, Clock, Home, Plus, Store, UserRound, X } from 'lucide-react'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
-import { getBookingTypeLabel } from '../utils/bookingSettings'
+import { fetchBookingSettings, getBookingTypeLabel } from '../utils/bookingSettings'
 import { SERVICES } from '../utils/services'
 
 const STATUS_BADGE = {
@@ -23,6 +23,61 @@ const money = value => Number(value || 0).toLocaleString('en-IN')
 const shortId = id => id ? `#${id.slice(0, 8).toUpperCase()}` : '-'
 const assignedWorker = booking => booking.assignedTeamMemberName || (booking.status === 'confirmed' || booking.status === 'completed' ? 'Owner' : '')
 
+function parseAppointmentStart(booking) {
+  if (booking.bookingStartAt?.toDate) return booking.bookingStartAt.toDate()
+  if (!booking.date) return null
+  let match = String(booking.slot || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  let hour
+  let minute
+  if (match) {
+    hour = Number(match[1])
+    minute = Number(match[2])
+    const suffix = match[3].toUpperCase()
+    if (suffix === 'PM' && hour !== 12) hour += 12
+    if (suffix === 'AM' && hour === 12) hour = 0
+  } else {
+    match = String(booking.slot || '').trim().match(/^(\d{1,2}):(\d{2})$/)
+    if (!match) return null
+    hour = Number(match[1])
+    minute = Number(match[2])
+  }
+  const date = new Date(`${booking.date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatDateTime(value) {
+  const date = value?.toDate ? value.toDate() : value instanceof Date ? value : null
+  if (!date) return '-'
+  return date.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\b(am|pm)\b/i, value => value.toUpperCase())
+}
+
+function formatSlot(value) {
+  const text = String(value || '').trim()
+  let match = text.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (match) {
+    let hour = Number(match[1])
+    const minute = Number(match[2])
+    const suffix = match[3].toUpperCase()
+    if (suffix === 'PM' && hour !== 12) hour += 12
+    if (suffix === 'AM' && hour === 12) hour = 0
+    return formatDateTime(new Date(2000, 0, 1, hour, minute)).replace(/^\d+ \w+ \d+,\s*/, '')
+  }
+  match = text.match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) return text || '-'
+  return formatDateTime(new Date(2000, 0, 1, Number(match[1]), Number(match[2]))).replace(/^\d+ \w+ \d+,\s*/, '')
+}
+
+function formatAppointmentStart(booking) {
+  return formatDateTime(parseAppointmentStart(booking))
+}
+
+function canCancelBooking(booking, cutoffMinutes) {
+  if (booking.status === 'pending') return true
+  if (booking.status !== 'confirmed') return false
+  const start = parseAppointmentStart(booking)
+  if (!start) return false
+  return start.getTime() - Date.now() >= Math.max(0, Number(cutoffMinutes ?? 60)) * 60000
+}
 function serviceIdsFor(booking) {
   if (Array.isArray(booking.serviceIds) && booking.serviceIds.length) return booking.serviceIds
   return booking.serviceId ? [booking.serviceId] : []
@@ -53,6 +108,12 @@ export default function MyBookings() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [selectedBooking, setSelectedBooking] = useState(null)
+  const [bookingSettings, setBookingSettings] = useState(null)
+  const [cancellingId, setCancellingId] = useState('')
+
+  useEffect(() => {
+    fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
+  }, [])
 
   useEffect(() => {
     async function fetch() {
@@ -78,6 +139,26 @@ export default function MyBookings() {
     () => filter === 'all' ? bookings : bookings.filter(booking => booking.status === filter),
     [bookings, filter]
   )
+
+  const cancelBooking = async (booking) => {
+    if (!canCancelBooking(booking, bookingSettings?.cancellationCutoffMinutes)) return
+    if (!window.confirm('Cancel this booking?')) return
+    setCancellingId(booking.id)
+    try {
+      await setDoc(doc(db, 'bookings', booking.id), {
+        status: 'cancelled',
+        cancelledBy: 'user',
+        cancelledAt: serverTimestamp(),
+      }, { merge: true })
+      const patch = { status: 'cancelled', cancelledBy: 'user', cancelledAt: new Date() }
+      setBookings(prev => prev.map(item => item.id === booking.id ? { ...item, ...patch } : item))
+      setSelectedBooking(prev => prev?.id === booking.id ? { ...prev, ...patch } : prev)
+    } catch (err) {
+      console.error("FIREBASE ERROR:", err);
+      alert('Could not cancel booking. Please try again.')
+    }
+    setCancellingId('')
+  }
 
   return (
     <div className="my-bookings-page">
@@ -117,7 +198,7 @@ export default function MyBookings() {
               <button key={booking.id} type="button" className="my-booking-row" onClick={() => setSelectedBooking(booking)}>
                 <span className="my-booking-date">
                   <strong>{booking.date || '-'}</strong>
-                  <small>{booking.slot || '-'}</small>
+                  <small>{formatSlot(booking.slot)}</small>
                 </span>
                 <span className="my-booking-main">
                   <strong>{appointmentTitle(booking)}</strong>
@@ -151,7 +232,9 @@ export default function MyBookings() {
               <Detail label="Pet" value={selectedBooking.petName || '-'} />
               <Detail label="Breed" value={selectedBooking.petBreed || selectedBooking.petType || '-'} />
               <Detail label="Date" value={selectedBooking.date || '-'} icon={<Calendar size={15} />} />
-              <Detail label="Time" value={selectedBooking.slot || '-'} icon={<Clock size={15} />} />
+              <Detail label="Time" value={formatSlot(selectedBooking.slot)} icon={<Clock size={15} />} />
+              <Detail label="Request Sent" value={formatDateTime(selectedBooking.createdAt)} />
+              <Detail label="Appointment Date & Time" value={formatAppointmentStart(selectedBooking)} />
               <Detail label="Visit" value={getBookingTypeLabel(selectedBooking.bookingType || 'store')} icon={(selectedBooking.bookingType || 'store') === 'home' ? <Home size={15} /> : <Store size={15} />} />
               {assignedWorker(selectedBooking) && <Detail label="Assigned To" value={`${assignedWorker(selectedBooking)}${selectedBooking.assignedTeamMemberIsOwner ? ' (Owner)' : ''}`} icon={<UserRound size={15} />} />}
               {selectedBooking.packageNames?.length > 0 && <Detail label="Packages" value={selectedBooking.packageNames.join(', ')} />}
@@ -167,6 +250,17 @@ export default function MyBookings() {
                 <p>{selectedBooking.address}</p>
               </div>
             )}
+            {canCancelBooking(selectedBooking, bookingSettings?.cancellationCutoffMinutes) && (
+              <button
+                type="button"
+                className="btn btn-danger my-booking-cancel-btn"
+                disabled={cancellingId === selectedBooking.id}
+                onClick={() => cancelBooking(selectedBooking)}
+              >
+                <X size={15} /> {cancellingId === selectedBooking.id ? 'Cancelling...' : 'Cancel Booking'}
+              </button>
+            )}
+
             {selectedBooking.notes && (
               <div className="my-booking-detail-note">
                 <strong>Notes</strong>
@@ -289,10 +383,16 @@ export default function MyBookings() {
           font-weight: 800;
         }
 
-        .my-booking-date small {
+        .my-booking-date small,
+        .my-booking-date em {
           color: var(--muted);
           font-size: 12px;
           margin-top: 4px;
+          font-style: normal;
+        }
+
+        .my-booking-date em {
+          font-size: 11px;
         }
 
         .my-booking-main strong {
@@ -441,6 +541,12 @@ export default function MyBookings() {
           margin-top: 10px;
         }
 
+        .my-booking-cancel-btn {
+          width: 100%;
+          justify-content: center;
+          margin-top: 14px;
+        }
+
         @media (max-width: 640px) {
           .my-bookings-shell {
             padding: 32px 16px 70px;
@@ -515,3 +621,11 @@ function Detail({ label, value, icon }) {
     </div>
   )
 }
+
+
+
+
+
+
+
+

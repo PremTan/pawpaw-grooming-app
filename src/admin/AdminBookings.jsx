@@ -22,6 +22,52 @@ const statusLabel = (status = 'pending') => status.charAt(0).toUpperCase() + sta
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
 const shortId = (id = '') => `#${id.slice(0, 8).toUpperCase()}`
 
+const parseAppointmentStart = (booking) => {
+  if (booking.bookingStartAt?.toDate) return booking.bookingStartAt.toDate()
+  if (!booking.date) return null
+  let match = String(booking.slot || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  let hour
+  let minute
+  if (match) {
+    hour = Number(match[1])
+    minute = Number(match[2])
+    const suffix = match[3].toUpperCase()
+    if (suffix === 'PM' && hour !== 12) hour += 12
+    if (suffix === 'AM' && hour === 12) hour = 0
+  } else {
+    match = String(booking.slot || '').trim().match(/^(\d{1,2}):(\d{2})$/)
+    if (!match) return null
+    hour = Number(match[1])
+    minute = Number(match[2])
+  }
+  const date = new Date(`${booking.date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+const formatDateTime = (value) => {
+  const date = value?.toDate ? value.toDate() : value instanceof Date ? value : null
+  if (!date) return '-'
+  return date.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\b(am|pm)\b/i, value => value.toUpperCase())
+}
+
+const formatSlot = (value) => {
+  const text = String(value || '').trim()
+  let match = text.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (match) {
+    let hour = Number(match[1])
+    const minute = Number(match[2])
+    const suffix = match[3].toUpperCase()
+    if (suffix === 'PM' && hour !== 12) hour += 12
+    if (suffix === 'AM' && hour === 12) hour = 0
+    return formatDateTime(new Date(2000, 0, 1, hour, minute)).replace(/^\d+ \w+ \d+,\s*/, '')
+  }
+  match = text.match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) return text || '-'
+  return formatDateTime(new Date(2000, 0, 1, Number(match[1]), Number(match[2]))).replace(/^\d+ \w+ \d+,\s*/, '')
+}
+
+const formatAppointmentStart = (booking) => formatDateTime(parseAppointmentStart(booking))
+
 export default function AdminBookings() {
   const { user } = useAuth()
   const { sendNotification } = useNotifications()
@@ -281,7 +327,7 @@ export default function AdminBookings() {
                 <p>{b.serviceName || 'Service'}{b.packageNames?.length > 0 ? ` + ${b.packageNames.join(', ')}` : ''}</p>
                 <div className="admin-booking-min-meta">
                   <span style={S.meta}><Calendar size={13} /> {b.date || '-'}</span>
-                  <span style={S.meta}><Clock size={13} /> {b.slot || '-'}</span>
+                  <span style={S.meta}><Clock size={13} /> {formatSlot(b.slot)}</span>
                   <span style={S.meta}><Phone size={13} /> {b.phone || '-'}</span>
                   <span style={S.meta}><UserRound size={13} /> {getAssigneeLabel(assigneeFor(b))}</span>
                   {b.amountCollected > 0 && <span className="admin-booking-money">Rs {money(b.amountCollected)}</span>}
@@ -393,7 +439,9 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
     ['Packages', booking.packageNames?.length ? booking.packageNames.join(', ') : '-'],
     ['Visit Type', getBookingTypeLabel(booking.bookingType || 'store')],
     ['Date', booking.date || '-'],
-    ['Time', booking.slot || '-'],
+    ['Time', formatSlot(booking.slot)],
+    ['Request Sent', formatDateTime(booking.createdAt)],
+    ['Appointment Date & Time', formatAppointmentStart(booking)],
     ['Address', booking.bookingType === 'home' ? (booking.address || '-') : '-'],
     ['Visit Charge', booking.visitCharge > 0 ? `Rs ${money(booking.visitCharge)}` : '-'],
     ['Estimated Total', booking.estimatedTotal > 0 ? `Rs ${money(booking.estimatedTotal)}` : '-'],
@@ -461,6 +509,12 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
     </div>
   )
 }
+
+
+
+
+
+
 
 
 

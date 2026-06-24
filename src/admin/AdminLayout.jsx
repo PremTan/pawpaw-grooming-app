@@ -65,7 +65,7 @@ export default function AdminLayout() {
         </nav>
 
         <div className="admin-sidebar-bottom">
-          <Link to="/" onClick={closeMenu} className="admin-nav-link" style={{ marginBottom:'8px' }}>
+          <Link to="/?view=public" onClick={closeMenu} className="admin-nav-link" style={{ marginBottom:'8px' }}>
             <Home size={17}/> View Home
           </Link>
           <div style={{ display:'flex', alignItems:'center', gap:'8px', padding:'8px', marginBottom:'8px' }}>
@@ -99,7 +99,7 @@ export default function AdminLayout() {
             </div>
           </div>
           <div className="admin-topbar-actions">
-            <Link to="/" className="btn btn-secondary admin-home-btn" style={{ fontSize:'12px', padding:'8px 14px', textDecoration:'none' }}>
+            <Link to="/?view=public" className="btn btn-secondary admin-home-btn" style={{ fontSize:'12px', padding:'8px 14px', textDecoration:'none' }}>
               <Home size={14}/><span>Home</span>
             </Link>
             <ThemeSwitcher />
@@ -113,5 +113,6 @@ export default function AdminLayout() {
     </div>
   )
 }
+
 
 

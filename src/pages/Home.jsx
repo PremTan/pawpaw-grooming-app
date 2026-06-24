@@ -480,8 +480,17 @@ export default function Home() {
                 </div>
                 <h3 className="service-preview-title">{pkg.name}</h3>
                 <p className="service-preview-desc">
-                  {pkg.description || (Array.isArray(pkg.services) && pkg.services.length ? pkg.services.join(', ') : 'Custom grooming package')}
+                  {pkg.description || 'Custom grooming package'}
                 </p>
+                {pkg.services?.length > 0 && (
+                  <div style={{ display: 'grid', gap: '5px', margin: '-4px 0 16px' }}>
+                    {pkg.services.slice(0, 4).map((item, index) => (
+                      <span key={index} style={{ color: 'var(--text)', fontSize: '12px', lineHeight: 1.45 }}>
+                        <span style={{ color: 'var(--accent)', fontWeight: 900 }}>+</span> {item}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="service-preview-meta">
                   <span className="service-preview-price">{pkg.priceRange || (pkg.price ? `Rs. ${pkg.price}` : 'Price TBD')}</span>
                   <span className="service-preview-duration">
@@ -715,6 +724,8 @@ export default function Home() {
     </div>
   )
 }
+
+
 
 
 

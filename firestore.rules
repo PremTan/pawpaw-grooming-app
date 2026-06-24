@@ -18,11 +18,27 @@ service cloud.firestore {
     match /bookings/{id} {
       allow read, write: if isAdmin();
       allow read: if request.auth != null && request.auth.uid == resource.data.userId;
-      allow create: if isNotBlocked() && request.auth.uid == request.resource.data.userId;
-      allow update: if isNotBlocked() &&
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow update: if request.auth != null &&
                     request.auth.uid == resource.data.userId &&
                     request.resource.data.userId == resource.data.userId &&
-                    request.resource.data.status == resource.data.status;
+                    (
+                      (
+                        isNotBlocked() &&
+                        request.resource.data.status == resource.data.status
+                      ) ||
+                      (
+                        resource.data.status == 'pending' &&
+                        request.resource.data.status == 'cancelled' &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledBy', 'cancelledAt'])
+                      ) ||
+                      (
+                        isNotBlocked() &&
+                        resource.data.status == 'confirmed' &&
+                        request.resource.data.status == 'cancelled' &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledBy', 'cancelledAt'])
+                      )
+                    );
     }
 
     match /pets/{id} {
@@ -102,3 +118,6 @@ service cloud.firestore {
     }
   }
 }
+
+
+

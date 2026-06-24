@@ -68,8 +68,10 @@ function AdminRoute({ children }) {
 
 function AdminHomeRedirect({ children }) {
   const { isAdmin, loading } = useAuth()
+  const location = useLocation()
+  const forcePublicHome = new URLSearchParams(location.search).get('view') === 'public'
   if (loading) return <Spinner text="Loading..." />
-  if (isAdmin) return <Navigate to="/admin" replace />
+  if (isAdmin && !forcePublicHome) return <Navigate to="/admin" replace />
   return children
 }
 
@@ -124,6 +126,7 @@ export default function App() {
     </>
   )
 }
+
 
 
 
