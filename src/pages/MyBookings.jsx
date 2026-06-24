@@ -7,7 +7,7 @@ import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
-import { getBookingTypeLabel } from '../utils/bookingSettings'
+import { fetchBookingSettings, getBookingTypeLabel, getPaymentModeLabel, getPaymentOptionLabel } from '../utils/bookingSettings'
 import { SERVICES } from '../utils/services'
 
 const STATUS_BADGE = {
@@ -72,8 +72,13 @@ function formatAppointmentStart(booking) {
   return formatDateTime(parseAppointmentStart(booking))
 }
 
-function canCancelBooking(booking) {
-  return booking.status === 'pending'
+function canCancelBooking(booking, settings) {
+  if (booking.status === 'pending') return true
+  if (booking.status !== 'confirmed') return false
+  const start = parseAppointmentStart(booking)
+  if (!start) return false
+  const cutoffMinutes = Math.max(0, Number(settings?.cancellationCutoffMinutes ?? 60))
+  return start.getTime() - Date.now() >= cutoffMinutes * 60 * 1000
 }
 function serviceIdsFor(booking) {
   if (Array.isArray(booking.serviceIds) && booking.serviceIds.length) return booking.serviceIds
@@ -102,11 +107,16 @@ function petLine(booking) {
 export default function MyBookings() {
   const { user } = useAuth()
   const [bookings, setBookings] = useState([])
+  const [bookingSettings, setBookingSettings] = useState(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [cancellingId, setCancellingId] = useState('')
   const [cancelTarget, setCancelTarget] = useState(null)
+
+  useEffect(() => {
+    fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
+  }, [])
 
   useEffect(() => {
     async function fetch() {
@@ -134,7 +144,7 @@ export default function MyBookings() {
   )
 
   const cancelBooking = async (booking) => {
-    if (!canCancelBooking(booking)) return
+    if (!canCancelBooking(booking, bookingSettings)) return
     setCancellingId(booking.id)
     try {
       await setDoc(doc(db, 'bookings', booking.id), {
@@ -237,6 +247,7 @@ export default function MyBookings() {
               {serviceNamesFor(selectedBooking).length > 0 && <Detail label="Services" value={serviceNamesFor(selectedBooking).join(', ')} />}
               {Number(selectedBooking.visitCharge || 0) > 0 && <Detail label="Visit Charge" value={`Rs ${money(selectedBooking.visitCharge)}`} />}
               {Number(selectedBooking.estimatedTotal || 0) > 0 && <Detail label="Estimated Total" value={`Rs ${money(selectedBooking.estimatedTotal)}+`} />}
+              {(selectedBooking.paymentMode || selectedBooking.paymentPreference) && <Detail label="Payment" value={selectedBooking.paymentMode ? getPaymentModeLabel(selectedBooking.paymentMode) : getPaymentOptionLabel(selectedBooking.paymentPreference)} />}
               {Number(selectedBooking.amountCollected || 0) > 0 && <Detail label="Paid" value={`Rs ${money(selectedBooking.amountCollected)}`} />}
             </div>
 
@@ -246,7 +257,7 @@ export default function MyBookings() {
                 <p>{selectedBooking.address}</p>
               </div>
             )}
-            {canCancelBooking(selectedBooking) && (
+            {canCancelBooking(selectedBooking, bookingSettings) && (
               <button
                 type="button"
                 className="btn btn-danger my-booking-cancel-btn"

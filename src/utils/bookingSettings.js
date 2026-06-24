@@ -171,6 +171,17 @@ export function getBookingTypeLabel(type) {
   return 'In Store'
 }
 
+export function getPaymentModeLabel(mode) {
+  if (mode === 'prepaid') return 'Prepaid only'
+  if (mode === 'both') return 'Prepaid or Pay in Cash'
+  return 'Pay in Cash'
+}
+
+export function getPaymentOptionLabel(value) {
+  if (value === 'prepaid') return 'Prepaid'
+  return 'Pay in Cash'
+}
+
 
 export function formatTimeWindow(window) {
   const start = minutesFromTime(window.start)
@@ -209,5 +220,4 @@ export function getWorkingStatus(settings, now = new Date()) {
 function dateKeyLocal(date) {
   return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
 }
-
 

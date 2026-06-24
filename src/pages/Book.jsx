@@ -5,9 +5,9 @@ import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { SERVICES, PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
-import { Calendar, Clock, CheckCircle, ChevronLeft, Home, Plus, Store, X } from 'lucide-react'
+import { Calendar, Clock, CheckCircle, ChevronLeft, Home, Plus, Store } from 'lucide-react'
 import { format, addDays, startOfToday } from 'date-fns'
-import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel } from '../utils/bookingSettings'
+import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel } from '../utils/bookingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 
 const parseSlotStart = (dateString, slotLabel) => {
@@ -186,6 +186,7 @@ export default function Book() {
   const breedSuggestions = form.petType === 'Dog' ? DOG_BREEDS : form.petType === 'Cat' ? CAT_BREEDS : []
   const selectedPkgs = packages.filter(p => selectedPackages.includes(p.id))
   const bookingLabel = serviceLabel || selectedPkgs.map(p => p.name).join(', ')
+  const paymentMode = bookingSettings?.paymentMode || 'cash'
 
   useEffect(() => {
     if (!Object.keys(serviceDetails).length) return
@@ -254,7 +255,7 @@ export default function Book() {
       alert('Your account is blocked from booking. Please contact the admin.')
       return
     }
-    if ((selectedServices.length === 0 && selectedPackages.length === 0) || !form.petName || !form.ownerName || !form.phone || !form.date || !form.slot || !bookableSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim())) return
+    if ((selectedServices.length === 0 && selectedPackages.length === 0) || !form.petName || !form.ownerName || !form.phone || !form.date || !form.slot || !bookableSlots.includes(form.slot) || bookedSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim())) return
     setLoading(true)
     try {
       const breed = form.customBreed || form.petBreed
@@ -276,6 +277,7 @@ export default function Book() {
         visitCharge: visitCharge(),
         estimatedTotal: totalAmount(),
         estimatedTotalMax: totalAmountMax(),
+        paymentMode,
         isWalkIn: false,
         status: BOOKING_STATUS.PENDING,
         bookingStartAt: bookingStart ? Timestamp.fromDate(bookingStart) : null,
@@ -333,6 +335,7 @@ export default function Book() {
             { label: 'Time',       value: form.slot },
             { label: 'Visit Charge', value: visitCharge() > 0 ? `Rs ${visitCharge()}` : null },
             { label: 'Est. Total', value: totalPrice() },
+            { label: 'Payment',    value: getPaymentModeLabel(bookingRef.paymentMode || paymentMode) },
             { label: 'Address',    value: form.bookingType === 'home' ? form.address : null },
           ].map(row => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
@@ -633,22 +636,36 @@ export default function Book() {
               <div style={{ marginBottom: '20px' }}>
                 <label style={S.label}><Clock size={11} style={{ display: 'inline', marginRight: '4px' }} /> Time Slot *</label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '8px' }}>
-                  {bookableSlots.map(slot => (
-                    <button key={slot} disabled={bookedSlots.includes(slot)} onClick={() => update('slot', slot)}
-                      className={`slot-btn${form.slot === slot ? ' selected' : ''}`}
-                      style={{ opacity: bookedSlots.includes(slot) ? 0.3 : 1 }}
-                    >
-                      {slot}
-                    </button>
-                  ))}
+                  {availableSlots.map(slot => {
+                    const isPast = isToday && !isFutureSlotForDate(form.date, slot)
+                    const isBooked = bookedSlots.includes(slot)
+                    const disabled = isPast || isBooked
+                    return (
+                      <button
+                        key={slot}
+                        disabled={disabled}
+                        onClick={() => update('slot', slot)}
+                        className={`slot-btn slot-btn-available${isPast ? ' slot-btn-past' : ''}${isBooked ? ' slot-btn-booked' : ''}${form.slot === slot ? ' selected' : ''}`}
+                      >
+                        {slot}
+                      </button>
+                    )
+                  })}
                 </div>
-                {bookableSlots.length === 0 ? (
+                {availableSlots.length === 0 ? (
+                  <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '8px' }}>No slots are available for this visit type.</p>
+                ) : bookableSlots.length === 0 ? (
                   <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '8px' }}>No future slots are available for this visit type today.</p>
                 ) : (
-                  <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>Faded slots are already booked. Past slots are hidden automatically.</p>
+                  <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>Green slots are available. Gray slots are past or already booked.</p>
                 )}
               </div>
 
+              <div style={{ marginBottom: '20px', padding: '14px', borderRadius: '14px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <label style={S.label}>Payment Accepted</label>
+                <div style={{ color: 'var(--text)', fontSize: '14px', fontWeight: 800, marginBottom: '4px' }}>Owner accepts {getPaymentModeLabel(paymentMode)}</div>
+                <p style={{ color: 'var(--muted)', fontSize: '12px', lineHeight: 1.5 }}>Payment is handled directly with the owner.</p>
+              </div>
               {form.slot && (
                 <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '14px', padding: '16px', marginBottom: '20px' }}>
                   <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '13px', marginBottom: '12px' }}>📋 Booking Summary</p>
@@ -663,6 +680,7 @@ export default function Book() {
                     { k: 'Address', v: form.bookingType === 'home' ? form.address : null },
                     { k: 'Visit Charge', v: visitCharge() > 0 ? `Rs ${visitCharge()}` : null },
                     { k: 'Est. Total', v: totalPrice() },
+                    { k: 'Payment', v: getPaymentModeLabel(paymentMode) },
                   ].filter(r => r.v).map(row => (
                     <div key={row.k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                       <span style={{ color: 'var(--muted)', fontSize: '13px' }}>{row.k}</span>
@@ -672,7 +690,7 @@ export default function Book() {
                 </div>
               )}
 
-              <button onClick={handleSubmit} disabled={isBlocked || !form.slot || !bookableSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim()) || loading} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+              <button onClick={handleSubmit} disabled={isBlocked || !form.slot || !bookableSlots.includes(form.slot) || bookedSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim()) || loading} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
                 {loading ? 'Booking…' : 'Confirm Booking'}
               </button>
             </div>
