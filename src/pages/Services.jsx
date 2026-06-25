@@ -7,8 +7,10 @@ import { SERVICES } from '../utils/services'
 import { Calendar, Clock, TrendingUp, Package } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import { fetchBusinessInfo } from '../utils/businessInfo'
+import { useAuth } from '../context/AuthContext'
 
 export default function Services() {
+  const { isAdmin } = useAuth()
   const [counts, setCounts]     = useState({})
   const [packages, setPackages] = useState([])
   const [serviceDetails, setServiceDetails] = useState({})
@@ -85,7 +87,7 @@ export default function Services() {
                           <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}>
                             <Clock size={11} /> {service.duration}
                           </span>
-                          {bookingCount > 0 && (
+                          {isAdmin && bookingCount > 0 && (
                             <span style={{ color: '#34d399', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}>
                               <TrendingUp size={11} /> {bookingCount} bookings
                             </span>
@@ -106,7 +108,7 @@ export default function Services() {
                   <div style={{ marginBottom: '18px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--muted)', marginBottom: '6px' }}>
                       <span>Popularity</span>
-                      <span>{bookingCount} bookings</span>
+                      {isAdmin && <span>{bookingCount} bookings</span>}
                     </div>
                     <div style={{ height: '4px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden' }}>
                       <div style={{
