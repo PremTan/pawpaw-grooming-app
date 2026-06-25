@@ -275,7 +275,7 @@ export default function Home() {
   const [adminPhone, setAdminPhone] = useState('')
   const [contactAddress, setContactAddress] = useState('')
   const [contactHours, setContactHours] = useState('')
-  const [shopName, setShopName] = useState('Pet Grooming')
+  const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
   const [googleReviewUrl, setGoogleReviewUrl] = useState('')
 
   useEffect(() => {
@@ -358,7 +358,7 @@ export default function Home() {
           setAdminPhone(info.whatsappNumber || '')
           setContactAddress(info.contact.address || '')
           setContactHours(info.hoursText || '')
-          setShopName(info.contact.shopName || 'Pet Grooming')
+          setShopName(info.contact.shopName || 'Paw Paw Pet Grooming')
           setGoogleReviewUrl(info.contact.googleReviewUrl || '')
         }
       } catch {}
@@ -706,7 +706,7 @@ export default function Home() {
       </div>
 
       {/* WhatsApp float button */}
-      <a href={`https://wa.me/${adminPhone}?text=${encodeURIComponent(`Hi ${shopName} Pet Grooming, I'm interested in booking a service for my pet. Could you help me with more details?`)}`} target="_blank" rel="noopener noreferrer" className="whatsapp-btn" title="Chat on WhatsApp">
+      <a href={`https://wa.me/${adminPhone}?text=${encodeURIComponent(`Hi ${shopName}, I'm interested in booking a service for my pet. Could you help me with more details?`)}`} target="_blank" rel="noopener noreferrer" className="whatsapp-btn" title="Chat on WhatsApp">
         💬
       </a>
 

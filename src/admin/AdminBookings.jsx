@@ -87,7 +87,7 @@ export default function AdminBookings() {
   const [cashAmt, setCashAmt] = useState('')
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
-  const [shopName, setShopName] = useState('Pet Grooming')
+  const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
   const [teamMembers, setTeamMembers] = useState([])
 
   const fetchBookings = async () => {
@@ -136,7 +136,7 @@ export default function AdminBookings() {
     async function fetchWhatsapp() {
       const info = await fetchBusinessInfo(db)
       setAdminWhatsappNumber(info.whatsappNumber || '')
-      setShopName(info.contact.shopName || 'Pet Grooming')
+      setShopName(info.contact.shopName || 'Paw Paw Pet Grooming')
     }
     fetchWhatsapp()
   }, [])

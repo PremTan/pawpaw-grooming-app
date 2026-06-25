@@ -123,7 +123,7 @@ export const BOOKING_STATUS = {
 export const buildWhatsAppMessage = (booking, shopName = '') => {
   const source = booking.isWalkIn ? 'Walk-in' : 'Online'
   const visitType = booking.bookingType === 'home' ? 'Home Visit' : booking.bookingType === 'store' ? 'In Store' : ''
-  const business = shopName || 'Pet Grooming'
+  const business = shopName || 'Paw Paw Pet Grooming'
   return encodeURIComponent(
     `*New Booking - ${business}*\n\n` +
     `${source} Appointment\n` +

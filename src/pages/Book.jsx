@@ -67,7 +67,7 @@ export default function Book() {
   const [done, setDone] = useState(false)
   const [bookingRef, setBookingRef] = useState(null)
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
-  const [shopName, setShopName] = useState('Pet Grooming')
+  const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
   const [bookingSettings, setBookingSettings] = useState(null)
 
   useEffect(() => {
@@ -100,7 +100,7 @@ export default function Book() {
       ])
       setBookingSettings(settings)
       setAdminWhatsappNumber(businessInfo.whatsappNumber || '')
-      setShopName(businessInfo.contact.shopName || 'Pet Grooming')
+      setShopName(businessInfo.contact.shopName || 'Paw Paw Pet Grooming')
     }
     fetchAdminBookingConfig()
   }, [])

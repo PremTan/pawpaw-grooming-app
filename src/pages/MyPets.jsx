@@ -329,6 +329,104 @@ export default function MyPets() {
     textTransform: 'uppercase',
   }
 
+  const petForm = (
+    <form onSubmit={savePet} className="pet-detail-card pet-form-modal">
+      <div className="pet-detail-head">
+        <div>
+          <div style={{ color: 'var(--accent)', fontSize: '11px', fontWeight: 800, letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: '6px' }}>
+            {editingId ? 'Update Profile' : 'New Profile'}
+          </div>
+          <h2 style={{ color: 'var(--text)', fontSize: '24px', fontWeight: 800 }}>{editingId ? 'Edit Pet Details' : 'Add Pet'}</h2>
+        </div>
+        <button type="button" onClick={closeForm} className="pet-icon-btn" aria-label="Close form">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="pet-form-layout">
+        <div>
+          <label className="photo-picker">
+            {photoPreview ? (
+              <img src={photoPreview} alt="Pet preview" />
+            ) : (
+              <span>
+                <Camera size={28} />
+                Upload Photo
+              </span>
+            )}
+            <input type="file" accept="image/*" onChange={choosePhoto} />
+          </label>
+          {photoPreview && (
+            <button type="button" onClick={removePhoto} className="btn btn-secondary" style={{ width: '100%', marginTop: '10px', padding: '9px 12px', fontSize: '12px' }}>
+              Remove Photo
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gap: '14px' }}>
+          <div>
+            <label style={L}>Pet Name *</label>
+            <input className="input" value={form.name} onChange={e => update('name', e.target.value)} placeholder="e.g. Bruno" />
+          </div>
+
+          <div className="pet-form-grid">
+            <div>
+              <label style={L}>Type</label>
+              <select className="input" value={form.type} onChange={e => update('type', e.target.value)}>
+                {PET_TYPES.map(type => <option key={type}>{type}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={L}>Breed</label>
+              {breedOptions.length > 0 ? (
+                <select className="input" value={form.breed} onChange={e => update('breed', e.target.value)}>
+                  <option value="">Select</option>
+                  {breedOptions.map(breed => <option key={breed}>{breed}</option>)}
+                </select>
+              ) : (
+                <input className="input" value={form.breed} onChange={e => update('breed', e.target.value)} placeholder="Optional" />
+              )}
+            </div>
+          </div>
+
+          <div className="pet-form-grid">
+            <div>
+              <label style={L}>Date of Birth</label>
+              <input type="date" className="input" value={form.dob} onChange={e => update('dob', e.target.value)} />
+            </div>
+            <div>
+              <label style={L}>Weight</label>
+              <input type="number" min="0" step="0.1" className="input" value={form.weight} onChange={e => update('weight', e.target.value)} placeholder="kg" />
+            </div>
+          </div>
+
+          <div>
+            <label style={L}>Gender</label>
+            <select className="input" value={form.gender} onChange={e => update('gender', e.target.value)}>
+              <option value="">Select</option>
+              <option>Male</option>
+              <option>Female</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={L}>Notes</label>
+            <textarea className="input" rows={4} style={{ resize: 'none' }} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Allergies, behavior notes, grooming preferences..." />
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px', flexWrap: 'wrap' }}>
+        <button type="button" onClick={closeForm} className="btn btn-secondary">
+          Cancel
+        </button>
+        <button type="submit" disabled={isBlocked || saving || !form.name.trim()} className="btn btn-primary">
+          <Save size={16} /> {saving ? 'Saving...' : editingId ? 'Update Profile' : 'Save Pet'}
+        </button>
+      </div>
+    </form>
+  )
+
   if (loading) return (
     <div style={{ background: 'var(--bg)', paddingTop: '80px', minHeight: '100vh' }}>
       <Spinner text="Loading pets..." />
@@ -415,105 +513,9 @@ export default function MyPets() {
             )}
           </aside>
 
-          {(showForm || selectedPet || pets.length === 0) && (
+          {(selectedPet || pets.length === 0) && (
             <main>
-              {showForm ? (
-              <form onSubmit={savePet} className="pet-detail-card">
-                <div className="pet-detail-head">
-                  <div>
-                    <div style={{ color: 'var(--accent)', fontSize: '11px', fontWeight: 800, letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: '6px' }}>
-                      {editingId ? 'Update Profile' : 'New Profile'}
-                    </div>
-                    <h2 style={{ color: 'var(--text)', fontSize: '24px', fontWeight: 800 }}>{editingId ? 'Edit Pet Details' : 'Add Pet'}</h2>
-                  </div>
-                  <button type="button" onClick={closeForm} className="pet-icon-btn" aria-label="Close form">
-                    <X size={18} />
-                  </button>
-                </div>
-
-                <div className="pet-form-layout">
-                  <div>
-                    <label className="photo-picker">
-                      {photoPreview ? (
-                        <img src={photoPreview} alt="Pet preview" />
-                      ) : (
-                        <span>
-                          <Camera size={28} />
-                          Upload Photo
-                        </span>
-                      )}
-                      <input type="file" accept="image/*" onChange={choosePhoto} />
-                    </label>
-                    {photoPreview && (
-                      <button type="button" onClick={removePhoto} className="btn btn-secondary" style={{ width: '100%', marginTop: '10px', padding: '9px 12px', fontSize: '12px' }}>
-                        Remove Photo
-                      </button>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'grid', gap: '14px' }}>
-                    <div>
-                      <label style={L}>Pet Name *</label>
-                      <input className="input" value={form.name} onChange={e => update('name', e.target.value)} placeholder="e.g. Bruno" />
-                    </div>
-
-                    <div className="pet-form-grid">
-                      <div>
-                        <label style={L}>Type</label>
-                        <select className="input" value={form.type} onChange={e => update('type', e.target.value)}>
-                          {PET_TYPES.map(type => <option key={type}>{type}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label style={L}>Breed</label>
-                        {breedOptions.length > 0 ? (
-                          <select className="input" value={form.breed} onChange={e => update('breed', e.target.value)}>
-                            <option value="">Select</option>
-                            {breedOptions.map(breed => <option key={breed}>{breed}</option>)}
-                          </select>
-                        ) : (
-                          <input className="input" value={form.breed} onChange={e => update('breed', e.target.value)} placeholder="Optional" />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="pet-form-grid">
-                      <div>
-                        <label style={L}>Date of Birth</label>
-                        <input type="date" className="input" value={form.dob} onChange={e => update('dob', e.target.value)} />
-                      </div>
-                      <div>
-                        <label style={L}>Weight</label>
-                        <input type="number" min="0" step="0.1" className="input" value={form.weight} onChange={e => update('weight', e.target.value)} placeholder="kg" />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label style={L}>Gender</label>
-                      <select className="input" value={form.gender} onChange={e => update('gender', e.target.value)}>
-                        <option value="">Select</option>
-                        <option>Male</option>
-                        <option>Female</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label style={L}>Notes</label>
-                      <textarea className="input" rows={4} style={{ resize: 'none' }} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Allergies, behavior notes, grooming preferences..." />
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px', flexWrap: 'wrap' }}>
-                  <button type="button" onClick={closeForm} className="btn btn-secondary">
-                    Cancel
-                  </button>
-                  <button type="submit" disabled={isBlocked || saving || !form.name.trim()} className="btn btn-primary">
-                    <Save size={16} /> {saving ? 'Saving...' : editingId ? 'Update Profile' : 'Save Pet'}
-                  </button>
-                </div>
-              </form>
-            ) : selectedPet ? (
+              {selectedPet ? (
               <section className="pet-detail-card">
                 <div className="pet-profile-top">
                   {selectedPet.photoUrl ? (
@@ -575,6 +577,13 @@ export default function MyPets() {
         </div>
       </div>
 
+      {showForm && (
+        <div className="modal-overlay pet-form-overlay" onClick={closeForm}>
+          <div className="modal-box pet-form-shell" onClick={event => event.stopPropagation()}>
+            {petForm}
+          </div>
+        </div>
+      )}
       {cropData && (
         <div className="modal-overlay pet-crop-overlay" onClick={cancelCrop}>
           <div className="modal-box pet-crop-modal" onClick={event => event.stopPropagation()}>
@@ -619,6 +628,28 @@ export default function MyPets() {
       />
 
       <style>{`
+        .pet-form-overlay {
+          z-index: 110;
+        }
+
+        .pet-form-shell {
+          max-width: 820px;
+          background: transparent;
+          border: 0;
+          border-radius: 16px;
+          overflow: visible;
+          box-shadow: none;
+        }
+
+        .pet-form-modal {
+          width: 100%;
+          min-height: 0;
+          max-height: calc(100dvh - 32px);
+          overflow-y: auto;
+        }
+        .pet-crop-overlay {
+          z-index: 120;
+        }
         .pet-crop-modal {
           max-width: 560px;
           overflow: hidden;

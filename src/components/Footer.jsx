@@ -39,7 +39,7 @@ export default function Footer() {
           {/* Brand */}
           <div>
             <div style={{ marginBottom: '16px' }}>
-              <BrandLogo size="footer" tagline="Pet Grooming Centre" />
+              <BrandLogo size="footer" />
             </div>
             <p style={{ color: 'var(--muted)', fontSize: '13px', lineHeight: 1.7, marginBottom: '20px' }}>
               {footer.tagline}
@@ -118,7 +118,7 @@ export default function Footer() {
 
         {/* Bottom */}
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '24px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-          <p style={{ color: 'var(--muted)', fontSize: '12px' }}>(c) {new Date().getFullYear()} {contactInfo.shopName || 'Pet Grooming'}. All rights reserved.</p>
+          <p style={{ color: 'var(--muted)', fontSize: '12px' }}>(c) {new Date().getFullYear()} {contactInfo.shopName || 'Paw Paw Pet Grooming'}. All rights reserved.</p>
           <div style={{ display: 'flex', gap: '20px' }}>
             {['Services', 'Reviews', 'Gallery'].map(item => (
               <Link key={item} to={`/${item.toLowerCase()}`}
