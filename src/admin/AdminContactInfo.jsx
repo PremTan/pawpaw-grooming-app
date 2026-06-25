@@ -5,6 +5,7 @@ import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 import BrandLogo from '../components/BrandLogo'
 import { uploadToCloudinary } from '../utils/cloudinary'
+import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 
 const DEFAULT_CONTACT = {
   whatsappNumber: '',
@@ -19,6 +20,7 @@ export default function AdminContactInfo() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [optimizingLogo, setOptimizingLogo] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -43,16 +45,26 @@ export default function AdminContactInfo() {
 
   const uploadLogo = async (file) => {
     if (!file) return
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      setError(err.message)
+      return
+    }
     setError('')
     setMessage('')
     setUploadingLogo(true)
     try {
-      const url = await uploadToCloudinary(file)
+      const url = await uploadToCloudinary(file, {
+        onOptimizeStart: () => setOptimizingLogo(true),
+        onOptimizeEnd: () => setOptimizingLogo(false),
+      })
       updateField('logoUrl', url)
       setMessage('Logo uploaded. Click Save Changes to publish it.')
     } catch (err) {
       setError(err.message || 'Upload failed. Check Cloudinary settings.')
     }
+    setOptimizingLogo(false)
     setUploadingLogo(false)
   }
   const save = async () => {
@@ -159,8 +171,8 @@ export default function AdminContactInfo() {
               </div>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <label className="btn btn-secondary" style={{ fontSize: '13px', padding: '10px 14px', opacity: uploadingLogo ? 0.7 : 1 }}>
-                  <Upload size={15} /> {uploadingLogo ? 'Uploading...' : 'Upload Logo'}
-                  <input type="file" accept="image/*" disabled={uploadingLogo || saving} onChange={e => uploadLogo(e.target.files?.[0])} style={{ display: 'none' }} />
+                  <Upload size={15} /> {optimizingLogo ? 'Optimizing image...' : uploadingLogo ? 'Uploading...' : 'Upload Logo'}
+                  <input type="file" accept={IMAGE_FILE_ACCEPT} disabled={uploadingLogo || saving} onChange={e => uploadLogo(e.target.files?.[0])} style={{ display: 'none' }} />
                 </label>
                 {contact.logoUrl && (
                   <button type="button" onClick={() => updateField('logoUrl', '')} className="btn btn-danger" style={{ fontSize: '13px', padding: '10px 14px' }}>
@@ -278,15 +290,9 @@ export default function AdminContactInfo() {
             <a href={`tel:${contact.whatsappNumber}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>
               {contact.whatsappNumber}
             </a>
-          </div>
+          </div>
         </div>
       </div>
     </div>
   )
 }
-
-
-
-
-
-

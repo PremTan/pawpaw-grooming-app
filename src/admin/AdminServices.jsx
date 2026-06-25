@@ -7,6 +7,7 @@ import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import { SERVICES } from '../utils/services'
 import { uploadToCloudinary } from '../utils/cloudinary'
+import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 
 const emptyImage = () => ({ url: '', title: '', description: '', alt: '' })
 const emptyImages = () => Array.from({ length: 5 }, emptyImage)
@@ -49,6 +50,7 @@ export default function AdminServices() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(null)
+  const [optimizing, setOptimizing] = useState(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [confirmAction, setConfirmAction] = useState(null)
@@ -111,6 +113,12 @@ export default function AdminServices() {
   // Intercept the file upload to open the cropper
   const handleFileSelect = (index, file) => {
     if (!file) return
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      setError(err.message)
+      return
+    }
     const reader = new FileReader()
     reader.addEventListener('load', () => {
       setCropData({ src: reader.result, index, fileName: file.name })
@@ -125,27 +133,31 @@ export default function AdminServices() {
   // Process the crop and actually upload to Cloudinary
   const handleCropConfirm = async () => {
     if (!cropData || !croppedAreaPixels) return
-    
+
     setUploading(cropData.index)
     setError('')
     setMessage('')
     const currentIndex = cropData.index
-    
+
     try {
       const croppedFile = await getCroppedImg(cropData.src, croppedAreaPixels, cropData.fileName)
-      
+
       // Close the modal immediately so user sees the "Uploading..." state on the main screen
-      setCropData(null) 
+      setCropData(null)
       setCrop({ x: 0, y: 0 })
       setZoom(1)
 
-      const url = await uploadToCloudinary(croppedFile)
+      const url = await uploadToCloudinary(croppedFile, {
+        onOptimizeStart: () => setOptimizing(currentIndex),
+        onOptimizeEnd: () => setOptimizing(null),
+      })
       updateImage(currentIndex, 'url', url)
       if (!form.images[currentIndex].title) updateImage(currentIndex, 'title', `${form.name} photo ${currentIndex + 1}`)
     } catch (err) {
       setError(err.message || 'Upload failed. Check Cloudinary settings.')
       setCropData(null)
     }
+    setOptimizing(null)
     setUploading(null)
   }
 
@@ -224,7 +236,7 @@ export default function AdminServices() {
 
   return (
     <div style={{ padding: '28px' }}>
-      
+
       {/* --- CROP MODAL OVERLAY --- */}
       {cropData && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
@@ -233,7 +245,7 @@ export default function AdminServices() {
               <h3 style={{ margin: 0, color: 'var(--text)' }}>Crop Image</h3>
               <button onClick={() => setCropData(null)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer' }}><X size={20}/></button>
             </div>
-            
+
             <div style={{ position: 'relative', width: '100%', height: '400px', background: '#333' }}>
               <Cropper
                 image={cropData.src}
@@ -248,7 +260,7 @@ export default function AdminServices() {
 
             <div style={{ padding: '16px', display: 'flex', gap: '12px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)' }}>
               <button className="btn btn-secondary" onClick={() => setCropData(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCropConfirm}>Confirm & Upload</button>
+              <button className="btn btn-primary" onClick={handleCropConfirm}>{optimizing === cropData.index ? 'Optimizing image...' : uploading === cropData.index ? 'Uploading...' : 'Confirm & Upload'}</button>
             </div>
           </div>
         </div>
@@ -339,23 +351,23 @@ export default function AdminServices() {
                   <input className="input" placeholder="Title" value={image.title} onChange={e => updateImage(index, 'title', e.target.value)} />
                   <textarea className="input" rows={3} placeholder="Description for this image" value={image.description} onChange={e => updateImage(index, 'description', e.target.value)} style={{ resize: 'vertical' }} />
                   <input className="input" placeholder="Alt text" value={image.alt} onChange={e => updateImage(index, 'alt', e.target.value)} />
-                  
+
                   {/* UPDATE: File input now calls handleFileSelect to open the cropper */}
                   <label className="btn btn-secondary" style={{ justifyContent: 'center', fontSize: '13px', padding: '10px 14px' }}>
-                    <Upload size={15} /> {uploading === index ? 'Uploading...' : 'Upload File'}
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      style={{ display: 'none' }} 
-                      disabled={uploading !== null || saving} 
+                    <Upload size={15} /> {optimizing === index ? 'Optimizing image...' : uploading === index ? 'Uploading...' : 'Upload File'}
+                    <input
+                      type="file"
+                      accept={IMAGE_FILE_ACCEPT}
+                      style={{ display: 'none' }}
+                      disabled={uploading !== null || saving}
                       // Reset the target value so you can upload the same file twice if needed
                       onChange={e => {
                         handleFileSelect(index, e.target.files?.[0]);
-                        e.target.value = null; 
-                      }} 
+                        e.target.value = null;
+                      }}
                     />
                   </label>
-                  
+
                 </div>
               </div>
             ))}

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, updateProfile } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { Lock, Save, User, Upload, X } from 'lucide-react'
-import { auth, db, storage } from '../firebase'
+import { auth, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
+import { uploadToCloudinary } from '../utils/cloudinary'
+import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 
 const EMPTY = {
   name: '',
@@ -23,6 +24,7 @@ export default function Profile() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [optimizingPhoto, setOptimizingPhoto] = useState(false)
   const [photoPreview, setPhotoPreview] = useState(null)
 
   const canChangePassword = user?.providerData?.some(provider => provider.providerId === 'password')
@@ -108,6 +110,14 @@ export default function Profile() {
     const file = e.target.files?.[0]
     if (!file) return
 
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      setError(err.message)
+      e.target.value = ''
+      return
+    }
+
     // Show preview
     const reader = new FileReader()
     reader.onload = () => setPhotoPreview(reader.result)
@@ -117,20 +127,21 @@ export default function Profile() {
     setError('')
     setMessage('')
     try {
-      // Upload to Firebase Storage
-      const photoRef = ref(storage, `profile-pics/${user.uid}`)
-      await uploadBytes(photoRef, file)
-      const photoURL = await getDownloadURL(photoRef)
+      const photoURL = await uploadToCloudinary(file, {
+        onOptimizeStart: () => setOptimizingPhoto(true),
+        onOptimizeEnd: () => setOptimizingPhoto(false),
+      })
 
       // Update user profile
       await updateProfile(auth.currentUser, { photoURL })
-      
+
       setMessage('Profile photo updated!')
       // Clear preview
       setTimeout(() => setPhotoPreview(null), 2000)
     } catch (err) {
       setError(err.message || 'Could not upload photo.')
     }
+    setOptimizingPhoto(false)
     setUploadingPhoto(false)
   }
 
@@ -189,7 +200,7 @@ export default function Profile() {
             <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
               <input
                 type="file"
-                accept="image/*"
+                accept={IMAGE_FILE_ACCEPT}
                 onChange={handlePhotoUpload}
                 disabled={isBlocked || uploadingPhoto}
                 style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
@@ -216,7 +227,7 @@ export default function Profile() {
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent-bg)'; e.currentTarget.style.color = 'var(--accent)'; }}
                 disabled={isBlocked || uploadingPhoto}
               >
-                <Upload size={12} /> {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+                <Upload size={12} /> {optimizingPhoto ? 'Optimizing image...' : uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
               </button>
             </div>
           </div>

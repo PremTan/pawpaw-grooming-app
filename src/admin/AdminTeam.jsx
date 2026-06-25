@@ -6,6 +6,7 @@ import Spinner from '../components/Spinner'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { uploadToCloudinary } from '../utils/cloudinary'
+import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 import { getOwnerAssignee } from '../utils/teamMembers'
 
 const EMPTY = { name: '', phone: '', email: '', role: 'Groomer', photoUrl: '' }
@@ -39,6 +40,7 @@ export default function AdminTeam() {
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [optimizingPhoto, setOptimizingPhoto] = useState(false)
   const [cropData, setCropData] = useState(null)
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
@@ -130,8 +132,10 @@ export default function AdminTeam() {
 
   const choosePhoto = file => {
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      alert('Please upload an image file.')
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      alert(err.message)
       return
     }
 
@@ -151,12 +155,16 @@ export default function AdminTeam() {
     setUploadingPhoto(true)
     try {
       const croppedFile = await getCroppedImg(cropData.src, croppedAreaPixels, cropData.fileName)
-      const url = await uploadToCloudinary(croppedFile)
+      const url = await uploadToCloudinary(croppedFile, {
+        onOptimizeStart: () => setOptimizingPhoto(true),
+        onOptimizeEnd: () => setOptimizingPhoto(false),
+      })
       update('photoUrl', url)
       setCropData(null)
     } catch (err) {
       alert(err.message || 'Could not upload profile photo.')
     }
+    setOptimizingPhoto(false)
     setUploadingPhoto(false)
   }
 
@@ -329,8 +337,8 @@ export default function AdminTeam() {
                 </div>
                 <div>
                   <label className="btn btn-secondary" style={{ padding: '9px 12px', fontSize: '12px', opacity: uploadingPhoto ? 0.65 : 1 }}>
-                    <Upload size={14} /> {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
-                    <input type="file" accept="image/*" disabled={uploadingPhoto || saving} onChange={e => choosePhoto(e.target.files?.[0])} style={{ display: 'none' }} />
+                    <Upload size={14} /> {optimizingPhoto ? 'Optimizing image...' : uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+                    <input type="file" accept={IMAGE_FILE_ACCEPT} disabled={uploadingPhoto || saving} onChange={e => choosePhoto(e.target.files?.[0])} style={{ display: 'none' }} />
                   </label>
                   {form.photoUrl && <button type="button" className="admin-team-remove-photo" onClick={() => update('photoUrl', '')}>Remove photo</button>}
                 </div>
@@ -374,7 +382,7 @@ export default function AdminTeam() {
             </div>
             <div className="admin-team-modal-actions admin-team-crop-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setCropData(null)}>Cancel</button>
-              <button type="button" className="btn btn-primary" onClick={confirmCrop} disabled={uploadingPhoto}>{uploadingPhoto ? 'Uploading...' : 'Confirm Crop'}</button>
+              <button type="button" className="btn btn-primary" onClick={confirmCrop} disabled={uploadingPhoto}>{optimizingPhoto ? 'Optimizing image...' : uploadingPhoto ? 'Uploading...' : 'Confirm Crop'}</button>
             </div>
           </div>
         </div>

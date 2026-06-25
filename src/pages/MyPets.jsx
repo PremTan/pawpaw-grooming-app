@@ -31,6 +31,7 @@ import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import { CAT_BREEDS, DOG_BREEDS, PET_TYPES } from '../utils/services'
 import { uploadToCloudinary } from '../utils/cloudinary'
+import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 
 const EMPTY_PET = {
   name: '',
@@ -111,6 +112,7 @@ export default function MyPets() {
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [optimizingPhoto, setOptimizingPhoto] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -209,8 +211,10 @@ export default function MyPets() {
     event.target.value = ''
     if (!file) return
 
-    if (!file.type.startsWith('image/')) {
-      setError('Please upload an image file.')
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      setError(err.message)
       return
     }
 
@@ -264,7 +268,10 @@ export default function MyPets() {
     setError('')
 
     try {
-      const uploadedPhotoUrl = photoFile ? await uploadToCloudinary(photoFile) : form.photoUrl.trim()
+      const uploadedPhotoUrl = photoFile ? await uploadToCloudinary(photoFile, {
+        onOptimizeStart: () => setOptimizingPhoto(true),
+        onOptimizeEnd: () => setOptimizingPhoto(false),
+      }) : form.photoUrl.trim()
       const cleanPet = {
         name: form.name.trim(),
         type: form.type,
@@ -297,6 +304,7 @@ export default function MyPets() {
     } catch (err) {
       setError(err.message || 'Could not save pet.')
     }
+    setOptimizingPhoto(false)
     setSaving(false)
   }
 
@@ -354,7 +362,7 @@ export default function MyPets() {
                 Upload Photo
               </span>
             )}
-            <input type="file" accept="image/*" onChange={choosePhoto} />
+            <input type="file" accept={IMAGE_FILE_ACCEPT} onChange={choosePhoto} />
           </label>
           {photoPreview && (
             <button type="button" onClick={removePhoto} className="btn btn-secondary" style={{ width: '100%', marginTop: '10px', padding: '9px 12px', fontSize: '12px' }}>
@@ -421,7 +429,7 @@ export default function MyPets() {
           Cancel
         </button>
         <button type="submit" disabled={isBlocked || saving || !form.name.trim()} className="btn btn-primary">
-          <Save size={16} /> {saving ? 'Saving...' : editingId ? 'Update Profile' : 'Save Pet'}
+          <Save size={16} /> {optimizingPhoto ? 'Optimizing image...' : saving ? 'Saving...' : editingId ? 'Update Profile' : 'Save Pet'}
         </button>
       </div>
     </form>

@@ -5,6 +5,7 @@ import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import { uploadToCloudinary } from '../utils/cloudinary'
+import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 import { Plus, X, Trash2, Image, Upload, Pencil } from 'lucide-react'
 
 const CATEGORIES = ['before-after', 'haircut', 'bath', 'styling', 'nail', 'general']
@@ -18,6 +19,7 @@ export default function AdminGallery() {
   const [file, setFile]         = useState(null)
   const [preview, setPreview]   = useState('')
   const [saving, setSaving]     = useState(false)
+  const [optimizing, setOptimizing] = useState(false)
   const [error, setError]       = useState('')
   const [deleting, setDeleting] = useState(null)
   const [lightbox, setLightbox] = useState(null)
@@ -42,6 +44,14 @@ export default function AdminGallery() {
   const handleFileChange = (e) => {
     const f = e.target.files?.[0]
     if (!f) return
+    try {
+      validateImageFile(f)
+    } catch (err) {
+      setError(err.message)
+      e.target.value = ''
+      return
+    }
+    setError('')
     setFile(f)
     setPreview(URL.createObjectURL(f))
   }
@@ -51,7 +61,10 @@ export default function AdminGallery() {
     try {
       let url = form.url
       if (file) {
-        url = await uploadToCloudinary(file)
+        url = await uploadToCloudinary(file, {
+          onOptimizeStart: () => setOptimizing(true),
+          onOptimizeEnd: () => setOptimizing(false),
+        })
       }
       if (!url) { setError('Please provide an image.'); setSaving(false); return }
       if (editingId) {
@@ -186,13 +199,13 @@ export default function AdminGallery() {
                       <Upload size={28} style={{ color:'var(--muted)' }}/>
                       <span style={{ color:'var(--muted)', fontSize:'13px' }}>Click to upload image</span>
                       <span style={{ color:'var(--muted)', fontSize:'11px' }}>JPG, PNG, WEBP up to 10MB</span>
-                      <input type="file" accept="image/*" style={{ display:'none' }} onChange={handleFileChange}/>
+                      <input type="file" accept={IMAGE_FILE_ACCEPT} style={{ display:'none' }} onChange={handleFileChange}/>
                     </label>
                   )}
                   {(preview || form.url) && (
                     <label className="btn btn-secondary" style={{ justifyContent:'center', fontSize:'13px', padding:'10px 14px', marginTop:'8px' }}>
                       <Upload size={15}/> Replace Image
-                      <input type="file" accept="image/*" style={{ display:'none' }} onChange={handleFileChange}/>
+                      <input type="file" accept={IMAGE_FILE_ACCEPT} style={{ display:'none' }} onChange={handleFileChange}/>
                     </label>
                   )}
                   <p style={{ color:'var(--muted)', fontSize:'11px', marginTop:'6px' }}>
@@ -215,7 +228,7 @@ export default function AdminGallery() {
                 <div style={{ display:'flex', gap:'10px', paddingTop:'4px' }}>
                   <button onClick={() => { setShowModal(false); setEditingId(null) }} className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }}>Cancel</button>
                   <button onClick={handleSave} disabled={saving || (!file && !form.url)} className="btn btn-primary" style={{ flex:1, justifyContent:'center' }}>
-                    {saving ? 'Uploading…' : 'Save Image'}
+                    {optimizing ? 'Optimizing image...' : saving ? 'Uploading...' : 'Save Image'}
                   </button>
                 </div>
               </div>

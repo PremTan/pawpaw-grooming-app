@@ -3,6 +3,7 @@ import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firest
 import { ImagePlus, Save, Trash2, Upload, X } from 'lucide-react'
 import { db } from '../firebase'
 import { uploadToCloudinary } from '../utils/cloudinary'
+import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 
@@ -14,6 +15,7 @@ export default function AdminHeroImages() {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [uploading, setUploading] = useState(null)
+  const [optimizing, setOptimizing] = useState(null)
   const [hasSavedImages, setHasSavedImages] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -48,16 +50,26 @@ export default function AdminHeroImages() {
 
   const uploadFile = async (index, file) => {
     if (!file) return
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      setError(err.message)
+      return
+    }
     setError('')
     setMessage('')
     setUploading(index)
     try {
-      const url = await uploadToCloudinary(file)
+      const url = await uploadToCloudinary(file, {
+        onOptimizeStart: () => setOptimizing(index),
+        onOptimizeEnd: () => setOptimizing(null),
+      })
       updateImage(index, 'url', url)
       if (!images[index].alt) updateImage(index, 'alt', `Hero image ${index + 1}`)
     } catch (err) {
       setError(err.message || 'Upload failed. Check Cloudinary settings.')
     }
+    setOptimizing(null)
     setUploading(null)
   }
 
@@ -163,8 +175,8 @@ export default function AdminHeroImages() {
                 <input className="input" value={image.alt} onChange={e => updateImage(index, 'alt', e.target.value)} placeholder="Describe this image" />
               </div>
               <label className="btn btn-secondary" style={{ justifyContent:'center', fontSize:'13px', padding:'10px 14px', opacity:uploading === index ? 0.7 : 1 }}>
-                <Upload size={15}/> {uploading === index ? 'Uploading...' : 'Upload File'}
-                <input type="file" accept="image/*" style={{ display:'none' }} disabled={uploading !== null || saving} onChange={e => uploadFile(index, e.target.files?.[0])} />
+                <Upload size={15}/> {optimizing === index ? 'Optimizing image...' : uploading === index ? 'Uploading...' : 'Upload File'}
+                <input type="file" accept={IMAGE_FILE_ACCEPT} style={{ display:'none' }} disabled={uploading !== null || saving} onChange={e => uploadFile(index, e.target.files?.[0])} />
               </label>
             </div>
           </div>
