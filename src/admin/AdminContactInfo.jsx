@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Phone, MapPin, Clock, Save, Image as ImageIcon, Upload, X } from 'lucide-react'
+import { Phone, MapPin, Clock, Save, Image as ImageIcon, Upload, X, PawPrint } from 'lucide-react'
 import { deleteField, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
@@ -13,6 +13,8 @@ const DEFAULT_CONTACT = {
   shopName: '',
   logoUrl: '',
   googleReviewUrl: '',
+  ctaPetImageUrl: '',
+  followPetImageUrl: '',
 }
 
 export default function AdminContactInfo() {
@@ -21,6 +23,8 @@ export default function AdminContactInfo() {
   const [saving, setSaving] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [optimizingLogo, setOptimizingLogo] = useState(false)
+  const [uploadingPetImage, setUploadingPetImage] = useState('')
+  const [optimizingPetImage, setOptimizingPetImage] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -67,6 +71,30 @@ export default function AdminContactInfo() {
     setOptimizingLogo(false)
     setUploadingLogo(false)
   }
+  const uploadPetImage = async (field, file) => {
+    if (!file) return
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      setError(err.message)
+      return
+    }
+    setError('')
+    setMessage('')
+    setUploadingPetImage(field)
+    try {
+      const url = await uploadToCloudinary(file, {
+        onOptimizeStart: () => setOptimizingPetImage(field),
+        onOptimizeEnd: () => setOptimizingPetImage(''),
+      })
+      updateField(field, url)
+      setMessage('Pet image uploaded. Click Save Changes to publish it.')
+    } catch (err) {
+      setError(err.message || 'Upload failed. Check Cloudinary settings.')
+    }
+    setOptimizingPetImage('')
+    setUploadingPetImage('')
+  }
   const save = async () => {
     setError('')
     setMessage('')
@@ -85,6 +113,8 @@ export default function AdminContactInfo() {
         shopName: contact.shopName.trim(),
         logoUrl: contact.logoUrl?.trim() || '',
         googleReviewUrl: contact.googleReviewUrl?.trim() || '',
+        ctaPetImageUrl: contact.ctaPetImageUrl?.trim() || '',
+        followPetImageUrl: contact.followPetImageUrl?.trim() || '',
         updatedAt: serverTimestamp(),
       }, { merge: true })
       setMessage('Contact information updated successfully!')
@@ -193,6 +223,54 @@ export default function AdminContactInfo() {
             </p>
           </div>
         </div>
+        {/* Home Pet Images */}
+        <div>
+          <label style={labelStyle}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <PawPrint size={12} /> Home Pet Images
+            </span>
+          </label>
+          <div style={{ display: 'grid', gap: '12px' }}>
+            {[
+              { field: 'ctaPetImageUrl', label: 'Service Card Pet' },
+              { field: 'followPetImageUrl', label: 'Follow Us Pet' },
+            ].map(item => (
+              <div key={item.field} style={{ display: 'grid', gap: '12px', padding: '14px', border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--surface)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                  <div style={{ width: '92px', height: '92px', borderRadius: '14px', border: '1px solid var(--accent-border)', background: 'var(--card)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {contact[item.field] ? (
+                      <img src={contact[item.field]} alt={`${item.label} preview`} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }} />
+                    ) : (
+                      <PawPrint size={28} style={{ color: 'var(--muted)' }} />
+                    )}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ color: 'var(--text)', fontSize: '13px', fontWeight: 800, marginBottom: '4px' }}>{item.label}</p>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <label className="btn btn-secondary" style={{ fontSize: '13px', padding: '10px 14px', opacity: uploadingPetImage === item.field ? 0.7 : 1 }}>
+                        <Upload size={15} /> {optimizingPetImage === item.field ? 'Optimizing image...' : uploadingPetImage === item.field ? 'Uploading...' : 'Upload Image'}
+                        <input type="file" accept={IMAGE_FILE_ACCEPT} disabled={Boolean(uploadingPetImage) || uploadingLogo || saving} onChange={e => uploadPetImage(item.field, e.target.files?.[0])} style={{ display: 'none' }} />
+                      </label>
+                      {contact[item.field] && (
+                        <button type="button" onClick={() => updateField(item.field, '')} className="btn btn-danger" style={{ fontSize: '13px', padding: '10px 14px' }}>
+                          <X size={15} /> Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="url"
+                  value={contact[item.field] || ''}
+                  onChange={e => updateField(item.field, e.target.value)}
+                  placeholder="Image URL"
+                  style={inputStyle}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* WhatsApp Number */}
         <div>
           <label style={labelStyle}>
@@ -296,3 +374,5 @@ export default function AdminContactInfo() {
     </div>
   )
 }
+
+

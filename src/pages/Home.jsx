@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs, query, orderBy, limit } from 'firebase/firestore'
 import { db } from '../firebase'
+import BrandLogo from '../components/BrandLogo'
 import { SERVICES } from '../utils/services'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
 import { countOpenDays } from '../utils/bookingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
-import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint } from 'lucide-react'
+import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle } from 'lucide-react'
 
 const DEFAULT_HERO_IMAGES = []
 const DEFAULT_VISIT_IMAGES = [
@@ -59,6 +60,14 @@ const HERO_COPY = [
   },
 ]
 
+function cleanReviewText(value) {
+  return String(value || '')
+    .replace(/\uFFFD/g, '')
+    .replace(/[?]/g, '')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .trim()
+}
 function HeroSlider() {
   const [current, setCurrent] = useState(0)
   const [heroImages, setHeroImages] = useState(null)
@@ -226,6 +235,8 @@ export default function Home() {
   const [contactHours, setContactHours] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
   const [googleReviewUrl, setGoogleReviewUrl] = useState('')
+  const [homePetImages, setHomePetImages] = useState({ cta: '', follow: '' })
+  const [footerInfo, setFooterInfo] = useState({ tagline: '', socials: [], phones: [], email: '' })
 
   useEffect(() => {
     async function fetchStats() {
@@ -289,19 +300,16 @@ export default function Home() {
         const savedFeatures = featuresResult.status === 'fulfilled' && featuresResult.value.exists() && Array.isArray(featuresResult.value.data().features)
           ? featuresResult.value.data().features
           : []
-        const cleanFeatures = savedFeatures
-          .filter(item => item?.title || item?.desc)
-          .slice(0, 3)
-          .map((item, index) => {
-            const fallback = DEFAULT_FEATURES[index] || { icon: 'star', title: 'Trusted Care', desc: 'Thoughtful service for every pet' }
-            const normalized = normalizeFeature(item, fallback)
-            return {
-              icon: FEATURE_ICONS[normalized.icon] ? normalized.icon : fallback.icon,
-              title: normalized.title,
-              desc: normalized.desc,
-            }
-          })
-        if (cleanFeatures.length) setFeatures(cleanFeatures)
+        const cleanFeatures = DEFAULT_FEATURES.slice(0, 4).map((fallback, index) => {
+          const saved = savedFeatures[index]
+          const normalized = normalizeFeature(saved, fallback)
+          return {
+            icon: FEATURE_ICONS[normalized.icon] ? normalized.icon : fallback.icon,
+            title: normalized.title,
+            desc: normalized.desc,
+          }
+        })
+        setFeatures(cleanFeatures)
         if (businessInfoResult.status === 'fulfilled') {
           const info = businessInfoResult.value
           setAdminPhone(info.whatsappNumber || '')
@@ -309,6 +317,11 @@ export default function Home() {
           setContactHours(info.hoursText || '')
           setShopName(info.contact.shopName || 'Paw Paw Pet Grooming')
           setGoogleReviewUrl(info.contact.googleReviewUrl || '')
+          setHomePetImages({
+            cta: info.contact.ctaPetImageUrl || '',
+            follow: info.contact.followPetImageUrl || '',
+          })
+          setFooterInfo(info.footer || { tagline: '', socials: [], phones: [], email: '' })
         }
       } catch {}
     }
@@ -333,18 +346,37 @@ export default function Home() {
       duration: serviceDetails[s.id]?.duration || s.duration,
     }))
 
+  const shownServices = [
+    ...homeServices.slice(0, 5),
+    ...packages.slice(0, Math.max(0, 5 - homeServices.slice(0, 5).length)).map(pkg => ({
+      id: pkg.id,
+      name: pkg.name,
+      description: pkg.description || 'Complete grooming for a clean, fresh and happy pet.',
+      price: pkg.priceRange || (pkg.price ? `Rs. ${pkg.price}` : 'Price TBD'),
+      duration: pkg.duration || 'Package',
+      icon: <Package size={30} />,
+      to: `/book?package=${pkg.id}`,
+    })),
+  ]
+
+  const socialIcon = (platform) => {
+    if (platform === 'instagram') return <Instagram size={18} />
+    if (platform === 'facebook') return <Facebook size={18} />
+    if (platform === 'youtube') return <Youtube size={18} />
+    if (platform === 'twitter') return <Twitter size={18} />
+    if (platform === 'linkedin') return <Linkedin size={18} />
+    return <MessageCircle size={18} />
+  }
   return (
     <div style={{ background: 'var(--bg)' }}>
       {/* Hero slider */}
       <HeroSlider />
 
       {/* Features */}
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '76px 20px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '48px' }}>
-          <p className="section-label" style={{ marginBottom: '10px' }}>Why Choose Us</p>
-          <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(28px,4vw,42px)', fontWeight: 800, color: 'var(--text)' }}>
-            Trusted by Pet Parents
-          </h2>
+      <section className="home-why-section">
+        <div className="home-why-head">
+          <p className="section-label"><PawPrint size={14} /> Why Choose Us <PawPrint size={14} /></p>
+          <h2>Trusted by Pet Parents</h2>
         </div>
         <div className="why-choose-grid">
           {features.map((f, i) => (
@@ -358,283 +390,196 @@ export default function Home() {
             </div>
           ))}
         </div>
-      </div>
-
+      </section>
       {/* Services preview */}
-      <div style={{ background: 'var(--surface)', padding: '70px 0', borderTop: '1px solid var(--border)' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '44px', flexWrap: 'wrap', gap: '12px' }}>
+      <section className="home-services-mobile-section">
+        <div className="home-section-card home-services-panel">
+          <div className="home-section-head split">
             <div>
-              <p className="section-label" style={{ marginBottom: '10px' }}>What We Offer</p>
-              <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(28px,4vw,42px)', fontWeight: 800, color: 'var(--text)' }}>
-                Our Services
-              </h2>
+              <p className="section-label">What We Offer</p>
+              <h2>Our Services</h2>
             </div>
-            <Link to="/services" className="btn btn-secondary" style={{ fontSize: '13px', padding: '9px 20px' }}>
-              View All <ArrowRight size={15} />
-            </Link>
+            <Link to="/services" className="home-pill-link">View All <ArrowRight size={17} /></Link>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '18px' }}>
-            {homeServices.slice(0, 6).map((s, i) => (
+          <div className="home-service-list">
+            {shownServices.map((s, i) => (
               <Link
                 key={s.id}
-                to={`/services/${s.id}`}
-                className="service-preview-card fade-up"
-                style={{ animationDelay: `${i * 0.08}s`, '--service-color': s.color || 'var(--accent)' }}
+                to={s.to || `/services/${s.id}`}
+                className="home-service-row fade-up"
+                style={{ animationDelay: `${i * 0.06}s` }}
               >
-                <div className="service-preview-top">
-                  <div className="service-preview-icon">{s.icon}</div>
-                  <span className="service-preview-arrow"><ArrowRight size={16} /></span>
-                </div>
-                <h3 className="service-preview-title">{s.name}</h3>
-                <p className="service-preview-desc">{s.description}</p>
-                <div className="service-preview-meta">
-                  <span className="service-preview-price">{s.price}</span>
-                  <span className="service-preview-duration">
-                    <Clock size={11} /> {s.duration}
-                  </span>
-                </div>
-              </Link>
-            ))}
-            {packages.map((pkg, i) => (
-              <Link
-                key={pkg.id}
-                to={`/book?package=${pkg.id}`}
-                className="service-preview-card fade-up"
-                style={{ animationDelay: `${(homeServices.slice(0, 6).length + i) * 0.08}s`, '--service-color': 'var(--accent)' }}
-              >
-                <div className="service-preview-top">
-                  <div className="service-preview-icon"><Package size={30} /></div>
-                  <span className="service-preview-arrow"><ArrowRight size={16} /></span>
-                </div>
-                <h3 className="service-preview-title">{pkg.name}</h3>
-                <p className="service-preview-desc">
-                  {pkg.description || 'Custom grooming package'}
-                </p>
-                {pkg.services?.length > 0 && (
-                  <div style={{ display: 'grid', gap: '5px', margin: '-4px 0 16px' }}>
-                    {pkg.services.slice(0, 4).map((item, index) => (
-                      <span key={index} style={{ color: 'var(--text)', fontSize: '12px', lineHeight: 1.45 }}>
-                        <span style={{ color: 'var(--accent)', fontWeight: 900 }}>+</span> {item}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div className="service-preview-meta">
-                  <span className="service-preview-price">{pkg.priceRange || (pkg.price ? `Rs. ${pkg.price}` : 'Price TBD')}</span>
-                  <span className="service-preview-duration">
-                    <Clock size={11} /> {pkg.duration || 'Package'}
-                  </span>
-                </div>
+                <span className="home-service-icon">{s.icon}</span>
+                <span className="home-service-main">
+                  <strong>{s.name}</strong>
+                  <small>{s.description}</small>
+                </span>
+                <span className="home-service-arrow"><ArrowRight size={19} /></span>
+                <span className="home-service-meta">
+                  <b>{s.price}</b>
+                  <em><Clock size={14} /> {s.duration}</em>
+                </span>
               </Link>
             ))}
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Gallery preview */}
-{galleryImages.length > 0 && (
-  <div style={{ padding: '70px 0' }}>
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap', marginBottom: '24px' }}>
-        <div>
-          <p className="section-label" style={{ marginBottom: '10px' }}>Our Work</p>
-          <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(28px,4vw,42px)', fontWeight: 800, color: 'var(--text)' }}>Gallery</h2>
-          <p style={{ color: 'var(--muted)', fontSize: '14px', marginTop: '8px' }}>Recent grooming moments from the salon.</p>
-        </div>
-        <Link to="/gallery" className="btn btn-secondary" style={{ fontSize: '13px', padding: '9px 20px' }}>
-          View All <ArrowRight size={15} />
-        </Link>
-      </div>
+      {galleryImages.length > 0 && (
+        <section className="home-gallery-section">
+          <div className="home-section-head split">
+            <div>
+              <p className="section-label">Our Work</p>
+              <h2>Gallery</h2>
+              <p>Recent grooming moments from the salon.</p>
+            </div>
+            <Link to="/gallery" className="home-pill-link">View All <ArrowRight size={17} /></Link>
+          </div>
 
-      {/* Mobile: single image slider */}
-      <div className="gallery-mobile-slider">
-        <div style={{
-          position: 'relative',
-          borderRadius: '16px',
-          overflow: 'hidden',
-          border: '1px solid var(--border)',
-          aspectRatio: '4/3',
-          background: 'var(--surface)',
-        }}>
-          {galleryImages.map((image, index) => (
-            <img
-              key={image.id}
-              src={image.url}
-              alt={image.caption || 'Gallery image'}
-              onClick={() => setGalleryLightbox(image)}
-              style={{
-                position: 'absolute', inset: 0,
-                width: '100%', height: '100%',
-                objectFit: 'cover', objectPosition: 'center top',
-                opacity: index === galleryIndex ? 1 : 0,
-                transition: 'opacity 0.6s ease',
-                cursor: 'pointer',
-              }}
-            />
-          ))}
-          {/* Overlay info */}
-          <div style={{ position: 'absolute', inset: 'auto 0 0 0', padding: '16px', background: 'linear-gradient(0deg,rgba(0,0,0,0.7),transparent)' }}>
-            {galleryImages[galleryIndex]?.category && (
-              <div style={{ display:'inline-flex', alignItems:'center', gap:'5px', color:'#fff', background:'rgba(0,0,0,0.4)', border:'1px solid rgba(255,255,255,0.2)', borderRadius:'999px', padding:'4px 10px', fontSize:'11px', marginBottom:'6px' }}>
-                <Images size={11} /> {galleryImages[galleryIndex].category}
+          <div className="gallery-mobile-slider">
+            <div className="home-gallery-slider-frame">
+              {galleryImages.map((image, index) => (
+                <img
+                  key={image.id}
+                  src={image.url}
+                  alt={image.caption || 'Gallery image'}
+                  onClick={() => setGalleryLightbox(image)}
+                  className={index === galleryIndex ? 'active' : ''}
+                />
+              ))}
+              {galleryImages.length > 1 && <>
+                <button onClick={() => setGalleryIndex(i => (i - 1 + galleryImages.length) % galleryImages.length)} aria-label="Previous gallery image"><ChevronLeft size={16} /></button>
+                <button onClick={() => setGalleryIndex(i => (i + 1) % galleryImages.length)} aria-label="Next gallery image"><ChevronRight size={16} /></button>
+              </>}
+              <div className="home-gallery-caption">
+                {galleryImages[galleryIndex]?.category && <span><Images size={14} /> {galleryImages[galleryIndex].category}</span>}
+                {galleryImages[galleryIndex]?.caption && <strong>{galleryImages[galleryIndex].caption}</strong>}
+              </div>
+            </div>
+            {galleryImages.length > 1 && (
+              <div className="home-gallery-dots">
+                {galleryImages.map((_, i) => (
+                  <button key={i} onClick={() => setGalleryIndex(i)} className={i === galleryIndex ? 'active' : ''} aria-label={`Show gallery image ${i + 1}`} />
+                ))}
               </div>
             )}
-            {galleryImages[galleryIndex]?.caption && (
-              <p style={{ color:'#fff', fontWeight:700, fontSize:'15px' }}>{galleryImages[galleryIndex].caption}</p>
-            )}
           </div>
-          {/* Arrows */}
-          {galleryImages.length > 1 && <>
-            <button onClick={() => setGalleryIndex(i => (i - 1 + galleryImages.length) % galleryImages.length)}
-              style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', width:'34px', height:'34px', borderRadius:'50%', border:'1px solid rgba(255,255,255,0.3)', background:'rgba(0,0,0,0.45)', color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <ChevronLeft size={16} />
-            </button>
-            <button onClick={() => setGalleryIndex(i => (i + 1) % galleryImages.length)}
-              style={{ position:'absolute', right:'10px', top:'50%', transform:'translateY(-50%)', width:'34px', height:'34px', borderRadius:'50%', border:'1px solid rgba(255,255,255,0.3)', background:'rgba(0,0,0,0.45)', color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <ChevronRight size={16} />
-            </button>
-          </>}
-        </div>
-        {/* Dots */}
-        {galleryImages.length > 1 && (
-          <div style={{ display:'flex', justifyContent:'center', gap:'6px', marginTop:'12px' }}>
-            {galleryImages.map((_, i) => (
-              <button key={i} onClick={() => setGalleryIndex(i)}
-                style={{ width: i === galleryIndex ? '20px' : '7px', height:'7px', borderRadius:'4px', border:'none', background: i === galleryIndex ? 'var(--accent)' : 'var(--border)', cursor:'pointer', transition:'all 0.3s', padding:0 }} />
+
+          <div className="gallery-desktop-grid home-gallery-grid">
+            {galleryImages.map((image) => (
+              <button key={image.id} onClick={() => setGalleryLightbox(image)}>
+                <img src={image.url} alt={image.caption || 'Gallery image'} loading="lazy" />
+              </button>
             ))}
           </div>
-        )}
-      </div>
-
-      {/* Desktop: grid */}
-      <div className="gallery-desktop-grid" style={{
-  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-  gap: '12px',
-}}>
-        {galleryImages.map((image, index) => (
-          <div key={image.id} onClick={() => setGalleryLightbox(image)}
-            style={{ borderRadius:'14px', overflow:'hidden', border:'1px solid var(--border)', cursor:'pointer', background:'var(--surface)', position:'relative', aspectRatio:'1/1', transition:'transform 0.25s, border-color 0.25s' }}
-            onMouseEnter={e => { e.currentTarget.style.transform='scale(1.03)'; e.currentTarget.style.borderColor='var(--accent)' }}
-            onMouseLeave={e => { e.currentTarget.style.transform='scale(1)'; e.currentTarget.style.borderColor='var(--border)' }}
-          >
-            <img src={image.url} alt={image.caption || 'Gallery image'}
-              style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }}
-              loading="lazy" />
-          </div>
-        ))}
-      </div>
-    </div>
-  </div>
-)}
+        </section>
+      )}
 
       {/* Reviews section */}
       {reviews.length > 0 && (
-        <div style={{ padding: '44px 0 52px' }}>
-          <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
-            <div style={{ textAlign: 'center', marginBottom: '44px' }}>
-              <p className="section-label" style={{ marginBottom: '10px' }}>What Customers Say</p>
-              <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(28px,4vw,42px)', fontWeight: 800, color: 'var(--text)' }}>
-                Real Reviews
-              </h2>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '18px' }}>
-              {reviews.map((r, i) => (
-                <div key={r.id} className="card fade-up" style={{ padding: '22px', animationDelay: `${i * 0.08}s` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                      {r.userPhoto
-                        ? <img src={r.userPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '14px' }}>{r.userName?.[0]?.toUpperCase()}</span>
-                      }
-                    </div>
-                    <div>
-                      <p style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>{r.userName}</p>
-                      <div style={{ display: 'flex', gap: '2px' }}>
-                        {[1,2,3,4,5].map(n => (
-                          <span key={n} style={{ color: n <= r.rating ? 'var(--accent)' : 'var(--border)', fontSize: '13px' }}>â˜…</span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <p style={{ color: 'var(--muted)', fontSize: '13px', lineHeight: 1.6, fontStyle: 'italic' }}>
-                    "{r.comment}"
-                  </p>
-                </div>
-              ))}
-            </div>
-            <div style={{ textAlign: 'center', marginTop: '32px' }}>
-              <div style={{ display: 'inline-flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                <Link to="/reviews" className="btn btn-secondary">See All Reviews <ArrowRight size={15} /></Link>
-                {googleReviewUrl && (
-                  <a href={googleReviewUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
-                    Rate Us on Google <ExternalLink size={15} />
-                  </a>
-                )}
-              </div>
-            </div>
+        <section className="home-reviews-section">
+          <div className="home-section-head centered decorated">
+            <p className="section-label">What Customers Say</p>
+            <h2>Real Reviews <PawPrint size={24} /></h2>
           </div>
-        </div>
+          <div className="home-review-list">
+            {reviews.slice(0, 3).map((r, i) => (
+              <article key={r.id} className="home-review-card fade-up" style={{ animationDelay: `${i * 0.08}s` }}>
+                <div className="home-review-person">
+                  <div className="home-review-avatar">
+                    {r.userPhoto
+                      ? <img src={r.userPhoto} alt="" />
+                      : <span>{r.userName?.[0]?.toUpperCase() || 'P'}</span>}
+                  </div>
+                  <div>
+                    <strong>{r.userName || 'Pet Parent'}</strong>
+                    <span>{[1,2,3,4,5].map(n => <Star key={n} size={14} fill={n <= (r.rating || 5) ? 'currentColor' : 'none'} />)}</span>
+                  </div>
+                </div>
+                <p>&quot;{cleanReviewText(r.comment)}&quot;</p>
+              </article>
+            ))}
+          </div>
+          <div className="home-review-actions">
+            <Link to="/reviews" className="btn btn-secondary">See All Reviews <ArrowRight size={16} /></Link>
+            {googleReviewUrl && (
+              <a href={googleReviewUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
+                Rate Us on Google <ExternalLink size={15} />
+              </a>
+            )}
+          </div>
+        </section>
       )}
 
       {/* Call CTA Section */}
-      <div style={{ marginTop: '56px', marginBottom: '56px', maxWidth: '1200px', margin: '56px auto 56px', padding: '0 20px' }}>
-        <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '20px', padding: '36px', textAlign: 'center' }}>
-          <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '16px', marginBottom: '6px' }}>Not sure which service to choose?</p>
-          <p style={{ color: 'var(--muted)', fontSize: '14px', marginBottom: '20px' }}>Call us and our team will help pick the best option for your pet.</p>
-          <a href={`tel:${adminPhone}`} className="btn btn-primary" style={{ display: 'inline-flex' }}>
-            ðŸ“ž Call: {adminPhone}
-          </a>
-        </div>
-      </div>
-
-      {/* Location */}
-      <div id="contact" style={{ background: 'var(--surface)', padding: '70px 0', borderTop: '1px solid var(--border)', scrollMarginTop: '84px' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '48px', alignItems: 'center' }} className="grid-cols-1 md:grid-cols-2">
-            <div>
-              <p className="section-label" style={{ marginBottom: '10px' }}>Find Us</p>
-              <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(24px,3vw,36px)', fontWeight: 800, color: 'var(--text)', marginBottom: '28px' }}>
-                Visit Our Centre
-              </h2>
-              {[
-                { icon: <MapPin size={16} />, text: contactAddress },
-                { icon: <Phone size={16} />,  text: adminPhone },
-                { icon: <Clock size={16} />,  text: contactHours },
-              ].map((item, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '18px' }}>
-                  <div style={{ color: 'var(--accent)', marginTop: '2px', flexShrink: 0 }}>{item.icon}</div>
-                  <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: 1.6 }}>{item.text}</p>
-                </div>
-              ))}
-              <div style={{ display: 'flex', gap: '12px', marginTop: '28px', flexWrap: 'wrap' }}>
-                <Link to="/book" className="btn btn-primary">
-                  <Calendar size={16} /> Book Now
-                </Link>
-                <a
-                  href={contactAddress ? `https://maps.google.com/?q=${encodeURIComponent(contactAddress)}` : '#'}
-                  target="_blank" rel="noopener noreferrer"
-                  className="btn btn-secondary"
-                >
-                  <MapPin size={16} /> Get Directions
-                </a>
-              </div>
-            </div>
-            <div style={{ borderRadius: '20px', overflow: 'hidden', border: '1px solid var(--border)', height: '320px' }}>
-              <iframe
-                title="Location"
-                src={contactAddress ? `https://www.google.com/maps?q=${encodeURIComponent(contactAddress)}&output=embed` : "about:blank"}
-                width="100%" height="100%"
-                style={{ border: 0, filter: 'grayscale(70%) hue-rotate(180deg) invert(5%)' }}
-                allowFullScreen loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-              />
-            </div>
+      <section className="home-help-cta">
+        <div className="home-help-card">
+          <div className="home-help-image">
+            {homePetImages.cta ? <img src={homePetImages.cta} alt="Happy pet" /> : <PawPrint size={72} />}
+          </div>
+          <div className="home-help-copy">
+            <h2>Not sure which service to choose? <PawPrint size={20} /></h2>
+            <p>Call us - we're happy to help you find the best option for your pet.</p>
+            <a href={`tel:${adminPhone}`} className="btn btn-primary"><Phone size={16} /> Call: {adminPhone}</a>
           </div>
         </div>
-      </div>
+      </section>
 
+      {/* Location */}
+      <section id="contact" className="home-location-section">
+        <div className="home-location-info">
+          <p className="section-label">Find Us</p>
+          <h2>Visit Our Centre <PawPrint size={24} /></h2>
+          {[
+            { icon: <MapPin size={18} />, text: contactAddress },
+            { icon: <Phone size={18} />, text: adminPhone },
+            { icon: <Clock size={18} />, text: contactHours },
+          ].filter(item => item.text).map((item, i) => (
+            <div key={i} className="home-location-line">
+              {item.icon}<p>{item.text}</p>
+            </div>
+          ))}
+          <div className="home-location-actions">
+            <Link to="/book" className="btn btn-primary"><Calendar size={16} /> Book Now</Link>
+            <a href={contactAddress ? `https://maps.google.com/?q=${encodeURIComponent(contactAddress)}` : '#'} target="_blank" rel="noopener noreferrer" className="btn btn-secondary"><Navigation size={16} /> Get Directions</a>
+          </div>
+        </div>
+        <div className="home-map-card">
+          <iframe
+            title="Location"
+            src={contactAddress ? `https://www.google.com/maps?q=${encodeURIComponent(contactAddress)}&output=embed` : 'about:blank'}
+            width="100%" height="100%"
+            style={{ border: 0 }}
+            allowFullScreen loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+          />
+        </div>
+      </section>
+
+      <section className="home-follow-card">
+        <div className="home-follow-brand">
+          <div className="home-follow-logo"><BrandLogo size="admin" showText={false} /></div>
+          <div>
+            <h2>{shopName}</h2>
+            <p>{footerInfo.tagline || 'Trusted pet grooming and spa salon with love, care and professional expertise.'}</p>
+          </div>
+        </div>
+        <div className="home-follow-pet">
+          {homePetImages.follow ? <img src={homePetImages.follow} alt="Paw Paw pet" /> : <PawPrint size={80} />}
+        </div>
+        <div className="home-follow-actions">
+          <h3>Follow Us</h3>
+          <div>
+            {footerInfo.socials?.slice(0, 3).map((social, i) => (
+              <a key={i} href={social.url} target="_blank" rel="noopener noreferrer" aria-label={social.platform}>{socialIcon(social.platform)}</a>
+            ))}
+
+          </div>
+          <Link to="/book" className="btn btn-primary"><Calendar size={16} /> Book Appointment</Link>
+        </div>
+      </section>
       {/* WhatsApp float button */}
       <a href={`https://wa.me/${adminPhone}?text=${encodeURIComponent(`Hi ${shopName}, I'm interested in booking a service for my pet. Could you help me with more details?`)}`} target="_blank" rel="noopener noreferrer" className="whatsapp-btn" title="Chat on WhatsApp">
         ðŸ’¬
@@ -654,6 +599,16 @@ export default function Home() {
     </div>
   )
 }
+
+
+
+
+
+
+
+
+
+
 
 
 
