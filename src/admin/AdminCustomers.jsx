@@ -51,6 +51,7 @@ export default function AdminCustomers() {
           ownerName: profile?.name || booking.ownerName || 'Unknown',
           userId: booking.userId || '',
           userEmail: profile?.email || booking.userEmail || '',
+          photoURL: profile?.photoURL || booking.userPhotoURL || booking.photoURL || '',
           isWalkIn: booking.isWalkIn,
           blocked: profile?.blocked === true,
           bookings: [],
@@ -64,6 +65,7 @@ export default function AdminCustomers() {
       if (profile?.name || booking.ownerName) map[key].ownerName = profile?.name || booking.ownerName
       if (profile?.phone || booking.phone) map[key].phone = profile?.phone || booking.phone
       if (profile?.email || booking.userEmail) map[key].userEmail = profile?.email || booking.userEmail
+      if (profile?.photoURL || booking.userPhotoURL || booking.photoURL) map[key].photoURL = profile?.photoURL || booking.userPhotoURL || booking.photoURL
       if (profile?.blocked === true) map[key].blocked = true
       if (!booking.isWalkIn) map[key].isWalkIn = false
     })
@@ -76,6 +78,7 @@ export default function AdminCustomers() {
         ownerName: profile.name || profile.email?.split('@')[0] || 'Unknown',
         userId: profile.id,
         userEmail: profile.email || '',
+        photoURL: profile.photoURL || '',
         isWalkIn: false,
         blocked: true,
         bookings: [],
@@ -113,6 +116,7 @@ export default function AdminCustomers() {
         name: customer.ownerName || '',
         phone: customer.phone || '',
         userId: customer.userId,
+        photoURL: customer.photoURL || '',
         updatedAt: serverTimestamp(),
         ...(nextBlocked ? { blockedAt: serverTimestamp() } : { unblockedAt: serverTimestamp() }),
       }, { merge: true })
@@ -126,6 +130,7 @@ export default function AdminCustomers() {
           name: customer.ownerName || prev[customer.userId]?.name || '',
           phone: customer.phone || prev[customer.userId]?.phone || '',
           userId: customer.userId,
+          photoURL: customer.photoURL || prev[customer.userId]?.photoURL || '',
         },
       }))
     } catch (err) {
@@ -134,9 +139,17 @@ export default function AdminCustomers() {
     setSavingBlock('')
   }
 
+  const CustomerAvatar = ({ customer, large = false }) => {
+    const className = 'admin-customer-avatar' + (large ? ' large' : '')
+    if (customer.photoURL) {
+      return <img className={className} src={customer.photoURL} alt={customer.ownerName || 'Customer'} />
+    }
+    return <div className={className}>{customer.ownerName?.[0]?.toUpperCase() || '?'}</div>
+  }
+
   const renderCustomerCard = (customer) => (
     <button key={customer.key} type="button" className="admin-customer-card" onClick={() => setSelectedKey(customer.key)}>
-      <div className="admin-customer-avatar">{customer.ownerName?.[0]?.toUpperCase() || '?'}</div>
+      <CustomerAvatar customer={customer} />
       <div className="admin-customer-main">
         <div className="admin-customer-title">
           <strong>{customer.ownerName || 'Unknown'}</strong>
@@ -179,7 +192,7 @@ export default function AdminCustomers() {
         <div className="modal-overlay" onClick={() => setSelectedKey(null)}>
           <div className="modal-box admin-customer-modal" onClick={e => e.stopPropagation()}>
             <div className="admin-customer-modal-head">
-              <div className="admin-customer-avatar large">{selected.ownerName?.[0]?.toUpperCase() || '?'}</div>
+              <CustomerAvatar customer={selected} large />
               <div>
                 <h2>{selected.ownerName}</h2>
                 <p><Phone size={14} /> {selected.phone || 'No phone'}</p>
@@ -241,3 +254,4 @@ export default function AdminCustomers() {
     </div>
   )
 }
+

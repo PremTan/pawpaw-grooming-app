@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, updateProfile } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import Cropper from 'react-easy-crop'
 import { Lock, Save, User, Upload, X } from 'lucide-react'
 import { auth, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -14,8 +15,41 @@ const EMPTY = {
   address: '',
 }
 
+function getCroppedImg(imageSrc, pixelCrop) {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => {
+      const canvas = document.createElement('canvas')
+      const size = Math.min(pixelCrop.width, pixelCrop.height)
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(
+        image,
+        pixelCrop.x,
+        pixelCrop.y,
+        pixelCrop.width,
+        pixelCrop.height,
+        0,
+        0,
+        size,
+        size
+      )
+      canvas.toBlob(blob => {
+        if (!blob) {
+          reject(new Error('Could not crop image.'))
+          return
+        }
+        resolve(new File([blob], `profile-photo-${Date.now()}.jpg`, { type: 'image/jpeg' }))
+      }, 'image/jpeg', 0.92)
+    }
+    image.onerror = reject
+    image.src = imageSrc
+  })
+}
+
 export default function Profile() {
-  const { user, isBlocked } = useAuth()
+  const { user, profile, isBlocked } = useAuth()
   const [form, setForm] = useState(EMPTY)
   const [passwords, setPasswords] = useState({ current: '', next: '', confirm: '' })
   const [loading, setLoading] = useState(true)
@@ -26,8 +60,13 @@ export default function Profile() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [optimizingPhoto, setOptimizingPhoto] = useState(false)
   const [photoPreview, setPhotoPreview] = useState(null)
+  const [cropData, setCropData] = useState(null)
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
 
   const canChangePassword = user?.providerData?.some(provider => provider.providerId === 'password')
+  const currentPhotoUrl = photoPreview || profile?.photoURL || user.photoURL
 
   useEffect(() => {
     async function fetchProfile() {
@@ -65,6 +104,7 @@ export default function Profile() {
         address: form.address.trim(),
         email: user.email,
         userId: user.uid,
+        photoURL: profile?.photoURL || user.photoURL || '',
         updatedAt: serverTimestamp(),
       }
 
@@ -101,43 +141,71 @@ export default function Profile() {
     setChangingPassword(false)
   }
 
-  const handlePhotoUpload = async (e) => {
+  const choosePhoto = async (event) => {
     if (isBlocked) {
       setError('Your account is blocked from updating profile details.')
-      e.target.value = ''
+      event.target.value = ''
       return
     }
-    const file = e.target.files?.[0]
+    const file = event.target.files?.[0]
+    event.target.value = ''
     if (!file) return
 
     try {
       validateImageFile(file)
     } catch (err) {
       setError(err.message)
-      e.target.value = ''
       return
     }
 
-    // Show preview
     const reader = new FileReader()
-    reader.onload = () => setPhotoPreview(reader.result)
+    reader.onload = () => {
+      setCropData(reader.result)
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setCroppedAreaPixels(null)
+      setError('')
+    }
     reader.readAsDataURL(file)
+  }
 
+  const onCropComplete = useCallback((_, nextPixels) => {
+    setCroppedAreaPixels(nextPixels)
+  }, [])
+
+  const cancelCrop = () => {
+    setCropData(null)
+    setError('')
+  }
+
+  const uploadCroppedPhoto = async () => {
+    if (!cropData || !croppedAreaPixels) return
     setUploadingPhoto(true)
     setError('')
     setMessage('')
     try {
-      const photoURL = await uploadToCloudinary(file, {
+      const croppedFile = await getCroppedImg(cropData, croppedAreaPixels)
+      const previewUrl = URL.createObjectURL(croppedFile)
+      setPhotoPreview(previewUrl)
+      setCropData(null)
+
+      const photoURL = await uploadToCloudinary(croppedFile, {
         onOptimizeStart: () => setOptimizingPhoto(true),
         onOptimizeEnd: () => setOptimizingPhoto(false),
       })
 
-      // Update user profile
       await updateProfile(auth.currentUser, { photoURL })
+      await setDoc(doc(db, 'profiles', user.uid), {
+        email: user.email || '',
+        name: form.name.trim() || user.displayName || '',
+        phone: form.phone.replace(/\D/g, '').slice(0, 10),
+        photoURL,
+        userId: user.uid,
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
 
+      setPhotoPreview(photoURL)
       setMessage('Profile photo updated!')
-      // Clear preview
-      setTimeout(() => setPhotoPreview(null), 2000)
     } catch (err) {
       setError(err.message || 'Could not upload photo.')
     }
@@ -178,12 +246,11 @@ export default function Profile() {
             <h2 style={{ color: 'var(--text)', fontSize: '18px', fontWeight: 800 }}>Personal Details</h2>
           </div>
 
-          {/* Profile Picture */}
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '14px' }}>
             <div style={{ position: 'relative' }}>
-              {photoPreview || user.photoURL ? (
+              {currentPhotoUrl ? (
                 <img
-                  src={photoPreview || user.photoURL}
+                  src={currentPhotoUrl}
                   alt="Profile"
                   style={{ width: '70px', height: '70px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent)' }}
                 />
@@ -195,13 +262,12 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Upload Button */}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
             <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
               <input
                 type="file"
                 accept={IMAGE_FILE_ACCEPT}
-                onChange={handlePhotoUpload}
+                onChange={choosePhoto}
                 disabled={isBlocked || uploadingPhoto}
                 style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
               />
@@ -224,7 +290,7 @@ export default function Profile() {
                   transition: 'all 0.2s',
                 }}
                 onMouseEnter={(e) => { if (!isBlocked && !uploadingPhoto) { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = 'white'; } }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent-bg)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent-bg)'; e.currentTarget.style.color = 'var(--accent)' }}
                 disabled={isBlocked || uploadingPhoto}
               >
                 <Upload size={12} /> {optimizingPhoto ? 'Optimizing image...' : uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
@@ -289,6 +355,56 @@ export default function Profile() {
           )}
         </div>
       </div>
+
+      {cropData && (
+        <div className="modal-overlay profile-crop-overlay" onClick={cancelCrop}>
+          <div className="modal-box profile-crop-modal" onClick={event => event.stopPropagation()}>
+            <div className="profile-crop-head">
+              <div>
+                <h2>Crop Profile Photo</h2>
+                <p>Zoom and position your photo inside the circle.</p>
+              </div>
+              <button type="button" onClick={cancelCrop} aria-label="Close crop photo"><X size={18} /></button>
+            </div>
+            <div className="profile-crop-stage">
+              <Cropper
+                image={cropData}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="round"
+                showGrid={false}
+                onCropChange={setCrop}
+                onCropComplete={onCropComplete}
+                onZoomChange={setZoom}
+              />
+            </div>
+            <label className="profile-crop-zoom">
+              Zoom
+              <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={event => setZoom(Number(event.target.value))} />
+            </label>
+            <div className="profile-crop-actions">
+              <button type="button" className="btn btn-secondary" onClick={cancelCrop}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={uploadCroppedPhoto} disabled={uploadingPhoto}>
+                {optimizingPhoto ? 'Optimizing image...' : uploadingPhoto ? 'Uploading...' : 'Use Photo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .profile-crop-overlay { z-index: 120; }
+        .profile-crop-modal { max-width: 560px; overflow: hidden; }
+        .profile-crop-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 18px 18px 0; }
+        .profile-crop-head h2 { color: var(--text); font-size: 18px; font-weight: 900; }
+        .profile-crop-head p { color: var(--muted); font-size: 12px; margin-top: 4px; }
+        .profile-crop-head button { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; }
+        .profile-crop-stage { position: relative; width: 100%; height: min(62vh, 420px); min-height: 300px; margin-top: 16px; background: #111; }
+        .profile-crop-zoom { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; padding: 16px 18px 0; color: var(--muted); font-size: 12px; font-weight: 800; }
+        .profile-crop-zoom input { accent-color: var(--accent); }
+        .profile-crop-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px 18px 18px; }
+      `}</style>
     </div>
   )
 }

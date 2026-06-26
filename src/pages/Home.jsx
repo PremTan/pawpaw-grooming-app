@@ -7,40 +7,13 @@ import { SERVICES } from '../utils/services'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
 import { countOpenDays } from '../utils/bookingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
-import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink } from 'lucide-react'
-
-const SLIDES = [
-  {
-    id: 1,
-    tag: 'Professional Grooming',
-    title: 'Your Pet Deserves',
-    highlight: 'Royal Treatment',
-    sub: 'Expert groomers, premium products, and a stress-free experience for your beloved pets.',
-    bg: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(10,10,10,0) 60%)',
-    emoji: '✂️',
-  },
-  {
-    id: 2,
-    tag: 'Spa & Wellness',
-    title: 'Relax. Refresh.',
-    highlight: 'Rejuvenate.',
-    sub: 'From spa baths to de-shedding treatments — full wellness care for dogs & cats.',
-    bg: 'linear-gradient(135deg, rgba(74,158,191,0.15) 0%, rgba(10,10,10,0) 60%)',
-    emoji: '🛁',
-  },
-  {
-    id: 3,
-    tag: 'Flexible Scheduling',
-    title: 'Book Around',
-    highlight: 'Your Day',
-    sub: 'Choose from the appointment windows enabled by our grooming team.',
-    bg: 'linear-gradient(135deg, rgba(107,175,107,0.15) 0%, rgba(10,10,10,0) 60%)',
-    emoji: '🐾',
-  },
-]
+import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint } from 'lucide-react'
 
 const DEFAULT_HERO_IMAGES = []
-
+const DEFAULT_VISIT_IMAGES = [
+  { key: 'homeVisit', url: '', alt: 'Home visit grooming' },
+  { key: 'centreVisit', url: '', alt: 'Visit our grooming centre' },
+]
 const FEATURE_ICONS = {
   award: <Award size={24} />,
   shield: <Shield size={24} />,
@@ -48,221 +21,197 @@ const FEATURE_ICONS = {
   star: <Star size={24} />,
 }
 
-function HeroOrbit3D() {
-  return (
-    <div className="hero-orbit-3d" aria-hidden="true">
-      <div className="hero-orbit-ring hero-orbit-ring-a" />
-      <div className="hero-orbit-ring hero-orbit-ring-b" />
-<div className="hero-orbit-chip hero-orbit-chip-1"><Scissors size={16} /></div>
-      <div className="hero-orbit-chip hero-orbit-chip-2"><Heart size={16} /></div>
-</div>
-  )
-}
+const HERO_COPY = [
+  {
+    tag: 'Salon Experience',
+    icon: <Sparkles size={13} />,
+    title: 'Visit Our Salon,',
+    highlight: 'Premium Care.',
+    sub: 'State-of-the-art grooming care for a calm, polished pet experience.',
+  },
+  {
+    tag: 'Spa & Wellness',
+    icon: <PawPrint size={13} />,
+    title: 'Relax. Refresh.',
+    highlight: 'Rejuvenate.',
+    sub: 'From spa baths to de-shedding treatments - full wellness care for dogs & cats.',
+  },
+  {
+    tag: 'Doorstep Grooming',
+    icon: <HomeIcon size={13} />,
+    title: 'Care Comes',
+    highlight: 'Home.',
+    sub: 'Professional grooming at your doorstep with comfort, safety, and less travel stress.',
+  },
+  {
+    tag: 'Expert Groomers',
+    icon: <Scissors size={13} />,
+    title: 'Styled With',
+    highlight: 'Gentle Hands.',
+    sub: 'Breed-aware grooming, careful handling, and thoughtful finishing for every pet.',
+  },
+  {
+    tag: 'Happy Results',
+    icon: <Heart size={13} />,
+    title: 'Clean. Cute.',
+    highlight: 'Confident.',
+    sub: 'Premium products and loving care for pets who look good and feel even better.',
+  },
+]
+
 function HeroSlider() {
   const [current, setCurrent] = useState(0)
-  const [imageCurrent, setImageCurrent] = useState(0)
   const [heroImages, setHeroImages] = useState(null)
+  const [visitImages, setVisitImages] = useState(DEFAULT_VISIT_IMAGES)
   const [paused, setPaused] = useState(false)
 
   const images = heroImages || []
 
   const next = () => {
-    setCurrent(c => (c + 1) % SLIDES.length)
-    if (images.length) setImageCurrent(c => (c + 1) % images.length)
+    if (images.length) setCurrent(c => (c + 1) % images.length)
   }
 
   const prev = () => {
-    setCurrent(c => (c - 1 + SLIDES.length) % SLIDES.length)
-    if (images.length) setImageCurrent(c => (c - 1 + images.length) % images.length)
+    if (images.length) setCurrent(c => (c - 1 + images.length) % images.length)
   }
 
   useEffect(() => {
     async function fetchHeroImages() {
       try {
         const snap = await getDoc(doc(db, 'settings', 'heroImages'))
-        const savedImages = snap.exists() ? snap.data().images : []
+        const data = snap.exists() ? snap.data() : {}
+        const savedImages = data.images || []
         const cleanImages = Array.isArray(savedImages)
           ? savedImages.filter(image => image?.url).slice(0, 5).map((image, index) => ({
               src: image.url,
               alt: image.alt || `Pet grooming hero image ${index + 1}`,
             }))
           : []
+        const savedVisitImages = Array.isArray(data.visitImages) ? data.visitImages : []
+        const cleanVisitImages = DEFAULT_VISIT_IMAGES.map((fallback, index) => ({
+          ...fallback,
+          url: savedVisitImages[index]?.url || '',
+          alt: savedVisitImages[index]?.alt || fallback.alt,
+        }))
         setHeroImages(cleanImages)
+        setVisitImages(cleanVisitImages)
       } catch {
         setHeroImages(DEFAULT_HERO_IMAGES)
+        setVisitImages(DEFAULT_VISIT_IMAGES)
       }
     }
     fetchHeroImages()
   }, [])
 
   useEffect(() => {
-    if (paused) return
+    if (paused || images.length <= 1) return
     const t = setInterval(() => {
-      setCurrent(c => (c + 1) % SLIDES.length)
-      setImageCurrent(c => images.length ? (c + 1) % images.length : 0)
+      setCurrent(c => (c + 1) % images.length)
     }, 5000)
     return () => clearInterval(t)
   }, [paused, images.length])
 
   useEffect(() => {
-    setImageCurrent(0)
+    setCurrent(0)
   }, [heroImages])
 
-  const slide = SLIDES[current]
+  const slideCopy = HERO_COPY[current % HERO_COPY.length]
+
+
+
+  const visitCards = [
+    {
+      title: 'Home Visit',
+      text: 'We come to your doorstep',
+      cta: 'Choose Home Visit',
+      to: '/book?visit=home',
+      icon: <HomeIcon size={30} />,
+      image: visitImages[0],
+    },
+    {
+      title: 'Visit Our Centre',
+      text: 'Bring your pet to our salon',
+      cta: 'Choose Our Centre',
+      to: '/book?visit=centre',
+      icon: <Store size={28} />,
+      image: visitImages[1],
+    },
+  ]
 
   return (
-    <div
-      style={{ position: 'relative', overflow: 'hidden', minHeight: '88vh', display: 'flex', alignItems: 'center' }}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-    >
-      {/* Background glow */}
-      <div style={{ position: 'absolute', inset: 0, background: slide.bg, transition: 'background 0.8s ease', zIndex: 0 }} />
-      <div className="glow-orb" style={{ width: '500px', height: '500px', background: 'var(--accent-bg)', top: '10%', left: '60%', opacity: 0.6 }} />
-      <div className="paw-pattern" style={{ position: 'absolute', inset: 0, opacity: 0.4, zIndex: 0 }} />
-
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '120px 20px 60px', position: 'relative', zIndex: 1, width: '100%' }}>
-        <div className="hero-layout">
-          <div className="hero-copy">
-            {/* Tag */}
-            <div
-              key={`tag-${current}`}
-              className="fade-up"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '8px',
-                background: 'var(--accent-bg)', border: '1px solid var(--accent-border)',
-                color: 'var(--accent)', fontSize: '12px', fontWeight: 700,
-                padding: '6px 16px', borderRadius: '999px', marginBottom: '24px',
-                letterSpacing: '0.5px',
-              }}
-            >
-              <span>{slide.emoji}</span> {slide.tag}
-            </div>
-
-            {/* Heading */}
-            <h1
-              key={`h1-${current}`}
-              className="fade-up delay-1"
-              style={{
-                fontFamily: '"Playfair Display", serif',
-                fontSize: 'clamp(42px, 7vw, 80px)',
-                fontWeight: 800,
-                color: 'var(--text)',
-                lineHeight: 1.1,
-                marginBottom: '12px',
-              }}
-            >
-              {slide.title}
-              <span
-                style={{
-                  display: 'block',
-                  background: 'var(--gradient)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                }}
-              >
-                {slide.highlight}
-              </span>
-            </h1>
-
-            <p key={`sub-${current}`} className="fade-up delay-2"
-              style={{ color: 'var(--muted)', fontSize: '17px', lineHeight: 1.7, marginBottom: '36px', maxWidth: '520px' }}
-            >
-              {slide.sub}
-            </p>
-
-            <div key={`btns-${current}`} className="fade-up delay-3" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '48px' }}>
-              <Link to="/book" className="btn btn-primary" style={{ fontSize: '15px', padding: '13px 28px' }}>
-                <Calendar size={18} /> Book Appointment
-              </Link>
-              <Link to="/services" className="btn btn-secondary" style={{ fontSize: '15px', padding: '13px 28px' }}>
-                View Services <ChevronRight size={18} />
-              </Link>
-            </div>
-
-            {/* Slider controls */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <button onClick={prev} aria-label="Previous hero slide"
-                style={{
-                  width: '38px', height: '38px', borderRadius: '50%',
-                  background: 'var(--accent-bg)', border: '1px solid var(--accent-border)',
-                  color: 'var(--accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'all 0.2s',
-                }}
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {SLIDES.map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setCurrent(i)}
-                    aria-label={`Show hero slide ${i + 1}`}
-                    style={{
-                      width: i === current ? '28px' : '8px',
-                      height: '8px',
-                      borderRadius: '4px',
-                      background: i === current ? 'var(--accent)' : 'var(--border)',
-                      border: 'none', cursor: 'pointer',
-                      transition: 'all 0.3s ease',
-                    }}
-                  />
+    <section className="home-redesign" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+      <div className="home-redesign-inner">
+        <div className="mobile-hero-card">
+          <div className="mobile-hero-media" aria-label="Pet grooming hero images">
+            {images.length ? images.map((image, i) => (
+              <img
+                key={image.src}
+                src={image.src}
+                alt={image.alt}
+                className={i === current ? 'active' : ''}
+              />
+            )) : <div className="mobile-hero-empty"><Scissors size={34} /><span>Add hero banners from admin</span></div>}
+          </div>
+          {images.length > 1 && (
+            <>
+              <button className="mobile-hero-arrow left" onClick={prev} aria-label="Previous hero banner"><ChevronLeft size={18} /></button>
+              <button className="mobile-hero-arrow right" onClick={next} aria-label="Next hero banner"><ChevronRight size={18} /></button>
+              <div className="mobile-hero-dots">
+                {images.map((_, i) => (
+                  <button key={i} onClick={() => setCurrent(i)} className={i === current ? 'active' : ''} aria-label={`Show hero banner ${i + 1}`} />
                 ))}
               </div>
-              <button onClick={next} aria-label="Next hero slide"
-                style={{
-                  width: '38px', height: '38px', borderRadius: '50%',
-                  background: 'var(--accent-bg)', border: '1px solid var(--accent-border)',
-                  color: 'var(--accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'all 0.2s',
-                }}
-              >
-                <ChevronRight size={18} />
-              </button>
-            </div>
+            </>
+          )}
+        </div>
+        <div className="mobile-hero-copy" key={`hero-copy-${current}`}>
+          <div className="mobile-hero-text">
+            <span className="mobile-hero-badge">{slideCopy.icon} {slideCopy.tag}</span>
+            <h1>{slideCopy.title} <span>{slideCopy.highlight}<PawPrint className="hero-title-paw" size={34} /></span></h1>
+            <p>{slideCopy.sub}</p>
           </div>
-
-          <div className="hero-visual-wrap">
-            <HeroOrbit3D />
-            <div className="hero-image-slider" aria-label="Pet grooming photos">
-            {images.length ? (
-              <>
-                {images.map((image, i) => (
-                  <img
-                    key={image.src || image.url}
-                    src={image.src || image.url}
-                    alt={image.alt}
-                    className={`hero-image ${i === imageCurrent ? 'active' : ''}`}
-                  />
-                ))}
-                <div className="hero-image-dots">
-                  {images.map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setImageCurrent(i)}
-                      aria-label={`Show grooming photo ${i + 1}`}
-                      className={i === imageCurrent ? 'active' : ''}
-                    />
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="skeleton" style={{ width: '100%', height: '100%', borderRadius: 0 }} />
-            )}
+          <div className="mobile-hero-actions">
+            <Link to="/book" className="btn btn-primary"><Calendar size={16} /> Book Appointment</Link>
+            <Link to="/services" className="btn btn-secondary">View Services <ArrowRight size={16} /></Link>
           </div>
         </div>
+
+        <div className="visit-choice-section">
+          <div className="visit-choice-title">
+            <span />
+            <h2>Where would you like your pet groomed?</h2>
+            <span />
+          </div>
+          <div className="visit-choice-grid">
+            {visitCards.map((card, index) => (
+              <Link key={card.title} to={card.to} className="visit-choice-card">
+                <div className="visit-choice-icon">{card.icon}</div>
+                <div className="visit-choice-image">
+                  {card.image?.url ? (
+                    <img src={card.image.url} alt={card.image.alt} />
+                  ) : (
+                    <div className="visit-choice-placeholder">{card.icon}</div>
+                  )}
+                </div>
+                <h3>{card.title}</h3>
+                <p>{card.text}</p>
+                <span className="visit-choice-button">{card.cta} <ArrowRight size={16} /></span>
+                {index === 0 && <b className="visit-choice-or">OR</b>}
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <div className="home-trust-strip">
+          <span><Shield size={24} /> Trained & Verified Groomers</span>
+          <span><BadgeCheck size={24} /> Safe, Hygienic & Loving Care</span>
+          <span><Award size={24} /> Premium Quality Products</span>
+          <span><Heart size={24} /> 100% Happiness Guarantee</span>
+        </div>
       </div>
-
-            </div>
-
-      {/* Floating decorative */}
-      <div className="animate-float" style={{ position: 'absolute', right: '8%', top: '25%', fontSize: '120px', opacity: 0.06, userSelect: 'none', pointerEvents: 'none' }}>🐾</div>
-      <div style={{ position: 'absolute', right: '18%', bottom: '20%', fontSize: '60px', opacity: 0.04, userSelect: 'none', pointerEvents: 'none' }}>🐾</div>
-    </div>
+    </section>
   )
 }
-
 export default function Home() {
   const [stats, setStats]   = useState({ totalBookings: 0, totalReviews: 0, avgRating: 5, daysOpen: 7 })
   const [reviews, setReviews] = useState([])
@@ -388,25 +337,6 @@ export default function Home() {
     <div style={{ background: 'var(--bg)' }}>
       {/* Hero slider */}
       <HeroSlider />
-
-      {/* Stats strip */}
-      <div style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '20px 0' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '40px' }}>
-          {[
-            { val: `${stats.totalBookings}${stats.totalBookings > 0 ? '+' : ''}`, label: 'Total Bookings' },
-            { val: `${stats.avgRating}★`,     label: 'Average Rating' },
-            { val: `${stats.totalReviews}${stats.totalReviews > 0 ? '+' : ''}`,  label: 'Happy Customers' },
-            { val: String(stats.daysOpen),                                  label: 'Days a Week' },
-          ].map((s, i) => (
-            <div key={i} style={{ textAlign: 'center' }}>
-              <div style={{ fontFamily: '"Playfair Display",serif', fontSize: '28px', fontWeight: 800, background: 'var(--gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                {s.val}
-              </div>
-              <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '3px' }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* Features */}
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '76px 20px' }}>
@@ -724,6 +654,10 @@ export default function Home() {
     </div>
   )
 }
+
+
+
+
 
 
 
