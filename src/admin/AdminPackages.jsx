@@ -4,9 +4,11 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
-import { Plus, X, Pencil, Trash2, Package } from 'lucide-react'
+import { uploadToCloudinary } from '../utils/cloudinary'
+import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
+import { Plus, X, Pencil, Trash2, Package, Upload } from 'lucide-react'
 
-const EMPTY = { name:'', description:'', services:[], priceRange:'', price:'', duration:'', active:true }
+const EMPTY = { name:'', description:'', services:[], priceRange:'', price:'', duration:'', imageUrl:'', active:true }
 
 export default function AdminPackages() {
   const [packages, setPackages] = useState([])
@@ -15,6 +17,7 @@ export default function AdminPackages() {
   const [form, setForm]  = useState(EMPTY)
   const [editId, setEditId] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
   const [svcInput, setSvcInput] = useState('')
   const [deleteTarget, setDeleteTarget] = useState(null)
 
@@ -28,8 +31,20 @@ export default function AdminPackages() {
   useEffect(() => { fetch() }, [])
 
   const openAdd  = () => { setForm(EMPTY); setEditId(null); setSvcInput(''); setShowModal(true) }
-  const openEdit = (pkg) => { setForm({ name:pkg.name, description:pkg.description||'', services:pkg.services||[], priceRange:pkg.priceRange||'', price:pkg.price||'', duration:pkg.duration||'', active:pkg.active!==false }); setEditId(pkg.id); setSvcInput(''); setShowModal(true) }
+  const openEdit = (pkg) => { setForm({ name:pkg.name, description:pkg.description||'', services:pkg.services||[], priceRange:pkg.priceRange||'', price:pkg.price||'', duration:pkg.duration||'', imageUrl:pkg.imageUrl||'', active:pkg.active!==false }); setEditId(pkg.id); setSvcInput(''); setShowModal(true) }
 
+  const chooseImage = async (file) => {
+    if (!file) return
+    try {
+      validateImageFile(file)
+      setUploadingImage(true)
+      const url = await uploadToCloudinary(file)
+      setForm(p => ({ ...p, imageUrl: url }))
+    } catch (err) {
+      alert(err.message || 'Could not upload package image.')
+    }
+    setUploadingImage(false)
+  }
   const addService = () => {
     if (!svcInput.trim()) return
     setForm(p => ({ ...p, services:[...p.services, svcInput.trim()] }))
@@ -72,7 +87,7 @@ export default function AdminPackages() {
         </button>
       </div>
 
-      {loading ? <Spinner text="Loading packages…" /> : packages.length===0 ? (
+      {loading ? <Spinner text="Loading packagesâ€¦" /> : packages.length===0 ? (
         <div style={{ background:'var(--card)', border:'2px dashed var(--border)', borderRadius:'16px', padding:'60px', textAlign:'center' }}>
           <Package size={40} style={{ color:'var(--muted)', margin:'0 auto 16px' }} />
           <p style={{ color:'var(--text)', fontWeight:600, marginBottom:'6px' }}>No packages yet</p>
@@ -102,7 +117,7 @@ export default function AdminPackages() {
                 <div style={{ marginBottom:'14px' }}>
                   {pkg.services.map((s,i) => (
                     <div key={i} style={{ display:'flex', alignItems:'center', gap:'6px', padding:'4px 0', borderBottom:i<pkg.services.length-1?'1px solid var(--border)':'none' }}>
-                      <span style={{ color:'var(--accent)', fontSize:'11px' }}>✓</span>
+                      <span style={{ color:'var(--accent)', fontSize:'11px' }}>âœ“</span>
                       <span style={{ color:'var(--text)', fontSize:'13px' }}>{s}</span>
                     </div>
                   ))}
@@ -111,13 +126,13 @@ export default function AdminPackages() {
 
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
                 <div>
-                  <div style={{ color:'var(--accent)', fontFamily:'"DM Mono",monospace', fontWeight:800, fontSize:'18px' }}>{pkg.priceRange || (pkg.price ? `₹${pkg.price}` : 'Price TBD')}</div>
-                  {pkg.duration && <div style={{ color:'var(--muted)', fontSize:'11px', marginTop:'2px' }}>⏱ {pkg.duration}</div>}
+                  <div style={{ color:'var(--accent)', fontFamily:'"DM Mono",monospace', fontWeight:800, fontSize:'18px' }}>{pkg.priceRange || (pkg.price ? `â‚¹${pkg.price}` : 'Price TBD')}</div>
+                  {pkg.duration && <div style={{ color:'var(--muted)', fontSize:'11px', marginTop:'2px' }}>â± {pkg.duration}</div>}
                 </div>
                 <button onClick={() => toggleActive(pkg)}
                   style={{ padding:'5px 14px', borderRadius:'999px', fontSize:'11px', fontWeight:700, cursor:'pointer', border:'none', background: pkg.active!==false ? 'rgba(52,211,153,0.1)' : 'rgba(239,68,68,0.1)', color: pkg.active!==false ? '#34d399' : '#ef4444' }}
                 >
-                  {pkg.active!==false ? '● Active' : '● Inactive'}
+                  {pkg.active!==false ? 'â— Active' : 'â— Inactive'}
                 </button>
               </div>
             </div>
@@ -148,12 +163,27 @@ export default function AdminPackages() {
 
               <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
                 <div>
+                  <label style={L}>Package Card Image</label>
+                  <div className="admin-package-image-row">
+                    <div className="admin-package-image-preview">
+                      {form.imageUrl ? <img src={form.imageUrl} alt="" /> : <Package size={34} />}
+                    </div>
+                    <div className="admin-package-image-actions">
+                      <label className="btn btn-secondary" style={{ justifyContent:'center', fontSize:'13px', padding:'10px 14px' }}>
+                        <Upload size={15} /> {uploadingImage ? 'Uploading...' : 'Upload Image'}
+                        <input type="file" accept={IMAGE_FILE_ACCEPT} disabled={uploadingImage || saving} style={{ display:'none' }} onChange={e => { chooseImage(e.target.files?.[0]); e.target.value = null }} />
+                      </label>
+                      {form.imageUrl && <button type="button" className="btn btn-danger" style={{ justifyContent:'center', fontSize:'13px', padding:'10px 14px' }} onClick={() => setForm(p => ({ ...p, imageUrl:'' }))}><X size={15} /> Remove</button>}
+                    </div>
+                  </div>
+                </div>
+                <div>
                   <label style={L}>Package Name *</label>
                   <input className="input" placeholder="e.g. Premium Grooming Bundle" value={form.name} onChange={e => setForm(p => ({ ...p, name:e.target.value }))} />
                 </div>
                 <div>
                   <label style={L}>Description</label>
-                  <textarea className="input" style={{ resize:'none' }} rows={2} placeholder="What's included…" value={form.description} onChange={e => setForm(p => ({ ...p, description:e.target.value }))} />
+                  <textarea className="input" style={{ resize:'none' }} rows={2} placeholder="What's includedâ€¦" value={form.description} onChange={e => setForm(p => ({ ...p, description:e.target.value }))} />
                 </div>
 
                 {/* Services list */}
@@ -177,7 +207,7 @@ export default function AdminPackages() {
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
                   <div>
                     <label style={L}>Price Range</label>
-                    <input className="input" placeholder="e.g. ₹800 – ₹1500" value={form.priceRange} onChange={e => setForm(p => ({ ...p, priceRange:e.target.value }))} />
+                    <input className="input" placeholder="e.g. â‚¹800 â€“ â‚¹1500" value={form.priceRange} onChange={e => setForm(p => ({ ...p, priceRange:e.target.value }))} />
                   </div>
                   <div>
                     <label style={L}>Duration</label>
@@ -193,7 +223,7 @@ export default function AdminPackages() {
                 <div style={{ display:'flex', gap:'10px', paddingTop:'4px' }}>
                   <button onClick={() => setShowModal(false)} className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }}>Cancel</button>
                   <button onClick={handleSave} disabled={saving||!form.name.trim()} className="btn btn-primary" style={{ flex:1, justifyContent:'center' }}>
-                    {saving ? 'Saving…' : editId ? 'Update Package' : 'Create Package'}
+                    {saving ? 'Savingâ€¦' : editId ? 'Update Package' : 'Create Package'}
                   </button>
                 </div>
               </div>
