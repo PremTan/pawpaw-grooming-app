@@ -3396,7 +3396,7 @@
   gap: 12px;
 }
 
-.mobile-hero-arrow {
+/* .mobile-hero-arrow {
   position: absolute;
   z-index: 3;
   top: 50%;
@@ -3411,6 +3411,25 @@
   background: color-mix(in srgb, var(--card) 82%, transparent);
   cursor: pointer;
   transform: translateY(-50%);
+} */
+
+/* Find and replace the .mobile-hero-arrow styles */
+.mobile-hero-arrow {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  color: var(--accent);
+  background: transparent;
+  cursor: pointer;
+  transform: translateY(-50%);
+  box-shadow: none;
 }
 
 .mobile-hero-arrow.left { left: 12px; }
@@ -3903,12 +3922,12 @@
 }
 
 .mobile-hero-arrow {
-  width: 58px;
-  height: 58px;
-  color: #1e1510;
-  background: rgba(255,255,255,0.86);
-  border: 0;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: black;
+  /* add a subtle text-shadow so arrow is visible on any image */
+  filter: drop-shadow(0 5px 3px rgba(0,0,0,0.5));
 }
 
 .mobile-hero-arrow.left { left: 28px; }
@@ -4093,7 +4112,91 @@
   }
 }
 
-@media (max-width: 520px) {
+
+/* ── Small mobile 0–519px ── */
+@media (max-width: 519px) {
+  .home-redesign {
+    padding: 96px 12px 18px;
+  }
+ 
+  .mobile-hero-media {
+    height: 185px;
+  }
+ 
+  .mobile-hero-arrow {
+    top: 92px !important; /* 185/2 */
+    width: 32px !important;
+    height: 32px !important;
+  }
+ 
+  .mobile-hero-dots {
+    top: 162px !important; /* 185 - 23 */
+  }
+ 
+  .mobile-hero-copy {
+    padding: 16px 14px 16px !important;
+    gap: 12px;
+  }
+ 
+  .mobile-hero-badge {
+    font-size: 10px !important;
+    padding: 6px 11px !important;
+    margin-bottom: 8px !important;
+  }
+ 
+  .mobile-hero-copy h1 {
+    font-size: clamp(24px, 8vw, 30px) !important;
+    margin-bottom: 8px !important;
+  }
+ 
+  .mobile-hero-copy p {
+    font-size: 13px !important;
+  }
+ 
+  .mobile-hero-actions {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+ 
+  .mobile-hero-actions .btn {
+    min-height: 42px !important;
+    font-size: 12px !important;
+    padding: 9px 6px !important;
+  }
+ 
+  .mobile-hero-actions .btn svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+}
+ 
+/* ── Very small 0–380px ── */
+@media (max-width: 380px) {
+  .mobile-hero-media {
+    height: 165px;
+  }
+ 
+  .mobile-hero-arrow {
+    top: 82px !important;
+  }
+ 
+  .mobile-hero-dots {
+    top: 143px !important;
+  }
+ 
+  .mobile-hero-copy h1 {
+    font-size: 24px !important;
+  }
+ 
+  .mobile-hero-actions {
+    grid-template-columns: 1fr !important;
+  }
+ 
+  .mobile-hero-actions .btn {
+    min-height: 40px !important;
+  }
+}
+/* @media (max-width: 520px) {
   .home-redesign {
     padding: 108px 14px 22px;
   }
@@ -4173,7 +4276,7 @@
   .home-trust-strip span:nth-child(2) {
     border-right: 0;
   }
-}
+} */
 
 .hero-title-paw {
   display: inline-block;
@@ -4441,6 +4544,228 @@
   .home-trust-strip svg {
     width: 24px;
     height: 24px;
+  }
+}
+
+/* ============================================================
+   HERO MOBILE FINAL FIX
+   Paste this at the VERY BOTTOM of your index.css
+   These rules use high specificity to win all conflicts
+   ============================================================ */
+
+/* ── MOBILE: Stack layout (image top, text bottom) ── */
+@media (max-width: 720px) {
+
+  /* 1. Reset the card to a simple flex column */
+  .home-redesign .mobile-hero-card {
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+    aspect-ratio: unset !important;
+    min-height: unset !important;
+    height: auto !important;
+    overflow: visible !important;
+    border-radius: 16px !important;
+  }
+
+  /* 2. Image sits on TOP, fixed height, relative so it takes space */
+  .home-redesign .mobile-hero-media {
+    position: relative !important;
+    inset: unset !important;
+    width: 100% !important;
+    height: 210px !important;
+    flex-shrink: 0 !important;
+    overflow: hidden !important;
+    border-radius: 16px 16px 0 0 !important;
+  }
+
+  .home-redesign .mobile-hero-media img {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    object-position: center top !important;
+  }
+
+  /* 3. Remove the left-fade overlay (it hides the image on mobile) */
+  .home-redesign .mobile-hero-card::before {
+    display: none !important;
+  }
+
+  /* 4. Text block sits BELOW the image */
+  .home-redesign .mobile-hero-copy {
+    position: relative !important;
+    z-index: 2 !important;
+    /* Reset ALL conflicting layout props */
+    width: 100% !important;
+    min-height: unset !important;
+    height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    gap: 0 !important;
+    padding: 18px 16px 20px !important;
+    background: var(--card) !important;
+    border-radius: 0 0 16px 16px !important;
+    /* Kill the grid that was set by desktop overrides */
+    grid-template-columns: unset !important;
+  }
+
+  .home-redesign .mobile-hero-text {
+    width: 100% !important;
+  }
+
+  /* 5. Badge */
+  .home-redesign .mobile-hero-badge {
+    display: inline-flex !important;
+    margin-bottom: 10px !important;
+    font-size: 11px !important;
+    padding: 6px 12px !important;
+  }
+
+  /* 6. Heading */
+  .home-redesign .mobile-hero-copy h1 {
+    font-size: clamp(26px, 7.5vw, 36px) !important;
+    line-height: 1.1 !important;
+    margin-bottom: 10px !important;
+    max-width: 100% !important;
+    color: var(--text) !important;
+  }
+
+  .home-redesign .mobile-hero-copy h1 span {
+    display: inline !important;
+    color: var(--accent) !important;
+  }
+
+  /* 7. Sub text */
+  .home-redesign .mobile-hero-copy p {
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+    color: var(--muted) !important;
+    max-width: 100% !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* 8. Action buttons */
+  .home-redesign .mobile-hero-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    width: 100% !important;
+    margin-top: 4px !important;
+  }
+
+  .home-redesign .mobile-hero-actions .btn {
+    width: 100% !important;
+    min-height: 44px !important;
+    font-size: 13px !important;
+    padding: 10px 8px !important;
+    border-radius: 10px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+  }
+
+  .home-redesign .mobile-hero-actions .btn svg {
+    width: 14px !important;
+    height: 14px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* 9. Arrow buttons: positioned over the image */
+  .home-redesign .mobile-hero-arrow {
+    position: absolute !important;
+    top: 105px !important;          /* half of image height 210/2 */
+    transform: translateY(-50%) !important;
+    z-index: 10 !important;
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.233) !important;
+    border: none !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+    color: #333 !important;
+    filter: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .home-redesign .mobile-hero-arrow.left  { left: 10px !important; }
+  .home-redesign .mobile-hero-arrow.right { right: 10px !important; }
+
+  /* 10. Dots: near bottom of image */
+  .home-redesign .mobile-hero-dots {
+    position: absolute !important;
+    top: 190px !important;          /* image height - 20px */
+    bottom: unset !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 10 !important;
+    display: flex !important;
+    gap: 6px !important;
+  }
+
+  .home-redesign .mobile-hero-dots button {
+    width: 8px !important;
+    height: 8px !important;
+    background: rgba(255,255,255,0.8) !important;
+    border: none !important;
+    border-radius: 999px !important;
+    padding: 0 !important;
+  }
+
+  .home-redesign .mobile-hero-dots button.active {
+    width: 20px !important;
+    background: var(--accent) !important;
+  }
+}
+
+/* ── Extra small phones ── */
+@media (max-width: 480px) {
+  .home-redesign .mobile-hero-media {
+    height: 185px !important;
+  }
+
+  .home-redesign .mobile-hero-arrow {
+    top: 92px !important;
+  }
+
+  .home-redesign .mobile-hero-dots {
+    top: 165px !important;
+  }
+
+  .home-redesign .mobile-hero-copy {
+    padding: 14px 14px 18px !important;
+  }
+
+  .home-redesign .mobile-hero-copy h1 {
+    font-size: clamp(23px, 7vw, 30px) !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .home-redesign .mobile-hero-media {
+    height: 165px !important;
+  }
+
+  .home-redesign .mobile-hero-arrow {
+    top: 82px !important;
+    width: 30px !important;
+    height: 30px !important;
+  }
+
+  .home-redesign .mobile-hero-dots {
+    top: 146px !important;
+  }
+
+  .home-redesign .mobile-hero-copy h1 {
+    font-size: 23px !important;
+  }
+
+  .home-redesign .mobile-hero-actions {
+    grid-template-columns: 1fr !important;
   }
 }
 
