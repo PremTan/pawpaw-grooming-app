@@ -6,6 +6,7 @@ import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import { SERVICES } from '../utils/services'
+import { SERVICE_ICON_OPTIONS, defaultServiceIconKey, renderServiceIcon } from '../utils/serviceIcons.jsx'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 
@@ -89,6 +90,8 @@ export default function AdminServices() {
       price: saved.price || selectedService.price,
       duration: saved.duration || selectedService.duration,
       active: saved.active !== false,
+      iconImageUrl: saved.iconImageUrl || selectedService.image || '',
+      iconKey: saved.iconKey || defaultServiceIconKey(selectedService.id),
       images: emptyImages().map((slot, index) => ({ ...slot, ...(savedImages[index] || {}) })),
     })
     setMessage('')
@@ -110,6 +113,23 @@ export default function AdminServices() {
     }))
   }
 
+  const chooseIconImage = (file) => {
+    if (!file) return
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      setError(err.message)
+      return
+    }
+    const reader = new FileReader()
+    reader.addEventListener('load', () => {
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setCroppedAreaPixels(null)
+      setCropData({ src: reader.result, type: 'icon', fileName: file.name })
+    })
+    reader.readAsDataURL(file)
+  }
   // Intercept the file upload to open the cropper
   const handleFileSelect = (index, file) => {
     if (!file) return
@@ -121,7 +141,10 @@ export default function AdminServices() {
     }
     const reader = new FileReader()
     reader.addEventListener('load', () => {
-      setCropData({ src: reader.result, index, fileName: file.name })
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setCroppedAreaPixels(null)
+      setCropData({ src: reader.result, type: 'detail', index, fileName: file.name })
     })
     reader.readAsDataURL(file)
   }
@@ -134,15 +157,15 @@ export default function AdminServices() {
   const handleCropConfirm = async () => {
     if (!cropData || !croppedAreaPixels) return
 
-    setUploading(cropData.index)
+    const currentIndex = cropData.type === 'icon' ? 'icon' : cropData.index
+    setUploading(currentIndex)
     setError('')
     setMessage('')
-    const currentIndex = cropData.index
 
     try {
       const croppedFile = await getCroppedImg(cropData.src, croppedAreaPixels, cropData.fileName)
 
-      // Close the modal immediately so user sees the "Uploading..." state on the main screen
+      // Close the modal immediately so user sees the uploading state on the main screen.
       setCropData(null)
       setCrop({ x: 0, y: 0 })
       setZoom(1)
@@ -151,8 +174,13 @@ export default function AdminServices() {
         onOptimizeStart: () => setOptimizing(currentIndex),
         onOptimizeEnd: () => setOptimizing(null),
       })
-      updateImage(currentIndex, 'url', url)
-      if (!form.images[currentIndex].title) updateImage(currentIndex, 'title', `${form.name} photo ${currentIndex + 1}`)
+
+      if (currentIndex === 'icon') {
+        update('iconImageUrl', url)
+      } else {
+        updateImage(currentIndex, 'url', url)
+        if (!form.images[currentIndex].title) updateImage(currentIndex, 'title', `${form.name} photo ${currentIndex + 1}`)
+      }
     } catch (err) {
       setError(err.message || 'Upload failed. Check Cloudinary settings.')
       setCropData(null)
@@ -160,7 +188,6 @@ export default function AdminServices() {
     setOptimizing(null)
     setUploading(null)
   }
-
   const save = async () => {
     if (!form || !selectedService) return
     setSaving(true)
@@ -184,6 +211,8 @@ export default function AdminServices() {
         price: form.price.trim(),
         duration: form.duration.trim(),
         active: form.active,
+        iconImageUrl: form.iconImageUrl || '',
+        iconKey: form.iconKey || defaultServiceIconKey(selectedService.id),
         images: cleanImages,
         updatedAt: serverTimestamp(),
       }, { merge: true })
@@ -242,7 +271,7 @@ export default function AdminServices() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: '90%', maxWidth: '600px', background: 'var(--bg)', borderRadius: '12px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, color: 'var(--text)' }}>Crop Image</h3>
+              <h3 style={{ margin: 0, color: 'var(--text)' }}>{cropData.type === 'icon' ? 'Crop Service Icon Image' : 'Crop Image'}</h3>
               <button onClick={() => setCropData(null)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer' }}><X size={20}/></button>
             </div>
 
@@ -251,16 +280,24 @@ export default function AdminServices() {
                 image={cropData.src}
                 crop={crop}
                 zoom={zoom}
-                aspect={4 / 3} // Forces the crop box to be your specific rectangle shape
+                aspect={cropData.type === 'icon' ? 1 : 4 / 3}
+                cropShape={cropData.type === 'icon' ? 'round' : 'rect'}
+                showGrid={cropData.type !== 'icon'}
                 onCropChange={setCrop}
                 onCropComplete={onCropComplete}
                 onZoomChange={setZoom}
               />
             </div>
 
+            <div className="admin-service-crop-zoom">
+              <span>Zoom</span>
+              <input type="range" min="1" max="3" step="0.01" value={zoom} onChange={e => setZoom(Number(e.target.value))} />
+            </div>
+            <p className="admin-service-crop-help">Drag the image to move it left, right, up, or down.</p>
+
             <div style={{ padding: '16px', display: 'flex', gap: '12px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)' }}>
               <button className="btn btn-secondary" onClick={() => setCropData(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCropConfirm}>{optimizing === cropData.index ? 'Optimizing image...' : uploading === cropData.index ? 'Uploading...' : 'Confirm & Upload'}</button>
+              <button className="btn btn-primary" onClick={handleCropConfirm}>{optimizing === (cropData.type === 'icon' ? 'icon' : cropData.index) ? 'Optimizing image...' : uploading === (cropData.type === 'icon' ? 'icon' : cropData.index) ? 'Uploading...' : 'Confirm & Upload'}</button>
             </div>
           </div>
         </div>
@@ -299,7 +336,7 @@ export default function AdminServices() {
             const selected = service.id === selectedId
             return (
               <button key={service.id} onClick={() => setSelectedId(service.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '11px', borderRadius: '8px', border: selected ? '1px solid var(--accent-border)' : '1px solid transparent', background: selected ? 'var(--accent-bg)' : 'transparent', color: selected ? 'var(--accent)' : 'var(--text)', cursor: 'pointer', textAlign: 'left', marginBottom: '3px' }}>
-                <span style={{ fontSize: '20px' }}>{service.icon}</span>
+                <span className="admin-service-list-icon">{renderServiceIcon(saved?.iconKey || defaultServiceIconKey(service.id), service.icon, 19)}</span>
                 <span style={{ flex: 1, fontSize: '13px', fontWeight: 800 }}>{service.name}</span>
                 {active ? <Eye size={14} /> : <EyeOff size={14} />}
               </button>
@@ -308,6 +345,34 @@ export default function AdminServices() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="card admin-service-icon-card" style={{ padding: '18px' }}>
+            <div>
+              <label style={L}>Home Service Circle Image</label>
+              <p style={{ color: 'var(--muted)', fontSize: '12px', marginBottom: '12px' }}>Shown on the home page service card. Upload opens a round crop.</p>
+            </div>
+            <div className="admin-service-icon-row">
+              <div className="admin-service-icon-preview">
+                {form.iconImageUrl ? <img src={form.iconImageUrl} alt="" /> : <span>{renderServiceIcon(form.iconKey, selectedService.icon, 38)}</span>}
+              </div>
+              <div className="admin-service-icon-actions">
+                <label className="btn btn-secondary" style={{ justifyContent: 'center', fontSize: '13px', padding: '10px 14px' }}>
+                  <Upload size={15} /> {optimizing === 'icon' ? 'Optimizing image...' : uploading === 'icon' ? 'Uploading...' : 'Upload Circle Image'}
+                  <input
+                    type="file"
+                    accept={IMAGE_FILE_ACCEPT}
+                    style={{ display: 'none' }}
+                    disabled={uploading !== null || saving}
+                    onChange={e => {
+                      chooseIconImage(e.target.files?.[0])
+                      e.target.value = null
+                    }}
+                  />
+                </label>
+                {form.iconImageUrl && <button type="button" className="btn btn-danger" style={{ justifyContent: 'center', fontSize: '13px', padding: '10px 14px' }} onClick={() => update('iconImageUrl', '')}><X size={15} /> Remove Image</button>}
+              </div>
+            </div>
+          </div>
+
           <div className="card" style={{ padding: '18px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
@@ -321,6 +386,12 @@ export default function AdminServices() {
               <div>
                 <label style={L}>Duration</label>
                 <input className="input" value={form.duration} onChange={e => update('duration', e.target.value)} />
+              </div>
+              <div>
+                <label style={L}>Small Card Icon</label>
+                <select className="input" value={form.iconKey || defaultServiceIconKey(selectedService.id)} onChange={e => update('iconKey', e.target.value)}>
+                  {SERVICE_ICON_OPTIONS.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}
+                </select>
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: '9px', color: 'var(--text)', fontSize: '13px', fontWeight: 800, paddingTop: '20px' }}>
                 <input type="checkbox" checked={form.active} onChange={e => update('active', e.target.checked)} />
