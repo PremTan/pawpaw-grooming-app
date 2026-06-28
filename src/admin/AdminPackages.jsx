@@ -1,6 +1,7 @@
 // src/admin/AdminPackages.jsx
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore'
+import Cropper from 'react-easy-crop'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
@@ -9,6 +10,31 @@ import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 import { Plus, X, Pencil, Trash2, Package, Upload } from 'lucide-react'
 
 const EMPTY = { name:'', description:'', services:[], priceRange:'', price:'', duration:'', imageUrl:'', active:true }
+const getCroppedPackageImage = async (imageSrc, pixelCrop, fileName) => {
+  const image = new Image()
+  image.src = imageSrc
+  await new Promise((resolve, reject) => {
+    image.onload = resolve
+    image.onerror = reject
+  })
+
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  canvas.width = 900
+  canvas.height = 900
+  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, 900, 900)
+
+  const safeName = (fileName || 'package-image').replace(/\.[^.]+$/, '')
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('Could not crop image. Please try another image.'))
+        return
+      }
+      resolve(new File([blob], `${safeName}-package.jpg`, { type: 'image/jpeg' }))
+    }, 'image/jpeg', 0.9)
+  })
+}
 
 export default function AdminPackages() {
   const [packages, setPackages] = useState([])
@@ -18,6 +44,10 @@ export default function AdminPackages() {
   const [editId, setEditId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [cropData, setCropData] = useState(null)
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
   const [svcInput, setSvcInput] = useState('')
   const [deleteTarget, setDeleteTarget] = useState(null)
 
@@ -33,12 +63,33 @@ export default function AdminPackages() {
   const openAdd  = () => { setForm(EMPTY); setEditId(null); setSvcInput(''); setShowModal(true) }
   const openEdit = (pkg) => { setForm({ name:pkg.name, description:pkg.description||'', services:pkg.services||[], priceRange:pkg.priceRange||'', price:pkg.price||'', duration:pkg.duration||'', imageUrl:pkg.imageUrl||'', active:pkg.active!==false }); setEditId(pkg.id); setSvcInput(''); setShowModal(true) }
 
-  const chooseImage = async (file) => {
+  const chooseImage = (file) => {
     if (!file) return
     try {
       validateImageFile(file)
-      setUploadingImage(true)
-      const url = await uploadToCloudinary(file)
+    } catch (err) {
+      alert(err.message)
+      return
+    }
+    const reader = new FileReader()
+    reader.addEventListener('load', () => {
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setCroppedAreaPixels(null)
+      setCropData({ src: reader.result, fileName: file.name })
+    })
+    reader.readAsDataURL(file)
+  }
+
+  const onCropComplete = useCallback((_, croppedPixels) => setCroppedAreaPixels(croppedPixels), [])
+
+  const confirmPackageCrop = async () => {
+    if (!cropData || !croppedAreaPixels) return
+    setUploadingImage(true)
+    try {
+      const croppedFile = await getCroppedPackageImage(cropData.src, croppedAreaPixels, cropData.fileName)
+      setCropData(null)
+      const url = await uploadToCloudinary(croppedFile)
       setForm(p => ({ ...p, imageUrl: url }))
     } catch (err) {
       alert(err.message || 'Could not upload package image.')
@@ -87,7 +138,7 @@ export default function AdminPackages() {
         </button>
       </div>
 
-      {loading ? <Spinner text="Loading packagesâ€¦" /> : packages.length===0 ? (
+      {loading ? <Spinner text="Loading packagesÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" /> : packages.length===0 ? (
         <div style={{ background:'var(--card)', border:'2px dashed var(--border)', borderRadius:'16px', padding:'60px', textAlign:'center' }}>
           <Package size={40} style={{ color:'var(--muted)', margin:'0 auto 16px' }} />
           <p style={{ color:'var(--text)', fontWeight:600, marginBottom:'6px' }}>No packages yet</p>
@@ -117,7 +168,7 @@ export default function AdminPackages() {
                 <div style={{ marginBottom:'14px' }}>
                   {pkg.services.map((s,i) => (
                     <div key={i} style={{ display:'flex', alignItems:'center', gap:'6px', padding:'4px 0', borderBottom:i<pkg.services.length-1?'1px solid var(--border)':'none' }}>
-                      <span style={{ color:'var(--accent)', fontSize:'11px' }}>âœ“</span>
+                      <span style={{ color:'var(--accent)', fontSize:'11px' }}>ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“</span>
                       <span style={{ color:'var(--text)', fontSize:'13px' }}>{s}</span>
                     </div>
                   ))}
@@ -126,13 +177,13 @@ export default function AdminPackages() {
 
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
                 <div>
-                  <div style={{ color:'var(--accent)', fontFamily:'"DM Mono",monospace', fontWeight:800, fontSize:'18px' }}>{pkg.priceRange || (pkg.price ? `â‚¹${pkg.price}` : 'Price TBD')}</div>
-                  {pkg.duration && <div style={{ color:'var(--muted)', fontSize:'11px', marginTop:'2px' }}>â± {pkg.duration}</div>}
+                  <div style={{ color:'var(--accent)', fontFamily:'"DM Mono",monospace', fontWeight:800, fontSize:'18px' }}>{pkg.priceRange || (pkg.price ? `ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹${pkg.price}` : 'Price TBD')}</div>
+                  {pkg.duration && <div style={{ color:'var(--muted)', fontSize:'11px', marginTop:'2px' }}>ÃƒÂ¢Ã‚ÂÃ‚Â± {pkg.duration}</div>}
                 </div>
                 <button onClick={() => toggleActive(pkg)}
                   style={{ padding:'5px 14px', borderRadius:'999px', fontSize:'11px', fontWeight:700, cursor:'pointer', border:'none', background: pkg.active!==false ? 'rgba(52,211,153,0.1)' : 'rgba(239,68,68,0.1)', color: pkg.active!==false ? '#34d399' : '#ef4444' }}
                 >
-                  {pkg.active!==false ? 'â— Active' : 'â— Inactive'}
+                  {pkg.active!==false ? 'ÃƒÂ¢Ã¢â‚¬â€Ã‚Â Active' : 'ÃƒÂ¢Ã¢â‚¬â€Ã‚Â Inactive'}
                 </button>
               </div>
             </div>
@@ -140,6 +191,40 @@ export default function AdminPackages() {
         </div>
       )}
 
+      {cropData && (
+        <div className="modal-overlay admin-package-crop-overlay" onClick={() => setCropData(null)}>
+          <div className="modal-box admin-package-crop-modal" onClick={e => e.stopPropagation()}>
+            <div className="admin-package-crop-head">
+              <div>
+                <h2>Crop Package Image</h2>
+                <p>Use a round crop. Drag to position and zoom in or out.</p>
+              </div>
+              <button type="button" onClick={() => setCropData(null)} aria-label="Close crop package image"><X size={18} /></button>
+            </div>
+            <div className="admin-package-crop-stage">
+              <Cropper
+                image={cropData.src}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="round"
+                showGrid={false}
+                onCropChange={setCrop}
+                onCropComplete={onCropComplete}
+                onZoomChange={setZoom}
+              />
+            </div>
+            <div className="admin-package-crop-zoom">
+              <span>Zoom</span>
+              <input type="range" min="1" max="3" step="0.01" value={zoom} onChange={e => setZoom(Number(e.target.value))} />
+            </div>
+            <div className="admin-package-crop-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setCropData(null)}>Cancel</button>
+              <button type="button" className="btn btn-primary" disabled={uploadingImage} onClick={confirmPackageCrop}>{uploadingImage ? 'Uploading...' : 'Confirm & Upload'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       <ConfirmModal
         open={!!deleteTarget}
         title="Delete package?"
@@ -183,7 +268,7 @@ export default function AdminPackages() {
                 </div>
                 <div>
                   <label style={L}>Description</label>
-                  <textarea className="input" style={{ resize:'none' }} rows={2} placeholder="What's includedâ€¦" value={form.description} onChange={e => setForm(p => ({ ...p, description:e.target.value }))} />
+                  <textarea className="input" style={{ resize:'none' }} rows={2} placeholder="What's includedÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" value={form.description} onChange={e => setForm(p => ({ ...p, description:e.target.value }))} />
                 </div>
 
                 {/* Services list */}
@@ -207,7 +292,7 @@ export default function AdminPackages() {
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
                   <div>
                     <label style={L}>Price Range</label>
-                    <input className="input" placeholder="e.g. â‚¹800 â€“ â‚¹1500" value={form.priceRange} onChange={e => setForm(p => ({ ...p, priceRange:e.target.value }))} />
+                    <input className="input" placeholder="e.g. ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹800 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹1500" value={form.priceRange} onChange={e => setForm(p => ({ ...p, priceRange:e.target.value }))} />
                   </div>
                   <div>
                     <label style={L}>Duration</label>
@@ -223,7 +308,7 @@ export default function AdminPackages() {
                 <div style={{ display:'flex', gap:'10px', paddingTop:'4px' }}>
                   <button onClick={() => setShowModal(false)} className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }}>Cancel</button>
                   <button onClick={handleSave} disabled={saving||!form.name.trim()} className="btn btn-primary" style={{ flex:1, justifyContent:'center' }}>
-                    {saving ? 'Savingâ€¦' : editId ? 'Update Package' : 'Create Package'}
+                    {saving ? 'SavingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦' : editId ? 'Update Package' : 'Create Package'}
                   </button>
                 </div>
               </div>

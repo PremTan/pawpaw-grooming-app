@@ -1,4 +1,4 @@
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
 import { ADMIN_EMAIL, app, db } from '../firebase'
 
@@ -46,7 +46,9 @@ export async function registerFcmToken(user) {
   if (!token) return { ok: false, reason: 'empty-token' }
 
   try {
-    await setDoc(doc(db, 'fcmTokens', token), {
+    const tokenRef = doc(db, 'fcmTokens', token)
+    const tokenSnap = await getDoc(tokenRef)
+    await setDoc(tokenRef, {
       token,
       userId: user.uid,
       userEmail: user.email || '',
@@ -54,7 +56,7 @@ export async function registerFcmToken(user) {
       active: true,
       platform: navigator.userAgent || '',
       updatedAt: serverTimestamp(),
-      createdAt: serverTimestamp(),
+      ...(!tokenSnap.exists() ? { createdAt: serverTimestamp() } : {}),
     }, { merge: true })
   } catch (err) {
     console.warn('FCM token Firestore save failed:', err)

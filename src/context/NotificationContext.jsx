@@ -36,7 +36,7 @@ export function NotificationProvider({ children }) {
   }
 
   useEffect(() => {
-    if (!user || !canUseBrowserNotifications() || window.Notification.permission !== 'granted') return
+    if (!user || !canUseBrowserNotifications()) return
     registerFcmToken(user).then(result => setFcmStatus(result.ok ? 'registered' : result.reason)).catch(err => {
       console.warn('FCM registration failed:', err)
       setFcmStatus(err?.code || err?.message || 'error')

@@ -31,16 +31,16 @@ async function getTokens({ userId = '', userEmail = '' }) {
   }
 
   if (userId) {
-    await addSnapshot(db.collection('fcmTokens').where('userId', '==', userId))
+    await addSnapshot(db.collection('fcmTokens').where('userId', '==', userId).where('active', '==', true))
   }
   if (userEmail) {
-    await addSnapshot(db.collection('fcmTokens').where('userEmail', '==', userEmail))
+    await addSnapshot(db.collection('fcmTokens').where('userEmail', '==', userEmail).where('active', '==', true))
   }
 
   return Array.from(refs.values())
 }
 
-async function pruneInvalidTokens(tokens, responses) {
+async function pruneInvalidTokens(tokenTargets, responses) {
   const batch = db.batch()
   let count = 0
 
@@ -48,12 +48,14 @@ async function pruneInvalidTokens(tokens, responses) {
     if (response.success) return
     const code = response.error?.code || ''
     if (!code.includes('registration-token-not-registered') && !code.includes('invalid-registration-token')) return
-    batch.set(db.collection('fcmTokens').doc(tokens[index].id), {
-      active: false,
-      invalidatedAt: FieldValue.serverTimestamp(),
-      errorCode: code,
-    }, { merge: true })
-    count += 1
+    tokenTargets[index].docs.forEach(tokenDoc => {
+      batch.set(db.collection('fcmTokens').doc(tokenDoc.id), {
+        active: false,
+        invalidatedAt: FieldValue.serverTimestamp(),
+        errorCode: code,
+      }, { merge: true })
+      count += 1
+    })
   })
 
   if (count) await batch.commit()
@@ -61,7 +63,15 @@ async function pruneInvalidTokens(tokens, responses) {
 
 async function sendPushToRecipient({ notificationId = '', userId = '', userEmail = '', title, message, type = 'info', bookingId = '', actionUrl = '/' }) {
   const recipients = await getTokens({ userId, userEmail })
-  const tokens = recipients.map(item => item.id).filter(Boolean)
+  const tokensByValue = new Map()
+  recipients.forEach(item => {
+    const token = item.token || item.id
+    if (!token) return
+    if (!tokensByValue.has(token)) tokensByValue.set(token, { token, docs: [] })
+    tokensByValue.get(token).docs.push(item)
+  })
+  const tokenTargets = Array.from(tokensByValue.values())
+  const tokens = tokenTargets.map(item => item.token)
 
   if (!tokens.length) {
     logger.info('No FCM tokens for notification recipient', { userId, userEmail, title })
@@ -106,7 +116,7 @@ async function sendPushToRecipient({ notificationId = '', userId = '', userEmail
     },
   })
 
-  await pruneInvalidTokens(recipients, response.responses)
+  await pruneInvalidTokens(tokenTargets, response.responses)
   if (notificationId) {
     await db.collection('pushReceipts').doc(notificationId).set({
       userId, userEmail, title: cleanTitle, tokenCount: tokens.length, successCount: response.successCount, failureCount: response.failureCount, errors: response.responses.filter(item => !item.success).map(item => item.error?.code || item.error?.message || 'unknown'), updatedAt: FieldValue.serverTimestamp(),
@@ -116,12 +126,12 @@ async function sendPushToRecipient({ notificationId = '', userId = '', userEmail
   return response
 }
 
-exports.sendPushOnNotificationCreated = onDocumentCreated('notifications/{notificationId}', async (event) => {
+exports.sendPushOnNotificationCreated = onDocumentCreated('notifications/{notifId}', async (event) => {
   const data = event.data?.data()
   if (!data) return
 
   await sendPushToRecipient({
-    notificationId: event.params.notificationId,
+    notificationId: event.params.notifId,
     userId: data.userId || '',
     userEmail: data.userEmail || '',
     title: data.title || 'Paw Paw Pet Grooming',
