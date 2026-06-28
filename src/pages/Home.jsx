@@ -450,7 +450,7 @@ export default function Home() {
                   key={image.id}
                   src={image.url}
                   alt={image.caption || 'Gallery image'}
-                  onClick={() => setGalleryLightbox(image)}
+                  onClick={() => { setGalleryIndex(index); setGalleryLightbox(galleryImages[index]) }}
                   className={index === galleryIndex ? 'active' : ''}
                 />
               ))}

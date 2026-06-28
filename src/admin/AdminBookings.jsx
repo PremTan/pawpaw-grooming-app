@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { collection, doc, getDocs, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { Calendar, CheckCircle2, Clock, IndianRupee, MessageCircle, Phone, Search, UserRound, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
+import ConfirmModal from '../components/ConfirmModal'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import { db } from '../firebase'
@@ -89,6 +90,8 @@ export default function AdminBookings() {
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
   const [teamMembers, setTeamMembers] = useState([])
+  const [cancelTarget, setCancelTarget] = useState(null)
+  const [cancelReason, setCancelReason] = useState('')
 
   const fetchBookings = async () => {
     setLoading(true)
@@ -188,7 +191,7 @@ export default function AdminBookings() {
     setSelectedBooking(prev => prev?.id === id ? { ...prev, ...patch } : prev)
   }
 
-  const updateStatus = async (b, status) => {
+  const updateStatus = async (b, status, reason = '') => {
     if (!b?.id) return
     if (status === 'completed') {
       if (b.status !== 'confirmed') return
@@ -198,19 +201,21 @@ export default function AdminBookings() {
     }
     if (status === 'confirmed' && b.status !== 'pending') return
     if (status === 'cancelled' && !['pending', 'confirmed'].includes(b.status)) return
+    const cleanReason = String(reason || '').trim()
+    if (status === 'cancelled' && !cleanReason) return
 
     setUpdating(b.id)
     try {
       const assignmentPatch = status === 'confirmed' && !b.assignedTeamMemberId ? buildAssigneePatch(ownerAssignee) : {}
-      const cancellationPatch = status === 'cancelled' ? { cancelledBy: 'admin', cancelledAt: serverTimestamp(), updatedAt: serverTimestamp() } : {}
-      const localCancellationPatch = status === 'cancelled' ? { cancelledBy: 'admin', cancelledAt: new Date(), updatedAt: new Date() } : {}
+      const cancellationPatch = status === 'cancelled' ? { cancelledBy: 'admin', cancelledAt: serverTimestamp(), cancellationReason: cleanReason, updatedAt: serverTimestamp() } : {}
+      const localCancellationPatch = status === 'cancelled' ? { cancelledBy: 'admin', cancelledAt: new Date(), cancellationReason: cleanReason, updatedAt: new Date() } : {}
       await updateDoc(doc(db, 'bookings', b.id), { status, ...assignmentPatch, ...cancellationPatch })
       patchBooking(b.id, { status, ...assignmentPatch, ...localCancellationPatch })
       await syncPublicStats(db)
       if (b.userId && b.userId !== 'walkin') {
         const msgs = {
           confirmed: 'Your booking has been approved.',
-          cancelled: 'Your booking was cancelled by Paw Paw.',
+          cancelled: `Your appointment has been cancelled by admin. Please reschedule. Reason: ${cleanReason}`,
         }
         if (msgs[status]) {
           await sendNotification(b.userId, {
@@ -226,6 +231,17 @@ export default function AdminBookings() {
     setUpdating(null)
   }
 
+  const openCancelModal = (booking) => {
+    setCancelReason('')
+    setCancelTarget(booking)
+  }
+
+  const confirmCancel = async () => {
+    if (!cancelTarget) return
+    await updateStatus(cancelTarget, 'cancelled', cancelReason)
+    setCancelTarget(null)
+    setCancelReason('')
+  }
   const handleComplete = async () => {
     if (!cashModal || cashModal.status !== 'confirmed') return
     setUpdating(cashModal.id)
@@ -339,10 +355,10 @@ export default function AdminBookings() {
                     </button>
                   )}
                   {['pending', 'confirmed'].includes(b.status) && (
-                    <button type="button" onClick={() => updateStatus(b, 'cancelled')} disabled={updating === b.id} style={S.iconBtn('#ef4444', 'rgba(239,68,68,0.1)')}>
+                    <button type="button" onClick={() => openCancelModal(b)} disabled={updating === b.id} style={S.iconBtn('#ef4444', 'rgba(239,68,68,0.1)')}>
                       <X size={14} /> Cancel
                     </button>
-                  )}
+                  )}
                   <a href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(b, shopName)}` : '#'} target="_blank" rel="noopener noreferrer" style={S.iconBtn('#25D366', 'rgba(37,211,102,0.1)')}>
                     <MessageCircle size={14} /> WA
                   </a>
@@ -372,8 +388,25 @@ export default function AdminBookings() {
           onAssign={assignBooking}
           onClose={() => { setSelectedBooking(null); if (bookingId) navigate('/admin/bookings') }}
           onStatus={updateStatus}
+          onCancelBooking={openCancelModal}
         />
       )}
+
+      <ConfirmModal
+        open={!!cancelTarget}
+        title="Cancel booking?"
+        message={cancelTarget ? `Cancel ${cancelTarget.serviceName || 'this appointment'} for ${cancelTarget.ownerName || 'this customer'} on ${cancelTarget.date || 'this date'} at ${formatSlot(cancelTarget.slot)}?` : ''}
+        confirmText="Yes, cancel"
+        cancelText="Keep booking"
+        loading={!!cancelTarget && updating === cancelTarget.id}
+        onCancel={() => { setCancelTarget(null); setCancelReason('') }}
+        onConfirm={confirmCancel}
+        reasonLabel="Cancellation reason"
+        reasonPlaceholder="Enter the reason for cancelling this appointment"
+        reasonValue={cancelReason}
+        onReasonChange={setCancelReason}
+        reasonRequired
+      />
 
       {cashModal && (
         <div className="modal-overlay" onClick={() => setCashModal(null)}>
@@ -405,7 +438,7 @@ function cancellationActor(booking) {
   return '-'
 }
 
-function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, assignee, assigneeOptions, onAssign, onClose, onStatus }) {
+function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, assignee, assigneeOptions, onAssign, onClose, onStatus, onCancelBooking }) {
   const detailRows = [
     ['Booking ID', shortId(booking.id)],
     ['Owner', booking.ownerName || '-'],
@@ -427,6 +460,7 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
     ...(booking.status === 'cancelled' ? [
       ['Cancelled By', cancellationActor(booking)],
       ['Cancelled At', formatDateTime(booking.cancelledAt)],
+      ['Reason', booking.cancellationReason || '-'],
     ] : []),
     ['Notes', booking.notes || '-'],
   ]
@@ -472,10 +506,10 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
             </button>
           )}
           {['pending', 'confirmed'].includes(booking.status) && (
-            <button type="button" onClick={() => onStatus(booking, 'cancelled')} disabled={updating === booking.id} className="btn btn-danger">
+            <button type="button" onClick={() => onCancelBooking(booking)} disabled={updating === booking.id} className="btn btn-danger">
               <X size={15} /> Cancel
             </button>
-          )}
+          )}
           <a className="btn btn-secondary" href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(booking, shopName)}` : '#'} target="_blank" rel="noopener noreferrer">
             <MessageCircle size={15} /> Booking WA
           </a>

@@ -3,8 +3,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { Calendar, ChevronRight, Clock, Home, Plus, Store, UserRound, X } from 'lucide-react'
-import { db } from '../firebase'
+import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { useNotifications } from '../context/NotificationContext'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import { fetchBookingSettings, getBookingTypeLabel, getPaymentModeLabel, getPaymentOptionLabel } from '../utils/bookingSettings'
@@ -106,6 +107,7 @@ function petLine(booking) {
 
 export default function MyBookings() {
   const { user } = useAuth()
+  const { sendNotification } = useNotifications()
   const [bookings, setBookings] = useState([])
   const [bookingSettings, setBookingSettings] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -113,6 +115,7 @@ export default function MyBookings() {
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [cancellingId, setCancellingId] = useState('')
   const [cancelTarget, setCancelTarget] = useState(null)
+  const [cancelReason, setCancelReason] = useState('')
 
   useEffect(() => {
     fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
@@ -143,20 +146,33 @@ export default function MyBookings() {
     [bookings, filter]
   )
 
-  const cancelBooking = async (booking) => {
-    if (!canCancelBooking(booking, bookingSettings)) return
+  const cancelBooking = async (booking, reason) => {
+    const cleanReason = String(reason || '').trim()
+    if (!canCancelBooking(booking, bookingSettings) || !cleanReason) return
     setCancellingId(booking.id)
     try {
       await setDoc(doc(db, 'bookings', booking.id), {
         status: 'cancelled',
         cancelledBy: 'user',
         cancelledAt: serverTimestamp(),
+        cancellationReason: cleanReason,
         updatedAt: serverTimestamp(),
       }, { merge: true })
-      const patch = { status: 'cancelled', cancelledBy: 'user', cancelledAt: new Date(), updatedAt: new Date() }
+      const patch = { status: 'cancelled', cancelledBy: 'user', cancelledAt: new Date(), cancellationReason: cleanReason, updatedAt: new Date() }
       setBookings(prev => prev.map(item => item.id === booking.id ? { ...item, ...patch } : item))
       setSelectedBooking(prev => prev?.id === booking.id ? { ...prev, ...patch } : prev)
+      if (ADMIN_EMAIL) {
+        await sendNotification('', {
+          userEmail: ADMIN_EMAIL,
+          title: 'Appointment cancelled',
+          message: `${appointmentTitle(booking)} on ${booking.date} at ${formatSlot(booking.slot)} - Appointment cancelled by user. Reason: ${cleanReason}`,
+          type: 'cancelled',
+          bookingId: booking.id,
+          actionUrl: `/admin/bookings/${booking.id}`,
+        })
+      }
       setCancelTarget(null)
+      setCancelReason('')
     } catch (err) {
       console.error("FIREBASE ERROR:", err);
       alert('Could not cancel booking. Please try again.')
@@ -241,6 +257,7 @@ export default function MyBookings() {
               <Detail label="Appointment Date & Time" value={formatAppointmentStart(selectedBooking)} />
               {selectedBooking.status === 'cancelled' && <Detail label="Cancelled By" value={selectedBooking.cancelledBy === 'admin' ? 'Paw Paw' : 'You'} />}
               {selectedBooking.status === 'cancelled' && <Detail label="Cancelled At" value={formatDateTime(selectedBooking.cancelledAt)} />}
+              {selectedBooking.status === 'cancelled' && selectedBooking.cancellationReason && <Detail label="Reason" value={selectedBooking.cancellationReason} />}
               <Detail label="Visit" value={getBookingTypeLabel(selectedBooking.bookingType || 'store')} icon={(selectedBooking.bookingType || 'store') === 'home' ? <Home size={15} /> : <Store size={15} />} />
               {assignedWorker(selectedBooking) && <Detail label="Assigned To" value={`${assignedWorker(selectedBooking)}${selectedBooking.assignedTeamMemberIsOwner ? ' (Owner)' : ''}`} icon={<UserRound size={15} />} />}
               {selectedBooking.packageNames?.length > 0 && <Detail label="Packages" value={selectedBooking.packageNames.join(', ')} />}
@@ -262,7 +279,7 @@ export default function MyBookings() {
                 type="button"
                 className="btn btn-danger my-booking-cancel-btn"
                 disabled={cancellingId === selectedBooking.id}
-                onClick={() => setCancelTarget(selectedBooking)}
+                onClick={() => { setCancelReason(''); setCancelTarget(selectedBooking) }}
               >
                 <X size={15} /> {cancellingId === selectedBooking.id ? 'Cancelling...' : 'Cancel Booking'}
               </button>
@@ -286,8 +303,13 @@ export default function MyBookings() {
         confirmText="Yes, cancel"
         cancelText="Keep booking"
         loading={!!cancelTarget && cancellingId === cancelTarget.id}
-        onCancel={() => setCancelTarget(null)}
-        onConfirm={() => cancelTarget && cancelBooking(cancelTarget)}
+        onCancel={() => { setCancelTarget(null); setCancelReason('') }}
+        onConfirm={() => cancelTarget && cancelBooking(cancelTarget, cancelReason)}
+        reasonLabel="Cancellation reason"
+        reasonPlaceholder="Please tell us why you are cancelling"
+        reasonValue={cancelReason}
+        onReasonChange={setCancelReason}
+        reasonRequired
       />
       <style>{`
         .my-bookings-page {

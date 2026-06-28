@@ -10,8 +10,15 @@ export default function ConfirmModal({
   loading = false,
   onConfirm,
   onCancel,
+  reasonLabel = '',
+  reasonPlaceholder = '',
+  reasonValue = '',
+  onReasonChange,
+  reasonRequired = false,
 }) {
   if (!open) return null
+
+  const reasonMissing = reasonRequired && !String(reasonValue || '').trim()
 
   return (
     <div className="modal-overlay confirm-modal-overlay" onClick={onCancel}>
@@ -26,9 +33,22 @@ export default function ConfirmModal({
         </div>
         <h2>{title}</h2>
         <p>{message}</p>
+        {onReasonChange && (
+          <label className="confirm-modal-reason">
+            <span>{reasonLabel || 'Reason'}{reasonRequired ? ' *' : ''}</span>
+            <textarea
+              className="input"
+              value={reasonValue}
+              onChange={event => onReasonChange(event.target.value)}
+              placeholder={reasonPlaceholder || 'Enter reason'}
+              required={reasonRequired}
+              rows={3}
+            />
+          </label>
+        )}
         <div className="confirm-modal-actions">
           <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={loading}>{cancelText}</button>
-          <button type="button" className={danger ? 'btn btn-danger' : 'btn btn-primary'} onClick={onConfirm} disabled={loading}>{loading ? 'Please wait...' : confirmText}</button>
+          <button type="button" className={danger ? 'btn btn-danger' : 'btn btn-primary'} onClick={onConfirm} disabled={loading || reasonMissing}>{loading ? 'Please wait...' : confirmText}</button>
         </div>
       </div>
     </div>
