@@ -8400,8 +8400,8 @@
 
   .mobile-hero-card {
     width: calc(100% + 8px);
-    min-height: 0;
-    height: clamp(178px, 44vw, 236px);
+    /* min-height: 0; */
+    /* height: clamp(178px, 44vw, 236px); */
     margin-left: -4px;
   }
 
