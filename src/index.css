@@ -3905,8 +3905,8 @@
 .mobile-hero-arrow {
   width: 58px;
   height: 58px;
-  color: #1e1510;
-  background: rgba(255,255,255,0.86);
+  color: var(--accent);
+  background: rgba(249, 246, 236, 0.322);
   border: 0;
   box-shadow: 0 8px 24px rgba(0,0,0,0.18);
 }
@@ -3921,7 +3921,7 @@
 .mobile-hero-dots button {
   width: 15px;
   height: 15px;
-  background: rgba(255,255,255,0.9);
+  background: rgba(212,175,55,0.35);
 }
 
 .mobile-hero-dots button.active {
