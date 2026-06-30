@@ -4,10 +4,13 @@ node_modules
 # Build output
 dist
 
-# Environment variables — NEVER commit these
+# Environment variables - NEVER commit these
 .env
 .env.local
+.env.development
 .env.production
+.env.*.local
+!.env.example
 
 # OS files
 .DS_Store

@@ -1,9 +1,6 @@
 // src/firebase.js
-// ─────────────────────────────────────────────────────────────
-// 1. Copy .env.example → .env
-// 2. Fill in your Firebase project values
-// 3. NEVER commit .env to GitHub
-// ─────────────────────────────────────────────────────────────
+// Vite loads .env.development for npm run dev and .env.production for npm run build.
+// Copy .env.example when setting up a new environment, but never commit real env files.
 
 import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider } from 'firebase/auth'
@@ -31,9 +28,8 @@ import { onAuthStateChanged } from 'firebase/auth'
 onAuthStateChanged(auth, (user) => {
   console.log('USER:', user)
   console.log('EMAIL:', user?.email)
-  console.log("PROJECT ID:", import.meta.env.VITE_FIREBASE_PROJECT_ID)
+  console.log('PROJECT ID:', import.meta.env.VITE_FIREBASE_PROJECT_ID)
 })
 
-// Admin email — must match VITE_ADMIN_EMAIL in .env
+// Admin email - must match VITE_ADMIN_EMAIL in the active env file.
 export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || ''
-
