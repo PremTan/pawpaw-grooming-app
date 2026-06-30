@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail } from 'firebase/auth'
 import { auth, googleProvider, ADMIN_EMAIL } from '../firebase'
 import { useAuth } from '../context/AuthContext'
-import { Eye, EyeOff } from 'lucide-react'
+import { Check, Eye, EyeOff, RefreshCw } from 'lucide-react'
 import BrandLogo from '../components/BrandLogo'
 
 export default function Login() {
@@ -16,10 +16,18 @@ export default function Login() {
   const [error, setError]       = useState('')
   const [resetSent, setResetSent] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [captchaVerified, setCaptchaVerified] = useState(false)
 
   if (user) { navigate(isAdmin ? '/admin' : '/', { replace: true }); return null }
 
+  const requireCaptcha = () => {
+    if (captchaVerified) return true
+    setError('Please confirm you are not a robot.')
+    return false
+  }
+
   const handleGoogle = async () => {
+    if (!requireCaptcha()) return
     setLoading(true); setError('')
     try {
       const cred = await signInWithPopup(auth, googleProvider)
@@ -30,6 +38,7 @@ export default function Login() {
   }
 
   const handleEmail = async () => {
+    if (!requireCaptcha()) return
     setLoading(true); setError('')
     try {
       if (mode === 'signup') {
@@ -70,6 +79,19 @@ export default function Login() {
     catch { setError('Could not send reset email. Check your email address.') }
     setLoading(false)
   }
+
+  const CaptchaBox = () => (
+    <button
+      type="button"
+      className={`robot-check${captchaVerified ? ' verified' : ''}`}
+      onClick={() => { setCaptchaVerified(true); setError('') }}
+      aria-pressed={captchaVerified}
+    >
+      <span className="robot-check-box">{captchaVerified && <Check size={24} />}</span>
+      <span className="robot-check-text">I'm not a robot</span>
+      <span className="robot-check-brand" aria-hidden="true"><RefreshCw size={24} /></span>
+    </button>
+  )
 
   const S = {
     page:  { minHeight: '100svh', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', background: 'var(--bg)', padding: '122px 16px 28px' },
@@ -120,12 +142,14 @@ export default function Login() {
             <>
               {/* Tabs */}
               <div className="login-tabs" style={{ display: 'flex', gap: '4px', background: 'var(--surface)', borderRadius: '12px', padding: '4px', marginBottom: '20px' }}>
-                <button style={S.tab(mode === 'login')}  onClick={() => { setMode('login');  setError('') }}>Login</button>
-                <button style={S.tab(mode === 'signup')} onClick={() => { setMode('signup'); setError('') }}>Sign Up</button>
+                <button style={S.tab(mode === 'login')}  onClick={() => { setMode('login'); setCaptchaVerified(false); setError('') }}>Login</button>
+                <button style={S.tab(mode === 'signup')} onClick={() => { setMode('signup'); setCaptchaVerified(false); setError('') }}>Sign Up</button>
               </div>
 
+              <CaptchaBox />
+
               {/* Google */}
-              <button style={S.gBtn} onClick={handleGoogle} disabled={loading}
+              <button style={S.gBtn} onClick={handleGoogle} disabled={loading || !captchaVerified}
                 onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent-border)'}
                 onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
               >
@@ -179,7 +203,7 @@ export default function Login() {
                     </button>
                   </div>
                 )}
-                <button onClick={handleEmail} disabled={loading || !form.email || !form.password} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: '4px' }}>
+                <button onClick={handleEmail} disabled={loading || !form.email || !form.password || !captchaVerified} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: '4px' }}>
                   {loading ? 'Please wait…' : mode === 'login' ? 'Login' : 'Create Account'}
                 </button>
               </div>
@@ -193,6 +217,50 @@ export default function Login() {
       <style>{`
         .login-page { box-sizing: border-box; }
         .login-card, .login-wrap { box-sizing: border-box; }
+        .robot-check {
+          width: 100%;
+          min-height: 62px;
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 16px;
+          padding: 12px 14px;
+          border: 1px solid #c8c8c8;
+          border-radius: 4px;
+          background: #f9f9f9;
+          color: #1f2937;
+          cursor: pointer;
+          text-align: left;
+        }
+        .robot-check-box {
+          width: 28px;
+          height: 28px;
+          border: 2px solid #b8b8b8;
+          background: #fff;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #16a34a;
+          flex-shrink: 0;
+        }
+        .robot-check.verified .robot-check-box {
+          border-color: transparent;
+          background: transparent;
+        }
+        .robot-check-text {
+          min-width: 0;
+          font-size: 14px;
+          color: #111827;
+        }
+        .robot-check-brand {
+          width: 34px;
+          height: 34px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #2563eb;
+        }
         @media (min-width: 768px) {
           .login-page { align-items: center !important; padding: 118px 20px 44px !important; }
         }
