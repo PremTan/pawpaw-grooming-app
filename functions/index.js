@@ -8,7 +8,7 @@ initializeApp()
 
 const db = getFirestore()
 const messaging = getMessaging()
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL || 'premtandalekar12345@gmail.com'
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL || ''
 const APP_URL = (process.env.APP_URL || 'https://pawpaw-grooming-app.vercel.app').replace(/\/$/, '')
 
 const compact = value => String(value || '').trim()
@@ -166,5 +166,3 @@ exports.notifyAdminOnBookingCreated = onDocumentCreated('bookings/{bookingId}', 
     createdAt: FieldValue.serverTimestamp(),
   }, { merge: true })
 })
-
-

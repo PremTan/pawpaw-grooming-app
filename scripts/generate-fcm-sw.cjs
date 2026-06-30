@@ -2,18 +2,28 @@ const fs = require('fs')
 const path = require('path')
 
 const root = path.resolve(__dirname, '..')
-const envPath = path.join(root, '.env')
+const lifecycle = process.env.npm_lifecycle_event || ''
+const mode = process.env.MODE || process.env.NODE_ENV || (lifecycle.includes('build') ? 'production' : 'development')
+const envFiles = [
+  '.env',
+  '.env.local',
+  `.env.${mode}`,
+  `.env.${mode}.local`,
+]
 
 function loadDotEnv() {
-  if (!fs.existsSync(envPath)) return
-  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/)
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue
-    const index = trimmed.indexOf('=')
-    const key = trimmed.slice(0, index).trim()
-    const value = trimmed.slice(index + 1).trim().replace(/^['"]|['"]$/g, '')
-    if (!process.env[key]) process.env[key] = value
+  for (const envFile of envFiles) {
+    const envPath = path.join(root, envFile)
+    if (!fs.existsSync(envPath)) continue
+    const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/)
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue
+      const index = trimmed.indexOf('=')
+      const key = trimmed.slice(0, index).trim()
+      const value = trimmed.slice(index + 1).trim().replace(/^['"]|['"]$/g, '')
+      process.env[key] = value
+    }
   }
 }
 
@@ -68,5 +78,4 @@ self.addEventListener('notificationclick', (event) => {
 const outPath = path.join(root, 'public', 'firebase-messaging-sw.js')
 fs.mkdirSync(path.dirname(outPath), { recursive: true })
 fs.writeFileSync(outPath, content)
-console.log(`[fcm-sw] Wrote ${path.relative(root, outPath)}`)
-
+console.log(`[fcm-sw] Wrote ${path.relative(root, outPath)} using ${mode} env`)
