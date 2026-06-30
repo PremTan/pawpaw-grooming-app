@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs, addDoc, serverTimestamp, doc, setDoc, orderBy, query } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
-import { BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Store, UserCheck, X } from 'lucide-react'
+import { ArrowRight, BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Store, UserCheck, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
@@ -304,9 +304,16 @@ export default function AdminDashboard() {
           <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '28px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>Dashboard</h1>
           <p style={{ color: 'var(--muted)', fontSize: '13px' }}>Overview of Paw Paw Grooming Centre</p>
         </div>
-        <button onClick={() => { setShowModal(true); setSuccess(false); setError('') }} className="btn btn-primary" style={{ fontSize: '13px', padding: '10px 18px' }}>
-          <Plus size={16} /> Add Walk-in
-        </button>
+        <div className="admin-dashboard-actions">
+          <button onClick={() => { setShowModal(true); setSuccess(false); setError('') }} className="btn btn-primary">
+            <Plus size={16} /> <span>Add Walk-in</span>
+          </button>
+          <Link to="/admin/shop-purchases" className="btn btn-primary admin-dashboard-purchase-action">
+            <Plus size={16} className="admin-dashboard-purchase-plus" />
+            <span>Add Purchase</span>
+            <ArrowRight size={16} className="admin-dashboard-purchase-arrow" />
+          </Link>
+        </div>
       </div>
 
       {loading ? <Spinner text="Loading dashboard..." /> : (
