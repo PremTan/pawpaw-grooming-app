@@ -9218,3 +9218,55 @@
     height: 30px;
   }
 }
+
+/* Non-light home theme contrast fixes */
+:root:not(.theme-light) .visit-choice-grid {
+  background: color-mix(in srgb, var(--card) 88%, var(--accent) 12%);
+}
+
+:root:not(.theme-light) .visit-choice-card {
+  background: linear-gradient(145deg, var(--accent-bg), color-mix(in srgb, var(--card) 92%, var(--surface) 8%) 72%);
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+}
+
+:root:not(.theme-light) .visit-choice-card h3,
+:root:not(.theme-light) .home-service-main strong,
+:root:not(.theme-light) .home-section-head h2 {
+  color: var(--text);
+}
+
+:root:not(.theme-light) .visit-choice-card p,
+:root:not(.theme-light) .home-service-main small {
+  color: color-mix(in srgb, var(--text) 72%, var(--muted));
+}
+
+:root:not(.theme-light) .home-service-row {
+  background:
+    radial-gradient(circle at 92% 28%, color-mix(in srgb, var(--service-color, var(--accent)) 18%, transparent), transparent 18%),
+    linear-gradient(135deg, color-mix(in srgb, var(--card) 84%, var(--service-color, var(--accent)) 16%), color-mix(in srgb, var(--surface) 92%, #fff 8%) 76%);
+  border-color: color-mix(in srgb, var(--service-color, var(--accent)) 40%, var(--border));
+}
+
+:root:not(.theme-light) .home-service-row::after {
+  color: color-mix(in srgb, var(--service-color, var(--accent)) 42%, transparent);
+}
+
+:root:not(.theme-light) .home-service-meta {
+  border-color: color-mix(in srgb, var(--text) 20%, transparent);
+}
+
+:root:not(.theme-light) .home-service-meta b {
+  color: var(--accent);
+}
+
+:root:not(.theme-light) .home-service-meta em {
+  color: color-mix(in srgb, var(--text) 76%, var(--muted));
+}
+
+:root:not(.theme-light) .home-help-card,
+:root:not(.theme-light) .home-follow-card,
+:root:not(.theme-light) .home-location-section,
+:root:not(.theme-light) .why-choose-card {
+  background: linear-gradient(135deg, var(--accent-bg), transparent 72%), color-mix(in srgb, var(--card) 94%, var(--surface) 6%);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+}

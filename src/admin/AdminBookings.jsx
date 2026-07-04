@@ -9,9 +9,10 @@ import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import { db } from '../firebase'
 import { syncPublicStats } from '../utils/publicStats'
-import { SERVICES, buildWhatsAppMessage } from '../utils/services'
+import { buildWhatsAppMessage } from '../utils/services'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { getBookingTypeLabel } from '../utils/bookingSettings'
+import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { OWNER_ASSIGNEE_ID, buildAssigneePatch, getAssigneeLabel, getBookingAssignee, getOwnerAssignee } from '../utils/teamMembers'
 
 const STATUS_OPTS = ['all', 'pending', 'confirmed', 'completed', 'cancelled']
@@ -90,6 +91,7 @@ export default function AdminBookings() {
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
   const [teamMembers, setTeamMembers] = useState([])
+  const [serviceDetails, setServiceDetails] = useState({})
   const [cancelTarget, setCancelTarget] = useState(null)
   const [cancelReason, setCancelReason] = useState('')
 
@@ -97,12 +99,18 @@ export default function AdminBookings() {
     setLoading(true)
     try {
       const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'))
-      const snap = await getDocs(q)
+      const [snap, serviceSnap] = await Promise.all([getDocs(q), getDocs(collection(db, 'serviceDetails'))])
+      const nextServiceDetails = {}
+      serviceSnap.docs.forEach(d => { nextServiceDetails[d.id] = { id: d.id, ...d.data() } })
+      setServiceDetails(nextServiceDetails)
       setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })))
       await syncPublicStats(db)
     } catch {
       try {
-        const snap = await getDocs(collection(db, 'bookings'))
+        const [snap, serviceSnap] = await Promise.all([getDocs(collection(db, 'bookings')), getDocs(collection(db, 'serviceDetails'))])
+        const nextServiceDetails = {}
+        serviceSnap.docs.forEach(d => { nextServiceDetails[d.id] = { id: d.id, ...d.data() } })
+        setServiceDetails(nextServiceDetails)
         const r = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         r.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
         setBookings(r)
@@ -144,6 +152,7 @@ export default function AdminBookings() {
     fetchWhatsapp()
   }, [])
 
+  const serviceCatalog = useMemo(() => buildServiceCatalog(serviceDetails), [serviceDetails])
   const ownerAssignee = useMemo(() => getOwnerAssignee(user), [user])
   const assignableTeamMembers = useMemo(() => teamMembers.filter(member => member.active !== false), [teamMembers])
   const assigneeOptions = useMemo(() => [ownerAssignee, ...assignableTeamMembers], [ownerAssignee, assignableTeamMembers])
@@ -306,7 +315,7 @@ export default function AdminBookings() {
         </select>
         <select value={serviceF} onChange={e => setServiceF(e.target.value)}>
           <option value="all">All Services</option>
-          {SERVICES.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          {serviceCatalog.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <input type="date" aria-label="From date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         <input type="date" aria-label="To date" value={dateTo} onChange={e => setDateTo(e.target.value)} />

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore'
 import { ArrowRight, Calendar, Clock, Flame, Package, PawPrint, Phone, Star, TrendingUp } from 'lucide-react'
 import { db } from '../firebase'
-import { SERVICES } from '../utils/services'
+import { buildServiceCatalog } from '../utils/serviceCatalog'
 import Spinner from '../components/Spinner'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { useAuth } from '../context/AuthContext'
@@ -49,24 +49,19 @@ export default function Services() {
 
   const maxBookings = useMemo(() => Math.max(...Object.values(counts).map(Number), 1), [counts])
 
-  const publicServices = SERVICES
-    .filter(baseService => serviceDetails[baseService.id]?.active !== false)
-    .map((baseService, index) => {
-      const detail = serviceDetails[baseService.id]
-      const detailImages = Array.isArray(detail?.images) ? detail.images.filter(img => img?.url) : []
-      const bookingCount = Number(counts[baseService.id] || 0)
+  const publicServices = buildServiceCatalog(serviceDetails)
+    .map((service, index) => {
+      const detailImages = Array.isArray(service.images) ? service.images.filter(img => img?.url) : []
+      const bookingCount = Number(counts[service.id] || 0)
       return {
-        ...baseService,
+        ...service,
         index,
-        name: detail?.name || baseService.name,
-        description: detail?.summary || detail?.description || baseService.description,
-        duration: detail?.duration || baseService.duration,
-        price: detail?.price || baseService.price,
-        imageUrl: detail?.iconImageUrl || detailImages[0]?.url || baseService.image || '',
+        description: service.summary || service.description,
+        imageUrl: service.iconImageUrl || detailImages[0]?.url || service.image || '',
         bookingCount,
         badge: badgeFor(index, bookingCount, maxBookings),
-        bookTo: `/book?service=${baseService.id}`,
-        detailTo: `/services/${baseService.id}`,
+        bookTo: `/book?service=${service.id}`,
+        detailTo: `/services/${service.id}`,
       }
     })
 

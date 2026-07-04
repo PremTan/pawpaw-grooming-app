@@ -76,7 +76,7 @@ export default function Navbar() {
     { path: '/services', label: 'Services', icon: <Scissors size={14} /> },
     { path: '/reviews', label: 'Reviews', icon: <MessageSquare size={14} /> },
     { path: '/gallery', label: 'Gallery', icon: <Image size={14} /> },
-    { path: '/#contact', label: 'Contact Us', icon: <Phone size={14} /> },
+    { path: '/?view=public#contact', label: 'Contact Us', icon: <Phone size={14} /> },
   ]
 
   const userLinks = [

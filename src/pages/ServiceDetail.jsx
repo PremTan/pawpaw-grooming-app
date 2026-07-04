@@ -5,6 +5,7 @@ import { Calendar, ChevronLeft, Clock, Heart, Leaf, PawPrint, Scissors, ShieldCh
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 import { SERVICES } from '../utils/services'
+import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { defaultServiceIconKey, renderServiceIcon } from '../utils/serviceIcons.jsx'
 
 export default function ServiceDetail() {
@@ -23,25 +24,23 @@ export default function ServiceDetail() {
       }
       setLoading(false)
     }
-    if (baseService) fetchDetail()
-  }, [baseService, serviceId])
+    fetchDetail()
+  }, [serviceId])
 
   const service = useMemo(() => {
-    if (!baseService) return null
+    if (!baseService && !detail) return null
+    const found = buildServiceCatalog(detail ? { [serviceId]: detail } : {}, { includeInactive: true }).find(item => item.id === serviceId)
+    if (!found) return null
     return {
-      ...baseService,
-      ...detail,
-      name: detail?.name || baseService.name,
-      description: detail?.description || baseService.description,
-      summary: detail?.summary || baseService.description,
-      price: detail?.price || baseService.price,
-      duration: detail?.duration || baseService.duration,
-      iconKey: detail?.iconKey || defaultServiceIconKey(baseService.id),
-      images: Array.isArray(detail?.images) ? detail.images.filter(i => i?.url).slice(0, 5) : [],
+      ...found,
+      description: found.description || found.summary,
+      summary: found.summary || found.description,
+      iconKey: found.iconKey || defaultServiceIconKey(found.id),
+      images: Array.isArray(found.images) ? found.images.filter(i => i?.url).slice(0, 5) : [],
     }
-  }, [baseService, detail])
+  }, [baseService, detail, serviceId])
 
-  if (!baseService) return <Navigate to="/services" replace />
+  if (!service && !loading) return <Navigate to="/services" replace />
   if (loading) return <div style={{ paddingTop: '120px' }}><Spinner text="Loading service..." /></div>
   if (service?.active === false) return <Navigate to="/services" replace />
 
