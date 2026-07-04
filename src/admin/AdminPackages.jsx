@@ -7,7 +7,7 @@ import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
-import { Plus, X, Pencil, Trash2, Package, Upload } from 'lucide-react'
+import { Check, Plus, X, Pencil, Trash2, Package, Upload } from 'lucide-react'
 
 const EMPTY = { name:'', description:'', services:[], priceRange:'', price:'', duration:'', imageUrl:'', active:true }
 const getCroppedPackageImage = async (imageSrc, pixelCrop, fileName) => {
@@ -138,7 +138,7 @@ export default function AdminPackages() {
         </button>
       </div>
 
-      {loading ? <Spinner text="Loading packagesÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" /> : packages.length===0 ? (
+      {loading ? <Spinner text="Loading packages..." /> : packages.length===0 ? (
         <div style={{ background:'var(--card)', border:'2px dashed var(--border)', borderRadius:'16px', padding:'60px', textAlign:'center' }}>
           <Package size={40} style={{ color:'var(--muted)', margin:'0 auto 16px' }} />
           <p style={{ color:'var(--text)', fontWeight:600, marginBottom:'6px' }}>No packages yet</p>
@@ -168,7 +168,7 @@ export default function AdminPackages() {
                 <div style={{ marginBottom:'14px' }}>
                   {pkg.services.map((s,i) => (
                     <div key={i} style={{ display:'flex', alignItems:'center', gap:'6px', padding:'4px 0', borderBottom:i<pkg.services.length-1?'1px solid var(--border)':'none' }}>
-                      <span style={{ color:'var(--accent)', fontSize:'11px' }}>ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“</span>
+                      <Check size={13} style={{ color:'var(--accent)', flexShrink:0 }} />
                       <span style={{ color:'var(--text)', fontSize:'13px' }}>{s}</span>
                     </div>
                   ))}
@@ -177,13 +177,13 @@ export default function AdminPackages() {
 
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
                 <div>
-                  <div style={{ color:'var(--accent)', fontFamily:'"DM Mono",monospace', fontWeight:800, fontSize:'18px' }}>{pkg.priceRange || (pkg.price ? `ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹${pkg.price}` : 'Price TBD')}</div>
-                  {pkg.duration && <div style={{ color:'var(--muted)', fontSize:'11px', marginTop:'2px' }}>ÃƒÂ¢Ã‚ÂÃ‚Â± {pkg.duration}</div>}
+                  <div style={{ color:'var(--accent)', fontFamily:'"DM Mono",monospace', fontWeight:800, fontSize:'18px' }}>{pkg.priceRange || (pkg.price ? `Rs ${pkg.price}` : 'Price TBD')}</div>
+                  {pkg.duration && <div style={{ color:'var(--muted)', fontSize:'11px', marginTop:'2px' }}>Duration: {pkg.duration}</div>}
                 </div>
                 <button onClick={() => toggleActive(pkg)}
                   style={{ padding:'5px 14px', borderRadius:'999px', fontSize:'11px', fontWeight:700, cursor:'pointer', border:'none', background: pkg.active!==false ? 'rgba(52,211,153,0.1)' : 'rgba(239,68,68,0.1)', color: pkg.active!==false ? '#34d399' : '#ef4444' }}
                 >
-                  {pkg.active!==false ? 'ÃƒÂ¢Ã¢â‚¬â€Ã‚Â Active' : 'ÃƒÂ¢Ã¢â‚¬â€Ã‚Â Inactive'}
+                  {pkg.active!==false ? 'Active' : 'Inactive'}
                 </button>
               </div>
             </div>
@@ -268,7 +268,7 @@ export default function AdminPackages() {
                 </div>
                 <div>
                   <label style={L}>Description</label>
-                  <textarea className="input" style={{ resize:'none' }} rows={2} placeholder="What's includedÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" value={form.description} onChange={e => setForm(p => ({ ...p, description:e.target.value }))} />
+                  <textarea className="input" style={{ resize:'none' }} rows={2} placeholder="What's included..." value={form.description} onChange={e => setForm(p => ({ ...p, description:e.target.value }))} />
                 </div>
 
                 {/* Services list */}
@@ -292,7 +292,7 @@ export default function AdminPackages() {
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
                   <div>
                     <label style={L}>Price Range</label>
-                    <input className="input" placeholder="e.g. ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹800 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹1500" value={form.priceRange} onChange={e => setForm(p => ({ ...p, priceRange:e.target.value }))} />
+                    <input className="input" placeholder="e.g. Rs 800 - Rs 1500" value={form.priceRange} onChange={e => setForm(p => ({ ...p, priceRange:e.target.value }))} />
                   </div>
                   <div>
                     <label style={L}>Duration</label>
@@ -308,7 +308,7 @@ export default function AdminPackages() {
                 <div style={{ display:'flex', gap:'10px', paddingTop:'4px' }}>
                   <button onClick={() => setShowModal(false)} className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }}>Cancel</button>
                   <button onClick={handleSave} disabled={saving||!form.name.trim()} className="btn btn-primary" style={{ flex:1, justifyContent:'center' }}>
-                    {saving ? 'SavingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦' : editId ? 'Update Package' : 'Create Package'}
+                    {saving ? 'Saving...' : editId ? 'Update Package' : 'Create Package'}
                   </button>
                 </div>
               </div>

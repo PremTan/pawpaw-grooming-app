@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { deleteDoc, doc, getDocs, collection, serverTimestamp, setDoc } from 'firebase/firestore'
-import { Eye, EyeOff, ImagePlus, Save, Trash2, Upload, X } from 'lucide-react'
+import { Eye, EyeOff, ImagePlus, Plus, Save, Trash2, Upload, X } from 'lucide-react'
 import Cropper from 'react-easy-crop'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import { SERVICES } from '../utils/services'
 import { SERVICE_ICON_OPTIONS, defaultServiceIconKey, renderServiceIcon } from '../utils/serviceIcons.jsx'
+import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 
@@ -77,7 +78,15 @@ export default function AdminServices() {
     fetchDetails()
   }, [])
 
-  const selectedService = useMemo(() => SERVICES.find(s => s.id === selectedId), [selectedId])
+  const serviceCatalog = useMemo(() => buildServiceCatalog(details, { includeInactive: true }), [details])
+  const selectedService = useMemo(() => serviceCatalog.find(s => s.id === selectedId), [serviceCatalog, selectedId])
+
+  useEffect(() => {
+    if (!selectedId && serviceCatalog.length) setSelectedId(serviceCatalog[0].id)
+    if (selectedId && serviceCatalog.length && !serviceCatalog.some(service => service.id === selectedId)) {
+      setSelectedId(serviceCatalog[0].id)
+    }
+  }, [serviceCatalog, selectedId])
 
   useEffect(() => {
     if (!selectedService) return
@@ -97,6 +106,37 @@ export default function AdminServices() {
     setMessage('')
     setError('')
   }, [details, selectedService])
+
+  const addService = async () => {
+    const id = `custom_${Date.now()}`
+    const next = {
+      id,
+      name: 'New Service',
+      summary: '',
+      description: '',
+      price: '',
+      duration: '',
+      active: true,
+      custom: true,
+      iconImageUrl: '',
+      iconKey: 'paw',
+      images: [],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }
+    setSaving(true)
+    setError('')
+    setMessage('')
+    try {
+      await setDoc(doc(db, 'serviceDetails', id), next)
+      setDetails(prev => ({ ...prev, [id]: { ...next, createdAt: new Date(), updatedAt: new Date() } }))
+      setSelectedId(id)
+      setMessage('New service added. Update the details and save.')
+    } catch (err) {
+      setError(err.message || 'Could not add service.')
+    }
+    setSaving(false)
+  }
 
   const update = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
   const updateImage = (index, key, value) => {
@@ -211,6 +251,7 @@ export default function AdminServices() {
         price: form.price.trim(),
         duration: form.duration.trim(),
         active: form.active,
+        custom: !!selectedService.custom,
         iconImageUrl: form.iconImageUrl || '',
         iconKey: form.iconKey || defaultServiceIconKey(selectedService.id),
         images: cleanImages,
@@ -245,14 +286,17 @@ export default function AdminServices() {
     setError('')
     setMessage('')
     try {
-      await deleteDoc(doc(db, 'serviceDetails', selectedService.id))
+      const deletedService = selectedService
+      const fallbackService = serviceCatalog.find(service => service.id !== deletedService.id)
+      await deleteDoc(doc(db, 'serviceDetails', deletedService.id))
+      if (fallbackService) setSelectedId(fallbackService.id)
       setDetails(prev => {
         const next = { ...prev }
-        delete next[selectedService.id]
+        delete next[deletedService.id]
         return next
       })
       setConfirmAction(null)
-      setMessage('Custom service content deleted.')
+      setMessage(deletedService.custom ? 'Service deleted.' : 'Custom service content deleted.')
     } catch (err) {
       setError(err.message || 'Could not delete custom content.')
     }
@@ -261,7 +305,7 @@ export default function AdminServices() {
 
   const L = { fontSize:'10px', fontWeight:700, letterSpacing:'1px', textTransform:'uppercase', color:'var(--muted)', display:'block', marginBottom:'5px' }
 
-  if (loading || !form) return <div style={{ padding: '28px' }}><Spinner text="Loading services..." /></div>
+  if (loading || !form || !selectedService) return <div style={{ padding: '28px' }}><Spinner text="Loading services..." /></div>
 
   return (
     <div style={{ padding: '28px' }}>
@@ -313,8 +357,11 @@ export default function AdminServices() {
           <button onClick={() => setConfirmAction('hide')} disabled={saving || uploading !== null || form.active === false} className="btn btn-danger" style={{ fontSize: '13px', padding: '10px 16px' }}>
             <EyeOff size={16} /> Hide
           </button>
+          <button onClick={addService} disabled={saving || uploading !== null} className="btn btn-secondary" style={{ fontSize: '13px', padding: '10px 16px' }}>
+            <Plus size={16} /> New Service
+          </button>
           <button onClick={() => setConfirmAction('reset')} disabled={saving || uploading !== null} className="btn btn-secondary" style={{ fontSize: '13px', padding: '10px 16px' }}>
-            <Trash2 size={16} /> Reset
+            <Trash2 size={16} /> {selectedService?.custom ? 'Delete' : 'Reset'}
           </button>
           <button onClick={save} disabled={saving || uploading !== null} className="btn btn-primary" style={{ fontSize: '13px', padding: '10px 18px' }}>
             <Save size={16} /> {saving ? 'Saving...' : 'Save Service'}
@@ -330,14 +377,14 @@ export default function AdminServices() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: '18px' }} className="admin-services-layout">
         <div className="card" style={{ padding: '10px', alignSelf: 'start' }}>
-          {SERVICES.map(service => {
+          {serviceCatalog.map(service => {
             const saved = details[service.id]
             const active = saved?.active !== false
             const selected = service.id === selectedId
             return (
               <button key={service.id} onClick={() => setSelectedId(service.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '11px', borderRadius: '8px', border: selected ? '1px solid var(--accent-border)' : '1px solid transparent', background: selected ? 'var(--accent-bg)' : 'transparent', color: selected ? 'var(--accent)' : 'var(--text)', cursor: 'pointer', textAlign: 'left', marginBottom: '3px' }}>
-                <span className="admin-service-list-icon">{renderServiceIcon(saved?.iconKey || defaultServiceIconKey(service.id), service.icon, 19)}</span>
-                <span style={{ flex: 1, fontSize: '13px', fontWeight: 800 }}>{service.name}</span>
+                <span className="admin-service-list-icon">{renderServiceIcon(saved?.iconKey || service.iconKey || defaultServiceIconKey(service.id), service.icon, 19)}</span>
+                <span style={{ flex: 1, fontSize: '13px', fontWeight: 800 }}>{saved?.name || service.name}</span>
                 {active ? <Eye size={14} /> : <EyeOff size={14} />}
               </button>
             )
@@ -447,11 +494,13 @@ export default function AdminServices() {
       </div>
       <ConfirmModal
         open={!!confirmAction}
-        title={confirmAction === 'hide' ? 'Hide service?' : 'Reset service content?'}
+        title={confirmAction === 'hide' ? 'Hide service?' : selectedService?.custom ? 'Delete service?' : 'Reset service content?'}
         message={confirmAction === 'hide'
-          ? `Hide ${selectedService?.name || 'this service'} from the public site?`
-          : `Delete custom content for ${selectedService?.name || 'this service'}? The default service will remain.`}
-        confirmText={confirmAction === 'hide' ? 'Hide' : 'Reset'}
+          ? `Hide ${form?.name || selectedService?.name || 'this service'} from the public site?`
+          : selectedService?.custom
+            ? `Delete ${form?.name || selectedService?.name || 'this service'} permanently?`
+            : `Delete custom content for ${form?.name || selectedService?.name || 'this service'}? The default service will remain.`}
+        confirmText={confirmAction === 'hide' ? 'Hide' : selectedService?.custom ? 'Delete' : 'Reset'}
         loading={saving}
         onCancel={() => setConfirmAction(null)}
         onConfirm={confirmAction === 'hide' ? hideService : resetService}

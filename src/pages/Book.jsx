@@ -4,11 +4,12 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc, setDoc, Timestamp } from 'firebase/firestore'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
-import { SERVICES, PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
+import { PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
 import { Calendar, Clock, CheckCircle, ChevronLeft, Home, Plus, Store } from 'lucide-react'
 import { format, addDays, startOfToday } from 'date-fns'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel } from '../utils/bookingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
+import { buildServiceCatalog } from '../utils/serviceCatalog'
 
 const parseSlotStart = (dateString, slotLabel) => {
   const match = String(slotLabel || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
@@ -171,14 +172,7 @@ export default function Book() {
     { type: 'home', label: 'Home Visit', icon: <Home size={15} />, slots: availability.homeSlots },
   ].filter(option => option.slots.length > 0)
   const update = (k, v) => setForm(p => ({ ...p, [k]: v }))
-  const visibleServices = SERVICES
-    .filter(s => serviceDetails[s.id]?.active !== false)
-    .map(s => ({
-      ...s,
-      name: serviceDetails[s.id]?.name || s.name,
-      price: serviceDetails[s.id]?.price || s.price,
-      duration: serviceDetails[s.id]?.duration || s.duration,
-    }))
+  const visibleServices = buildServiceCatalog(serviceDetails)
   const selectedService = visibleServices.find(s => s.id === selectedServices[0])
   const selectedServiceList = visibleServices.filter(s => selectedServices.includes(s.id))
   const serviceLabel = selectedServiceList.map(s => s.name).join(', ')

@@ -109,6 +109,8 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     localStorage.setItem('pawpaw_theme', themeId)
     const root = document.documentElement
+    Object.values(THEMES).forEach(item => root.classList.remove(item.cssClass))
+    root.classList.add(theme.cssClass)
     root.style.setProperty('--bg', theme.bg)
     root.style.setProperty('--surface', theme.surface)
     root.style.setProperty('--card', theme.card)

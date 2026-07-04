@@ -4,8 +4,7 @@ import { Link } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs, query, orderBy, limit } from 'firebase/firestore'
 import { db } from '../firebase'
 import BrandLogo from '../components/BrandLogo'
-import { SERVICES } from '../utils/services'
-import { defaultServiceIconKey, renderServiceIcon } from '../utils/serviceIcons.jsx'
+import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
 import { countOpenDays } from '../utils/bookingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
@@ -337,17 +336,7 @@ export default function Home() {
     return () => clearInterval(t)
   }, [galleryImages.length])
 
-  const homeServices = SERVICES
-    .filter(s => serviceDetails[s.id]?.active !== false)
-    .map(s => ({
-      ...s,
-      name: serviceDetails[s.id]?.name || s.name,
-      description: serviceDetails[s.id]?.summary || serviceDetails[s.id]?.description || s.description,
-      price: serviceDetails[s.id]?.price || s.price,
-      duration: serviceDetails[s.id]?.duration || s.duration,
-      iconImageUrl: serviceDetails[s.id]?.iconImageUrl || s.image || '',
-      iconKey: serviceDetails[s.id]?.iconKey || defaultServiceIconKey(s.id),
-    }))
+  const homeServices = buildServiceCatalog(serviceDetails)
 
   const shownServices = [
     ...homeServices.slice(0, 5),

@@ -8,9 +8,10 @@ import Spinner from '../components/Spinner'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { calculatePublicStats } from '../utils/publicStats'
-import { BOOKING_STATUS, PET_TYPES, SERVICES } from '../utils/services'
+import { BOOKING_STATUS, PET_TYPES } from '../utils/services'
 import { fetchBookingSettings } from '../utils/bookingSettings'
 import { OWNER_ASSIGNEE_ID, buildAssigneePatch, getAssigneeLabel, getOwnerAssignee } from '../utils/teamMembers'
+import { buildServiceCatalog } from '../utils/serviceCatalog'
 
 const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', assignedTeamMemberId: OWNER_ASSIGNEE_ID, date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: 'walkin', userEmail: 'walkin@offline' }
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -99,6 +100,7 @@ export default function AdminDashboard() {
   const [success, setSuccess] = useState(false)
   const [bookingSettings, setBookingSettings] = useState(null)
   const [teamMembers, setTeamMembers] = useState([])
+  const [serviceDetails, setServiceDetails] = useState({})
   const today = format(startOfToday(), 'yyyy-MM-dd')
 
   const fetchData = async () => {
@@ -107,8 +109,11 @@ export default function AdminDashboard() {
       if (user?.uid) {
         await setDoc(doc(db, 'settings', 'general'), { adminUid: user.uid }, { merge: true })
       }
-      const [bSnap, rSnap, settings] = await Promise.all([getDocs(collection(db, 'bookings')), getDocs(collection(db, 'reviews')), fetchBookingSettings(db)])
+      const [bSnap, rSnap, settings, serviceSnap] = await Promise.all([getDocs(collection(db, 'bookings')), getDocs(collection(db, 'reviews')), fetchBookingSettings(db), getDocs(collection(db, 'serviceDetails'))])
       setBookingSettings(settings)
+      const nextServiceDetails = {}
+      serviceSnap.docs.forEach(d => { nextServiceDetails[d.id] = { id: d.id, ...d.data() } })
+      setServiceDetails(nextServiceDetails)
       const bookings = bSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       const reviews = rSnap.docs.map(d => d.data())
       const byService = {}
@@ -205,6 +210,7 @@ export default function AdminDashboard() {
     fetchTeamMembers()
   }, [])
 
+  const serviceCatalog = useMemo(() => buildServiceCatalog(serviceDetails), [serviceDetails])
   const ownerAssignee = useMemo(() => getOwnerAssignee(user), [user])
   const assignableTeamMembers = useMemo(() => teamMembers.filter(member => member.active !== false), [teamMembers])
   const assigneeOptions = useMemo(() => [ownerAssignee, ...assignableTeamMembers], [ownerAssignee, assignableTeamMembers])
@@ -256,7 +262,7 @@ export default function AdminDashboard() {
     if (walkin.bookingType === 'home' && !walkin.address.trim()) { setError('Please enter home visit address'); return }
     setSaving(true); setError('')
     try {
-      const svc = SERVICES.find(s => s.id === serviceId)
+      const svc = serviceCatalog.find(s => s.id === serviceId)
       const assignee = assigneeOptions.find(item => item.id === walkin.assignedTeamMemberId) || ownerAssignee
       const visitCharge = walkinVisitCharge()
       const totalCollected = walkin.amountCollected || walkin.visitCharge !== '' ? walkinServiceAmount + visitCharge : ''
@@ -379,7 +385,7 @@ export default function AdminDashboard() {
           </div>
             <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '22px' }}>
               <h2 style={{ fontWeight: 700, color: 'var(--text)', fontSize: '15px', marginBottom: '18px' }}>Bookings & Earnings by Service</h2>
-              {SERVICES.map(s => {
+              {serviceCatalog.map(s => {
                 const cnt = data.byService[s.id] || 0
                 const earned = data.earningsByService[s.id] || 0
                 return (
@@ -484,7 +490,7 @@ export default function AdminDashboard() {
                   <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Service *</label>
                   <select className="input" value={walkin.serviceId} onChange={e => upd('serviceId', e.target.value)}>
                     <option value="">Select a service</option>
-                    {SERVICES.map(s => <option key={s.id} value={s.id}>{s.name} - {s.price}</option>)}
+                    {serviceCatalog.map(s => <option key={s.id} value={s.id}>{s.name} - {s.price}</option>)}
                   </select>
                 </div>
                 <div>
