@@ -8376,29 +8376,38 @@
   }
 
   .services-card-body {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "title price"
-      "desc desc"
-      "time time"
-      "pop pop";
+      "title"
+      "price"
+      "desc"
+      "time"
+      "pop";
   }
 
   .services-card-title-row h2 {
     grid-area: title;
+    max-width: 100%;
+    font-size: clamp(18px, 5.1vw, 21px);
+    line-height: 1.12;
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
   }
 
   .services-card-title-row strong {
     grid-area: price;
+    justify-self: start;
     color: #b98104;
-    font-size: 14px;
-    padding-top: 2px;
+    font-size: 17px;
+    line-height: 1.1;
+    padding-top: 8px;
     z-index: 1;
   }
 
   .services-card-title-row p {
     grid-area: desc;
-    margin-top: 12px;
+    margin-top: 14px;
     padding-right: 10px;
   }
 
@@ -8417,6 +8426,16 @@
   .services-card-mobile-popularity {
     grid-area: pop;
     margin-top: 14px;
+  }
+}
+
+@media (max-width: 390px) {
+  .services-card-title-row h2 {
+    font-size: 18px;
+  }
+
+  .services-card-title-row strong {
+    font-size: 16px;
   }
 }
 
