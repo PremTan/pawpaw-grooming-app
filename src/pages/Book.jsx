@@ -5,11 +5,12 @@ import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
-import { Calendar, Clock, CheckCircle, ChevronLeft, Home, Plus, Store } from 'lucide-react'
+import { ArrowRight, Calendar, Clock, CheckCircle, ChevronLeft, Home, MessageCircle, Package as PackageIcon, PawPrint, Plus, Store } from 'lucide-react'
 import { format, addDays, startOfToday } from 'date-fns'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel } from '../utils/bookingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
+import { renderServiceIcon } from '../utils/serviceIcons.jsx'
 
 const parseSlotStart = (dateString, slotLabel) => {
   const match = String(slotLabel || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
@@ -41,6 +42,7 @@ const getPriceRange = (value) => {
 }
 
 const getPackagePriceRange = (pkg) => getPriceRange(pkg.priceRange || pkg.price)
+const SERVICE_PASTELS = ['#fde8ec', '#e8f4ff', '#fff4cf', '#e8f7ed', '#ffe9dd', '#f2e8ff', '#e8fbf7', '#fff0da']
 
 export default function Book() {
   const { user, isBlocked } = useAuth()
@@ -244,6 +246,8 @@ export default function Book() {
     return min > 0 ? `Rs ${min}+` : selectedService?.price || ''
   }
 
+
+  const pastelFor = (index) => ({ '--service-pastel': SERVICE_PASTELS[index % SERVICE_PASTELS.length] })
   const handleSubmit = async () => {
     if (isBlocked) {
       alert('Your account is blocked from booking. Please contact the admin.')
@@ -331,7 +335,7 @@ export default function Book() {
             { label: 'Est. Total', value: totalPrice() },
             { label: 'Payment',    value: getPaymentModeLabel(bookingRef.paymentMode || paymentMode) },
             { label: 'Address',    value: form.bookingType === 'home' ? form.address : null },
-          ].map(row => (
+          ].filter(row => row.value).map(row => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
               <span style={{ color: 'var(--muted)', fontSize: '13px' }}>{row.label}</span>
               <span style={{ color: row.gold ? 'var(--accent)' : 'var(--text)', fontSize: '13px', fontWeight: row.gold ? 700 : 500, fontFamily: row.gold ? '"DM Mono",monospace' : 'inherit' }}>{row.value}</span>
@@ -340,7 +344,7 @@ export default function Book() {
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
-          <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="btn" style={{ background: '#25D366', color: '#fff', padding: '12px 24px' }}>💬 Send to WhatsApp</a>
+          <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="btn" style={{ background: '#25D366', color: '#fff', padding: '12px 24px' }}><MessageCircle size={16} /> Send to WhatsApp</a>
           <button onClick={() => navigate('/my-bookings')} className="btn btn-primary">View My Bookings</button>
           <button onClick={() => { setDone(false); setStep(1); setForm(p => ({ ...p, slot: '' })) }} className="btn btn-secondary">Book Another</button>
         </div>
@@ -353,7 +357,6 @@ export default function Book() {
       <div ref={bookingTopRef} style={S.wrap}>
         <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Book Appointment</h1>
         <p style={{ color: 'var(--muted)', marginBottom: '28px', fontSize: '14px' }}>Fill the details below to schedule your visit</p>
-
         {isBlocked && (
           <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', fontSize: '13px', padding: '12px 14px', borderRadius: '12px', marginBottom: '18px' }}>
             Your account is blocked from creating new bookings. You can still log in and view your account.
@@ -365,7 +368,7 @@ export default function Book() {
           {[{ n: 1, label: 'Service' }, { n: 2, label: 'Pet Details' }, { n: 3, label: 'Date & Time' }].map((s, i, arr) => (
             <div key={s.n} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                <div style={S.stepNum(s.n)}>{step > s.n ? '✓' : s.n}</div>
+                <div style={S.stepNum(s.n)}>{step > s.n ? <CheckCircle size={16} /> : s.n}</div>
                 <span style={{ fontSize: '10px', color: step === s.n ? 'var(--accent)' : 'var(--muted)', fontWeight: step === s.n ? 700 : 400 }}>{s.label}</span>
               </div>
               {i < arr.length - 1 && <div style={{ width: '32px', height: '2px', background: step > s.n ? 'var(--accent)' : 'var(--border)', borderRadius: '1px', marginBottom: '16px' }} />}
@@ -373,113 +376,107 @@ export default function Book() {
           ))}
         </div>
 
-        <div style={S.card}>
-          {/* Step 1 — Service */}
+        <div className={step === 1 ? 'book-step-one' : undefined} style={step === 1 ? undefined : S.card}>
+          {/* Step 1 - Service */}
           {step === 1 && (
-            <div>
-              <h2 style={{ fontWeight: 700, color: 'var(--text)', fontSize: '18px', marginBottom: '6px' }}>Choose a Service</h2>
-              <p style={{ color: 'var(--muted)', fontSize: '13px', marginBottom: '20px' }}>Select one or more services</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px', marginBottom: '24px' }}>
-                {visibleServices.map(s => {
-                  const sel = selectedServices.includes(s.id)
-                  return (
-                    <button key={s.id} onClick={() => toggleService(s.id)}
-                      style={{
-                        padding: '14px', borderRadius: '12px', textAlign: 'left', cursor: 'pointer',
-                        border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
-                        background: sel ? 'var(--accent-bg)' : 'var(--surface)',
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: '24px', marginBottom: '8px' }}>{s.icon}</div>
-                          <div style={{ fontWeight: 600, fontSize: '13px', color: sel ? 'var(--accent)' : 'var(--text)', marginBottom: '2px' }}>{s.name}</div>
-                          <div style={{ color: 'var(--accent)', fontSize: '11px', fontFamily: '"DM Mono",monospace' }}>{s.price}</div>
-                        </div>
-                        <div style={{
-                          width: '22px', height: '22px', borderRadius: '7px', flexShrink: 0,
-                          border: `2px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
-                          background: sel ? 'var(--accent)' : 'transparent',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          color: '#000', fontWeight: 700, fontSize: '12px',
-                          transition: 'all 0.15s ease',
-                        }}>
-                          {sel ? '✓' : ''}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
+            <div className="book-step-one-inner">
+              <section className="book-service-panel">
+                <div className="book-section-head">
+                  <h2>Choose a Service</h2>
+                  <p>Select one or more services</p>
+                </div>
 
-              {/* Add-on packages */}
-              {packages.length > 0 && (
-                <div style={{ marginBottom: '24px' }}>
-                  <h3 style={{ fontWeight: 700, color: 'var(--text)', fontSize: '15px', marginBottom: '4px' }}>Add-on Packages</h3>
-                  <p style={{ color: 'var(--muted)', fontSize: '12px', marginBottom: '14px' }}>Select multiple packages to combine services</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {packages.map(pkg => {
-                      const sel = selectedPackages.includes(pkg.id)
-                      const togglePkg = (pkgId) => {
-                        setSelectedPackages(prev =>
-                          prev.includes(pkgId)
-                            ? prev.filter(id => id !== pkgId)
-                            : [...prev, pkgId]
+                <div className="book-service-grid">
+                  {visibleServices.map((s, index) => {
+                    const sel = selectedServices.includes(s.id)
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => toggleService(s.id)}
+                        className={`book-selection-card${sel ? ' selected' : ''}`}
+                        style={pastelFor(index)}
+                      >
+                        <div className="book-selection-icon" aria-hidden="true">
+                          {s.iconImageUrl ? (
+                            <img className="book-selection-icon-image" src={s.iconImageUrl} alt="" loading="lazy" />
+                          ) : (
+                            <span className="book-selection-fallback-icon">{renderServiceIcon(s.iconKey, s.icon, 28)}</span>
+                          )}
+                        </div>
+                        <div className="book-selection-copy">
+                          <strong>{s.name}</strong>
+                          <span>{s.price}</span>
+                        </div>
+                        <div className="book-card-checkbox" aria-hidden="true">
+                          {sel && <CheckCircle size={15} />}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {packages.length > 0 && (
+                  <div className="book-packages-section">
+                    <div className="book-section-head book-section-head-compact">
+                      <h2>Add-on Packages</h2>
+                      <p>Select multiple packages to combine services</p>
+                    </div>
+                    <div className="book-package-grid">
+                      {packages.map((pkg, index) => {
+                        const sel = selectedPackages.includes(pkg.id)
+                        const togglePkg = (pkgId) => {
+                          setSelectedPackages(prev =>
+                            prev.includes(pkgId)
+                              ? prev.filter(id => id !== pkgId)
+                              : [...prev, pkgId]
+                          )
+                        }
+                        return (
+                          <button
+                            key={pkg.id}
+                            type="button"
+                            onClick={() => togglePkg(pkg.id)}
+                            className={`book-selection-card book-package-card${sel ? ' selected' : ''}`}
+                            style={pastelFor(index + visibleServices.length)}
+                          >
+                            <div className="book-selection-icon" aria-hidden="true">
+                              {(pkg.iconImageUrl || pkg.imageUrl || pkg.image) ? (
+                                <img className="book-selection-icon-image" src={pkg.iconImageUrl || pkg.imageUrl || pkg.image} alt="" loading="lazy" />
+                              ) : (
+                                <span className="book-selection-fallback-icon"><PackageIcon size={28} /></span>
+                              )}
+                            </div>
+                            <div className="book-selection-copy">
+                              <strong>{pkg.name}</strong>
+                              {pkg.description && <small>{pkg.description}</small>}
+                              <span>{pkg.priceRange || (pkg.price ? `Rs ${pkg.price}` : '')}</span>
+                            </div>
+                            <div className="book-card-checkbox" aria-hidden="true">
+                              {sel && <CheckCircle size={15} />}
+                            </div>
+                          </button>
                         )
-                      }
-                      return (
-                        <div
-                          key={pkg.id}
-                          onClick={() => togglePkg(pkg.id)}
-                          style={{
-                            border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
-                            borderRadius: '12px',
-                            padding: '14px',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease',
-                            background: sel ? 'var(--accent-bg)' : 'var(--surface)',
-                            userSelect: 'none',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 600, color: sel ? 'var(--accent)' : 'var(--text)', fontSize: '14px', marginBottom: '2px' }}>{pkg.name}</div>
-                              {pkg.description && <div style={{ color: 'var(--muted)', fontSize: '12px', marginBottom: '4px' }}>{pkg.description}</div>}
-                              <div style={{ color: 'var(--accent)', fontFamily: '"DM Mono",monospace', fontWeight: 700, fontSize: '13px' }}>{pkg.priceRange || (pkg.price ? `₹${pkg.price}` : '')}</div>
-                            </div>
-                            {/* Checkbox */}
-                            <div style={{
-                              width: '24px', height: '24px', borderRadius: '7px', flexShrink: 0,
-                              border: `2px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
-                              background: sel ? 'var(--accent)' : 'transparent',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              color: '#000', fontWeight: 700, fontSize: '13px',
-                              transition: 'all 0.15s ease',
-                            }}>
-                              {sel ? '✓' : ''}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Price estimate */}
-              {selectedServices.length > 0 && (
-                <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '12px', padding: '14px 16px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--muted)', fontSize: '13px' }}>Estimated Total</span>
-                  <span style={{ color: 'var(--accent)', fontFamily: '"DM Mono",monospace', fontWeight: 800, fontSize: '16px' }}>{totalPrice()}</span>
-                </div>
-              )}
+                {(selectedServices.length > 0 || selectedPackages.length > 0) && (
+                  <div className="book-estimate-card">
+                    <span>Estimated Total</span>
+                    <strong>{totalPrice()}</strong>
+                  </div>
+                )}
 
-              <button onClick={() => setStep(2)} disabled={selectedServices.length === 0 && selectedPackages.length === 0} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>Continue</button>
+                <button onClick={() => setStep(2)} disabled={selectedServices.length === 0 && selectedPackages.length === 0} className="book-panel-continue-btn">
+                  Continue <ArrowRight size={22} />
+                </button>
+              </section>
             </div>
           )}
 
-          {/* Step 2 — Pet & Owner details */}
+          {/* Step 2 - Pet & Owner details */}
           {step === 2 && (
             <div>
               <button style={S.back} onClick={() => setStep(1)}><ChevronLeft size={16} /> Back</button>
@@ -507,11 +504,11 @@ export default function Book() {
                             {pet.photoUrl ? (
                               <img src={pet.photoUrl} alt={pet.name} style={{ width: '44px', height: '44px', borderRadius: '12px', objectFit: 'cover', flexShrink: 0 }} />
                             ) : (
-                              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🐾</div>
+                              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><PawPrint size={18} /></div>
                             )}
                             <div style={{ minWidth: 0, flex: 1 }}>
                               <div style={{ color: sel ? 'var(--accent)' : 'var(--text)', fontSize: '13px', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pet.name}</div>
-                              <div style={{ color: 'var(--muted)', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pet.type}{pet.breed ? ` · ${pet.breed}` : ''}</div>
+                              <div style={{ color: 'var(--muted)', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pet.type}{pet.breed ? ` - ${pet.breed}` : ''}</div>
                             </div>
                             <div style={{
                               width: '20px', height: '20px', borderRadius: '6px', flexShrink: 0,
@@ -520,7 +517,7 @@ export default function Book() {
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               color: '#000', fontWeight: 700, fontSize: '11px',
                             }}>
-                              {sel ? '✓' : ''}
+                              {sel ? <CheckCircle size={13} /> : ''}
                             </div>
                           </button>
                         )
@@ -587,7 +584,7 @@ export default function Book() {
             </div>
           )}
 
-          {/* Step 3 — Date & Slot */}
+          {/* Step 3 - Date & Slot */}
           {step === 3 && (
             <div>
               <button style={S.back} onClick={() => setStep(2)}><ChevronLeft size={16} /> Back</button>
@@ -662,7 +659,7 @@ export default function Book() {
               </div>
               {form.slot && (
                 <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '14px', padding: '16px', marginBottom: '20px' }}>
-                  <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '13px', marginBottom: '12px' }}>📋 Booking Summary</p>
+                  <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '13px', marginBottom: '12px' }}>Booking Summary</p>
                   {[
                     { k: 'Service', v: serviceLabel },
                     { k: 'Package', v: !serviceLabel && selectedPkgs.length > 0 ? selectedPkgs.map(p => p.name).join(', ') : null },
@@ -685,7 +682,7 @@ export default function Book() {
               )}
 
               <button onClick={handleSubmit} disabled={isBlocked || !form.slot || !bookableSlots.includes(form.slot) || bookedSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim()) || loading} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-                {loading ? 'Booking…' : 'Confirm Booking'}
+                {loading ? 'Booking...' : 'Confirm Booking'}
               </button>
             </div>
           )}
@@ -694,17 +691,3 @@ export default function Book() {
     </div>
   )
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

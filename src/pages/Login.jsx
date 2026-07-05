@@ -2,10 +2,26 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail } from 'firebase/auth'
-import { auth, googleProvider, ADMIN_EMAIL } from '../firebase'
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { auth, db, googleProvider, ADMIN_EMAIL } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { Check, Eye, EyeOff, RefreshCw } from 'lucide-react'
 import BrandLogo from '../components/BrandLogo'
+
+async function syncProfileFromAuth(authUser, nameOverride = '') {
+  if (!authUser?.uid) return
+  const profileRef = doc(db, 'profiles', authUser.uid)
+  const snap = await getDoc(profileRef)
+  const existing = snap.exists() ? snap.data() : {}
+  await setDoc(profileRef, {
+    email: authUser.email || existing.email || '',
+    name: existing.name || nameOverride || authUser.displayName || '',
+    photoURL: existing.photoURL || existing.photoUrl || authUser.photoURL || '',
+    phone: existing.phone || '',
+    userId: authUser.uid,
+    updatedAt: serverTimestamp(),
+  }, { merge: true })
+}
 
 export default function Login() {
   const { user, isAdmin } = useAuth()
@@ -31,6 +47,7 @@ export default function Login() {
     setLoading(true); setError('')
     try {
       const cred = await signInWithPopup(auth, googleProvider)
+      await syncProfileFromAuth(cred.user)
       navigate(cred.user?.email === ADMIN_EMAIL ? '/admin' : '/')
     }
     catch (e) { setError(e.message) }
@@ -44,8 +61,10 @@ export default function Login() {
       if (mode === 'signup') {
         const cred = await createUserWithEmailAndPassword(auth, form.email, form.password)
         if (form.name) await updateProfile(cred.user, { displayName: form.name })
+        await syncProfileFromAuth(cred.user, form.name.trim())
       } else {
         const cred = await signInWithEmailAndPassword(auth, form.email, form.password)
+        await syncProfileFromAuth(cred.user)
         if (cred.user?.email === ADMIN_EMAIL) {
           navigate('/admin')
           setLoading(false)

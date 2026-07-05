@@ -9,6 +9,29 @@ import Spinner from '../components/Spinner'
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
 const statusClass = (status = 'pending') => status === 'confirmed' ? 'badge-confirmed' : status === 'completed' ? 'badge-completed' : status === 'cancelled' ? 'badge-cancelled' : 'badge-pending'
 const customerKey = (booking) => booking.userId || booking.phone || booking.id
+const normalizePhone = (value) => String(value || '').replace(/\D/g, '').slice(-10)
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase()
+const profilePhoto = (data) => data ? (
+  data.photoURL ||
+  data.photoUrl ||
+  data.profilePhotoURL ||
+  data.profilePhotoUrl ||
+  data.profilePicture ||
+  data.profilePic ||
+  data.pictureURL ||
+  data.pictureUrl ||
+  data.avatarURL ||
+  data.avatarUrl ||
+  data.imageURL ||
+  data.imageUrl ||
+  data.userPhotoURL ||
+  data.userPhotoUrl ||
+  data.customerPhotoURL ||
+  data.customerPhotoUrl ||
+  data.ownerPhotoURL ||
+  data.ownerPhotoUrl ||
+  ''
+) : ''
 
 export default function AdminCustomers() {
   const navigate = useNavigate()
@@ -41,17 +64,30 @@ export default function AdminCustomers() {
 
   const customers = useMemo(() => {
     const map = {}
+    const profilesByEmail = {}
+    const profilesByPhone = {}
+
+    Object.values(profiles).forEach(profile => {
+      const email = normalizeEmail(profile.email)
+      const phone = normalizePhone(profile.phone)
+      if (email) profilesByEmail[email] = profile
+      if (phone) profilesByPhone[phone] = profile
+    })
+
     bookings.forEach(booking => {
       const key = customerKey(booking)
-      const profile = booking.userId ? profiles[booking.userId] : null
+      const profile = (booking.userId ? profiles[booking.userId] : null)
+        || profilesByEmail[normalizeEmail(booking.userEmail || booking.email)]
+        || profilesByPhone[normalizePhone(booking.phone)]
+        || null
       if (!map[key]) {
         map[key] = {
           key,
           phone: profile?.phone || booking.phone || '',
           ownerName: profile?.name || booking.ownerName || 'Unknown',
-          userId: booking.userId || '',
+          userId: booking.userId || profile?.id || profile?.userId || '',
           userEmail: profile?.email || booking.userEmail || '',
-          photoURL: profile?.photoURL || booking.userPhotoURL || booking.photoURL || '',
+          photoURL: profilePhoto(profile) || profilePhoto(booking),
           isWalkIn: booking.isWalkIn,
           blocked: profile?.blocked === true,
           bookings: [],
@@ -65,22 +101,22 @@ export default function AdminCustomers() {
       if (profile?.name || booking.ownerName) map[key].ownerName = profile?.name || booking.ownerName
       if (profile?.phone || booking.phone) map[key].phone = profile?.phone || booking.phone
       if (profile?.email || booking.userEmail) map[key].userEmail = profile?.email || booking.userEmail
-      if (profile?.photoURL || booking.userPhotoURL || booking.photoURL) map[key].photoURL = profile?.photoURL || booking.userPhotoURL || booking.photoURL
+      if (profilePhoto(profile) || profilePhoto(booking)) map[key].photoURL = profilePhoto(profile) || profilePhoto(booking)
       if (profile?.blocked === true) map[key].blocked = true
       if (!booking.isWalkIn) map[key].isWalkIn = false
     })
 
     Object.values(profiles).forEach(profile => {
-      if (profile.blocked !== true || map[profile.id]) return
+      if (map[profile.id]) return
       map[profile.id] = {
         key: profile.id,
         phone: profile.phone || '',
         ownerName: profile.name || profile.email?.split('@')[0] || 'Unknown',
         userId: profile.id,
         userEmail: profile.email || '',
-        photoURL: profile.photoURL || '',
+        photoURL: profilePhoto(profile),
         isWalkIn: false,
-        blocked: true,
+        blocked: profile?.blocked === true,
         bookings: [],
         pets: new Set(),
         totalSpent: 0,
@@ -140,9 +176,10 @@ export default function AdminCustomers() {
   }
 
   const CustomerAvatar = ({ customer, large = false }) => {
+    const [imageFailed, setImageFailed] = useState(false)
     const className = 'admin-customer-avatar' + (large ? ' large' : '')
-    if (customer.photoURL) {
-      return <img className={className} src={customer.photoURL} alt={customer.ownerName || 'Customer'} />
+    if (customer.photoURL && !imageFailed) {
+      return <img className={className} src={customer.photoURL} alt={customer.ownerName || 'Customer'} onError={() => setImageFailed(true)} />
     }
     return <div className={className}>{customer.ownerName?.[0]?.toUpperCase() || '?'}</div>
   }
