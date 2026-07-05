@@ -1,11 +1,11 @@
-﻿// src/pages/Book.jsx
+// src/pages/Book.jsx
 import { useState, useEffect, useRef } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc, setDoc, Timestamp } from 'firebase/firestore'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
-import { ArrowRight, Calendar, Clock, CheckCircle, ChevronLeft, Home, Package as PackageIcon, Plus, Store } from 'lucide-react'
+import { ArrowRight, Calendar, Clock, CheckCircle, ChevronLeft, Home, MessageCircle, Package as PackageIcon, PawPrint, Plus, Store } from 'lucide-react'
 import { format, addDays, startOfToday } from 'date-fns'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel } from '../utils/bookingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
@@ -335,7 +335,7 @@ export default function Book() {
             { label: 'Est. Total', value: totalPrice() },
             { label: 'Payment',    value: getPaymentModeLabel(bookingRef.paymentMode || paymentMode) },
             { label: 'Address',    value: form.bookingType === 'home' ? form.address : null },
-          ].map(row => (
+          ].filter(row => row.value).map(row => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
               <span style={{ color: 'var(--muted)', fontSize: '13px' }}>{row.label}</span>
               <span style={{ color: row.gold ? 'var(--accent)' : 'var(--text)', fontSize: '13px', fontWeight: row.gold ? 700 : 500, fontFamily: row.gold ? '"DM Mono",monospace' : 'inherit' }}>{row.value}</span>
@@ -344,7 +344,7 @@ export default function Book() {
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
-          <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="btn" style={{ background: '#25D366', color: '#fff', padding: '12px 24px' }}>ðŸ’¬ Send to WhatsApp</a>
+          <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="btn" style={{ background: '#25D366', color: '#fff', padding: '12px 24px' }}><MessageCircle size={16} /> Send to WhatsApp</a>
           <button onClick={() => navigate('/my-bookings')} className="btn btn-primary">View My Bookings</button>
           <button onClick={() => { setDone(false); setStep(1); setForm(p => ({ ...p, slot: '' })) }} className="btn btn-secondary">Book Another</button>
         </div>
@@ -368,7 +368,7 @@ export default function Book() {
           {[{ n: 1, label: 'Service' }, { n: 2, label: 'Pet Details' }, { n: 3, label: 'Date & Time' }].map((s, i, arr) => (
             <div key={s.n} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                <div style={S.stepNum(s.n)}>{step > s.n ? 'âœ“' : s.n}</div>
+                <div style={S.stepNum(s.n)}>{step > s.n ? <CheckCircle size={16} /> : s.n}</div>
                 <span style={{ fontSize: '10px', color: step === s.n ? 'var(--accent)' : 'var(--muted)', fontWeight: step === s.n ? 700 : 400 }}>{s.label}</span>
               </div>
               {i < arr.length - 1 && <div style={{ width: '32px', height: '2px', background: step > s.n ? 'var(--accent)' : 'var(--border)', borderRadius: '1px', marginBottom: '16px' }} />}
@@ -377,7 +377,7 @@ export default function Book() {
         </div>
 
         <div className={step === 1 ? 'book-step-one' : undefined} style={step === 1 ? undefined : S.card}>
-          {/* Step 1 â€” Service */}
+          {/* Step 1 - Service */}
           {step === 1 && (
             <div className="book-step-one-inner">
               <section className="book-service-panel">
@@ -476,7 +476,7 @@ export default function Book() {
             </div>
           )}
 
-          {/* Step 2 â€” Pet & Owner details */}
+          {/* Step 2 - Pet & Owner details */}
           {step === 2 && (
             <div>
               <button style={S.back} onClick={() => setStep(1)}><ChevronLeft size={16} /> Back</button>
@@ -504,11 +504,11 @@ export default function Book() {
                             {pet.photoUrl ? (
                               <img src={pet.photoUrl} alt={pet.name} style={{ width: '44px', height: '44px', borderRadius: '12px', objectFit: 'cover', flexShrink: 0 }} />
                             ) : (
-                              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>ðŸ¾</div>
+                              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><PawPrint size={18} /></div>
                             )}
                             <div style={{ minWidth: 0, flex: 1 }}>
                               <div style={{ color: sel ? 'var(--accent)' : 'var(--text)', fontSize: '13px', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pet.name}</div>
-                              <div style={{ color: 'var(--muted)', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pet.type}{pet.breed ? ` Â· ${pet.breed}` : ''}</div>
+                              <div style={{ color: 'var(--muted)', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pet.type}{pet.breed ? ` - ${pet.breed}` : ''}</div>
                             </div>
                             <div style={{
                               width: '20px', height: '20px', borderRadius: '6px', flexShrink: 0,
@@ -517,7 +517,7 @@ export default function Book() {
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               color: '#000', fontWeight: 700, fontSize: '11px',
                             }}>
-                              {sel ? 'âœ“' : ''}
+                              {sel ? <CheckCircle size={13} /> : ''}
                             </div>
                           </button>
                         )
@@ -584,7 +584,7 @@ export default function Book() {
             </div>
           )}
 
-          {/* Step 3 â€” Date & Slot */}
+          {/* Step 3 - Date & Slot */}
           {step === 3 && (
             <div>
               <button style={S.back} onClick={() => setStep(2)}><ChevronLeft size={16} /> Back</button>
@@ -659,7 +659,7 @@ export default function Book() {
               </div>
               {form.slot && (
                 <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '14px', padding: '16px', marginBottom: '20px' }}>
-                  <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '13px', marginBottom: '12px' }}>ðŸ“‹ Booking Summary</p>
+                  <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '13px', marginBottom: '12px' }}>Booking Summary</p>
                   {[
                     { k: 'Service', v: serviceLabel },
                     { k: 'Package', v: !serviceLabel && selectedPkgs.length > 0 ? selectedPkgs.map(p => p.name).join(', ') : null },
@@ -682,7 +682,7 @@ export default function Book() {
               )}
 
               <button onClick={handleSubmit} disabled={isBlocked || !form.slot || !bookableSlots.includes(form.slot) || bookedSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim()) || loading} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-                {loading ? 'Bookingâ€¦' : 'Confirm Booking'}
+                {loading ? 'Booking...' : 'Confirm Booking'}
               </button>
             </div>
           )}
@@ -691,17 +691,3 @@ export default function Book() {
     </div>
   )
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
