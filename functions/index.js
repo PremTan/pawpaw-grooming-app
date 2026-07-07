@@ -1,7 +1,7 @@
 const { initializeApp } = require('firebase-admin/app')
 const { getFirestore, FieldValue } = require('firebase-admin/firestore')
 const { getMessaging } = require('firebase-admin/messaging')
-const { onDocumentCreated } = require('firebase-functions/v2/firestore')
+const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore')
 const { logger } = require('firebase-functions')
 
 initializeApp()
@@ -162,6 +162,40 @@ exports.notifyAdminOnBookingCreated = onDocumentCreated('bookings/{bookingId}', 
     type: 'booking',
     bookingId,
     actionUrl: `/admin/bookings/${bookingId}`,
+    read: false,
+    createdAt: FieldValue.serverTimestamp(),
+  }, { merge: true })
+})
+
+exports.notifyOnBookingRescheduled = onDocumentUpdated('bookings/{bookingId}', async (event) => {
+  const before = event.data?.before?.data?.() || {}
+  const after = event.data?.after?.data?.() || {}
+  const bookingId = event.params.bookingId
+  const previousDate = compact(before.date)
+  const previousSlot = compact(before.slot)
+  const nextDate = compact(after.date)
+  const nextSlot = compact(after.slot)
+  const rescheduledBy = compact(after.rescheduledBy)
+
+  if (!rescheduledBy || (before.date === after.date && before.slot === after.slot)) return
+
+  const settingsSnap = await db.doc('settings/general').get()
+  const adminUid = settingsSnap.exists ? settingsSnap.data().adminUid || '' : ''
+  const oldDateTime = [previousDate, previousSlot].filter(Boolean).join(' ')
+  const newDateTime = [nextDate, nextSlot].filter(Boolean).join(' ')
+  const title = rescheduledBy === 'admin' ? 'Appointment rescheduled' : 'Appointment rescheduled'
+  const message = rescheduledBy === 'admin'
+    ? `Your appointment was rescheduled by admin from ${oldDateTime || 'the previous time'} to ${newDateTime || 'a new time'}.`
+    : `An appointment was rescheduled by the customer from ${oldDateTime || 'the previous time'} to ${newDateTime || 'a new time'}.`
+
+  await db.collection('notifications').doc(`booking_reschedule_${bookingId}`).set({
+    userId: rescheduledBy === 'admin' ? compact(after.userId || '') : adminUid,
+    userEmail: rescheduledBy === 'admin' ? (compact(after.userEmail || '') || ADMIN_EMAIL) : ADMIN_EMAIL,
+    title,
+    message,
+    type: 'rescheduled',
+    bookingId,
+    actionUrl: rescheduledBy === 'admin' ? '/my-bookings' : `/admin/bookings/${bookingId}`,
     read: false,
     createdAt: FieldValue.serverTimestamp(),
   }, { merge: true })
