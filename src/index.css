@@ -1527,6 +1527,11 @@
   gap: 12px;
 }
 
+/* Prevent horizontal overflow on small screens for admin pages */
+.admin-bookings-page {
+  overflow-x: hidden;
+}
+
 .admin-booking-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
