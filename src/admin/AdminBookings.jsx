@@ -494,30 +494,28 @@ export default function AdminBookings() {
                     {assigneeOptions.map(member => <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>)}
                   </select>
                 )}
-                <div>
+                <div style={{ position: 'relative' }}>
                   {canRescheduleBooking(b) && (
-                    <button type="button" onClick={() => openRescheduleModal(b)} disabled={updating === b.id || reschedulingId === b.id} style={S.iconBtn('#f59e0b', 'rgba(245, 158, 11, 0.12)')}>
-                      <Clock size={14} /> Reschedule
+                    <button type="button" onClick={() => openRescheduleModal(b)} disabled={updating === b.id || reschedulingId === b.id} style={S.iconBtn('#f59e0b', 'rgba(245, 158, 11, 0.12)')} className="admin-action">
+                      <Clock size={14} /> <span className="action-label">Reschedule</span>
                     </button>
                   )}
                   {b.status === 'pending' && (
-                    <button type="button" onClick={() => updateStatus(b, 'confirmed')} disabled={updating === b.id} style={S.iconBtn('#34d399', 'rgba(52,211,153,0.1)')}>
-                      <CheckCircle2 size={14} /> Approve
+                    <button type="button" onClick={() => updateStatus(b, 'confirmed')} disabled={updating === b.id} style={S.iconBtn('#34d399', 'rgba(52,211,153,0.1)')} className="admin-action">
+                      <CheckCircle2 size={14} /> <span className="action-label">Approve</span>
                     </button>
                   )}
-                  {b.status === 'confirmed' && (
-                    <button type="button" onClick={() => updateStatus(b, 'completed')} disabled={updating === b.id} style={S.iconBtn('var(--accent)', 'var(--accent-bg)')}>
-                      <IndianRupee size={14} /> Complete
-                    </button>
-                  )}
+                  {/* icon-only secondary actions (shrink on mobile) */}
                   {['pending', 'confirmed'].includes(b.status) && (
-                    <button type="button" onClick={() => openCancelModal(b)} disabled={updating === b.id} style={S.iconBtn('#ef4444', 'rgba(239,68,68,0.1)')}>
-                      <X size={14} /> Cancel
+                    <button type="button" onClick={() => openCancelModal(b)} disabled={updating === b.id} style={S.iconBtn('#ef4444', 'rgba(239,68,68,0.1)')} className="admin-action icon-only" aria-label="Cancel">
+                      <X size={14} /> <span className="action-label">Cancel</span>
                     </button>
                   )}
-                  <a href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(b, shopName)}` : '#'} target="_blank" rel="noopener noreferrer" style={S.iconBtn('#25D366', 'rgba(37,211,102,0.1)')}>
-                    <MessageCircle size={14} /> WA
+                  <a href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(b, shopName)}` : '#'} target="_blank" rel="noopener noreferrer" style={S.iconBtn('#25D366', 'rgba(37,211,102,0.1)')} className="admin-action icon-only" aria-label="WA">
+                    <MessageCircle size={14} /> <span className="action-label">WA</span>
                   </a>
+
+                  {/* overflow removed — all actions shown inline; icon-only used for Cancel and WA on small screens */}
                 </div>
               </div>
             </button>

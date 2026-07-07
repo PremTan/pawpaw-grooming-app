@@ -1632,6 +1632,21 @@
     min-width: 0; /* allow buttons to shrink */
   }
 
+  /* admin action specific styles */
+  .admin-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-radius: 8px;
+  }
+
+  .admin-action.icon-only { padding: 8px; }
+
+  .admin-action .action-label { display: inline-block; }
+
+  /* overflow popover removed */
+
 .admin-booking-actions button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -1865,6 +1880,13 @@
 
   .admin-booking-actions > div {
     gap: 6px;
+  }
+
+  /* Hide action labels on small screens to show icon-only buttons */
+  @media (max-width: 420px) {
+    .admin-action.icon-only .action-label { display: none; }
+    .admin-action { padding: 6px; }
+    .overflow-popover { right: 8px; left: auto; }
   }
 
   .admin-booking-modal-actions .btn,
