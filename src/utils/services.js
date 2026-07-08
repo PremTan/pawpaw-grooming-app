@@ -99,9 +99,9 @@ export const PET_TYPES = [
 ]
 
 export const DOG_BREEDS = [
-  'Labrador Retriever', 'German Shepherd', 'Golden Retriever', 'Bulldog',
+  'Lhasa', 'Shih Tzu', 'Golden Retriever', 'Labrador Retriever', 'German Shepherd', 'Bulldog',
   'Beagle', 'Poodle', 'Rottweiler', 'Yorkshire Terrier', 'Boxer',
-  'Dachshund', 'Shih Tzu', 'Siberian Husky', 'Dobermann', 'Great Dane',
+  'Dachshund', 'Siberian Husky', 'Dobermann', 'Great Dane',
   'Cocker Spaniel', 'Border Collie', 'Maltese', 'Pomeranian', 'Chihuahua',
   'Indian Spitz', 'Rajapalayam', 'Mudhol Hound', 'Mixed Breed / Indie',
 ]

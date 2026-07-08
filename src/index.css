@@ -1527,6 +1527,11 @@
   gap: 12px;
 }
 
+/* Prevent horizontal overflow on small screens for admin pages */
+.admin-bookings-page {
+  overflow-x: hidden;
+}
+
 .admin-booking-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1602,29 +1607,45 @@
   gap: 10px;
 }
 
-.admin-booking-actions > div {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 7px;
-  max-width: 310px;
-}
+  .admin-booking-actions > div {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 7px;
+    max-width: 100%;
+  }
 
-.admin-booking-actions button,
-.admin-booking-actions a {
-  min-height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
-  text-decoration: none;
-  white-space: nowrap;
-}
+  .admin-booking-actions button,
+  .admin-booking-actions a {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    min-width: 0; /* allow buttons to shrink */
+  }
+
+  /* admin action specific styles */
+  .admin-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-radius: 8px;
+  }
+
+  .admin-action.icon-only { padding: 8px; }
+
+  .admin-action .action-label { display: inline-block; }
+
+  /* overflow popover removed */
 
 .admin-booking-actions button:disabled {
   opacity: 0.5;
@@ -1847,6 +1868,25 @@
 
   .admin-booking-actions > div {
     display: grid;
+  }
+
+  /* Make action buttons smaller on very small screens so they fit */
+  .admin-booking-actions button,
+  .admin-booking-actions a {
+    padding: 6px 8px;
+    font-size: 12px;
+    border-radius: 8px;
+  }
+
+  .admin-booking-actions > div {
+    gap: 6px;
+  }
+
+  /* Hide action labels on small screens to show icon-only buttons */
+  @media (max-width: 420px) {
+    .admin-action.icon-only .action-label { display: none; }
+    .admin-action { padding: 6px; }
+    .overflow-popover { right: 8px; left: auto; }
   }
 
   .admin-booking-modal-actions .btn,

@@ -1,14 +1,14 @@
 // src/pages/MyBookings.jsx
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
 import { Calendar, ChevronRight, Clock, Home, Plus, Store, UserRound, X } from 'lucide-react'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
-import { fetchBookingSettings, getBookingTypeLabel, getPaymentModeLabel, getPaymentOptionLabel } from '../utils/bookingSettings'
+import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel, getPaymentOptionLabel } from '../utils/bookingSettings'
 import { SERVICES } from '../utils/services'
 
 const STATUS_BADGE = {
@@ -81,6 +81,28 @@ function canCancelBooking(booking, settings) {
   const cutoffMinutes = Math.max(0, Number(settings?.cancellationCutoffMinutes ?? 60))
   return start.getTime() - Date.now() >= cutoffMinutes * 60 * 1000
 }
+
+function canRescheduleBooking(booking) {
+  if (!booking) return false
+  if (booking.status === 'completed') return false
+  if (['pending', 'confirmed'].includes(booking.status)) return true
+  return booking.status === 'cancelled' && booking.cancelledBy === 'admin'
+}
+
+const dateKeyLocal = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+
+const isFutureSlotForDate = (dateString, slotLabel) => {
+  const match = String(slotLabel || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (!dateString || !match) return false
+  let hour = Number(match[1])
+  const minute = Number(match[2])
+  const suffix = match[3].toUpperCase()
+  if (suffix === 'PM' && hour !== 12) hour += 12
+  if (suffix === 'AM' && hour === 12) hour = 0
+  const date = new Date(`${dateString}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`)
+  return !Number.isNaN(date.getTime()) && date.getTime() > Date.now()
+}
+
 function serviceIdsFor(booking) {
   if (Array.isArray(booking.serviceIds) && booking.serviceIds.length) return booking.serviceIds
   return booking.serviceId ? [booking.serviceId] : []
@@ -116,10 +138,44 @@ export default function MyBookings() {
   const [cancellingId, setCancellingId] = useState('')
   const [cancelTarget, setCancelTarget] = useState(null)
   const [cancelReason, setCancelReason] = useState('')
+  const [rescheduleTarget, setRescheduleTarget] = useState(null)
+  const [rescheduleDate, setRescheduleDate] = useState('')
+  const [rescheduleSlot, setRescheduleSlot] = useState('')
+  const [rescheduleBookedSlots, setRescheduleBookedSlots] = useState([])
+  const [reschedulingId, setReschedulingId] = useState('')
 
   useEffect(() => {
     fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!rescheduleTarget?.id || !rescheduleDate) {
+      setRescheduleBookedSlots([])
+      return
+    }
+    let ignore = false
+    async function fetchBooked() {
+      try {
+        const q = query(
+          collection(db, 'bookings'),
+          where('date', '==', rescheduleDate),
+          where('status', 'in', ['pending', 'confirmed'])
+        )
+        const snap = await getDocs(q)
+        const slotCounts = {}
+        snap.docs
+          .map(d => d.data())
+          .filter(item => item.id !== rescheduleTarget.id && (item.bookingType || 'store') === (rescheduleTarget.bookingType || 'store'))
+          .forEach(item => { slotCounts[item.slot] = (slotCounts[item.slot] || 0) + 1 })
+        const capacity = Math.max(1, Number(bookingSettings?.slotCapacity || 1))
+        if (!ignore) setRescheduleBookedSlots(Object.entries(slotCounts).filter(([, count]) => count >= capacity).map(([slot]) => slot))
+      } catch {
+        if (!ignore) setRescheduleBookedSlots([])
+      }
+    }
+    fetchBooked()
+    return () => { ignore = true }
+  }, [rescheduleTarget?.id, rescheduleDate, bookingSettings, rescheduleTarget?.bookingType])
 
   useEffect(() => {
     async function fetch() {
@@ -145,6 +201,91 @@ export default function MyBookings() {
     () => filter === 'all' ? bookings : bookings.filter(booking => booking.status === filter),
     [bookings, filter]
   )
+
+  const openRescheduleModal = (booking) => {
+    setRescheduleTarget(booking)
+    setRescheduleDate(booking.date || '')
+    setRescheduleSlot(booking.slot || '')
+    setRescheduleBookedSlots([])
+  }
+
+  const rescheduleAvailability = rescheduleDate ? getAvailabilityForDate(bookingSettings || undefined, rescheduleDate) : { open: false, storeSlots: [], homeSlots: [] }
+  const rescheduleSlots = (rescheduleTarget?.bookingType || 'store') === 'home' ? rescheduleAvailability.homeSlots : rescheduleAvailability.storeSlots
+  const isRescheduleToday = rescheduleDate === dateKeyLocal()
+  const bookableRescheduleSlots = isRescheduleToday ? rescheduleSlots.filter(slot => isFutureSlotForDate(rescheduleDate, slot)) : rescheduleSlots
+
+  const confirmReschedule = async () => {
+    if (!rescheduleTarget || !rescheduleDate || !rescheduleSlot) return
+    const previousDate = rescheduleTarget.date || ''
+    const previousSlot = rescheduleTarget.slot || ''
+    const oldBookingStart = parseAppointmentStart(rescheduleTarget)
+    const newBookingStart = rescheduleDate && rescheduleSlot ? (() => {
+      const match = String(rescheduleSlot || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+      if (!match) return null
+      let hour = Number(match[1])
+      const minute = Number(match[2])
+      const suffix = match[3].toUpperCase()
+      if (suffix === 'PM' && hour !== 12) hour += 12
+      if (suffix === 'AM' && hour === 12) hour = 0
+      const date = new Date(`${rescheduleDate}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`)
+      return Number.isNaN(date.getTime()) ? null : date
+    })() : null
+    setReschedulingId(rescheduleTarget.id)
+    try {
+      const history = Array.isArray(rescheduleTarget.rescheduleHistory) ? rescheduleTarget.rescheduleHistory : []
+      const patch = {
+        date: rescheduleDate,
+        slot: rescheduleSlot,
+        status: 'pending',
+        updatedAt: serverTimestamp(),
+        rescheduleCount: Number(rescheduleTarget.rescheduleCount || 0) + 1,
+        rescheduledAt: serverTimestamp(),
+        rescheduledBy: 'user',
+        previousDate,
+        previousSlot,
+        rescheduleHistory: [
+          ...history,
+          {
+            previousDate,
+            previousSlot,
+            newDate: rescheduleDate,
+            newSlot: rescheduleSlot,
+            rescheduledAt: new Date().toISOString(),
+            rescheduledBy: 'user',
+            previousStatus: rescheduleTarget.status,
+          },
+        ],
+        bookingStartAt: newBookingStart ? Timestamp.fromDate(newBookingStart) : null,
+      }
+      await setDoc(doc(db, 'bookings', rescheduleTarget.id), patch, { merge: true })
+      const localPatch = {
+        ...patch,
+        rescheduledAt: new Date(),
+        bookingStartAt: newBookingStart ? { toDate: () => newBookingStart } : null,
+        previousDate,
+        previousSlot,
+      }
+      setBookings(prev => prev.map(item => item.id === rescheduleTarget.id ? { ...item, ...localPatch } : item))
+      setSelectedBooking(prev => prev?.id === rescheduleTarget.id ? { ...prev, ...localPatch } : prev)
+      if (ADMIN_EMAIL) {
+        await sendNotification('', {
+          userEmail: ADMIN_EMAIL,
+          title: 'Appointment rescheduled',
+          message: `${appointmentTitle(rescheduleTarget)} was moved from ${previousDate} at ${formatSlot(previousSlot)} to ${rescheduleDate} at ${formatSlot(rescheduleSlot)}.`,
+          type: 'rescheduled',
+          bookingId: rescheduleTarget.id,
+          actionUrl: `/admin/bookings/${rescheduleTarget.id}`,
+        })
+      }
+      setRescheduleTarget(null)
+      setRescheduleDate('')
+      setRescheduleSlot('')
+    } catch (err) {
+      console.error('FIREBASE ERROR:', err)
+      alert('Could not reschedule booking. Please try again.')
+    }
+    setReschedulingId('')
+  }
 
   const cancelBooking = async (booking, reason) => {
     const cleanReason = String(reason || '').trim()
@@ -224,8 +365,13 @@ export default function MyBookings() {
                   <strong>{appointmentTitle(booking)}</strong>
                   <small>{petLine(booking)}</small>
                 </span>
-                <span className={`badge ${STATUS_BADGE[booking.status] || 'badge-pending'} my-booking-status`}>
-                  {statusLabel(booking.status)}
+                <span className="my-booking-badges">
+                  <span className={`badge ${STATUS_BADGE[booking.status] || 'badge-pending'} my-booking-status`}>{statusLabel(booking.status)}</span>
+                  {(booking.rescheduleCount || 0) > 0 && (
+                    <span className="badge badge-rescheduled">
+                      Rescheduled
+                    </span>
+                  )}
                 </span>
                 <ChevronRight size={17} className="my-booking-chevron" />
               </button>
@@ -240,6 +386,11 @@ export default function MyBookings() {
             <div className="my-booking-modal-head">
               <div>
                 <span className={`badge ${STATUS_BADGE[selectedBooking.status] || 'badge-pending'}`}>{statusLabel(selectedBooking.status)}</span>
+                {(selectedBooking.rescheduleCount || 0) > 0 && (
+                  <span className="badge badge-rescheduled" style={{ marginLeft: '8px' }}>
+                    Rescheduled
+                  </span>
+                )}
                 <h2>{appointmentTitle(selectedBooking)}</h2>
                 <p>{shortId(selectedBooking.id)}</p>
               </div>
@@ -262,6 +413,8 @@ export default function MyBookings() {
               {assignedWorker(selectedBooking) && <Detail label="Assigned To" value={`${assignedWorker(selectedBooking)}${selectedBooking.assignedTeamMemberIsOwner ? ' (Owner)' : ''}`} icon={<UserRound size={15} />} />}
               {selectedBooking.packageNames?.length > 0 && <Detail label="Packages" value={selectedBooking.packageNames.join(', ')} />}
               {serviceNamesFor(selectedBooking).length > 0 && <Detail label="Services" value={serviceNamesFor(selectedBooking).join(', ')} />}
+              {(selectedBooking.rescheduleCount || 0) > 0 && <Detail label="Reschedules" value={`${selectedBooking.rescheduleCount || 0} time${(selectedBooking.rescheduleCount || 0) === 1 ? '' : 's'}`} />}
+              {(selectedBooking.rescheduledBy || selectedBooking.previousDate) && <Detail label="Last Rescheduled" value={selectedBooking.rescheduledBy ? `${selectedBooking.rescheduledBy === 'admin' ? 'Admin' : 'You'} · ${selectedBooking.previousDate || '-'} ${selectedBooking.previousSlot ? `• ${formatSlot(selectedBooking.previousSlot)}` : ''}` : `${selectedBooking.previousDate || '-'} ${selectedBooking.previousSlot ? `• ${formatSlot(selectedBooking.previousSlot)}` : ''}`} />}
               {Number(selectedBooking.visitCharge || 0) > 0 && <Detail label="Visit Charge" value={`Rs ${money(selectedBooking.visitCharge)}`} />}
               {Number(selectedBooking.estimatedTotal || 0) > 0 && <Detail label="Estimated Total" value={`Rs ${money(selectedBooking.estimatedTotal)}+`} />}
               {(selectedBooking.paymentMode || selectedBooking.paymentPreference) && <Detail label="Payment" value={selectedBooking.paymentMode ? getPaymentModeLabel(selectedBooking.paymentMode) : getPaymentOptionLabel(selectedBooking.paymentPreference)} />}
@@ -274,6 +427,16 @@ export default function MyBookings() {
                 <p>{selectedBooking.address}</p>
               </div>
             )}
+              {canRescheduleBooking(selectedBooking) && (
+                <button
+                  type="button"
+                  className="btn btn-secondary my-booking-reschedule-btn"
+                  disabled={reschedulingId === selectedBooking.id}
+                  onClick={() => openRescheduleModal(selectedBooking)}
+                >
+                  Reschedule
+                </button>
+              )}
             {canCancelBooking(selectedBooking, bookingSettings) && (
               <button
                 type="button"
@@ -295,6 +458,66 @@ export default function MyBookings() {
         </div>
       )}
 
+
+      {rescheduleTarget && (
+        <div className="my-booking-modal-overlay" onClick={() => setRescheduleTarget(null)}>
+          <section className="my-booking-modal" onClick={event => event.stopPropagation()}>
+            <div className="my-booking-modal-head">
+              <div>
+                <h2>Reschedule Appointment</h2>
+                <p>{appointmentTitle(rescheduleTarget)} · {rescheduleTarget.date || '-'} · {formatSlot(rescheduleTarget.slot)}</p>
+              </div>
+              <button type="button" onClick={() => setRescheduleTarget(null)} aria-label="Close reschedule dialog">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="my-booking-detail-grid">
+              <div>
+                <span>Current Date</span>
+                <strong>{rescheduleTarget.date || '-'}</strong>
+              </div>
+              <div>
+                <span>Current Time</span>
+                <strong>{formatSlot(rescheduleTarget.slot)}</strong>
+              </div>
+            </div>
+            <div style={{ marginTop: '16px' }}>
+              <label className="input-label" style={{ display: 'block', marginBottom: '8px' }}>New Date</label>
+              <input type="date" className="input" min={dateKeyLocal()} value={rescheduleDate} onChange={e => { setRescheduleDate(e.target.value); setRescheduleSlot('') }} />
+            </div>
+            {rescheduleDate && (
+              <div style={{ marginTop: '16px' }}>
+                <label className="input-label" style={{ display: 'block', marginBottom: '8px' }}>New Time</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px' }}>
+                  {rescheduleSlots.map(slot => {
+                    const isPast = isRescheduleToday && !isFutureSlotForDate(rescheduleDate, slot)
+                    const isBooked = rescheduleBookedSlots.includes(slot)
+                    const disabled = isPast || isBooked
+                    return (
+                      <button key={slot} type="button" disabled={disabled} onClick={() => setRescheduleSlot(slot)} className={`slot-btn slot-btn-available${isPast ? ' slot-btn-past' : ''}${isBooked ? ' slot-btn-booked' : ''}${rescheduleSlot === slot ? ' selected' : ''}`}>
+                        {slot}
+                      </button>
+                    )
+                  })}
+                </div>
+                {rescheduleSlots.length === 0 ? (
+                  <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '8px' }}>No slots are available for this visit type.</p>
+                ) : bookableRescheduleSlots.length === 0 ? (
+                  <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '8px' }}>No future slots are available for this visit type today.</p>
+                ) : (
+                  <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>Green slots are available. Gray slots are past or already booked.</p>
+                )}
+              </div>
+            )}
+            <div className="my-booking-modal-actions" style={{ marginTop: '20px' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setRescheduleTarget(null)}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={confirmReschedule} disabled={!rescheduleDate || !rescheduleSlot || reschedulingId === rescheduleTarget.id || !bookableRescheduleSlots.includes(rescheduleSlot) || rescheduleBookedSlots.includes(rescheduleSlot)}>
+                {reschedulingId === rescheduleTarget.id ? 'Rescheduling...' : 'Confirm Reschedule'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       <ConfirmModal
         open={!!cancelTarget}
@@ -456,6 +679,23 @@ export default function MyBookings() {
           white-space: nowrap;
         }
 
+        .my-booking-badges {
+          justify-self: end;
+          display: inline-flex;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .badge-rescheduled {
+          background: rgba(245, 158, 11, 0.16);
+          color: #f59e0b;
+          border: 1px solid rgba(245, 158, 11, 0.24);
+          padding: 4px 8px;
+          border-radius: 999px;
+          font-weight: 800;
+          font-size: 12px;
+        }
+
         .my-booking-chevron {
           color: var(--muted);
         }
@@ -585,6 +825,15 @@ export default function MyBookings() {
           width: 100%;
           justify-content: center;
           margin-top: 14px;
+        }
+
+        .my-booking-reschedule-btn {
+          width: 100%;
+          justify-content: center;
+          margin-top: 12px;
+          background: var(--surface);
+          color: var(--accent);
+          border: 1px solid rgba(245, 158, 11, 0.16);
         }
 
         @media (max-width: 640px) {
