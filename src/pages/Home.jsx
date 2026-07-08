@@ -1047,8 +1047,6 @@ export default function Home() {
           <iframe
             title="Location"
             src={contactAddress ? `https://www.google.com/maps?q=${encodeURIComponent(contactAddress)}&output=embed` : 'about:blank'}
-            width="100%" height="100%"
-            style={{ border: 0 }}
             allowFullScreen loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
           />

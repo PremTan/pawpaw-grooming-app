@@ -33,7 +33,6 @@ export default function Reviews() {
   const [selectedImages, setSelectedImages] = useState([])
   const [imageError, setImageError] = useState('')
   const [reviewLightbox, setReviewLightbox] = useState(null)
-  const [cropToSquare, setCropToSquare] = useState(true)
   const [pendingCropFiles, setPendingCropFiles] = useState([])
   const [cropModal, setCropModal] = useState({
     open: false,
@@ -69,7 +68,7 @@ export default function Reviews() {
       zoom: 1,
       croppedAreaPixels: null,
       processing: false,
-      aspect: cropToSquare ? 1 : undefined,
+      aspect: 1,
     })
   }
 
@@ -121,22 +120,10 @@ export default function Reviews() {
         validateImageFile(file)
       })
 
-      if (cropToSquare) {
-        const [firstFile, ...remaining] = nextFiles
-        setPendingCropFiles(remaining)
-        if (firstFile) {
-          openCropModalForFile(firstFile)
-        }
-      } else {
-        const processed = await Promise.all(nextFiles.map(async (file) => {
-          const optimizedFile = await optimizeImageForUpload(file)
-          return {
-            id: `${Date.now()}-${Math.random()}`,
-            file: optimizedFile,
-            previewUrl: URL.createObjectURL(optimizedFile),
-          }
-        }))
-        setSelectedImages(prev => [...prev, ...processed])
+      const [firstFile, ...remaining] = nextFiles
+      setPendingCropFiles(remaining)
+      if (firstFile) {
+        openCropModalForFile(firstFile)
       }
       setImageError('')
     } catch (error) {
@@ -199,7 +186,6 @@ export default function Reviews() {
       setSubmitted(true)
       setForm({ rating: 5, comment: '', petName: '' })
       setSelectedImages([])
-      setCropToSquare(true)
       await fetchReviews()
     } catch (error) {
       setImageError(error.message || 'We could not submit your review right now.')
@@ -277,10 +263,6 @@ export default function Reviews() {
                   <button type="button" className="btn btn-secondary" onClick={() => imageInputRef.current?.click()}>
                     <ImagePlus size={15} /> Add Photos
                   </button>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--muted)', fontSize: '12px', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={cropToSquare} onChange={(e) => setCropToSquare(e.target.checked)} />
-                    Crop before upload
-                  </label>
                 </div>
                 <input ref={imageInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple hidden onChange={handleImageSelection} />
                 {selectedImages.length > 0 && (
@@ -365,13 +347,13 @@ export default function Reviews() {
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
                   <p style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)', margin: 0 }}>Adjust your photo</p>
-                  <h3 style={{ margin: '4px 0 0', fontSize: '18px', color: 'var(--text)' }}>Crop before upload</h3>
+                  <h3 style={{ margin: '4px 0 0', fontSize: '18px', color: 'var(--text)' }}>Crop your photo</h3>
                 </div>
                 <button type="button" className="btn btn-secondary" onClick={closeCropModal}>
                   <X size={14} /> Cancel
                 </button>
               </div>
-              <div style={{ position: 'relative', height: '420px', background: '#111827' }}>
+              <div style={{ position: 'relative', height: '420px', background: '#000000', overflow: 'hidden' }}>
                 <Cropper
                   image={cropModal.previewUrl}
                   crop={cropModal.crop}
@@ -380,8 +362,10 @@ export default function Reviews() {
                   onCropChange={(crop) => setCropModal(prev => ({ ...prev, crop }))}
                   onZoomChange={(zoom) => setCropModal(prev => ({ ...prev, zoom }))}
                   onCropComplete={handleCropComplete}
-                  cropShape={cropToSquare ? 'rect' : 'rect'}
+                  cropShape="rect"
                   showGrid={true}
+                  objectFit="cover"
+                  style={{ containerStyle: { backgroundColor: '#000000' } }}
                 />
               </div>
               <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>

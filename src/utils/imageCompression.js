@@ -90,37 +90,45 @@ export async function cropImageFile(file, croppedAreaPixels, options = {}) {
   validateImageFile(file)
 
   const image = await readImageFile(file)
+  const outputWidth = Math.max(1, Math.round(croppedAreaPixels.width || 0))
+  const outputHeight = Math.max(1, Math.round(croppedAreaPixels.height || 0))
   const canvas = document.createElement('canvas')
-  canvas.width = croppedAreaPixels.width
-  canvas.height = croppedAreaPixels.height
+  canvas.width = outputWidth
+  canvas.height = outputHeight
 
   const context = canvas.getContext('2d')
   if (!context) {
     throw new Error('Your browser does not support image cropping.')
   }
 
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
   context.drawImage(
     image,
     croppedAreaPixels.x,
     croppedAreaPixels.y,
-    croppedAreaPixels.width,
-    croppedAreaPixels.height,
+    outputWidth,
+    outputHeight,
     0,
     0,
-    croppedAreaPixels.width,
-    croppedAreaPixels.height,
+    outputWidth,
+    outputHeight,
   )
 
-  const blob = await new Promise((resolve, reject) => {
-    canvas.toBlob(resolve, file.type || 'image/jpeg', 0.95)
+  const outputType = options.outputType || file.type || 'image/jpeg'
+  const extension = outputType === 'image/png' ? 'png' : outputType === 'image/webp' ? 'webp' : 'jpg'
+  const blob = await new Promise((resolve) => {
+    canvas.toBlob(resolve, outputType, options.quality ?? 0.95)
   })
 
   if (!blob) {
     throw new Error('Could not crop the selected image.')
   }
 
-  return new File([blob], file.name.replace(/\.[^.]+$/, '') + '-cropped.jpg', {
-    type: file.type || 'image/jpeg',
+  return new File([blob], file.name.replace(/\.[^.]+$/, '') + `-cropped.${extension}`, {
+    type: outputType,
     lastModified: Date.now(),
   })
 }
