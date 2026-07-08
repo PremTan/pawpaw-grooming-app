@@ -1,5 +1,5 @@
 // src/pages/Home.jsx
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs, query, orderBy, limit, where, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -637,6 +637,7 @@ export default function Home() {
   const [galleryImages, setGalleryImages] = useState([])
   const [galleryIndex, setGalleryIndex] = useState(0)
   const [galleryLightbox, setGalleryLightbox] = useState(null)
+  const [reviewLightbox, setReviewLightbox] = useState(null)
   const [features, setFeatures] = useState(DEFAULT_FEATURES)
   const [packages, setPackages] = useState([])
   const [adminPhone, setAdminPhone] = useState('')
@@ -646,6 +647,11 @@ export default function Home() {
   const [googleReviewUrl, setGoogleReviewUrl] = useState('')
   const [homePetImages, setHomePetImages] = useState({ cta: '', follow: '' })
   const [footerInfo, setFooterInfo] = useState({ tagline: '', socials: [], phones: [], email: '' })
+  const [reviewIndex, setReviewIndex] = useState(0)
+  const [reviewCarouselHeight, setReviewCarouselHeight] = useState(0)
+  const [touchStartX, setTouchStartX] = useState(null)
+  const reviewCarouselRef = useRef(null)
+  const reviewSlideRefs = useRef([])
 
   useEffect(() => {
     async function fetchStats() {
@@ -746,6 +752,33 @@ export default function Home() {
   }, [galleryImages.length])
 
   const homeServices = buildServiceCatalog(serviceDetails)
+  const featuredReviews = reviews.slice(0, 5)
+
+  useEffect(() => {
+    setReviewIndex(0)
+  }, [featuredReviews.length])
+
+  useEffect(() => {
+    if (!featuredReviews.length) {
+      setReviewCarouselHeight(0)
+      return
+    }
+
+    const updateCarouselHeight = () => {
+      const activeSlide = reviewSlideRefs.current[reviewIndex]
+      if (activeSlide) {
+        setReviewCarouselHeight(activeSlide.offsetHeight)
+      }
+    }
+
+    const frame = window.requestAnimationFrame(updateCarouselHeight)
+    window.addEventListener('resize', updateCarouselHeight)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', updateCarouselHeight)
+    }
+  }, [featuredReviews.length, reviewIndex])
 
   const shownServices = [
     ...homeServices.slice(0, 5),
@@ -759,6 +792,26 @@ export default function Home() {
       to: `/book?package=${pkg.id}`,
     })),
   ]
+
+  const goToReview = (index) => {
+    if (!featuredReviews.length) return
+    setReviewIndex((index + featuredReviews.length) % featuredReviews.length)
+  }
+
+  const handleReviewTouchStart = (event) => {
+    setTouchStartX(event.touches[0]?.clientX ?? null)
+  }
+
+  const handleReviewTouchEnd = (event) => {
+    if (touchStartX === null) return
+    const delta = (event.changedTouches[0]?.clientX ?? touchStartX) - touchStartX
+    if (delta > 50) {
+      goToReview(reviewIndex - 1)
+    } else if (delta < -50) {
+      goToReview(reviewIndex + 1)
+    }
+    setTouchStartX(null)
+  }
 
   const socialIcon = (platform) => {
     if (platform === 'instagram') return <Instagram size={18} />
@@ -881,30 +934,71 @@ export default function Home() {
       )}
 
       {/* Reviews section */}
-      {reviews.length > 0 && (
+      {featuredReviews.length > 0 && (
         <section className="home-reviews-section">
           <div className="home-section-head centered decorated">
             <p className="section-label">What Customers Say</p>
             <h2>Real Reviews <PawPrint size={24} /></h2>
           </div>
-          <div className="home-review-list">
-            {reviews.slice(0, 3).map((r, i) => (
-              <article key={r.id} className="home-review-card fade-up" style={{ animationDelay: `${i * 0.08}s` }}>
-                <div className="home-review-person">
-                  <div className="home-review-avatar">
-                    {r.userPhoto
-                      ? <img src={r.userPhoto} alt="" />
-                      : <span>{r.userName?.[0]?.toUpperCase() || 'P'}</span>}
+          <div className="home-review-carousel" ref={reviewCarouselRef} onTouchStart={handleReviewTouchStart} onTouchEnd={handleReviewTouchEnd} style={{ height: reviewCarouselHeight ? `${reviewCarouselHeight}px` : 'auto' }}>
+            <div className="home-review-carousel-track" style={{ transform: `translateX(-${reviewIndex * 100}%)` }}>
+              {featuredReviews.map((r, index) => {
+                const hasReviewImages = Array.isArray(r.images) && r.images.length > 0;
+                return (
+                <article
+                  key={r.id}
+                  ref={(el) => {
+                    reviewSlideRefs.current[index] = el
+                  }}
+                  className={`home-review-card home-review-slide ${hasReviewImages ? 'has-images' : 'no-images'}`}
+                >
+                  <div className="home-review-person">
+                    <div className="home-review-avatar">
+                      {r.userPhoto
+                        ? <img src={r.userPhoto} alt="" />
+                        : <span>{r.userName?.[0]?.toUpperCase() || 'P'}</span>}
+                    </div>
+                    <div>
+                      <strong>{r.userName || 'Pet Parent'}</strong>
+                      <span>{[1,2,3,4,5].map(n => <Star key={n} size={14} fill={n <= (r.rating || 5) ? 'currentColor' : 'none'} />)}</span>
+                    </div>
                   </div>
-                  <div>
-                    <strong>{r.userName || 'Pet Parent'}</strong>
-                    <span>{[1,2,3,4,5].map(n => <Star key={n} size={14} fill={n <= (r.rating || 5) ? 'currentColor' : 'none'} />)}</span>
-                  </div>
-                </div>
-                <p>&quot;{cleanReviewText(r.comment)}&quot;</p>
-              </article>
-            ))}
+                  <p>&quot;{cleanReviewText(r.comment)}&quot;</p>
+                  {hasReviewImages && (
+                    <div className="home-review-image-grid">
+                      {r.images.slice(0, 3).map((image, index) => (
+                        <button
+                          key={`${r.id}-${index}`}
+                          type="button"
+                          className="home-review-image-thumb-btn"
+                          onClick={() => setReviewLightbox({ url: image, alt: `${r.userName || 'Review'} image ${index + 1}` })}
+                          aria-label={`Open review image ${index + 1}`}
+                        >
+                          <img className="home-review-image-thumb" src={image} alt={`${r.userName || 'Review'} image ${index + 1}`} loading="lazy" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </article>
+                );
+              })}
+            </div>
           </div>
+          {featuredReviews.length > 1 && (
+            <div className="home-review-nav">
+              <button type="button" className="home-review-nav-btn" onClick={() => goToReview(reviewIndex - 1)} aria-label="Previous review">
+                <ChevronLeft size={16} />
+              </button>
+              <div className="home-review-dots">
+                {featuredReviews.map((_, index) => (
+                  <button key={index} type="button" className={index === reviewIndex ? 'active' : ''} onClick={() => goToReview(index)} aria-label={`Go to review ${index + 1}`} />
+                ))}
+              </div>
+              <button type="button" className="home-review-nav-btn" onClick={() => goToReview(reviewIndex + 1)} aria-label="Next review">
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
           <div className="home-review-actions">
             <Link to="/reviews" className="btn btn-secondary">See All Reviews <ArrowRight size={16} /></Link>
             {googleReviewUrl && (
@@ -994,6 +1088,17 @@ export default function Home() {
             </button>
             <img src={galleryLightbox.url} alt={galleryLightbox.caption || ''} style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain' }} />
             {galleryLightbox.caption && <p style={{ color:'#fff', textAlign:'center', marginTop:'14px', fontSize:'15px' }}>{galleryLightbox.caption}</p>}
+          </div>
+        </div>
+      )}
+
+      {reviewLightbox && (
+        <div onClick={() => setReviewLightbox(null)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.94)', zIndex:220, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px', cursor:'pointer' }}>
+          <div onClick={e => e.stopPropagation()} style={{ maxWidth:'900px', width:'100%', cursor:'default' }}>
+            <button onClick={() => setReviewLightbox(null)} aria-label="Close review image" style={{ marginLeft: 'auto', marginBottom: '12px', width: '36px', height: '36px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <X size={18} />
+            </button>
+            <img src={reviewLightbox.url} alt={reviewLightbox.alt || 'Review image'} style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain' }} />
           </div>
         </div>
       )}
