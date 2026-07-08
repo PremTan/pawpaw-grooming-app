@@ -1,13 +1,14 @@
 // src/pages/Home.jsx
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { collection, doc, getDoc, getDocs, query, orderBy, limit } from 'firebase/firestore'
+import { Link, useNavigate } from 'react-router-dom'
+import { collection, doc, getDoc, getDocs, query, orderBy, limit, where, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import BrandLogo from '../components/BrandLogo'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
-import { countOpenDays } from '../utils/bookingSettings'
+import { countOpenDays, fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
+import { useAuth } from '../context/AuthContext'
 import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle } from 'lucide-react'
 
 const DEFAULT_HERO_IMAGES = []
@@ -68,11 +69,151 @@ function cleanReviewText(value) {
     .replace(/[ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢]/g, "'")
     .trim()
 }
+
+function parseAppointmentStart(booking) {
+  if (booking?.bookingStartAt?.toDate) return booking.bookingStartAt.toDate()
+  if (!booking?.date) return null
+  const match = String(booking.slot || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (!match) return null
+  let hour = Number(match[1])
+  const minute = Number(match[2])
+  const suffix = match[3].toUpperCase()
+  if (suffix === 'PM' && hour !== 12) hour += 12
+  if (suffix === 'AM' && hour === 12) hour = 0
+  const date = new Date(`${booking.date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatAppointmentDateTime(booking) {
+  const start = parseAppointmentStart(booking)
+  if (!start) return booking?.date ? `${booking.date}${booking?.slot ? ` • ${booking.slot}` : ''}` : 'Awaiting schedule'
+  return start.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\b(am|pm)\b/i, value => value.toUpperCase())
+}
+
+function getAppointmentDateParts(booking) {
+  const start = parseAppointmentStart(booking)
+  if (!start) {
+    return {
+      dateLabel: booking?.date || 'Awaiting schedule',
+      timeLabel: booking?.slot || '',
+    }
+  }
+
+  return {
+    dateLabel: start.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+    timeLabel: start.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\b(am|pm)\b/i, value => value.toUpperCase()),
+  }
+}
+
+function getUpcomingStatusLabel(booking) {
+  const start = parseAppointmentStart(booking)
+  if (!start) return 'Scheduled'
+  const today = new Date()
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const diffDays = Math.round((startDay - todayDay) / 86400000)
+  if (diffDays <= 0) return 'Today'
+  if (diffDays === 1) return 'Tomorrow'
+  if (diffDays <= 7) return `In ${diffDays} days`
+  return start.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
+function getUpcomingStatusText(booking) {
+  const start = parseAppointmentStart(booking)
+  if (!start) return 'Scheduled'
+  const today = new Date()
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const diffDays = Math.round((startDay - todayDay) / 86400000)
+  if (diffDays <= 0) return 'Today'
+  if (diffDays === 1) return 'Tomorrow'
+  if (diffDays === 2) return 'In 2 days'
+  if (diffDays === 3) return 'In 3 days'
+  if (diffDays === 4) return 'In 4 days'
+  if (diffDays === 5) return 'In 5 days'
+  if (diffDays === 6) return 'In 6 days'
+  if (diffDays === 7) return 'In 7 days'
+  return start.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
+function dateKeyLocal(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function isFutureSlotForDate(dateString, slotLabel) {
+  const match = String(slotLabel || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (!dateString || !match) return false
+  let hour = Number(match[1])
+  const minute = Number(match[2])
+  const suffix = match[3].toUpperCase()
+  if (suffix === 'PM' && hour !== 12) hour += 12
+  if (suffix === 'AM' && hour === 12) hour = 0
+  const date = new Date(`${dateString}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`)
+  return !Number.isNaN(date.getTime()) && date.getTime() > Date.now()
+}
+
+function canRescheduleBooking(booking) {
+  if (!booking) return false
+  if (booking.status === 'completed') return false
+  return ['pending', 'confirmed'].includes(String(booking.status || '').toLowerCase())
+}
+
+function isAppointmentUpcoming(booking) {
+  const status = String(booking?.status || '').toLowerCase()
+  if (!['pending', 'confirmed'].includes(status)) return false
+  const start = parseAppointmentStart(booking)
+  if (start) return start.getTime() >= Date.now()
+  if (!booking?.date) return false
+  return booking.date >= dateKeyLocal()
+}
+
+function findPetProfileForBooking(booking, petLookup) {
+  if (!booking) return null
+  const candidates = []
+  if (booking.petId) candidates.push(petLookup?.[booking.petId])
+  if (booking.petName) candidates.push(petLookup?.[String(booking.petName).toLowerCase()])
+  if (booking.pet?.id) candidates.push(petLookup?.[booking.pet.id])
+  if (booking.pet?.name) candidates.push(petLookup?.[String(booking.pet.name).toLowerCase()])
+  return candidates.find(Boolean) || null
+}
+
+function matchesCurrentUserBooking(booking, user) {
+  if (!booking || !user) return false
+  const uid = String(user?.uid || '').trim().toLowerCase()
+  const email = String(user?.email || '').trim().toLowerCase()
+  const candidates = [
+    booking.userId,
+    booking.ownerId,
+    booking.customerId,
+    booking.userEmail,
+    booking.ownerEmail,
+    booking.email,
+    booking.customerEmail,
+    booking.user?.uid,
+    booking.user?.id,
+    booking.owner?.email,
+    booking.customer?.email,
+  ].filter(Boolean).map(value => String(value).trim().toLowerCase())
+
+  if (uid && candidates.includes(uid)) return true
+  if (email && candidates.includes(email)) return true
+  return false
+}
+
 function HeroSlider() {
+  const { user } = useAuth()
   const [current, setCurrent] = useState(0)
   const [heroImages, setHeroImages] = useState(null)
   const [visitImages, setVisitImages] = useState(DEFAULT_VISIT_IMAGES)
   const [paused, setPaused] = useState(false)
+  const [upcomingAppointment, setUpcomingAppointment] = useState(null)
+  const [upcomingPetProfile, setUpcomingPetProfile] = useState(null)
+  const [bookingSettings, setBookingSettings] = useState(null)
+  const [rescheduleTarget, setRescheduleTarget] = useState(null)
+  const [rescheduleDate, setRescheduleDate] = useState('')
+  const [rescheduleSlot, setRescheduleSlot] = useState('')
+  const [rescheduleBookedSlots, setRescheduleBookedSlots] = useState([])
+  const [reschedulingId, setReschedulingId] = useState('')
 
   const images = heroImages || []
 
@@ -124,9 +265,169 @@ function HeroSlider() {
     setCurrent(0)
   }, [heroImages])
 
+  useEffect(() => {
+    fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    async function fetchUpcomingAppointment() {
+      if (!user?.uid && !user?.email) {
+        setUpcomingAppointment(null)
+        setUpcomingPetProfile(null)
+        return
+      }
+
+      try {
+        const [bookingSnap, petSnap] = await Promise.all([
+          getDocs(query(collection(db, 'bookings'), where('userId', '==', user.uid))),
+          getDocs(query(collection(db, 'pets'), where('userId', '==', user.uid)))
+        ])
+
+        const bookings = bookingSnap.docs
+          .map(docSnapshot => ({ id: docSnapshot.id, ...docSnapshot.data() }))
+          .filter(booking => matchesCurrentUserBooking(booking, user))
+
+        const petLookup = {}
+        petSnap.docs.forEach(petDoc => {
+          const pet = { id: petDoc.id, ...petDoc.data() }
+          petLookup[pet.id] = pet
+          if (pet.name) petLookup[String(pet.name).toLowerCase()] = pet
+        })
+
+        const filtered = bookings
+          .filter(booking => isAppointmentUpcoming(booking))
+          .sort((a, b) => {
+            const aTime = parseAppointmentStart(a) || new Date(a.date || '2099-12-31')
+            const bTime = parseAppointmentStart(b) || new Date(b.date || '2099-12-31')
+            return aTime - bTime
+          })
+
+        const nextBooking = filtered[0] || null
+        setUpcomingAppointment(nextBooking)
+        setUpcomingPetProfile(findPetProfileForBooking(nextBooking, petLookup))
+      } catch {
+        setUpcomingAppointment(null)
+        setUpcomingPetProfile(null)
+      }
+    }
+
+    fetchUpcomingAppointment()
+  }, [user?.uid, user?.email])
+
+  useEffect(() => {
+    if (!rescheduleTarget?.id || !rescheduleDate) {
+      setRescheduleBookedSlots([])
+      return
+    }
+    let ignore = false
+    async function fetchBookedSlots() {
+      try {
+        const q = query(
+          collection(db, 'bookings'),
+          where('date', '==', rescheduleDate),
+          where('status', 'in', ['pending', 'confirmed'])
+        )
+        const snap = await getDocs(q)
+        const slotCounts = {}
+        snap.docs
+          .map(item => item.data())
+          .filter(item => item.id !== rescheduleTarget.id && (item.bookingType || 'store') === (rescheduleTarget.bookingType || 'store'))
+          .forEach(item => { slotCounts[item.slot] = (slotCounts[item.slot] || 0) + 1 })
+        const capacity = Math.max(1, Number(bookingSettings?.slotCapacity || 1))
+        if (!ignore) setRescheduleBookedSlots(Object.entries(slotCounts).filter(([, count]) => count >= capacity).map(([slot]) => slot))
+      } catch {
+        if (!ignore) setRescheduleBookedSlots([])
+      }
+    }
+    fetchBookedSlots()
+    return () => { ignore = true }
+  }, [rescheduleTarget?.id, rescheduleDate, bookingSettings, rescheduleTarget?.bookingType])
+
+  const navigate = useNavigate()
   const slideCopy = HERO_COPY[current % HERO_COPY.length]
+  const appointmentDateParts = getAppointmentDateParts(upcomingAppointment)
+  const petImageCandidates = [
+    upcomingAppointment?.petPhotoUrl,
+    upcomingAppointment?.petPhoto,
+    upcomingAppointment?.photoUrl,
+    upcomingAppointment?.pet?.photoUrl,
+    upcomingAppointment?.pet?.photo,
+    upcomingAppointment?.pet?.imageUrl,
+    upcomingPetProfile?.photoUrl,
+    upcomingPetProfile?.photo,
+    upcomingPetProfile?.imageUrl,
+  ]
+  const petImageUrl = petImageCandidates.find(Boolean) || ''
+  const petNameLabel = upcomingAppointment?.petName || upcomingPetProfile?.name || upcomingAppointment?.pet?.name || 'Pet details'
+  const rescheduleAvailability = rescheduleDate ? getAvailabilityForDate(bookingSettings || undefined, rescheduleDate) : { open: false, storeSlots: [], homeSlots: [] }
+  const rescheduleSlots = (rescheduleTarget?.bookingType || 'store') === 'home' ? rescheduleAvailability.homeSlots : rescheduleAvailability.storeSlots
+  const isRescheduleToday = rescheduleDate === dateKeyLocal()
+  const bookableRescheduleSlots = isRescheduleToday ? rescheduleSlots.filter(slot => isFutureSlotForDate(rescheduleDate, slot)) : rescheduleSlots
 
+  const handleAppointmentCardClick = () => {
+    navigate('/my-bookings')
+  }
 
+  const handleAppointmentCardKeyDown = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      navigate('/my-bookings')
+    }
+  }
+
+  const openRescheduleModal = (booking) => {
+    setRescheduleTarget(booking)
+    setRescheduleDate(booking.date || '')
+    setRescheduleSlot(booking.slot || '')
+    setRescheduleBookedSlots([])
+  }
+
+  const handleRescheduleClick = (event) => {
+    event.stopPropagation()
+    openRescheduleModal(upcomingAppointment)
+  }
+
+  const confirmReschedule = async () => {
+    if (!rescheduleTarget || !rescheduleDate || !rescheduleSlot) return
+    const previousDate = rescheduleTarget.date || ''
+    const previousSlot = rescheduleTarget.slot || ''
+    const newBookingStart = rescheduleDate && rescheduleSlot ? (() => {
+      const match = String(rescheduleSlot || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+      if (!match) return null
+      let hour = Number(match[1])
+      const minute = Number(match[2])
+      const suffix = match[3].toUpperCase()
+      if (suffix === 'PM' && hour !== 12) hour += 12
+      if (suffix === 'AM' && hour === 12) hour = 0
+      const date = new Date(`${rescheduleDate}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`)
+      return Number.isNaN(date.getTime()) ? null : date
+    })() : null
+
+    setReschedulingId(rescheduleTarget.id)
+    try {
+      const patch = {
+        date: rescheduleDate,
+        slot: rescheduleSlot,
+        status: 'pending',
+        updatedAt: serverTimestamp(),
+        rescheduleCount: Number(rescheduleTarget.rescheduleCount || 0) + 1,
+        rescheduledAt: serverTimestamp(),
+        rescheduledBy: 'user',
+        previousDate,
+        previousSlot,
+        bookingStartAt: newBookingStart ? Timestamp.fromDate(newBookingStart) : null,
+      }
+      await updateDoc(doc(db, 'bookings', rescheduleTarget.id), patch)
+      setUpcomingAppointment(current => current?.id === rescheduleTarget.id ? { ...current, ...patch, bookingStartAt: newBookingStart ? { toDate: () => newBookingStart } : current.bookingStartAt } : current)
+      setRescheduleTarget(null)
+      setRescheduleDate('')
+      setRescheduleSlot('')
+      setRescheduleBookedSlots([])
+    } catch {
+      alert('Could not reschedule booking. Please try again.')
+    }
+    setReschedulingId('')
+  }
 
   const visitCards = [
     {
@@ -184,6 +485,114 @@ function HeroSlider() {
             <Link to="/services" className="btn btn-secondary">View Services <ArrowRight size={16} /></Link>
           </div>
         </div>
+
+        {upcomingAppointment && (
+          <section className="upcoming-appointment-section">
+            <div
+              className="upcoming-appointment-card"
+              onClick={handleAppointmentCardClick}
+              onKeyDown={handleAppointmentCardKeyDown}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="upcoming-appointment-header">
+                <div className="upcoming-appointment-title-wrap">
+                  <p className="section-label upcoming-appointment-title">
+                    <Calendar size={14} className="upcoming-appointment-icon" />
+                    Upcoming Appointment
+                  </p>
+                </div>
+                <Link to="/my-bookings" className="home-pill-link" onClick={event => event.stopPropagation()}>View All <ArrowRight size={16} /></Link>
+              </div>
+              <div className="upcoming-appointment-body">
+                <div className="upcoming-appointment-main">
+                  <div className="upcoming-appointment-photo-stack">
+                    <div className="upcoming-appointment-photo">
+                      {petImageUrl ? (
+                        <img src={petImageUrl} alt={petNameLabel || 'Pet'} />
+                      ) : (
+                        <div className="upcoming-appointment-photo-fallback">
+                          <PawPrint size={28} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="upcoming-appointment-photo-caption">{petNameLabel}</div>
+                  </div>
+                  <div className="upcoming-appointment-details">
+                    <div className="upcoming-appointment-meta">
+                      <span className="upcoming-appointment-status">{getUpcomingStatusText(upcomingAppointment)}</span>
+                      <span className="upcoming-appointment-visit-pill">
+                        {(upcomingAppointment.bookingType || 'store') === 'home' ? <HomeIcon size={14} /> : <Store size={14} />}
+                        {(upcomingAppointment.bookingType || 'store') === 'home' ? 'Home Visit' : 'At Centre'}
+                      </span>
+                    </div>
+                    <h4>{upcomingAppointment.serviceName || 'Appointment'}</h4>
+                    <div className="upcoming-appointment-meta-column">
+                      <span className="upcoming-appointment-info-item">
+                        <Calendar size={14} />
+                        <span className="upcoming-appointment-info-text">
+                          <span className="upcoming-appointment-info-date-time">
+                            {appointmentDateParts.dateLabel}
+                            <span className="upcoming-appointment-info-separator">•</span>
+                            {appointmentDateParts.timeLabel}
+                          </span>
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {canRescheduleBooking(upcomingAppointment) && (
+                  <button type="button" className="upcoming-appointment-reschedule-btn" onClick={handleRescheduleClick}>
+                    Reschedule
+                  </button>
+                )}
+              </div>
+            </div>
+            {rescheduleTarget && (
+              <div className="modal-overlay" onClick={() => { setRescheduleTarget(null); setRescheduleDate(''); setRescheduleSlot(''); setRescheduleBookedSlots([]) }}>
+                <div className="reschedule-modal-card" onClick={event => event.stopPropagation()}>
+                  <div className="reschedule-modal-header">
+                    <div>
+                      <h3>Reschedule Appointment</h3>
+                      <p>Pick a new date and time for your visit.</p>
+                    </div>
+                    <button type="button" className="icon-btn" onClick={() => { setRescheduleTarget(null); setRescheduleDate(''); setRescheduleSlot(''); setRescheduleBookedSlots([]) }}><X size={18} /></button>
+                  </div>
+                  <div className="reschedule-modal-body">
+                    <label className="reschedule-field">
+                      <span>Date</span>
+                      <input type="date" className="input" value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} min={dateKeyLocal()} />
+                    </label>
+                    {rescheduleDate && rescheduleAvailability.open && (
+                      <div className="reschedule-slot-grid">
+                        {bookableRescheduleSlots.map(slot => {
+                          const disabled = rescheduleBookedSlots.includes(slot)
+                          return (
+                            <button key={slot} type="button" className={`reschedule-slot-btn ${rescheduleSlot === slot ? 'active' : ''}`} disabled={disabled} onClick={() => setRescheduleSlot(slot)}>
+                              {slot}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {rescheduleDate && !rescheduleAvailability.open && (
+                      <p className="helper-text">No availability for this date.</p>
+                    )}
+                    {rescheduleDate && rescheduleAvailability.open && rescheduleBookedSlots.length === 0 && bookableRescheduleSlots.length === 0 && (
+                      <p className="helper-text">No slots available for this date.</p>
+                    )}
+                  </div>
+                  <div className="reschedule-modal-footer">
+                    <button type="button" className="btn btn-secondary" onClick={() => { setRescheduleTarget(null); setRescheduleDate(''); setRescheduleSlot(''); setRescheduleBookedSlots([]) }}>Cancel</button>
+                    <button type="button" className="btn btn-primary" disabled={!rescheduleDate || !rescheduleSlot || reschedulingId === rescheduleTarget.id} onClick={confirmReschedule}>
+                      {reschedulingId === rescheduleTarget.id ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         <div className="visit-choice-section">
           <div className="visit-choice-title">
