@@ -343,35 +343,34 @@ export default function Reviews() {
 
         {cropModal.open && cropModal.file && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(7, 10, 18, 0.82)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-            <div style={{ width: '100%', maxWidth: '760px', background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: '24px', boxShadow: '0 24px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
-              <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ width: '100%', maxWidth: '560px', background: '#ffffff', border: '1px solid var(--border)', borderRadius: '24px', boxShadow: '0 24px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '14px', padding: '18px 18px 0' }}>
                 <div>
-                  <p style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)', margin: 0 }}>Adjust your photo</p>
-                  <h3 style={{ margin: '4px 0 0', fontSize: '18px', color: 'var(--text)' }}>Crop your photo</h3>
+                  <h2 style={{ color: 'var(--text)', fontSize: '18px', fontWeight: 900, margin: 0 }}>Crop Photo</h2>
+                  <p style={{ color: 'var(--muted)', fontSize: '12px', margin: '4px 0 0' }}>Adjust the photo before saving it to your review.</p>
                 </div>
-                <button type="button" className="btn btn-secondary" onClick={closeCropModal}>
-                  <X size={14} /> Cancel
+                <button type="button" onClick={closeCropModal} aria-label="Close cropper" style={{ width: '34px', height: '34px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--muted)', cursor: 'pointer' }}>
+                  <X size={18} />
                 </button>
               </div>
-              <div style={{ position: 'relative', height: '420px', background: '#000000', overflow: 'hidden' }}>
+              <div style={{ position: 'relative', width: '100%', height: 'min(62vh, 420px)', minHeight: '300px', marginTop: '16px', background: '#111' }}>
                 <Cropper
                   image={cropModal.previewUrl}
                   crop={cropModal.crop}
                   zoom={cropModal.zoom}
                   aspect={cropModal.aspect}
+                  cropShape="rect"
                   onCropChange={(crop) => setCropModal(prev => ({ ...prev, crop }))}
                   onZoomChange={(zoom) => setCropModal(prev => ({ ...prev, zoom }))}
                   onCropComplete={handleCropComplete}
-                  cropShape="rect"
-                  showGrid={true}
-                  objectFit="cover"
-                  style={{ containerStyle: { backgroundColor: '#000000' } }}
                 />
               </div>
-              <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--muted)', fontSize: '13px' }}>
-                  <CropIcon size={16} /> Drag to position and pinch to zoom.
-                </div>
+              <label style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '12px', alignItems: 'center', padding: '16px 18px 0', color: 'var(--muted)', fontSize: '12px', fontWeight: 800 }}>
+                Zoom
+                <input type="range" min="1" max="3" step="0.05" value={cropModal.zoom} onChange={(event) => setCropModal(prev => ({ ...prev, zoom: Number(event.target.value) }))} style={{ width: '100%' }} />
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', padding: '16px 18px 18px' }}>
+                <button type="button" className="btn btn-secondary" onClick={closeCropModal}>Cancel</button>
                 <button type="button" className="btn btn-primary" onClick={handleCropConfirm} disabled={cropModal.processing}>
                   {cropModal.processing ? 'Preparing…' : 'Use this photo'}
                 </button>
