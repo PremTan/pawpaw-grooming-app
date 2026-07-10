@@ -93,10 +93,14 @@ export const SERVICES = [
 
 
 export const PET_TYPES = [
-  'Dog', 'Cat', 'Rabbit', 'Bird',
-  'Hamster', 'Guinea Pig', 'Fish',
-  'Turtle', 'Parrot', 'Other'
+  'Dog', 'Cat', 'Other'
 ]
+
+// export const PET_TYPES = [
+//   'Dog', 'Cat', 'Rabbit', 'Bird',
+//   'Hamster', 'Guinea Pig', 'Fish',
+//   'Turtle', 'Parrot', 'Other'
+// ]
 
 export const DOG_BREEDS = [
   'Lhasa', 'Shih Tzu', 'Golden Retriever', 'Labrador Retriever', 'German Shepherd', 'Bulldog',

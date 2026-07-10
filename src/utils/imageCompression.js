@@ -8,6 +8,22 @@ const MAX_OUTPUT_SIZE_MB = 1
 const MAX_WIDTH_OR_HEIGHT = 1920
 const BYTES_PER_MB = 1024 * 1024
 
+function readImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const image = new Image()
+    image.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(image)
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Could not read image file.'))
+    }
+    image.src = url
+  })
+}
+
 export function formatImageSize(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB'
   if (bytes >= BYTES_PER_MB) return `${(bytes / BYTES_PER_MB).toFixed(2)} MB`
@@ -34,6 +50,93 @@ export function validateImageFile(file) {
   if (file.size > MAX_SOURCE_SIZE_MB * BYTES_PER_MB) {
     throw new Error(`Image must be ${MAX_SOURCE_SIZE_MB} MB or smaller.`)
   }
+}
+
+export async function cropImageToSquare(file, options = {}) {
+  validateImageFile(file)
+
+  const { size = 1400, quality = 0.92, outputType = file.type || 'image/jpeg' } = options
+  const image = await readImageFile(file)
+  const side = Math.min(image.naturalWidth || image.width, image.naturalHeight || image.height)
+  const sx = ((image.naturalWidth || image.width) - side) / 2
+  const sy = ((image.naturalHeight || image.height) - side) / 2
+
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+
+  const context = canvas.getContext('2d')
+  if (!context) {
+    throw new Error('Your browser does not support image cropping.')
+  }
+
+  context.drawImage(image, sx, sy, side, side, 0, 0, size, size)
+
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(resolve, outputType, quality)
+  })
+
+  if (!blob) {
+    throw new Error('Could not process the selected image.')
+  }
+
+  return new File([blob], file.name.replace(/\.[^.]+$/, '') + '-square.jpg', {
+    type: outputType,
+    lastModified: Date.now(),
+  })
+}
+
+export async function cropImageFile(file, croppedAreaPixels, options = {}) {
+  validateImageFile(file)
+
+  const image = await readImageFile(file)
+  const outputWidth = Math.max(1, Math.round(croppedAreaPixels.width || 0))
+  const outputHeight = Math.max(1, Math.round(croppedAreaPixels.height || 0))
+  const canvas = document.createElement('canvas')
+  canvas.width = outputWidth
+  canvas.height = outputHeight
+
+  const context = canvas.getContext('2d')
+  if (!context) {
+    throw new Error('Your browser does not support image cropping.')
+  }
+
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.drawImage(
+    image,
+    croppedAreaPixels.x,
+    croppedAreaPixels.y,
+    outputWidth,
+    outputHeight,
+    0,
+    0,
+    outputWidth,
+    outputHeight,
+  )
+
+  const outputType = options.outputType || file.type || 'image/jpeg'
+  const extension = outputType === 'image/png' ? 'png' : outputType === 'image/webp' ? 'webp' : 'jpg'
+  const blob = await new Promise((resolve) => {
+    canvas.toBlob(resolve, outputType, options.quality ?? 0.95)
+  })
+
+  if (!blob) {
+    throw new Error('Could not crop the selected image.')
+  }
+
+  return new File([blob], file.name.replace(/\.[^.]+$/, '') + `-cropped.${extension}`, {
+    type: outputType,
+    lastModified: Date.now(),
+  })
+}
+
+export async function compressAndCropImage(file, options = {}) {
+  const { cropToSquare = true, ...rest } = options
+  const croppedFile = cropToSquare ? await cropImageToSquare(file, rest) : file
+  return optimizeImageForUpload(croppedFile, rest)
 }
 
 export async function optimizeImageForUpload(file, options = {}) {

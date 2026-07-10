@@ -1,13 +1,14 @@
 // src/pages/Home.jsx
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { collection, doc, getDoc, getDocs, query, orderBy, limit } from 'firebase/firestore'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { collection, doc, getDoc, getDocs, query, orderBy, limit, where, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import BrandLogo from '../components/BrandLogo'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
-import { countOpenDays } from '../utils/bookingSettings'
+import { countOpenDays, fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
+import { useAuth } from '../context/AuthContext'
 import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle } from 'lucide-react'
 
 const DEFAULT_HERO_IMAGES = []
@@ -68,11 +69,151 @@ function cleanReviewText(value) {
     .replace(/[ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢]/g, "'")
     .trim()
 }
+
+function parseAppointmentStart(booking) {
+  if (booking?.bookingStartAt?.toDate) return booking.bookingStartAt.toDate()
+  if (!booking?.date) return null
+  const match = String(booking.slot || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (!match) return null
+  let hour = Number(match[1])
+  const minute = Number(match[2])
+  const suffix = match[3].toUpperCase()
+  if (suffix === 'PM' && hour !== 12) hour += 12
+  if (suffix === 'AM' && hour === 12) hour = 0
+  const date = new Date(`${booking.date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatAppointmentDateTime(booking) {
+  const start = parseAppointmentStart(booking)
+  if (!start) return booking?.date ? `${booking.date}${booking?.slot ? ` • ${booking.slot}` : ''}` : 'Awaiting schedule'
+  return start.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\b(am|pm)\b/i, value => value.toUpperCase())
+}
+
+function getAppointmentDateParts(booking) {
+  const start = parseAppointmentStart(booking)
+  if (!start) {
+    return {
+      dateLabel: booking?.date || 'Awaiting schedule',
+      timeLabel: booking?.slot || '',
+    }
+  }
+
+  return {
+    dateLabel: start.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+    timeLabel: start.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\b(am|pm)\b/i, value => value.toUpperCase()),
+  }
+}
+
+function getUpcomingStatusLabel(booking) {
+  const start = parseAppointmentStart(booking)
+  if (!start) return 'Scheduled'
+  const today = new Date()
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const diffDays = Math.round((startDay - todayDay) / 86400000)
+  if (diffDays <= 0) return 'Today'
+  if (diffDays === 1) return 'Tomorrow'
+  if (diffDays <= 7) return `In ${diffDays} days`
+  return start.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
+function getUpcomingStatusText(booking) {
+  const start = parseAppointmentStart(booking)
+  if (!start) return 'Scheduled'
+  const today = new Date()
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const diffDays = Math.round((startDay - todayDay) / 86400000)
+  if (diffDays <= 0) return 'Today'
+  if (diffDays === 1) return 'Tomorrow'
+  if (diffDays === 2) return 'In 2 days'
+  if (diffDays === 3) return 'In 3 days'
+  if (diffDays === 4) return 'In 4 days'
+  if (diffDays === 5) return 'In 5 days'
+  if (diffDays === 6) return 'In 6 days'
+  if (diffDays === 7) return 'In 7 days'
+  return start.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
+function dateKeyLocal(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function isFutureSlotForDate(dateString, slotLabel) {
+  const match = String(slotLabel || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (!dateString || !match) return false
+  let hour = Number(match[1])
+  const minute = Number(match[2])
+  const suffix = match[3].toUpperCase()
+  if (suffix === 'PM' && hour !== 12) hour += 12
+  if (suffix === 'AM' && hour === 12) hour = 0
+  const date = new Date(`${dateString}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`)
+  return !Number.isNaN(date.getTime()) && date.getTime() > Date.now()
+}
+
+function canRescheduleBooking(booking) {
+  if (!booking) return false
+  if (booking.status === 'completed') return false
+  return ['pending', 'confirmed'].includes(String(booking.status || '').toLowerCase())
+}
+
+function isAppointmentUpcoming(booking) {
+  const status = String(booking?.status || '').toLowerCase()
+  if (!['pending', 'confirmed'].includes(status)) return false
+  const start = parseAppointmentStart(booking)
+  if (start) return start.getTime() >= Date.now()
+  if (!booking?.date) return false
+  return booking.date >= dateKeyLocal()
+}
+
+function findPetProfileForBooking(booking, petLookup) {
+  if (!booking) return null
+  const candidates = []
+  if (booking.petId) candidates.push(petLookup?.[booking.petId])
+  if (booking.petName) candidates.push(petLookup?.[String(booking.petName).toLowerCase()])
+  if (booking.pet?.id) candidates.push(petLookup?.[booking.pet.id])
+  if (booking.pet?.name) candidates.push(petLookup?.[String(booking.pet.name).toLowerCase()])
+  return candidates.find(Boolean) || null
+}
+
+function matchesCurrentUserBooking(booking, user) {
+  if (!booking || !user) return false
+  const uid = String(user?.uid || '').trim().toLowerCase()
+  const email = String(user?.email || '').trim().toLowerCase()
+  const candidates = [
+    booking.userId,
+    booking.ownerId,
+    booking.customerId,
+    booking.userEmail,
+    booking.ownerEmail,
+    booking.email,
+    booking.customerEmail,
+    booking.user?.uid,
+    booking.user?.id,
+    booking.owner?.email,
+    booking.customer?.email,
+  ].filter(Boolean).map(value => String(value).trim().toLowerCase())
+
+  if (uid && candidates.includes(uid)) return true
+  if (email && candidates.includes(email)) return true
+  return false
+}
+
 function HeroSlider() {
+  const { user } = useAuth()
   const [current, setCurrent] = useState(0)
   const [heroImages, setHeroImages] = useState(null)
   const [visitImages, setVisitImages] = useState(DEFAULT_VISIT_IMAGES)
   const [paused, setPaused] = useState(false)
+  const [upcomingAppointment, setUpcomingAppointment] = useState(null)
+  const [upcomingPetProfile, setUpcomingPetProfile] = useState(null)
+  const [bookingSettings, setBookingSettings] = useState(null)
+  const [rescheduleTarget, setRescheduleTarget] = useState(null)
+  const [rescheduleDate, setRescheduleDate] = useState('')
+  const [rescheduleSlot, setRescheduleSlot] = useState('')
+  const [rescheduleBookedSlots, setRescheduleBookedSlots] = useState([])
+  const [reschedulingId, setReschedulingId] = useState('')
 
   const images = heroImages || []
 
@@ -124,9 +265,169 @@ function HeroSlider() {
     setCurrent(0)
   }, [heroImages])
 
+  useEffect(() => {
+    fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    async function fetchUpcomingAppointment() {
+      if (!user?.uid && !user?.email) {
+        setUpcomingAppointment(null)
+        setUpcomingPetProfile(null)
+        return
+      }
+
+      try {
+        const [bookingSnap, petSnap] = await Promise.all([
+          getDocs(query(collection(db, 'bookings'), where('userId', '==', user.uid))),
+          getDocs(query(collection(db, 'pets'), where('userId', '==', user.uid)))
+        ])
+
+        const bookings = bookingSnap.docs
+          .map(docSnapshot => ({ id: docSnapshot.id, ...docSnapshot.data() }))
+          .filter(booking => matchesCurrentUserBooking(booking, user))
+
+        const petLookup = {}
+        petSnap.docs.forEach(petDoc => {
+          const pet = { id: petDoc.id, ...petDoc.data() }
+          petLookup[pet.id] = pet
+          if (pet.name) petLookup[String(pet.name).toLowerCase()] = pet
+        })
+
+        const filtered = bookings
+          .filter(booking => isAppointmentUpcoming(booking))
+          .sort((a, b) => {
+            const aTime = parseAppointmentStart(a) || new Date(a.date || '2099-12-31')
+            const bTime = parseAppointmentStart(b) || new Date(b.date || '2099-12-31')
+            return aTime - bTime
+          })
+
+        const nextBooking = filtered[0] || null
+        setUpcomingAppointment(nextBooking)
+        setUpcomingPetProfile(findPetProfileForBooking(nextBooking, petLookup))
+      } catch {
+        setUpcomingAppointment(null)
+        setUpcomingPetProfile(null)
+      }
+    }
+
+    fetchUpcomingAppointment()
+  }, [user?.uid, user?.email])
+
+  useEffect(() => {
+    if (!rescheduleTarget?.id || !rescheduleDate) {
+      setRescheduleBookedSlots([])
+      return
+    }
+    let ignore = false
+    async function fetchBookedSlots() {
+      try {
+        const q = query(
+          collection(db, 'bookings'),
+          where('date', '==', rescheduleDate),
+          where('status', 'in', ['pending', 'confirmed'])
+        )
+        const snap = await getDocs(q)
+        const slotCounts = {}
+        snap.docs
+          .map(item => item.data())
+          .filter(item => item.id !== rescheduleTarget.id && (item.bookingType || 'store') === (rescheduleTarget.bookingType || 'store'))
+          .forEach(item => { slotCounts[item.slot] = (slotCounts[item.slot] || 0) + 1 })
+        const capacity = Math.max(1, Number(bookingSettings?.slotCapacity || 1))
+        if (!ignore) setRescheduleBookedSlots(Object.entries(slotCounts).filter(([, count]) => count >= capacity).map(([slot]) => slot))
+      } catch {
+        if (!ignore) setRescheduleBookedSlots([])
+      }
+    }
+    fetchBookedSlots()
+    return () => { ignore = true }
+  }, [rescheduleTarget?.id, rescheduleDate, bookingSettings, rescheduleTarget?.bookingType])
+
+  const navigate = useNavigate()
   const slideCopy = HERO_COPY[current % HERO_COPY.length]
+  const appointmentDateParts = getAppointmentDateParts(upcomingAppointment)
+  const petImageCandidates = [
+    upcomingAppointment?.petPhotoUrl,
+    upcomingAppointment?.petPhoto,
+    upcomingAppointment?.photoUrl,
+    upcomingAppointment?.pet?.photoUrl,
+    upcomingAppointment?.pet?.photo,
+    upcomingAppointment?.pet?.imageUrl,
+    upcomingPetProfile?.photoUrl,
+    upcomingPetProfile?.photo,
+    upcomingPetProfile?.imageUrl,
+  ]
+  const petImageUrl = petImageCandidates.find(Boolean) || ''
+  const petNameLabel = upcomingAppointment?.petName || upcomingPetProfile?.name || upcomingAppointment?.pet?.name || 'Pet details'
+  const rescheduleAvailability = rescheduleDate ? getAvailabilityForDate(bookingSettings || undefined, rescheduleDate) : { open: false, storeSlots: [], homeSlots: [] }
+  const rescheduleSlots = (rescheduleTarget?.bookingType || 'store') === 'home' ? rescheduleAvailability.homeSlots : rescheduleAvailability.storeSlots
+  const isRescheduleToday = rescheduleDate === dateKeyLocal()
+  const bookableRescheduleSlots = isRescheduleToday ? rescheduleSlots.filter(slot => isFutureSlotForDate(rescheduleDate, slot)) : rescheduleSlots
 
+  const handleAppointmentCardClick = () => {
+    navigate('/my-bookings')
+  }
 
+  const handleAppointmentCardKeyDown = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      navigate('/my-bookings')
+    }
+  }
+
+  const openRescheduleModal = (booking) => {
+    setRescheduleTarget(booking)
+    setRescheduleDate(booking.date || '')
+    setRescheduleSlot(booking.slot || '')
+    setRescheduleBookedSlots([])
+  }
+
+  const handleRescheduleClick = (event) => {
+    event.stopPropagation()
+    openRescheduleModal(upcomingAppointment)
+  }
+
+  const confirmReschedule = async () => {
+    if (!rescheduleTarget || !rescheduleDate || !rescheduleSlot) return
+    const previousDate = rescheduleTarget.date || ''
+    const previousSlot = rescheduleTarget.slot || ''
+    const newBookingStart = rescheduleDate && rescheduleSlot ? (() => {
+      const match = String(rescheduleSlot || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+      if (!match) return null
+      let hour = Number(match[1])
+      const minute = Number(match[2])
+      const suffix = match[3].toUpperCase()
+      if (suffix === 'PM' && hour !== 12) hour += 12
+      if (suffix === 'AM' && hour === 12) hour = 0
+      const date = new Date(`${rescheduleDate}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`)
+      return Number.isNaN(date.getTime()) ? null : date
+    })() : null
+
+    setReschedulingId(rescheduleTarget.id)
+    try {
+      const patch = {
+        date: rescheduleDate,
+        slot: rescheduleSlot,
+        status: 'pending',
+        updatedAt: serverTimestamp(),
+        rescheduleCount: Number(rescheduleTarget.rescheduleCount || 0) + 1,
+        rescheduledAt: serverTimestamp(),
+        rescheduledBy: 'user',
+        previousDate,
+        previousSlot,
+        bookingStartAt: newBookingStart ? Timestamp.fromDate(newBookingStart) : null,
+      }
+      await updateDoc(doc(db, 'bookings', rescheduleTarget.id), patch)
+      setUpcomingAppointment(current => current?.id === rescheduleTarget.id ? { ...current, ...patch, bookingStartAt: newBookingStart ? { toDate: () => newBookingStart } : current.bookingStartAt } : current)
+      setRescheduleTarget(null)
+      setRescheduleDate('')
+      setRescheduleSlot('')
+      setRescheduleBookedSlots([])
+    } catch {
+      alert('Could not reschedule booking. Please try again.')
+    }
+    setReschedulingId('')
+  }
 
   const visitCards = [
     {
@@ -185,6 +486,114 @@ function HeroSlider() {
           </div>
         </div>
 
+        {upcomingAppointment && (
+          <section className="upcoming-appointment-section">
+            <div
+              className="upcoming-appointment-card"
+              onClick={handleAppointmentCardClick}
+              onKeyDown={handleAppointmentCardKeyDown}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="upcoming-appointment-header">
+                <div className="upcoming-appointment-title-wrap">
+                  <p className="section-label upcoming-appointment-title">
+                    <Calendar size={14} className="upcoming-appointment-icon" />
+                    Upcoming Appointment
+                  </p>
+                </div>
+                <Link to="/my-bookings" className="home-pill-link" onClick={event => event.stopPropagation()}>View All <ArrowRight size={16} /></Link>
+              </div>
+              <div className="upcoming-appointment-body">
+                <div className="upcoming-appointment-main">
+                  <div className="upcoming-appointment-photo-stack">
+                    <div className="upcoming-appointment-photo">
+                      {petImageUrl ? (
+                        <img src={petImageUrl} alt={petNameLabel || 'Pet'} />
+                      ) : (
+                        <div className="upcoming-appointment-photo-fallback">
+                          <PawPrint size={28} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="upcoming-appointment-photo-caption">{petNameLabel}</div>
+                  </div>
+                  <div className="upcoming-appointment-details">
+                    <div className="upcoming-appointment-meta">
+                      <span className="upcoming-appointment-status">{getUpcomingStatusText(upcomingAppointment)}</span>
+                      <span className="upcoming-appointment-visit-pill">
+                        {(upcomingAppointment.bookingType || 'store') === 'home' ? <HomeIcon size={14} /> : <Store size={14} />}
+                        {(upcomingAppointment.bookingType || 'store') === 'home' ? 'Home Visit' : 'At Centre'}
+                      </span>
+                    </div>
+                    <h4>{upcomingAppointment.serviceName || 'Appointment'}</h4>
+                    <div className="upcoming-appointment-meta-column">
+                      <span className="upcoming-appointment-info-item">
+                        <Calendar size={14} />
+                        <span className="upcoming-appointment-info-text">
+                          <span className="upcoming-appointment-info-date-time">
+                            {appointmentDateParts.dateLabel}
+                            <span className="upcoming-appointment-info-separator">•</span>
+                            {appointmentDateParts.timeLabel}
+                          </span>
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {canRescheduleBooking(upcomingAppointment) && (
+                  <button type="button" className="upcoming-appointment-reschedule-btn" onClick={handleRescheduleClick}>
+                    Reschedule
+                  </button>
+                )}
+              </div>
+            </div>
+            {rescheduleTarget && (
+              <div className="modal-overlay" onClick={() => { setRescheduleTarget(null); setRescheduleDate(''); setRescheduleSlot(''); setRescheduleBookedSlots([]) }}>
+                <div className="reschedule-modal-card" onClick={event => event.stopPropagation()}>
+                  <div className="reschedule-modal-header">
+                    <div>
+                      <h3>Reschedule Appointment</h3>
+                      <p>Pick a new date and time for your visit.</p>
+                    </div>
+                    <button type="button" className="icon-btn" onClick={() => { setRescheduleTarget(null); setRescheduleDate(''); setRescheduleSlot(''); setRescheduleBookedSlots([]) }}><X size={18} /></button>
+                  </div>
+                  <div className="reschedule-modal-body">
+                    <label className="reschedule-field">
+                      <span>Date</span>
+                      <input type="date" className="input" value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} min={dateKeyLocal()} />
+                    </label>
+                    {rescheduleDate && rescheduleAvailability.open && (
+                      <div className="reschedule-slot-grid">
+                        {bookableRescheduleSlots.map(slot => {
+                          const disabled = rescheduleBookedSlots.includes(slot)
+                          return (
+                            <button key={slot} type="button" className={`reschedule-slot-btn ${rescheduleSlot === slot ? 'active' : ''}`} disabled={disabled} onClick={() => setRescheduleSlot(slot)}>
+                              {slot}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {rescheduleDate && !rescheduleAvailability.open && (
+                      <p className="helper-text">No availability for this date.</p>
+                    )}
+                    {rescheduleDate && rescheduleAvailability.open && rescheduleBookedSlots.length === 0 && bookableRescheduleSlots.length === 0 && (
+                      <p className="helper-text">No slots available for this date.</p>
+                    )}
+                  </div>
+                  <div className="reschedule-modal-footer">
+                    <button type="button" className="btn btn-secondary" onClick={() => { setRescheduleTarget(null); setRescheduleDate(''); setRescheduleSlot(''); setRescheduleBookedSlots([]) }}>Cancel</button>
+                    <button type="button" className="btn btn-primary" disabled={!rescheduleDate || !rescheduleSlot || reschedulingId === rescheduleTarget.id} onClick={confirmReschedule}>
+                      {reschedulingId === rescheduleTarget.id ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         <div className="visit-choice-section">
           <div className="visit-choice-title">
             <span />
@@ -228,6 +637,7 @@ export default function Home() {
   const [galleryImages, setGalleryImages] = useState([])
   const [galleryIndex, setGalleryIndex] = useState(0)
   const [galleryLightbox, setGalleryLightbox] = useState(null)
+  const [reviewLightbox, setReviewLightbox] = useState(null)
   const [features, setFeatures] = useState(DEFAULT_FEATURES)
   const [packages, setPackages] = useState([])
   const [adminPhone, setAdminPhone] = useState('')
@@ -237,6 +647,11 @@ export default function Home() {
   const [googleReviewUrl, setGoogleReviewUrl] = useState('')
   const [homePetImages, setHomePetImages] = useState({ cta: '', follow: '' })
   const [footerInfo, setFooterInfo] = useState({ tagline: '', socials: [], phones: [], email: '' })
+  const [reviewIndex, setReviewIndex] = useState(0)
+  const [reviewCarouselHeight, setReviewCarouselHeight] = useState(0)
+  const [touchStartX, setTouchStartX] = useState(null)
+  const reviewCarouselRef = useRef(null)
+  const reviewSlideRefs = useRef([])
 
   useEffect(() => {
     async function fetchStats() {
@@ -337,6 +752,33 @@ export default function Home() {
   }, [galleryImages.length])
 
   const homeServices = buildServiceCatalog(serviceDetails)
+  const featuredReviews = reviews.slice(0, 5)
+
+  useEffect(() => {
+    setReviewIndex(0)
+  }, [featuredReviews.length])
+
+  useEffect(() => {
+    if (!featuredReviews.length) {
+      setReviewCarouselHeight(0)
+      return
+    }
+
+    const updateCarouselHeight = () => {
+      const activeSlide = reviewSlideRefs.current[reviewIndex]
+      if (activeSlide) {
+        setReviewCarouselHeight(activeSlide.offsetHeight)
+      }
+    }
+
+    const frame = window.requestAnimationFrame(updateCarouselHeight)
+    window.addEventListener('resize', updateCarouselHeight)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', updateCarouselHeight)
+    }
+  }, [featuredReviews.length, reviewIndex])
 
   const shownServices = [
     ...homeServices.slice(0, 5),
@@ -350,6 +792,26 @@ export default function Home() {
       to: `/book?package=${pkg.id}`,
     })),
   ]
+
+  const goToReview = (index) => {
+    if (!featuredReviews.length) return
+    setReviewIndex((index + featuredReviews.length) % featuredReviews.length)
+  }
+
+  const handleReviewTouchStart = (event) => {
+    setTouchStartX(event.touches[0]?.clientX ?? null)
+  }
+
+  const handleReviewTouchEnd = (event) => {
+    if (touchStartX === null) return
+    const delta = (event.changedTouches[0]?.clientX ?? touchStartX) - touchStartX
+    if (delta > 50) {
+      goToReview(reviewIndex - 1)
+    } else if (delta < -50) {
+      goToReview(reviewIndex + 1)
+    }
+    setTouchStartX(null)
+  }
 
   const socialIcon = (platform) => {
     if (platform === 'instagram') return <Instagram size={18} />
@@ -472,30 +934,71 @@ export default function Home() {
       )}
 
       {/* Reviews section */}
-      {reviews.length > 0 && (
+      {featuredReviews.length > 0 && (
         <section className="home-reviews-section">
           <div className="home-section-head centered decorated">
             <p className="section-label">What Customers Say</p>
             <h2>Real Reviews <PawPrint size={24} /></h2>
           </div>
-          <div className="home-review-list">
-            {reviews.slice(0, 3).map((r, i) => (
-              <article key={r.id} className="home-review-card fade-up" style={{ animationDelay: `${i * 0.08}s` }}>
-                <div className="home-review-person">
-                  <div className="home-review-avatar">
-                    {r.userPhoto
-                      ? <img src={r.userPhoto} alt="" />
-                      : <span>{r.userName?.[0]?.toUpperCase() || 'P'}</span>}
+          <div className="home-review-carousel" ref={reviewCarouselRef} onTouchStart={handleReviewTouchStart} onTouchEnd={handleReviewTouchEnd} style={{ height: reviewCarouselHeight ? `${reviewCarouselHeight}px` : 'auto' }}>
+            <div className="home-review-carousel-track" style={{ transform: `translateX(-${reviewIndex * 100}%)` }}>
+              {featuredReviews.map((r, index) => {
+                const hasReviewImages = Array.isArray(r.images) && r.images.length > 0;
+                return (
+                <article
+                  key={r.id}
+                  ref={(el) => {
+                    reviewSlideRefs.current[index] = el
+                  }}
+                  className={`home-review-card home-review-slide ${hasReviewImages ? 'has-images' : 'no-images'}`}
+                >
+                  <div className="home-review-person">
+                    <div className="home-review-avatar">
+                      {r.userPhoto
+                        ? <img src={r.userPhoto} alt="" />
+                        : <span>{r.userName?.[0]?.toUpperCase() || 'P'}</span>}
+                    </div>
+                    <div>
+                      <strong>{r.userName || 'Pet Parent'}</strong>
+                      <span>{[1,2,3,4,5].map(n => <Star key={n} size={14} fill={n <= (r.rating || 5) ? 'currentColor' : 'none'} />)}</span>
+                    </div>
                   </div>
-                  <div>
-                    <strong>{r.userName || 'Pet Parent'}</strong>
-                    <span>{[1,2,3,4,5].map(n => <Star key={n} size={14} fill={n <= (r.rating || 5) ? 'currentColor' : 'none'} />)}</span>
-                  </div>
-                </div>
-                <p>&quot;{cleanReviewText(r.comment)}&quot;</p>
-              </article>
-            ))}
+                  <p>&quot;{cleanReviewText(r.comment)}&quot;</p>
+                  {hasReviewImages && (
+                    <div className="home-review-image-grid">
+                      {r.images.slice(0, 3).map((image, index) => (
+                        <button
+                          key={`${r.id}-${index}`}
+                          type="button"
+                          className="home-review-image-thumb-btn"
+                          onClick={() => setReviewLightbox({ url: image, alt: `${r.userName || 'Review'} image ${index + 1}` })}
+                          aria-label={`Open review image ${index + 1}`}
+                        >
+                          <img className="home-review-image-thumb" src={image} alt={`${r.userName || 'Review'} image ${index + 1}`} loading="lazy" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </article>
+                );
+              })}
+            </div>
           </div>
+          {featuredReviews.length > 1 && (
+            <div className="home-review-nav">
+              <button type="button" className="home-review-nav-btn" onClick={() => goToReview(reviewIndex - 1)} aria-label="Previous review">
+                <ChevronLeft size={16} />
+              </button>
+              <div className="home-review-dots">
+                {featuredReviews.map((_, index) => (
+                  <button key={index} type="button" className={index === reviewIndex ? 'active' : ''} onClick={() => goToReview(index)} aria-label={`Go to review ${index + 1}`} />
+                ))}
+              </div>
+              <button type="button" className="home-review-nav-btn" onClick={() => goToReview(reviewIndex + 1)} aria-label="Next review">
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
           <div className="home-review-actions">
             <Link to="/reviews" className="btn btn-secondary">See All Reviews <ArrowRight size={16} /></Link>
             {googleReviewUrl && (
@@ -544,8 +1047,6 @@ export default function Home() {
           <iframe
             title="Location"
             src={contactAddress ? `https://www.google.com/maps?q=${encodeURIComponent(contactAddress)}&output=embed` : 'about:blank'}
-            width="100%" height="100%"
-            style={{ border: 0 }}
             allowFullScreen loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
           />
@@ -585,6 +1086,17 @@ export default function Home() {
             </button>
             <img src={galleryLightbox.url} alt={galleryLightbox.caption || ''} style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain' }} />
             {galleryLightbox.caption && <p style={{ color:'#fff', textAlign:'center', marginTop:'14px', fontSize:'15px' }}>{galleryLightbox.caption}</p>}
+          </div>
+        </div>
+      )}
+
+      {reviewLightbox && (
+        <div onClick={() => setReviewLightbox(null)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.94)', zIndex:220, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px', cursor:'pointer' }}>
+          <div onClick={e => e.stopPropagation()} style={{ maxWidth:'900px', width:'100%', cursor:'default' }}>
+            <button onClick={() => setReviewLightbox(null)} aria-label="Close review image" style={{ marginLeft: 'auto', marginBottom: '12px', width: '36px', height: '36px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <X size={18} />
+            </button>
+            <img src={reviewLightbox.url} alt={reviewLightbox.alt || 'Review image'} style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain' }} />
           </div>
         </div>
       )}

@@ -1,10 +1,13 @@
 // src/pages/Reviews.jsx
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import Cropper from 'react-easy-crop'
 import { collection, getDocs, addDoc, query, orderBy, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
-import { Send } from 'lucide-react'
+import { cropImageFile, isSupportedImage, optimizeImageForUpload, validateImageFile } from '../utils/imageCompression'
+import { uploadToCloudinary } from '../utils/cloudinary'
+import { Crop as CropIcon, ImagePlus, Send, X } from 'lucide-react'
 
 function Stars({ value, onChange, readonly = false }) {
   const [hover, setHover] = useState(0)
@@ -27,6 +30,21 @@ export default function Reviews() {
   const [form, setForm]         = useState({ rating: 5, comment: '', petName: '' })
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted]   = useState(false)
+  const [selectedImages, setSelectedImages] = useState([])
+  const [imageError, setImageError] = useState('')
+  const [reviewLightbox, setReviewLightbox] = useState(null)
+  const [pendingCropFiles, setPendingCropFiles] = useState([])
+  const [cropModal, setCropModal] = useState({
+    open: false,
+    file: null,
+    previewUrl: '',
+    crop: { x: 0, y: 0 },
+    zoom: 1,
+    croppedAreaPixels: null,
+    processing: false,
+    aspect: 1,
+  })
+  const imageInputRef = useRef(null)
 
   const fetchReviews = async () => {
     try {
@@ -40,20 +58,138 @@ export default function Reviews() {
   const avgRating = reviews.length ? (reviews.reduce((s, r) => s + (r.rating || 5), 0) / reviews.length).toFixed(1) : '5.0'
   const dist = [5,4,3,2,1].map(n => ({ n, count: reviews.filter(r => r.rating === n).length, pct: reviews.length ? Math.round((reviews.filter(r => r.rating === n).length / reviews.length) * 100) : 0 }))
 
+  const openCropModalForFile = (file) => {
+    const previewUrl = URL.createObjectURL(file)
+    setCropModal({
+      open: true,
+      file,
+      previewUrl,
+      crop: { x: 0, y: 0 },
+      zoom: 1,
+      croppedAreaPixels: null,
+      processing: false,
+      aspect: 1,
+    })
+  }
+
+  const closeCropModal = () => {
+    if (cropModal.previewUrl) {
+      URL.revokeObjectURL(cropModal.previewUrl)
+    }
+
+    if (pendingCropFiles.length > 0) {
+      const [nextFile, ...remaining] = pendingCropFiles
+      setPendingCropFiles(remaining)
+      openCropModalForFile(nextFile)
+      return
+    }
+
+    setCropModal({
+      open: false,
+      file: null,
+      previewUrl: '',
+      crop: { x: 0, y: 0 },
+      zoom: 1,
+      croppedAreaPixels: null,
+      processing: false,
+      aspect: 1,
+    })
+  }
+
+  const handleImageSelection = async (event) => {
+    const files = Array.from(event.target.files || [])
+    if (!files.length) return
+
+    const remainingSlots = 3 - selectedImages.length
+    if (remainingSlots <= 0) {
+      setImageError('You can add up to 3 images to a review.')
+      event.target.value = ''
+      return
+    }
+
+    const nextFiles = files.slice(0, remainingSlots)
+    const invalid = nextFiles.find(file => !isSupportedImage(file))
+    if (invalid) {
+      setImageError('Please choose JPG, PNG, or WEBP images only.')
+      event.target.value = ''
+      return
+    }
+
+    try {
+      nextFiles.forEach(file => {
+        validateImageFile(file)
+      })
+
+      const [firstFile, ...remaining] = nextFiles
+      setPendingCropFiles(remaining)
+      if (firstFile) {
+        openCropModalForFile(firstFile)
+      }
+      setImageError('')
+    } catch (error) {
+      setImageError(error.message || 'We could not prepare the image. Please try another image.')
+    } finally {
+      event.target.value = ''
+    }
+  }
+
+  const handleCropComplete = (_, croppedAreaPixels) => {
+    setCropModal(prev => ({ ...prev, croppedAreaPixels }))
+  }
+
+  const handleCropConfirm = async () => {
+    if (!cropModal.file) return
+
+    setCropModal(prev => ({ ...prev, processing: true }))
+    try {
+      const processedFile = cropModal.croppedAreaPixels ? await cropImageFile(cropModal.file, cropModal.croppedAreaPixels) : cropModal.file
+      const optimizedFile = await optimizeImageForUpload(processedFile)
+
+      setSelectedImages(prev => [...prev, {
+        id: `${Date.now()}-${Math.random()}`,
+        file: optimizedFile,
+        previewUrl: URL.createObjectURL(optimizedFile),
+      }])
+      setImageError('')
+    } catch (error) {
+      setImageError(error.message || 'We could not prepare the image. Please try another image.')
+    } finally {
+      closeCropModal()
+    }
+  }
+
+  const removeSelectedImage = (id) => {
+    setSelectedImages(prev => prev.filter(item => item.id !== id))
+  }
+
   const handleSubmit = async () => {
     if (isBlocked || !form.comment.trim() || !user) return
     setSubmitting(true)
+    setImageError('')
     try {
+      const imageUrls = []
+      if (selectedImages.length) {
+        for (const item of selectedImages) {
+          const uploadedUrl = await uploadToCloudinary(item.file)
+          imageUrls.push(uploadedUrl)
+        }
+      }
+
       await addDoc(collection(db, 'reviews'), {
         userId: user.uid, userEmail: user.email || '',
         userName: user.displayName || user.email?.split('@')[0] || 'Pet Parent',
         userPhoto: user.photoURL || '',
         rating: form.rating, comment: form.comment.trim(), petName: form.petName,
+        images: imageUrls,
         createdAt: serverTimestamp(),
       })
-      setSubmitted(true); setForm({ rating: 5, comment: '', petName: '' })
+      setSubmitted(true)
+      setForm({ rating: 5, comment: '', petName: '' })
+      setSelectedImages([])
       await fetchReviews()
-    } catch {}
+    } catch (error) {
+      setImageError(error.message || 'We could not submit your review right now.')
+    }
     setSubmitting(false)
   }
 
@@ -106,6 +242,11 @@ export default function Reviews() {
                 ✓ Thank you! Your review has been published.
               </div>
             )}
+            {imageError && (
+              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', fontSize: '13px', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px' }}>
+                {imageError}
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div><label style={L}>Your Rating</label><Stars value={form.rating} onChange={v => setForm(p => ({ ...p, rating: v }))} /></div>
               <div>
@@ -115,6 +256,27 @@ export default function Reviews() {
               <div>
                 <label style={L}>Your Review *</label>
                 <textarea className="input" style={{ resize: 'none' }} rows={4} placeholder="Share your experience at Paw Paw Pet Grooming..." value={form.comment} onChange={e => setForm(p => ({ ...p, comment: e.target.value }))} />
+              </div>
+              <div>
+                <label style={L}>Add up to 3 photos</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                  <button type="button" className="btn btn-secondary" onClick={() => imageInputRef.current?.click()}>
+                    <ImagePlus size={15} /> Add Photos
+                  </button>
+                </div>
+                <input ref={imageInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple hidden onChange={handleImageSelection} />
+                {selectedImages.length > 0 && (
+                  <div className="review-upload-grid">
+                    {selectedImages.map((item) => (
+                      <div key={item.id} className="review-upload-tile">
+                        <img src={item.previewUrl} alt="Review preview" />
+                        <button type="button" className="review-upload-remove" onClick={() => removeSelectedImage(item.id)}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <button onClick={handleSubmit} disabled={isBlocked || submitting || !form.comment.trim()} className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
                 <Send size={15} /> {submitting ? 'Submitting…' : 'Submit Review'}
@@ -148,6 +310,15 @@ export default function Reviews() {
                       <Stars value={r.rating} readonly />
                     </div>
                     <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: 1.7 }}>"{r.comment}"</p>
+                    {r.images?.length > 0 && (
+                      <div className="review-upload-grid" style={{ marginTop: '12px' }}>
+                        {r.images.map((imageUrl, index) => (
+                          <button key={`${r.id}-${index}`} type="button" className="review-upload-tile" onClick={() => setReviewLightbox({ url: imageUrl, alt: `Review photo ${index + 1}` })}>
+                            <img src={imageUrl} alt={`Review photo ${index + 1}`} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {r.createdAt?.toDate && (
                       <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>
                         {r.createdAt.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -157,6 +328,54 @@ export default function Reviews() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+        {reviewLightbox && (
+          <div onClick={() => setReviewLightbox(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(7, 10, 18, 0.94)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', cursor: 'pointer' }}>
+            <div onClick={e => e.stopPropagation()} style={{ maxWidth: '900px', width: '100%', cursor: 'default' }}>
+              <button onClick={() => setReviewLightbox(null)} aria-label="Close review image" style={{ marginLeft: 'auto', marginBottom: '12px', width: '36px', height: '36px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+              <img src={reviewLightbox.url} alt={reviewLightbox.alt || 'Review image'} style={{ width: '100%', borderRadius: '10px', maxHeight: '80vh', objectFit: 'contain' }} />
+            </div>
+          </div>
+        )}
+
+        {cropModal.open && cropModal.file && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(7, 10, 18, 0.82)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+            <div style={{ width: '100%', maxWidth: '560px', background: '#ffffff', border: '1px solid var(--border)', borderRadius: '24px', boxShadow: '0 24px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '14px', padding: '18px 18px 0' }}>
+                <div>
+                  <h2 style={{ color: 'var(--text)', fontSize: '18px', fontWeight: 900, margin: 0 }}>Crop Photo</h2>
+                  <p style={{ color: 'var(--muted)', fontSize: '12px', margin: '4px 0 0' }}>Adjust the photo before saving it to your review.</p>
+                </div>
+                <button type="button" onClick={closeCropModal} aria-label="Close cropper" style={{ width: '34px', height: '34px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--muted)', cursor: 'pointer' }}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div style={{ position: 'relative', width: '100%', height: 'min(62vh, 420px)', minHeight: '300px', marginTop: '16px', background: '#111' }}>
+                <Cropper
+                  image={cropModal.previewUrl}
+                  crop={cropModal.crop}
+                  zoom={cropModal.zoom}
+                  aspect={cropModal.aspect}
+                  cropShape="rect"
+                  onCropChange={(crop) => setCropModal(prev => ({ ...prev, crop }))}
+                  onZoomChange={(zoom) => setCropModal(prev => ({ ...prev, zoom }))}
+                  onCropComplete={handleCropComplete}
+                />
+              </div>
+              <label style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '12px', alignItems: 'center', padding: '16px 18px 0', color: 'var(--muted)', fontSize: '12px', fontWeight: 800 }}>
+                Zoom
+                <input type="range" min="1" max="3" step="0.05" value={cropModal.zoom} onChange={(event) => setCropModal(prev => ({ ...prev, zoom: Number(event.target.value) }))} style={{ width: '100%' }} />
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', padding: '16px 18px 18px' }}>
+                <button type="button" className="btn btn-secondary" onClick={closeCropModal}>Cancel</button>
+                <button type="button" className="btn btn-primary" onClick={handleCropConfirm} disabled={cropModal.processing}>
+                  {cropModal.processing ? 'Preparing…' : 'Use this photo'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
