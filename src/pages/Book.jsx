@@ -11,6 +11,7 @@ import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getP
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { renderServiceIcon } from '../utils/serviceIcons.jsx'
+import Toast from '../components/Toast'
 
 const parseSlotStart = (dateString, slotLabel) => {
   const match = String(slotLabel || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
@@ -72,10 +73,17 @@ export default function Book() {
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
   const [bookingSettings, setBookingSettings] = useState(null)
+  const [bookingToast, setBookingToast] = useState('')
 
   useEffect(() => {
     bookingTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [step, done])
+
+  useEffect(() => {
+    if (!bookingToast) return
+    const t = window.setTimeout(() => setBookingToast(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [bookingToast])
 
   // Fetch packages and service details
   useEffect(() => {
@@ -316,10 +324,7 @@ export default function Book() {
       }
       const ref = await addDoc(collection(db, 'bookings'), bookingData)
       setBookingRef({ id: ref.id, ...bookingData })
-
-
-
-
+      setBookingToast('Thank you! Your appointment request has been submitted successfully.')
       setDone(true)
     } catch (err) { alert(err?.message || 'Booking failed. Please try again.') }
     setLoading(false)
@@ -349,6 +354,11 @@ export default function Book() {
 
   if (done && bookingRef) return (
     <div style={S.page}>
+      {bookingToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={bookingToast} type="success" onClose={() => setBookingToast('')} />
+        </div>
+      )}
       <div ref={bookingTopRef} style={{ ...S.wrap, textAlign: 'center' }}>
         <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(52,211,153,0.1)', border: '2px solid rgba(52,211,153,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', color: '#34d399' }}>
           <CheckCircle size={36} />
@@ -387,6 +397,11 @@ export default function Book() {
 
   return (
     <div style={S.page}>
+      {bookingToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={bookingToast} type="success" onClose={() => setBookingToast('')} />
+        </div>
+      )}
       <div ref={bookingTopRef} style={S.wrap}>
         <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Book Appointment</h1>
         <p style={{ color: 'var(--muted)', marginBottom: '28px', fontSize: '14px' }}>Fill the details below to schedule your visit</p>

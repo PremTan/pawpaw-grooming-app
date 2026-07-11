@@ -2,9 +2,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { collection, doc, getDocs, orderBy, query, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore'
-import { Calendar, CheckCircle2, Clock, IndianRupee, MessageCircle, Phone, Search, UserRound, X } from 'lucide-react'
+import Cropper from 'react-easy-crop'
+import { Calendar, Camera, CheckCircle2, Clock, IndianRupee, MessageCircle, Phone, Search, Upload, UserRound, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
+import Toast from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import { db } from '../firebase'
@@ -14,6 +16,8 @@ import { fetchBusinessInfo } from '../utils/businessInfo'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel } from '../utils/bookingSettings'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { OWNER_ASSIGNEE_ID, buildAssigneePatch, getAssigneeLabel, getBookingAssignee, getOwnerAssignee } from '../utils/teamMembers'
+import { uploadToCloudinary } from '../utils/cloudinary'
+import { IMAGE_FILE_ACCEPT, cropImageFile, validateImageFile } from '../utils/imageCompression'
 
 const STATUS_OPTS = ['all', 'pending', 'confirmed', 'completed', 'cancelled']
 const BADGE = { pending: 'badge-pending', confirmed: 'badge-confirmed', completed: 'badge-completed', cancelled: 'badge-cancelled' }
@@ -108,6 +112,11 @@ export default function AdminBookings() {
   const [updating, setUpdating] = useState(null)
   const [cashModal, setCashModal] = useState(null)
   const [cashAmt, setCashAmt] = useState('')
+  const [completionImageUrls, setCompletionImageUrls] = useState({ before: '', after: '' })
+  const [completionPreviewUrls, setCompletionPreviewUrls] = useState({ before: '', after: '' })
+  const [completionUploading, setCompletionUploading] = useState({ before: false, after: false })
+  const [cropperState, setCropperState] = useState(null)
+  const [completionToast, setCompletionToast] = useState('')
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
@@ -182,6 +191,12 @@ export default function AdminBookings() {
   useEffect(() => {
     fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!completionToast) return
+    const t = window.setTimeout(() => setCompletionToast(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [completionToast])
 
   useEffect(() => {
     if (!rescheduleTarget?.id || !rescheduleDate) {
@@ -339,8 +354,9 @@ export default function AdminBookings() {
     if (!b?.id) return
     if (status === 'completed') {
       if (b.status !== 'confirmed') return
-      setCashModal(b)
+      resetCompletionUploads()
       setCashAmt('')
+      setCashModal(b)
       return
     }
     if (status === 'confirmed' && b.status !== 'pending') return
@@ -380,6 +396,60 @@ export default function AdminBookings() {
     setCancelTarget(booking)
   }
 
+  const resetCompletionUploads = () => {
+    setCompletionImageUrls({ before: '', after: '' })
+    setCompletionPreviewUrls({ before: '', after: '' })
+    setCompletionUploading({ before: false, after: false })
+    setCropperState(null)
+  }
+
+  const removeCompletionImage = (kind) => {
+    const currentPreview = completionPreviewUrls[kind]
+    if (currentPreview?.startsWith('blob:')) URL.revokeObjectURL(currentPreview)
+    setCompletionImageUrls(prev => ({ ...prev, [kind]: '' }))
+    setCompletionPreviewUrls(prev => ({ ...prev, [kind]: '' }))
+  }
+
+  const openCompletionCropper = (kind, file) => {
+    if (!file) return
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      alert(err.message || 'Could not validate this image.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      setCropperState({ kind, file, src: reader.result, crop: { x: 0, y: 0 }, zoom: 1, croppedAreaPixels: null })
+    }
+    reader.onerror = () => { alert('Could not read this image.') }
+    reader.readAsDataURL(file)
+  }
+
+  const confirmCompletionCrop = async () => {
+    if (!cropperState?.file || !cropperState?.croppedAreaPixels) return
+    const { kind, file } = cropperState
+    setCompletionUploading(prev => ({ ...prev, [kind]: true }))
+    try {
+      const croppedFile = await cropImageFile(file, cropperState.croppedAreaPixels, { outputType: file.type || 'image/jpeg' })
+      const url = await uploadToCloudinary(croppedFile)
+      setCompletionImageUrls(prev => ({ ...prev, [kind]: url }))
+      setCompletionPreviewUrls(prev => ({ ...prev, [kind]: url }))
+      setCropperState(null)
+    } catch (err) {
+      alert(err.message || `Could not upload the ${kind === 'before' ? 'before' : 'after'} image.`)
+    } finally {
+      setCompletionUploading(prev => ({ ...prev, [kind]: false }))
+    }
+  }
+
+  const closeCompletionModal = () => {
+    setCashModal(null)
+    setCashAmt('')
+    resetCompletionUploads()
+  }
+
   const confirmCancel = async () => {
     if (!cancelTarget) return
     await updateStatus(cancelTarget, 'cancelled', cancelReason)
@@ -390,10 +460,25 @@ export default function AdminBookings() {
     if (!cashModal || cashModal.status !== 'confirmed') return
     setUpdating(cashModal.id)
     const amt = parseFloat(cashAmt) || 0
+    const beforeImageUrl = completionImageUrls.before?.trim() || ''
+    const afterImageUrl = completionImageUrls.after?.trim() || ''
     try {
-      await updateDoc(doc(db, 'bookings', cashModal.id), { status: 'completed', amountCollected: amt })
-      patchBooking(cashModal.id, { status: 'completed', amountCollected: amt })
+      const patch = {
+        status: 'completed',
+        amountCollected: amt,
+        beforeImageUrl: beforeImageUrl || null,
+        afterImageUrl: afterImageUrl || null,
+        updatedAt: serverTimestamp(),
+        completedAt: serverTimestamp(),
+      }
+      await updateDoc(doc(db, 'bookings', cashModal.id), patch)
+      patchBooking(cashModal.id, {
+        ...patch,
+        updatedAt: new Date(),
+        completedAt: new Date(),
+      })
       await syncPublicStats(db)
+      setCompletionToast('Appointment marked completed successfully.')
       if (cashModal.userId && cashModal.userId !== 'walkin') {
         await sendNotification(cashModal.userId, {
           title: 'Appointment completed',
@@ -404,8 +489,7 @@ export default function AdminBookings() {
         })
       }
     } catch {}
-    setCashModal(null)
-    setCashAmt('')
+    closeCompletionModal()
     setUpdating(null)
   }
 
@@ -430,6 +514,7 @@ export default function AdminBookings() {
 
   return (
     <div className="admin-bookings-page">
+      {completionToast && <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}><Toast message={completionToast} type="success" onClose={() => setCompletionToast('')} /></div>}
       <div className="admin-bookings-header">
         <div>
           <h1>Bookings</h1>
@@ -608,7 +693,7 @@ export default function AdminBookings() {
       />
 
       {cashModal && (
-        <div className="modal-overlay" onClick={() => setCashModal(null)}>
+        <div className="modal-overlay" onClick={closeCompletionModal}>
           <div className="modal-box admin-booking-cash-modal" onClick={e => e.stopPropagation()}>
             <div>
               <h2>Complete Appointment</h2>
@@ -619,10 +704,66 @@ export default function AdminBookings() {
                 <input className="input" type="number" min="0" placeholder="e.g. 600" value={cashAmt} onChange={e => setCashAmt(e.target.value)} autoFocus />
               </div>
               {cashAmt && <p className="admin-booking-confirm-money">Rs {money(cashAmt)} will be recorded</p>}
+              <div style={{ marginTop: '16px', display: 'grid', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>Before image (optional)</label>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13px', padding: '10px 14px' }}>
+                      <Upload size={15} /> {completionUploading.before ? 'Uploading...' : completionImageUrls.before ? 'Change Before Image' : 'Upload Before Image'}
+                      <input type="file" accept={IMAGE_FILE_ACCEPT} style={{ display: 'none' }} onChange={e => openCompletionCropper('before', e.target.files?.[0])} />
+                    </label>
+                    {completionImageUrls.before && <button type="button" className="btn btn-danger" style={{ fontSize: '13px', padding: '10px 14px' }} onClick={() => removeCompletionImage('before')}>Remove</button>}
+                  </div>
+                  {completionPreviewUrls.before && <img src={completionPreviewUrls.before} alt="Before appointment" style={{ width: '100%', maxHeight: '180px', objectFit: 'cover', borderRadius: '12px', border: '1px solid var(--border)', marginTop: '10px' }} />}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>After image (optional)</label>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13px', padding: '10px 14px' }}>
+                      <Upload size={15} /> {completionUploading.after ? 'Uploading...' : completionImageUrls.after ? 'Change After Image' : 'Upload After Image'}
+                      <input type="file" accept={IMAGE_FILE_ACCEPT} style={{ display: 'none' }} onChange={e => openCompletionCropper('after', e.target.files?.[0])} />
+                    </label>
+                    {completionImageUrls.after && <button type="button" className="btn btn-danger" style={{ fontSize: '13px', padding: '10px 14px' }} onClick={() => removeCompletionImage('after')}>Remove</button>}
+                  </div>
+                  {completionPreviewUrls.after && <img src={completionPreviewUrls.after} alt="After appointment" style={{ width: '100%', maxHeight: '180px', objectFit: 'cover', borderRadius: '12px', border: '1px solid var(--border)', marginTop: '10px' }} />}
+                </div>
+              </div>
+              <p style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '10px' }}>Images are optional. Uploads up to 10 MB are auto-resized to around 1 MB.</p>
               <div className="admin-booking-modal-actions">
-                <button onClick={() => setCashModal(null)} className="btn btn-secondary">Cancel</button>
+                <button onClick={closeCompletionModal} className="btn btn-secondary">Cancel</button>
                 <button onClick={handleComplete} className="btn btn-primary">Mark Complete</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cropperState && (
+        <div className="modal-overlay" onClick={() => setCropperState(null)}>
+          <div className="modal-box" style={{ maxWidth: '720px', width: 'min(720px, calc(100vw - 24px))', padding: '18px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div>
+                <h3 style={{ margin: 0, color: 'var(--text)', fontSize: '16px' }}>Crop {cropperState.kind === 'before' ? 'Before' : 'After'} Image</h3>
+                <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: '12px' }}>Adjust the frame and confirm to upload the cropped image.</p>
+              </div>
+              <button type="button" onClick={() => setCropperState(null)} aria-label="Close cropper"><X size={18} /></button>
+            </div>
+            <div style={{ position: 'relative', width: '100%', height: '360px', background: '#111', borderRadius: '12px', overflow: 'hidden' }}>
+              <Cropper
+                image={cropperState.src}
+                crop={cropperState.crop}
+                zoom={cropperState.zoom}
+                aspect={4 / 3}
+                onCropChange={crop => setCropperState(prev => prev ? { ...prev, crop } : prev)}
+                onZoomChange={zoom => setCropperState(prev => prev ? { ...prev, zoom } : prev)}
+                onCropComplete={(_, croppedAreaPixels) => setCropperState(prev => prev ? { ...prev, croppedAreaPixels } : prev)}
+                showGrid={false}
+              />
+            </div>
+            <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end' }}>
+              <input type="range" min={1} max={3} step={0.1} value={cropperState.zoom} onChange={e => setCropperState(prev => prev ? { ...prev, zoom: Number(e.target.value) } : prev)} style={{ flex: 1, maxWidth: '220px' }} />
+              <button type="button" className="btn btn-secondary" onClick={() => setCropperState(null)}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={confirmCompletionCrop} disabled={completionUploading[cropperState.kind]}>{completionUploading[cropperState.kind] ? 'Uploading...' : 'Confirm Crop'}</button>
             </div>
           </div>
         </div>
@@ -638,6 +779,7 @@ function cancellationActor(booking) {
 }
 
 function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, assignee, assigneeOptions, onAssign, onClose, onStatus, onCancelBooking, onReschedule, canReschedule }) {
+  const [lightboxImage, setLightboxImage] = useState(null)
   const detailRows = [
     ['Booking ID', shortId(booking.id)],
     ['Owner', booking.ownerName || '-'],
@@ -691,6 +833,16 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
           ))}
         </div>
 
+        {(booking.beforeImageUrl || booking.afterImageUrl) && (
+          <div className="admin-booking-image-section" style={{ marginTop: '16px' }}>
+            <h3 style={{ color: 'var(--text)', fontSize: '14px', fontWeight: 900, marginBottom: '10px' }}>Before & After</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
+              {booking.beforeImageUrl && <button type="button" onClick={() => setLightboxImage({ url: booking.beforeImageUrl, label: 'Before' })} style={{ padding: 0, background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}><span style={{ display: 'block', color: 'var(--muted)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>Before</span><img src={booking.beforeImageUrl} alt="Before appointment" style={{ width: '100%', borderRadius: '12px', objectFit: 'cover', aspectRatio: '4/3', border: '1px solid var(--border)' }} /></button>}
+              {booking.afterImageUrl && <button type="button" onClick={() => setLightboxImage({ url: booking.afterImageUrl, label: 'After' })} style={{ padding: 0, background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}><span style={{ display: 'block', color: 'var(--muted)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>After</span><img src={booking.afterImageUrl} alt="After appointment" style={{ width: '100%', borderRadius: '12px', objectFit: 'cover', aspectRatio: '4/3', border: '1px solid var(--border)' }} /></button>}
+            </div>
+          </div>
+        )}
+
         <div className="admin-booking-assignee-panel">
           <label>Assigned Team Member</label>
           <select className="input" value={assignee?.id || OWNER_ASSIGNEE_ID} onChange={e => onAssign(booking, e.target.value)} disabled={booking.status !== 'confirmed' || updating === booking.id}>
@@ -698,6 +850,18 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
           </select>
           {booking.status !== 'confirmed' && <p>Assignments can be changed after an appointment is confirmed.</p>}
         </div>
+
+        {lightboxImage && (
+          <div className="modal-overlay" onClick={() => setLightboxImage(null)} style={{ zIndex: 1400 }}>
+            <div style={{ maxWidth: '900px', width: 'min(900px, calc(100vw - 24px))', maxHeight: '90vh', display: 'grid', gap: '10px' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'white', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>{lightboxImage.label}</span>
+                <button type="button" onClick={() => setLightboxImage(null)} aria-label="Close image preview" style={{ width: '38px', height: '38px', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.24)', background: 'rgba(255,255,255,0.12)', color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><X size={18} /></button>
+              </div>
+              <img src={lightboxImage.url} alt={lightboxImage.label} style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: '16px', background: '#111' }} />
+            </div>
+          </div>
+        )}
 
         <div className="admin-booking-detail-actions">
           {booking.status === 'pending' && (

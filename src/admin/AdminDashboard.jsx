@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
 import { ArrowRight, BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Store, UserCheck, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { calculatePublicStats } from '../utils/publicStats'
@@ -98,6 +99,8 @@ export default function AdminDashboard() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
   const [bookingSettings, setBookingSettings] = useState(null)
   const [teamMembers, setTeamMembers] = useState([])
   const [serviceDetails, setServiceDetails] = useState({})
@@ -196,6 +199,12 @@ export default function AdminDashboard() {
   useEffect(() => { fetchData() }, [])
 
   useEffect(() => {
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [toastMessage])
+
+  useEffect(() => {
     async function fetchTeamMembers() {
       try {
         const snap = await getDocs(query(collection(db, 'teamMembers'), orderBy('createdAt', 'desc')))
@@ -258,9 +267,25 @@ export default function AdminDashboard() {
 
   const handleSave = async () => {
     const { ownerName, phone, petName, serviceId, date, slot } = walkin
-    if (!ownerName || !phone || !petName || !serviceId || !date || !slot) { setError('Please fill all required fields *'); return }
-    if (walkin.bookingType === 'home' && !walkin.address.trim()) { setError('Please enter home visit address'); return }
-    setSaving(true); setError('')
+    if (!ownerName || !phone || !petName || !serviceId || !date || !slot) {
+      const msg = 'Please fill all required fields.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
+      setSuccess(false)
+      return
+    }
+    if (walkin.bookingType === 'home' && !walkin.address.trim()) {
+      const msg = 'Please enter the home visit address.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
+      setSuccess(false)
+      return
+    }
+    setSaving(true)
+    setError('')
+    setSuccess(false)
     try {
       const svc = serviceCatalog.find(s => s.id === serviceId)
       const assignee = assigneeOptions.find(item => item.id === walkin.assignedTeamMemberId) || ownerAssignee
@@ -279,9 +304,21 @@ export default function AdminDashboard() {
         status: totalCollected ? BOOKING_STATUS.COMPLETED : BOOKING_STATUS.CONFIRMED,
         createdAt: serverTimestamp(),
       })
-      setSuccess(true); setWalkin(EMPTY); await fetchData()
-      setTimeout(() => { setSuccess(false); setShowModal(false) }, 2000)
-    } catch { setError('Failed to save. Try again.') }
+      setWalkin(EMPTY)
+      await fetchData()
+      setToastType('success')
+      setToastMessage('Walk-in booking saved successfully.')
+      setSuccess(true)
+      window.setTimeout(() => {
+        setSuccess(false)
+        setShowModal(false)
+      }, 2000)
+    } catch {
+      const msg = 'Failed to save offline appointment. Please try again.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
+    }
     setSaving(false)
   }
 
@@ -305,6 +342,11 @@ export default function AdminDashboard() {
 
   return (
     <div className="admin-page admin-dashboard">
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+        </div>
+      )}
       <div className="admin-page-header">
         <div>
           <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '28px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>Dashboard</h1>
@@ -442,9 +484,6 @@ export default function AdminDashboard() {
                 </div>
                 <button type="button" className="walkin-modal-close" onClick={() => setShowModal(false)} aria-label="Close offline appointment"><X size={20} /></button>
               </div>
-
-              {success && <div style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399', fontSize: '13px', padding: '12px', borderRadius: '10px', marginBottom: '16px' }}>Walk-in booking saved!</div>}
-              {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', fontSize: '13px', padding: '12px', borderRadius: '10px', marginBottom: '16px' }}>{error}</div>}
 
               <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '10px', padding: '12px', marginBottom: '20px', display: 'flex', gap: '10px' }}>
                 <UserCheck size={16} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: '1px' }} />

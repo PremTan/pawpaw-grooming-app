@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs, query, orderBy, limit, where, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import BrandLogo from '../components/BrandLogo'
+import Toast from '../components/Toast'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
 import { countOpenDays, fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
@@ -210,6 +211,7 @@ function HeroSlider() {
   const [upcomingAppointment, setUpcomingAppointment] = useState(null)
   const [upcomingPetProfile, setUpcomingPetProfile] = useState(null)
   const [bookingSettings, setBookingSettings] = useState(null)
+  const [rescheduleToast, setRescheduleToast] = useState('')
   const [rescheduleTarget, setRescheduleTarget] = useState(null)
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [rescheduleSlot, setRescheduleSlot] = useState('')
@@ -316,6 +318,12 @@ function HeroSlider() {
   }, [user?.uid, user?.email])
 
   useEffect(() => {
+    if (!rescheduleToast) return
+    const t = window.setTimeout(() => setRescheduleToast(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [rescheduleToast])
+
+  useEffect(() => {
     if (!rescheduleTarget?.id || !rescheduleDate) {
       setRescheduleBookedSlots([])
       return
@@ -392,6 +400,11 @@ function HeroSlider() {
     if (!rescheduleTarget || !rescheduleDate || !rescheduleSlot) return
     const previousDate = rescheduleTarget.date || ''
     const previousSlot = rescheduleTarget.slot || ''
+    const sameAsCurrent = String(rescheduleDate || '') === String(previousDate) && String(rescheduleSlot || '') === String(previousSlot)
+    if (sameAsCurrent) {
+      setRescheduleToast('Cannot reschedule to the same slot. Please choose a different slot.')
+      return
+    }
     const newBookingStart = rescheduleDate && rescheduleSlot ? (() => {
       const match = String(rescheduleSlot || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
       if (!match) return null
@@ -424,6 +437,7 @@ function HeroSlider() {
       setRescheduleDate('')
       setRescheduleSlot('')
       setRescheduleBookedSlots([])
+      setRescheduleToast('Appointment rescheduled successfully.')
     } catch {
       alert('Could not reschedule booking. Please try again.')
     }
@@ -451,6 +465,11 @@ function HeroSlider() {
 
   return (
     <section className="home-redesign" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+      {rescheduleToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={rescheduleToast} type={rescheduleToast.includes('Cannot') ? 'error' : 'success'} onClose={() => setRescheduleToast('')} />
+        </div>
+      )}
       <div className="home-redesign-inner">
         <div className="mobile-hero-card">
           <div className="mobile-hero-media" aria-label="Pet grooming hero images">
@@ -562,14 +581,28 @@ function HeroSlider() {
                   <div className="reschedule-modal-body">
                     <label className="reschedule-field">
                       <span>Date</span>
-                      <input type="date" className="input" value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} min={dateKeyLocal()} />
+                      <input type="date" className="input" value={rescheduleDate} onChange={event => { setRescheduleDate(event.target.value); setRescheduleSlot('') }} min={dateKeyLocal()} />
                     </label>
                     {rescheduleDate && rescheduleAvailability.open && (
                       <div className="reschedule-slot-grid">
                         {bookableRescheduleSlots.map(slot => {
                           const disabled = rescheduleBookedSlots.includes(slot)
+                          const isPast = isRescheduleToday && !isFutureSlotForDate(rescheduleDate, slot)
+                          const isSameAsCurrent = rescheduleTarget?.date === rescheduleDate && rescheduleTarget?.slot === slot
                           return (
-                            <button key={slot} type="button" className={`reschedule-slot-btn ${rescheduleSlot === slot ? 'active' : ''}`} disabled={disabled} onClick={() => setRescheduleSlot(slot)}>
+                            <button
+                              key={slot}
+                              type="button"
+                              className={`reschedule-slot-btn${isPast ? ' reschedule-slot-btn-past' : ''}${disabled ? ' reschedule-slot-btn-booked' : ' reschedule-slot-btn-available'}${rescheduleSlot === slot ? ' selected' : ''}`}
+                              disabled={disabled || isPast}
+                              onClick={() => {
+                                if (isSameAsCurrent) {
+                                  setRescheduleToast('Cannot reschedule to the same slot. Please choose a different slot.')
+                                  return
+                                }
+                                setRescheduleSlot(slot)
+                              }}
+                            >
                               {slot}
                             </button>
                           )
@@ -581,6 +614,9 @@ function HeroSlider() {
                     )}
                     {rescheduleDate && rescheduleAvailability.open && rescheduleBookedSlots.length === 0 && bookableRescheduleSlots.length === 0 && (
                       <p className="helper-text">No slots available for this date.</p>
+                    )}
+                    {rescheduleDate && rescheduleAvailability.open && (
+                      <p className="helper-text">Choose a different time from your current booking to avoid the same-slot conflict.</p>
                     )}
                   </div>
                   <div className="reschedule-modal-footer">

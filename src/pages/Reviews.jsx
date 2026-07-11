@@ -5,6 +5,7 @@ import { collection, getDocs, addDoc, query, orderBy, serverTimestamp } from 'fi
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 import { cropImageFile, isSupportedImage, optimizeImageForUpload, validateImageFile } from '../utils/imageCompression'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { Crop as CropIcon, ImagePlus, Send, X } from 'lucide-react'
@@ -30,6 +31,7 @@ export default function Reviews() {
   const [form, setForm]         = useState({ rating: 5, comment: '', petName: '' })
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted]   = useState(false)
+  const [reviewToast, setReviewToast] = useState('')
   const [selectedImages, setSelectedImages] = useState([])
   const [imageError, setImageError] = useState('')
   const [reviewLightbox, setReviewLightbox] = useState(null)
@@ -54,6 +56,12 @@ export default function Reviews() {
     setLoading(false)
   }
   useEffect(() => { fetchReviews() }, [])
+
+  useEffect(() => {
+    if (!reviewToast) return
+    const t = window.setTimeout(() => setReviewToast(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [reviewToast])
 
   const avgRating = reviews.length ? (reviews.reduce((s, r) => s + (r.rating || 5), 0) / reviews.length).toFixed(1) : '5.0'
   const dist = [5,4,3,2,1].map(n => ({ n, count: reviews.filter(r => r.rating === n).length, pct: reviews.length ? Math.round((reviews.filter(r => r.rating === n).length / reviews.length) * 100) : 0 }))
@@ -184,6 +192,7 @@ export default function Reviews() {
         createdAt: serverTimestamp(),
       })
       setSubmitted(true)
+      setReviewToast('Thank you! Your review has been submitted successfully.')
       setForm({ rating: 5, comment: '', petName: '' })
       setSelectedImages([])
       await fetchReviews()
@@ -197,6 +206,11 @@ export default function Reviews() {
 
   return (
     <div style={{ background: 'var(--bg)', paddingTop: '80px', minHeight: '100vh' }}>
+      {reviewToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={reviewToast} type="success" onClose={() => setReviewToast('')} />
+        </div>
+      )}
       <div style={{ maxWidth: '860px', margin: '0 auto', padding: '48px 20px 80px' }}>
 
         {/* Header */}
@@ -235,11 +249,6 @@ export default function Reviews() {
             {isBlocked && (
               <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', fontSize: '13px', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px' }}>
                 Your account is blocked from publishing reviews.
-              </div>
-            )}
-            {submitted && (
-              <div style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399', fontSize: '13px', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px' }}>
-                ✓ Thank you! Your review has been published.
               </div>
             )}
             {imageError && (

@@ -215,7 +215,7 @@
   }
   .badge-pending  { background: rgba(251,191,36,0.12); color: #fbbf24; border: 1px solid rgba(251,191,36,0.25); }
   .badge-confirmed { background: rgba(52,211,153,0.12); color: #34d399; border: 1px solid rgba(52,211,153,0.25); }
-  .badge-completed { background: rgba(212,175,55,0.12); color: var(--accent); border: 1px solid var(--accent-border); }
+  .badge-completed { background: rgba(22,101,52,0.16); color: #166534; border: 1px solid rgba(22,101,52,0.28); }
   .badge-cancelled { background: rgba(239,68,68,0.12); color: #ef4444; border: 1px solid rgba(239,68,68,0.25); }
   .badge-walkin { background: rgba(139,92,246,0.12); color: #a78bfa; border: 1px solid rgba(139,92,246,0.25); }
   .badge-online { background: rgba(52,211,153,0.12); color: #34d399; border: 1px solid rgba(52,211,153,0.25); }
@@ -3786,22 +3786,42 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 .reschedule-slot-btn {
   border: 1px solid var(--border);
   background: var(--surface);
-  color: var(--text);
+  color: var(--muted);
   border-radius: 10px;
   padding: 8px 6px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-.reschedule-slot-btn.active {
+.reschedule-slot-btn-available {
+  border-color: rgba(34,197,94,0.35);
+  background: rgba(34,197,94,0.08);
+  color: #16a34a;
+}
+
+.reschedule-slot-btn:hover:not(:disabled) {
+  border-color: #16a34a;
+  color: #15803d;
+  background: rgba(34,197,94,0.14);
+}
+
+.reschedule-slot-btn.selected {
+  border-color: var(--accent);
   background: var(--accent-bg);
-  border-color: var(--accent-border);
   color: var(--accent);
+  font-weight: 800;
 }
 
-.reschedule-slot-btn:disabled {
-  opacity: 0.5;
+.reschedule-slot-btn:disabled,
+.reschedule-slot-btn-past,
+.reschedule-slot-btn-booked {
+  border-color: rgba(107,114,128,0.35);
+  background: rgba(107,114,128,0.1);
+  color: #6b7280;
+  opacity: 0.7;
+  text-decoration: line-through;
   cursor: not-allowed;
 }
 

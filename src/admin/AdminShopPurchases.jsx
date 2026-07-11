@@ -3,6 +3,7 @@ import { addDoc, collection, deleteDoc, doc, getDocs, serverTimestamp, updateDoc
 import { CalendarDays, Camera, ImagePlus, IndianRupee, PackageCheck, Plus, Search, ShoppingCart, Tag, Trash2, Upload, X } from 'lucide-react'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 import ConfirmModal from '../components/ConfirmModal'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
@@ -45,6 +46,8 @@ export default function AdminShopPurchases() {
   const [editingPurchase, setEditingPurchase] = useState(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [monthFilter, setMonthFilter] = useState('')
@@ -69,6 +72,12 @@ export default function AdminShopPurchases() {
   }
 
   useEffect(() => { fetchPurchases() }, [])
+
+  useEffect(() => {
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [toastMessage])
 
   useEffect(() => {
     return () => {
@@ -196,11 +205,17 @@ export default function AdminShopPurchases() {
     setMessage('')
 
     if (!productName) {
-      setError('Product name is required.')
+      const msg = 'Product name is required.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
       return
     }
     if (price < 0 || quantity <= 0) {
-      setError('Enter a valid price and quantity.')
+      const msg = 'Enter a valid price and quantity.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
       return
     }
 
@@ -234,10 +249,14 @@ export default function AdminShopPurchases() {
       }
 
       closeModal()
-      setMessage(editingPurchase ? 'Purchase updated.' : 'Purchase added.')
+      setToastType('success')
+      setToastMessage(editingPurchase ? 'Purchase updated successfully.' : 'Purchase added successfully.')
       await fetchPurchases()
     } catch (err) {
-      setError(err.message || 'Could not save purchase.')
+      const msg = err.message || 'Could not save purchase.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
     }
     setOptimizing(false)
     setSaving(false)
@@ -252,9 +271,13 @@ export default function AdminShopPurchases() {
       await deleteDoc(doc(db, 'shopPurchases', deleteTarget.id))
       setPurchases(prev => prev.filter(item => item.id !== deleteTarget.id))
       setDeleteTarget(null)
-      setMessage('Purchase deleted.')
+      setToastType('success')
+      setToastMessage('Purchase deleted successfully.')
     } catch (err) {
-      setError(err.message || 'Could not delete purchase.')
+      const msg = err.message || 'Could not delete purchase.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
     }
     setDeleting(null)
   }
@@ -263,6 +286,11 @@ export default function AdminShopPurchases() {
 
   return (
     <div className="admin-shop-page">
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+        </div>
+      )}
       <div className="admin-shop-header">
         <div>
           <h1>Shop Purchases</h1>

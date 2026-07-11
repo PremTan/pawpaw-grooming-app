@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, updateProfile } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import Cropper from 'react-easy-crop'
-import { Lock, Save, User, Upload, X } from 'lucide-react'
+import { Eye, EyeOff, Lock, Save, User, Upload, X } from 'lucide-react'
 import { auth, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 
@@ -57,7 +58,10 @@ export default function Profile() {
   const [changingPassword, setChangingPassword] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [showPasswordFields, setShowPasswordFields] = useState({ current: false, next: false, confirm: false })
   const [optimizingPhoto, setOptimizingPhoto] = useState(false)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [cropData, setCropData] = useState(null)
@@ -67,6 +71,16 @@ export default function Profile() {
 
   const canChangePassword = user?.providerData?.some(provider => provider.providerId === 'password')
   const currentPhotoUrl = photoPreview || profile?.photoURL || user.photoURL
+
+  const togglePasswordVisibility = (key) => {
+    setShowPasswordFields(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  useEffect(() => {
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [toastMessage])
 
   useEffect(() => {
     async function fetchProfile() {
@@ -123,8 +137,11 @@ export default function Profile() {
         await updateProfile(auth.currentUser, { displayName: data.name })
       }
       setForm(prev => ({ ...prev, phone: cleanPhone }))
-      setMessage('Profile updated.')
+      setToastType('success')
+      setToastMessage('Profile updated successfully.')
     } catch (err) {
+      setToastType('error')
+      setToastMessage(err.message || 'Could not update profile.')
       setError(err.message || 'Could not update profile.')
     }
     setSaving(false)
@@ -143,10 +160,14 @@ export default function Profile() {
       await reauthenticateWithCredential(auth.currentUser, credential)
       await updatePassword(auth.currentUser, passwords.next)
       setPasswords({ current: '', next: '', confirm: '' })
-      setMessage('Password updated.')
+      setToastType('success')
+      setToastMessage('Password updated successfully.')
     } catch (err) {
       const msg = err.message || ''
-      setError(msg.includes('auth/invalid-credential') ? 'Current password is incorrect.' : msg.replace('Firebase: ', '').replace(/\(auth\/.*\)/, '').trim())
+      const friendlyMessage = msg.includes('auth/invalid-credential') ? 'Current password is incorrect.' : msg.replace('Firebase: ', '').replace(/\(auth\/.*\)/, '').trim()
+      setToastType('error')
+      setToastMessage(friendlyMessage || 'Could not update password.')
+      setError(friendlyMessage || 'Could not update password.')
     }
     setChangingPassword(false)
   }
@@ -233,6 +254,11 @@ export default function Profile() {
 
   return (
     <div style={{ background: 'var(--bg)', paddingTop: '80px', minHeight: '100vh' }}>
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+        </div>
+      )}
       <div style={{ maxWidth: '760px', margin: '0 auto', padding: '40px 20px 80px' }}>
         <div style={{ marginBottom: '28px' }}>
           <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>My Profile</h1>
@@ -347,16 +373,31 @@ export default function Profile() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
                 <div>
                   <label style={L}>Current Password</label>
-                  <input className="input" type="password" value={passwords.current} onChange={e => setPasswords(p => ({ ...p, current: e.target.value }))} />
+                  <div style={{ position: 'relative' }}>
+                    <input className="input" type={showPasswordFields.current ? 'text' : 'password'} value={passwords.current} onChange={e => setPasswords(p => ({ ...p, current: e.target.value }))} style={{ paddingRight: '42px' }} />
+                    <button type="button" onClick={() => togglePasswordVisibility('current')} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer' }} aria-label="Toggle current password visibility">
+                      {showPasswordFields.current ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label style={L}>New Password</label>
-                  <input className="input" type="password" value={passwords.next} onChange={e => setPasswords(p => ({ ...p, next: e.target.value }))} />
+                  <div style={{ position: 'relative' }}>
+                    <input className="input" type={showPasswordFields.next ? 'text' : 'password'} value={passwords.next} onChange={e => setPasswords(p => ({ ...p, next: e.target.value }))} style={{ paddingRight: '42px' }} />
+                    <button type="button" onClick={() => togglePasswordVisibility('next')} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer' }} aria-label="Toggle new password visibility">
+                      {showPasswordFields.next ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
               </div>
               <div style={{ marginBottom: '18px' }}>
                 <label style={L}>Confirm New Password</label>
-                <input className="input" type="password" value={passwords.confirm} onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))} />
+                <div style={{ position: 'relative' }}>
+                  <input className="input" type={showPasswordFields.confirm ? 'text' : 'password'} value={passwords.confirm} onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))} style={{ paddingRight: '42px' }} />
+                  <button type="button" onClick={() => togglePasswordVisibility('confirm')} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer' }} aria-label="Toggle confirm password visibility">
+                    {showPasswordFields.confirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
               <button onClick={changePassword} disabled={isBlocked || changingPassword || !passwords.current || !passwords.next || !passwords.confirm} className="btn btn-secondary" style={{ justifyContent: 'center' }}>
                 <Lock size={16} /> {changingPassword ? 'Updating...' : 'Update Password'}

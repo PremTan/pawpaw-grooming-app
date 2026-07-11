@@ -28,6 +28,7 @@ import {
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 import ConfirmModal from '../components/ConfirmModal'
 import { CAT_BREEDS, DOG_BREEDS, PET_TYPES } from '../utils/services'
 import { uploadToCloudinary } from '../utils/cloudinary'
@@ -115,6 +116,8 @@ export default function MyPets() {
   const [optimizingPhoto, setOptimizingPhoto] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [cropData, setCropData] = useState(null)
   const [crop, setCrop] = useState({ x: 0, y: 0 })
@@ -136,6 +139,11 @@ export default function MyPets() {
     fetchPets()
   }, [user])
 
+  useEffect(() => {
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [toastMessage])
 
   async function fetchPets() {
     setLoading(true)
@@ -172,6 +180,7 @@ export default function MyPets() {
     setShowForm(true)
     setMessage('')
     setError('')
+    setToastMessage('')
   }
 
   const closeForm = () => {
@@ -204,6 +213,7 @@ export default function MyPets() {
     setShowForm(true)
     setMessage('')
     setError('')
+    setToastMessage('')
   }
 
   const choosePhoto = (event) => {
@@ -288,13 +298,15 @@ export default function MyPets() {
 
       if (editingId) {
         await updateDoc(doc(db, 'pets', editingId), cleanPet)
-        setMessage('Pet profile updated.')
+        setToastType('success')
+        setToastMessage('Pet profile updated successfully.')
       } else {
         await addDoc(collection(db, 'pets'), {
           ...cleanPet,
           createdAt: serverTimestamp(),
         })
-        setMessage('Pet profile added.')
+        setToastType('success')
+        setToastMessage('Pet profile added successfully.')
       }
 
       const keepSelectedId = editingId
@@ -321,9 +333,11 @@ export default function MyPets() {
       if (editingId === pet.id) closeForm()
       if (selectedId === pet.id) setSelectedId('')
       setDeleteTarget(null)
-      setMessage('Pet deleted.')
+      setToastType('success')
+      setToastMessage('Pet profile deleted successfully.')
     } catch (err) {
-      setError(err.message || 'Could not delete pet.')
+      setToastType('error')
+      setToastMessage(err.message || 'Could not delete pet.')
     }
   }
 
@@ -443,6 +457,11 @@ export default function MyPets() {
 
   return (
     <div style={{ background: 'var(--bg)', paddingTop: '80px', minHeight: '100vh' }}>
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+        </div>
+      )}
       <div style={{ maxWidth: '1180px', margin: '0 auto', padding: '38px 20px 80px' }}>
         <div className="pets-hero">
           <div>
