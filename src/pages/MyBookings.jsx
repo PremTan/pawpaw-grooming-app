@@ -159,13 +159,13 @@ export default function MyBookings() {
         const q = query(
           collection(db, 'bookings'),
           where('date', '==', rescheduleDate),
-          where('status', 'in', ['pending', 'confirmed'])
+          where('status', 'in', ['pending', 'confirmed', 'completed'])
         )
         const snap = await getDocs(q)
         const slotCounts = {}
         snap.docs
           .map(d => d.data())
-          .filter(item => item.id !== rescheduleTarget.id && (item.bookingType || 'store') === (rescheduleTarget.bookingType || 'store'))
+          .filter(item => item.id !== rescheduleTarget.id && (item.status || '') !== 'cancelled')
           .forEach(item => { slotCounts[item.slot] = (slotCounts[item.slot] || 0) + 1 })
         const capacity = Math.max(1, Number(bookingSettings?.slotCapacity || 1))
         if (!ignore) setRescheduleBookedSlots(Object.entries(slotCounts).filter(([, count]) => count >= capacity).map(([slot]) => slot))

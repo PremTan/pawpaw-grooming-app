@@ -108,6 +108,16 @@ export default function Profile() {
         updatedAt: serverTimestamp(),
       }
 
+      console.log('[Profile save debug]', {
+        authUserUid: user?.uid || null,
+        profileDocId: user?.uid || null,
+        authEmail: user?.email || null,
+        isBlocked,
+        profileExists: Boolean(profile),
+        profileBlocked: profile?.blocked === true,
+        data,
+      })
+
       await setDoc(doc(db, 'profiles', user.uid), data, { merge: true })
       if (data.name && data.name !== user.displayName) {
         await updateProfile(auth.currentUser, { displayName: data.name })

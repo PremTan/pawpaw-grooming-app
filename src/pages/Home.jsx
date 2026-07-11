@@ -9,6 +9,7 @@ import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
 import { countOpenDays, fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
 import { useAuth } from '../context/AuthContext'
+import { BOOKING_STATUS } from '../utils/services'
 import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle } from 'lucide-react'
 
 const DEFAULT_HERO_IMAGES = []
@@ -325,13 +326,13 @@ function HeroSlider() {
         const q = query(
           collection(db, 'bookings'),
           where('date', '==', rescheduleDate),
-          where('status', 'in', ['pending', 'confirmed'])
+          where('status', 'in', [BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED, BOOKING_STATUS.COMPLETED])
         )
         const snap = await getDocs(q)
         const slotCounts = {}
         snap.docs
           .map(item => item.data())
-          .filter(item => item.id !== rescheduleTarget.id && (item.bookingType || 'store') === (rescheduleTarget.bookingType || 'store'))
+          .filter(item => item.id !== rescheduleTarget.id && (item.status || '') !== BOOKING_STATUS.CANCELLED)
           .forEach(item => { slotCounts[item.slot] = (slotCounts[item.slot] || 0) + 1 })
         const capacity = Math.max(1, Number(bookingSettings?.slotCapacity || 1))
         if (!ignore) setRescheduleBookedSlots(Object.entries(slotCounts).filter(([, count]) => count >= capacity).map(([slot]) => slot))

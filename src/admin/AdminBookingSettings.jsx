@@ -3,7 +3,7 @@ import { CalendarOff, Clock, Copy, Home, Minus, Plus, Save, Store, Trash2 } from
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
-import { DAYS, DURATION_OPTIONS, VISIT_MODES, countOpenDays, normalizeBookingSettings } from '../utils/bookingSettings'
+import { DAYS, DURATION_OPTIONS, VISIT_MODES, countOpenDays, getAvailabilityForDate, normalizeBookingSettings } from '../utils/bookingSettings'
 
 const MAX_WINDOWS = 4
 const MAX_CANCELLATION_MINUTES = 1440
@@ -26,6 +26,7 @@ export default function AdminBookingSettings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [holidayDate, setHolidayDate] = useState('')
+  const [blockedDate, setBlockedDate] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -92,6 +93,24 @@ export default function AdminBookingSettings() {
     setSettings(prev => ({ ...prev, holidays: prev.holidays.filter(d => d !== date) }))
   }
 
+  const toggleBlockedSlot = (slotLabel) => {
+    setSettings(prev => {
+      const nextBlockedSlots = { ...(prev.blockedSlots || {}) }
+      const currentDateSlots = Array.isArray(nextBlockedSlots[blockedDate]) ? nextBlockedSlots[blockedDate] : []
+      const updatedDateSlots = currentDateSlots.includes(slotLabel)
+        ? currentDateSlots.filter(item => item !== slotLabel)
+        : [...currentDateSlots, slotLabel]
+
+      if (updatedDateSlots.length) {
+        nextBlockedSlots[blockedDate] = updatedDateSlots
+      } else {
+        delete nextBlockedSlots[blockedDate]
+      }
+
+      return { ...prev, blockedSlots: nextBlockedSlots }
+    })
+  }
+
   const save = async () => {
     setSaving(true)
     setError('')
@@ -130,6 +149,9 @@ export default function AdminBookingSettings() {
   const cancellationCutoffMinutes = clampCancellationCutoff(settings.cancellationCutoffMinutes)
   const cancellationHours = Math.floor(cancellationCutoffMinutes / 60)
   const cancellationMinutes = cancellationCutoffMinutes % 60
+  const blockedDateAvailability = getAvailabilityForDate(settings, blockedDate)
+  const blockedDateSlots = Array.from(new Set([...(blockedDateAvailability.storeSlots || []), ...(blockedDateAvailability.homeSlots || [])]))
+  const currentBlockedDateSlots = Array.isArray(settings.blockedSlots?.[blockedDate]) ? settings.blockedSlots[blockedDate] : []
 
   const updateCancellationCutoff = (hours, minutes) => {
     updateRoot({ cancellationCutoffMinutes: clampCancellationCutoff((Number(hours) || 0) * 60 + (Number(minutes) || 0)) })
@@ -288,6 +310,45 @@ export default function AdminBookingSettings() {
               </label>
             </div>
             <small className="cancellation-help">Saved as {cancellationCutoffMinutes} minutes. Maximum 24 hours.</small>
+          </section>
+
+          <section className="booking-panel">
+            <h2>Block Slots by Date</h2>
+            <p>Select a date and choose the time slots that should stay unavailable for customers.</p>
+            <div className="holiday-add-row">
+              <input type="date" value={blockedDate} onChange={e => setBlockedDate(e.target.value)} />
+              <button type="button" className="btn btn-secondary" onClick={() => setBlockedDate('')}>Clear</button>
+            </div>
+            {!blockedDate ? (
+              <p className="empty-holidays">Choose a date to manage blocked slots.</p>
+            ) : blockedDateSlots.length === 0 ? (
+              <p className="empty-holidays">No bookable slots are available for this date yet.</p>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
+                {blockedDateSlots.map(slot => {
+                  const blocked = currentBlockedDateSlots.includes(slot)
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => toggleBlockedSlot(slot)}
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: '999px',
+                        border: blocked ? '1px solid rgba(239,68,68,0.3)' : '1px solid var(--border)',
+                        background: blocked ? 'rgba(239,68,68,0.08)' : 'var(--surface)',
+                        color: blocked ? '#ef4444' : 'var(--text)',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {slot} {blocked ? '×' : '+'}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </section>
 
           <section className="booking-panel">

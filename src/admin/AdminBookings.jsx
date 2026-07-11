@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import { db } from '../firebase'
 import { syncPublicStats } from '../utils/publicStats'
-import { buildWhatsAppMessage } from '../utils/services'
+import { BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel } from '../utils/bookingSettings'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
@@ -194,13 +194,13 @@ export default function AdminBookings() {
         const q = query(
           collection(db, 'bookings'),
           where('date', '==', rescheduleDate),
-          where('status', 'in', ['pending', 'confirmed'])
+          where('status', 'in', [BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED, BOOKING_STATUS.COMPLETED])
         )
         const snap = await getDocs(q)
         const slotCounts = {}
         snap.docs
           .map(d => d.data())
-          .filter(item => item.id !== rescheduleTarget.id && (item.bookingType || 'store') === (rescheduleTarget.bookingType || 'store'))
+          .filter(item => item.id !== rescheduleTarget.id && (item.status || '') !== BOOKING_STATUS.CANCELLED)
           .forEach(item => { slotCounts[item.slot] = (slotCounts[item.slot] || 0) + 1 })
         const capacity = Math.max(1, Number(bookingSettings?.slotCapacity || 1))
         if (!ignore) setRescheduleBookedSlots(Object.entries(slotCounts).filter(([, count]) => count >= capacity).map(([slot]) => slot))

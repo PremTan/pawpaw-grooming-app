@@ -942,11 +942,31 @@
   .slot-btn:disabled,
   .slot-btn-past,
   .slot-btn-booked {
-    border-color: var(--border);
-    background: var(--surface);
-    color: var(--muted);
-    opacity: 0.5;
+    border-color: rgba(107,114,128,0.35);
+    background: rgba(107,114,128,0.1);
+    color: #6b7280;
+    opacity: 0.7;
     text-decoration: line-through;
+    cursor: not-allowed;
+  }
+  .slot-btn.slot-btn-full,
+  .slot-btn.slot-btn-full:disabled {
+    border-color: rgba(107,114,128,0.45);
+    background: rgba(107,114,128,0.16);
+    color: #6b7280;
+    opacity: 1;
+    text-decoration: line-through;
+    border-style: dashed;
+    cursor: not-allowed;
+  }
+  .slot-btn.slot-btn-blocked,
+  .slot-btn.slot-btn-blocked:disabled {
+    border-color: rgba(239,68,68,0.4);
+    background: rgba(239,68,68,0.1);
+    color: #ef4444;
+    opacity: 1;
+    text-decoration: line-through;
+    border-style: dashed;
     cursor: not-allowed;
   }
 
@@ -9417,6 +9437,7 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
+  cursor: zoom-in;
 }
 
 .admin-shop-preview img {
@@ -9440,6 +9461,56 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   background: rgba(0,0,0,0.72);
   color: #fff;
   cursor: pointer;
+}
+
+.admin-shop-card-image {
+  cursor: zoom-in;
+}
+
+.admin-shop-image-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0, 0, 0, 0.82);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.admin-shop-image-viewer {
+  position: relative;
+  width: min(100%, 860px);
+  max-height: min(90vh, 860px);
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(15, 15, 15, 0.95);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.35);
+}
+
+.admin-shop-image-viewer img {
+  width: 100%;
+  max-height: min(90vh, 860px);
+  object-fit: contain;
+  display: block;
+}
+
+.admin-shop-image-viewer-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  cursor: pointer;
+  z-index: 1;
 }
 
 .admin-shop-modal-actions {
