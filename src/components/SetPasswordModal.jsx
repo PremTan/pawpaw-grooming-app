@@ -1,9 +1,10 @@
 // src/components/SetPasswordModal.jsx
 // Lets a Google-logged-in user link an email/password as backup login
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { linkWithCredential, EmailAuthProvider } from 'firebase/auth'
 import { auth } from '../firebase'
-import { X } from 'lucide-react'
+import { Eye, EyeOff, X } from 'lucide-react'
+import Toast from './Toast'
 
 export default function SetPasswordModal({ onClose }) {
   const [password, setPassword] = useState('')
@@ -11,6 +12,16 @@ export default function SetPasswordModal({ onClose }) {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const [success, setSuccess]   = useState(false)
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+
+  useEffect(() => {
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [toastMessage])
 
 //   const handleSave = async () => {
 //     setError('')
@@ -33,34 +44,44 @@ export default function SetPasswordModal({ onClose }) {
 //   }
 const handleSave = async () => {
     setError('')
-    if (password.length < 6) { setError('Password must be at least 6 characters.'); return }
-    if (password !== confirm) { setError('Passwords do not match.'); return }
+    if (password.length < 6) {
+      const msg = 'Password must be at least 6 characters.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
+      return
+    }
+    if (password !== confirm) {
+      const msg = 'Passwords do not match.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
+      return
+    }
     setLoading(true)
     try {
       const user = auth.currentUser
       const credential = EmailAuthProvider.credential(user.email, password)
       await linkWithCredential(user, credential)
       setSuccess(true)
+      setToastType('success')
+      setToastMessage('Password set successfully.')
     } catch (e) {
-      // 1. Log the full error object to your browser console
-      console.error("Full Firebase Error:", e); 
-      
-      const code = e.code;
-      
+      console.error('Full Firebase Error:', e)
+      const code = e.code
+      let cleanMsg = e.message?.replace('Firebase: ', '').replace(/\(auth\/[^)]*\)/g, '').trim()
+
       if (code === 'auth/provider-already-linked' || code === 'auth/email-already-in-use') {
-        setError('A password is already set for this account. Use "Forgot password" on the login page to change it.')
+        cleanMsg = 'A password is already set for this account. Use "Forgot password" on the login page to change it.'
       } else if (code === 'auth/requires-recent-login') {
-        setError('For security reasons, please log out and log back in with Google before setting a password.')
-      } else {
-        let cleanMsg = e.message?.replace('Firebase: ', '').replace(/\(auth\/[^)]*\)/g, '').trim();
-        
-        if (!cleanMsg || cleanMsg === 'Error .' || cleanMsg === 'Error') {
-          // 2. Temporarily display the actual Firebase code on the screen
-          cleanMsg = `Failed: ${code || 'Unknown error'}. Please try again.`;
-        }
-        
-        setError(cleanMsg);
+        cleanMsg = 'For security reasons, please log out and log back in with Google before setting a password.'
+      } else if (!cleanMsg || cleanMsg === 'Error .' || cleanMsg === 'Error') {
+        cleanMsg = `Failed: ${code || 'Unknown error'}. Please try again.`
       }
+
+      setToastType('error')
+      setToastMessage(cleanMsg)
+      setError(cleanMsg)
     }
     setLoading(false)
   }
@@ -69,6 +90,11 @@ const handleSave = async () => {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+        </div>
+      )}
       <div className="modal-box" style={{ maxWidth: '380px' }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
@@ -100,11 +126,21 @@ const handleSave = async () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div>
                   <label style={L}>New Password</label>
-                  <input className="input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
+                  <div style={{ position: 'relative' }}>
+                    <input className="input" type={showPassword ? 'text' : 'password'} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} style={{ paddingRight: '42px' }} />
+                    <button type="button" onClick={() => setShowPassword(prev => !prev)} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer' }} aria-label="Toggle password visibility">
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label style={L}>Confirm Password</label>
-                  <input className="input" type="password" placeholder="••••••••" value={confirm} onChange={e => setConfirm(e.target.value)} />
+                  <div style={{ position: 'relative' }}>
+                    <input className="input" type={showConfirm ? 'text' : 'password'} placeholder="••••••••" value={confirm} onChange={e => setConfirm(e.target.value)} style={{ paddingRight: '42px' }} />
+                    <button type="button" onClick={() => setShowConfirm(prev => !prev)} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer' }} aria-label="Toggle confirm password visibility">
+                      {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
                 <button onClick={handleSave} disabled={loading || !password || !confirm} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: '4px' }}>
                   {loading ? 'Saving…' : 'Set Password'}

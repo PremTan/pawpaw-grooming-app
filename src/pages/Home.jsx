@@ -4,11 +4,13 @@ import { Link, useNavigate } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs, query, orderBy, limit, where, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import BrandLogo from '../components/BrandLogo'
+import Toast from '../components/Toast'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
 import { countOpenDays, fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
 import { useAuth } from '../context/AuthContext'
+import { BOOKING_STATUS } from '../utils/services'
 import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle } from 'lucide-react'
 
 const DEFAULT_HERO_IMAGES = []
@@ -209,6 +211,7 @@ function HeroSlider() {
   const [upcomingAppointment, setUpcomingAppointment] = useState(null)
   const [upcomingPetProfile, setUpcomingPetProfile] = useState(null)
   const [bookingSettings, setBookingSettings] = useState(null)
+  const [rescheduleToast, setRescheduleToast] = useState('')
   const [rescheduleTarget, setRescheduleTarget] = useState(null)
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [rescheduleSlot, setRescheduleSlot] = useState('')
@@ -315,6 +318,12 @@ function HeroSlider() {
   }, [user?.uid, user?.email])
 
   useEffect(() => {
+    if (!rescheduleToast) return
+    const t = window.setTimeout(() => setRescheduleToast(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [rescheduleToast])
+
+  useEffect(() => {
     if (!rescheduleTarget?.id || !rescheduleDate) {
       setRescheduleBookedSlots([])
       return
@@ -325,13 +334,13 @@ function HeroSlider() {
         const q = query(
           collection(db, 'bookings'),
           where('date', '==', rescheduleDate),
-          where('status', 'in', ['pending', 'confirmed'])
+          where('status', 'in', [BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED, BOOKING_STATUS.COMPLETED])
         )
         const snap = await getDocs(q)
         const slotCounts = {}
         snap.docs
           .map(item => item.data())
-          .filter(item => item.id !== rescheduleTarget.id && (item.bookingType || 'store') === (rescheduleTarget.bookingType || 'store'))
+          .filter(item => item.id !== rescheduleTarget.id && (item.status || '') !== BOOKING_STATUS.CANCELLED)
           .forEach(item => { slotCounts[item.slot] = (slotCounts[item.slot] || 0) + 1 })
         const capacity = Math.max(1, Number(bookingSettings?.slotCapacity || 1))
         if (!ignore) setRescheduleBookedSlots(Object.entries(slotCounts).filter(([, count]) => count >= capacity).map(([slot]) => slot))
@@ -391,6 +400,11 @@ function HeroSlider() {
     if (!rescheduleTarget || !rescheduleDate || !rescheduleSlot) return
     const previousDate = rescheduleTarget.date || ''
     const previousSlot = rescheduleTarget.slot || ''
+    const sameAsCurrent = String(rescheduleDate || '') === String(previousDate) && String(rescheduleSlot || '') === String(previousSlot)
+    if (sameAsCurrent) {
+      setRescheduleToast('Cannot reschedule to the same slot. Please choose a different slot.')
+      return
+    }
     const newBookingStart = rescheduleDate && rescheduleSlot ? (() => {
       const match = String(rescheduleSlot || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
       if (!match) return null
@@ -423,6 +437,7 @@ function HeroSlider() {
       setRescheduleDate('')
       setRescheduleSlot('')
       setRescheduleBookedSlots([])
+      setRescheduleToast('Appointment rescheduled successfully.')
     } catch {
       alert('Could not reschedule booking. Please try again.')
     }
@@ -450,6 +465,11 @@ function HeroSlider() {
 
   return (
     <section className="home-redesign" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+      {rescheduleToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={rescheduleToast} type={rescheduleToast.includes('Cannot') ? 'error' : 'success'} onClose={() => setRescheduleToast('')} />
+        </div>
+      )}
       <div className="home-redesign-inner">
         <div className="mobile-hero-card">
           <div className="mobile-hero-media" aria-label="Pet grooming hero images">
@@ -561,14 +581,28 @@ function HeroSlider() {
                   <div className="reschedule-modal-body">
                     <label className="reschedule-field">
                       <span>Date</span>
-                      <input type="date" className="input" value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} min={dateKeyLocal()} />
+                      <input type="date" className="input" value={rescheduleDate} onChange={event => { setRescheduleDate(event.target.value); setRescheduleSlot('') }} min={dateKeyLocal()} />
                     </label>
                     {rescheduleDate && rescheduleAvailability.open && (
                       <div className="reschedule-slot-grid">
                         {bookableRescheduleSlots.map(slot => {
                           const disabled = rescheduleBookedSlots.includes(slot)
+                          const isPast = isRescheduleToday && !isFutureSlotForDate(rescheduleDate, slot)
+                          const isSameAsCurrent = rescheduleTarget?.date === rescheduleDate && rescheduleTarget?.slot === slot
                           return (
-                            <button key={slot} type="button" className={`reschedule-slot-btn ${rescheduleSlot === slot ? 'active' : ''}`} disabled={disabled} onClick={() => setRescheduleSlot(slot)}>
+                            <button
+                              key={slot}
+                              type="button"
+                              className={`reschedule-slot-btn${isPast ? ' reschedule-slot-btn-past' : ''}${disabled ? ' reschedule-slot-btn-booked' : ' reschedule-slot-btn-available'}${rescheduleSlot === slot ? ' selected' : ''}`}
+                              disabled={disabled || isPast}
+                              onClick={() => {
+                                if (isSameAsCurrent) {
+                                  setRescheduleToast('Cannot reschedule to the same slot. Please choose a different slot.')
+                                  return
+                                }
+                                setRescheduleSlot(slot)
+                              }}
+                            >
                               {slot}
                             </button>
                           )
@@ -580,6 +614,9 @@ function HeroSlider() {
                     )}
                     {rescheduleDate && rescheduleAvailability.open && rescheduleBookedSlots.length === 0 && bookableRescheduleSlots.length === 0 && (
                       <p className="helper-text">No slots available for this date.</p>
+                    )}
+                    {rescheduleDate && rescheduleAvailability.open && (
+                      <p className="helper-text">Choose a different time from your current booking to avoid the same-slot conflict.</p>
                     )}
                   </div>
                   <div className="reschedule-modal-footer">
@@ -684,10 +721,30 @@ export default function Home() {
         }
 
         const revs = reviewsResult.status === 'fulfilled'
-          ? reviewsResult.value.docs.map(d => ({ id: d.id, ...d.data() }))
+          ? reviewsResult.value.docs.map(d => ({ id: d.id, ...d.data() })).filter(item => item.active !== false).map(item => ({
+            ...item,
+            source: item.source || 'website',
+            rating: Number(item.rating || item.stars || 5),
+            comment: item.comment || item.review || '',
+            customerName: item.customerName || item.userName || item.name || 'Pet Parent',
+            profileImage: item.profileImage || item.userPhoto || '',
+            reviewImages: Array.isArray(item.reviewImages) ? item.reviewImages : (Array.isArray(item.images) ? item.images : []),
+            reviewDate: item.reviewDate || '',
+            petName: item.petName || '',
+          }))
           : []
         const allRevs = allReviewsResult.status === 'fulfilled'
-          ? allReviewsResult.value.docs.map(d => d.data())
+          ? allReviewsResult.value.docs.map(d => d.data()).filter(item => item.active !== false).map(item => ({
+            ...item,
+            source: item.source || 'website',
+            rating: Number(item.rating || item.stars || 5),
+            comment: item.comment || item.review || '',
+            customerName: item.customerName || item.userName || item.name || 'Pet Parent',
+            profileImage: item.profileImage || item.userPhoto || '',
+            reviewImages: Array.isArray(item.reviewImages) ? item.reviewImages : (Array.isArray(item.images) ? item.images : []),
+            reviewDate: item.reviewDate || '',
+            petName: item.petName || '',
+          }))
           : revs
         const avg = allRevs.length
           ? (allRevs.reduce((s, r) => s + (r.rating || 5), 0) / allRevs.length).toFixed(1)
@@ -943,7 +1000,10 @@ export default function Home() {
           <div className="home-review-carousel" ref={reviewCarouselRef} onTouchStart={handleReviewTouchStart} onTouchEnd={handleReviewTouchEnd} style={{ height: reviewCarouselHeight ? `${reviewCarouselHeight}px` : 'auto' }}>
             <div className="home-review-carousel-track" style={{ transform: `translateX(-${reviewIndex * 100}%)` }}>
               {featuredReviews.map((r, index) => {
-                const hasReviewImages = Array.isArray(r.images) && r.images.length > 0;
+                const reviewImageList = Array.isArray(r.reviewImages) && r.reviewImages.length > 0
+                  ? r.reviewImages
+                  : (Array.isArray(r.images) ? r.images : [])
+                const hasReviewImages = reviewImageList.length > 0
                 return (
                 <article
                   key={r.id}
@@ -954,27 +1014,42 @@ export default function Home() {
                 >
                   <div className="home-review-person">
                     <div className="home-review-avatar">
-                      {r.userPhoto
-                        ? <img src={r.userPhoto} alt="" />
-                        : <span>{r.userName?.[0]?.toUpperCase() || 'P'}</span>}
+                      {r.profileImage || r.userPhoto
+                        ? <img src={r.profileImage || r.userPhoto} alt="" />
+                        : <span>{(r.customerName || r.userName || 'P').slice(0, 1).toUpperCase()}</span>}
                     </div>
                     <div>
-                      <strong>{r.userName || 'Pet Parent'}</strong>
+                      <strong>{r.customerName || r.userName || 'Pet Parent'}</strong>
+                      {r.source === 'google' ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: '#16a34a', fontSize: '11px', fontWeight: 700 }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+                            <path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2h-9.4v3.8h5.4c-.2 1.3-.9 2.4-2 3.1v2.6h3.2c1.9-1.8 3-4.5 3-7.5Z" />
+                            <path fill="#34A853" d="M12 22c2.7 0 4.9-.9 6.6-2.4l-3.2-2.6c-.9.6-2.1.9-3.4.9-2.6 0-4.8-1.8-5.6-4.2H3.1v2.6C4.8 19.8 8.2 22 12 22Z" />
+                            <path fill="#FBBC05" d="M6.4 13.7c-.2-.6-.3-1.2-.3-1.8s.1-1.3.3-1.8V7.5H3.1C2.4 8.8 2 10.3 2 12s.4 3.2 1.1 4.5l3.3-2.8Z" />
+                            <path fill="#EA4335" d="M12 6.2c1.5 0 2.8.5 3.9 1.5l2.9-2.9C16.9 3.1 14.5 2 12 2 8.2 2 4.8 4.2 3.1 7.5l3.3 2.6c.8-2.4 3-4.2 5.6-4.2Z" />
+                          </svg>
+                          Google
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: '#16a34a', fontSize: '11px', fontWeight: 700 }}>
+                          <BadgeCheck size={12} /> Verified Customer
+                        </span>
+                      )}
                       <span>{[1,2,3,4,5].map(n => <Star key={n} size={14} fill={n <= (r.rating || 5) ? 'currentColor' : 'none'} />)}</span>
                     </div>
                   </div>
-                  <p>&quot;{cleanReviewText(r.comment)}&quot;</p>
+                  <p>&quot;{cleanReviewText(r.comment || r.review || '')}&quot;</p>
                   {hasReviewImages && (
                     <div className="home-review-image-grid">
-                      {r.images.slice(0, 3).map((image, index) => (
+                      {reviewImageList.slice(0, 3).map((image, index) => (
                         <button
                           key={`${r.id}-${index}`}
                           type="button"
                           className="home-review-image-thumb-btn"
-                          onClick={() => setReviewLightbox({ url: image, alt: `${r.userName || 'Review'} image ${index + 1}` })}
+                          onClick={() => setReviewLightbox({ url: image, alt: `${r.customerName || r.userName || 'Review'} image ${index + 1}` })}
                           aria-label={`Open review image ${index + 1}`}
                         >
-                          <img className="home-review-image-thumb" src={image} alt={`${r.userName || 'Review'} image ${index + 1}`} loading="lazy" />
+                          <img className="home-review-image-thumb" src={image} alt={`${r.customerName || r.userName || 'Review'} image ${index + 1}`} loading="lazy" />
                         </button>
                       ))}
                     </div>

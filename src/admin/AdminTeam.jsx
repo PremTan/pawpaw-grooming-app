@@ -3,6 +3,7 @@ import { addDoc, collection, doc, getDoc, getDocs, orderBy, query, serverTimesta
 import Cropper from 'react-easy-crop'
 import { Camera, Edit3, Mail, Phone, Plus, Upload, UserRound, Users, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { uploadToCloudinary } from '../utils/cloudinary'
@@ -45,6 +46,8 @@ export default function AdminTeam() {
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
 
   const owner = useMemo(() => {
     const fallback = getOwnerAssignee(user)
@@ -75,6 +78,12 @@ export default function AdminTeam() {
   }
 
   useEffect(() => { fetchMembers() }, [])
+
+  useEffect(() => {
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [toastMessage])
 
   useEffect(() => {
     async function fetchBookings() {
@@ -189,8 +198,13 @@ export default function AdminTeam() {
       }
       closeForm()
       await fetchMembers()
+      setToastType('success')
+      setToastMessage(editingId ? 'Team member updated successfully.' : 'Team member added successfully.')
     } catch {
-      alert(editingId ? 'Could not update team member.' : 'Could not add team member. Please try again.')
+      const msg = editingId ? 'Could not update team member.' : 'Could not add team member. Please try again.'
+      setToastType('error')
+      setToastMessage(msg)
+      alert(msg)
     }
     setSaving(false)
   }
@@ -203,8 +217,13 @@ export default function AdminTeam() {
       const updated = { ...member, active: nextActive }
       setMembers(prev => prev.map(item => item.id === member.id ? updated : item))
       setSelectedMember(prev => prev?.id === member.id ? updated : prev)
+      setToastType('success')
+      setToastMessage(nextActive ? 'Team member activated successfully.' : 'Team member deactivated successfully.')
     } catch {
-      alert('Could not update team member.')
+      const msg = 'Could not update team member.'
+      setToastType('error')
+      setToastMessage(msg)
+      alert(msg)
     }
     setSaving(false)
   }
@@ -231,6 +250,11 @@ export default function AdminTeam() {
 
   return (
     <div className="admin-page">
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+        </div>
+      )}
       <div className="admin-page-header">
         <div>
           <h1 style={{ fontFamily: '"Playfair Display", serif', fontSize: '28px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>Team</h1>

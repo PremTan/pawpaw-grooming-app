@@ -35,6 +35,7 @@ export const DEFAULT_BOOKING_SETTINGS = {
     },
   }), {}),
   holidays: [],
+  blockedSlots: {},
 }
 
 const pad = (value) => String(value).padStart(2, '0')
@@ -93,6 +94,15 @@ function normalizeWindows(saved, legacyDay) {
   return DEFAULT_TIME_WINDOWS
 }
 
+function normalizeBlockedSlots(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.entries(value).reduce((acc, [dateKey, slots]) => {
+    const normalizedSlots = normalizeSlots(slots, [])
+    if (dateKey && normalizedSlots.length) acc[dateKey] = normalizedSlots
+    return acc
+  }, {})
+}
+
 export function normalizeBookingSettings(data = {}) {
   const weekly = {}
   DAYS.forEach(day => {
@@ -112,6 +122,7 @@ export function normalizeBookingSettings(data = {}) {
     paymentMode: ['prepaid', 'cash', 'both'].includes(data.paymentMode) ? data.paymentMode : 'cash',
     weekly,
     holidays: Array.isArray(data.holidays) ? data.holidays.filter(Boolean) : [],
+    blockedSlots: normalizeBlockedSlots(data.blockedSlots),
   }
 }
 
@@ -135,7 +146,7 @@ export function dayKeyFromDate(dateString) {
   return DAYS[date.getDay()]?.key || ''
 }
 
-function buildSlotsForMode(windows, duration, targetMode) {
+function buildSlotsForMode(windows, duration, targetMode, blockedLabels = []) {
   const slots = []
   windows.forEach(window => {
     if (window.mode !== targetMode && window.mode !== 'hybrid') return
@@ -158,10 +169,11 @@ export function getAvailabilityForDate(settings, dateString) {
   if (!day || day.open === false) {
     return { open: false, storeSlots: [], homeSlots: [], reasons: ['Closed'] }
   }
+  const blockedLabels = Array.isArray(normalized.blockedSlots?.[dateString]) ? normalized.blockedSlots[dateString] : []
   return {
     open: true,
-    storeSlots: buildSlotsForMode(day.windows, normalized.appointmentDuration, 'center'),
-    homeSlots: buildSlotsForMode(day.windows, normalized.appointmentDuration, 'home'),
+    storeSlots: buildSlotsForMode(day.windows, normalized.appointmentDuration, 'center', blockedLabels),
+    homeSlots: buildSlotsForMode(day.windows, normalized.appointmentDuration, 'home', blockedLabels),
     reasons: [],
   }
 }

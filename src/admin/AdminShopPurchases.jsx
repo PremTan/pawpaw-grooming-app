@@ -3,6 +3,7 @@ import { addDoc, collection, deleteDoc, doc, getDocs, serverTimestamp, updateDoc
 import { CalendarDays, Camera, ImagePlus, IndianRupee, PackageCheck, Plus, Search, ShoppingCart, Tag, Trash2, Upload, X } from 'lucide-react'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 import ConfirmModal from '../components/ConfirmModal'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
@@ -45,9 +46,14 @@ export default function AdminShopPurchases() {
   const [editingPurchase, setEditingPurchase] = useState(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [monthFilter, setMonthFilter] = useState('')
+  const [showImageViewer, setShowImageViewer] = useState(false)
+  const [imageViewerSrc, setImageViewerSrc] = useState('')
+  const [showRemoveImageConfirm, setShowRemoveImageConfirm] = useState(false)
 
   const totalCost = useMemo(() => toNumber(form.price) * toNumber(form.quantity), [form.price, form.quantity])
 
@@ -66,6 +72,12 @@ export default function AdminShopPurchases() {
   }
 
   useEffect(() => { fetchPurchases() }, [])
+
+  useEffect(() => {
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [toastMessage])
 
   useEffect(() => {
     return () => {
@@ -135,6 +147,9 @@ export default function AdminShopPurchases() {
     setFile(null)
     setPreview('')
     setEditingPurchase(null)
+    setShowImageViewer(false)
+    setImageViewerSrc('')
+    setShowRemoveImageConfirm(false)
     setForm({ ...EMPTY_FORM, purchaseDate: todayKey() })
   }
 
@@ -161,6 +176,25 @@ export default function AdminShopPurchases() {
     setForm(prev => ({ ...prev, imageUrl: '' }))
   }
 
+  const openImageViewer = (source = preview || form.imageUrl) => {
+    if (!source) return
+    setImageViewerSrc(source)
+    setShowImageViewer(true)
+  }
+
+  const closeImageViewer = () => {
+    setShowImageViewer(false)
+    setImageViewerSrc('')
+  }
+
+  const requestRemoveImage = () => setShowRemoveImageConfirm(true)
+
+  const confirmRemoveImage = () => {
+    setShowRemoveImageConfirm(false)
+    closeImageViewer()
+    clearImage()
+  }
+
   const savePurchase = async () => {
     const productName = form.productName.trim()
     const price = toNumber(form.price)
@@ -171,11 +205,17 @@ export default function AdminShopPurchases() {
     setMessage('')
 
     if (!productName) {
-      setError('Product name is required.')
+      const msg = 'Product name is required.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
       return
     }
     if (price < 0 || quantity <= 0) {
-      setError('Enter a valid price and quantity.')
+      const msg = 'Enter a valid price and quantity.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
       return
     }
 
@@ -209,10 +249,14 @@ export default function AdminShopPurchases() {
       }
 
       closeModal()
-      setMessage(editingPurchase ? 'Purchase updated.' : 'Purchase added.')
+      setToastType('success')
+      setToastMessage(editingPurchase ? 'Purchase updated successfully.' : 'Purchase added successfully.')
       await fetchPurchases()
     } catch (err) {
-      setError(err.message || 'Could not save purchase.')
+      const msg = err.message || 'Could not save purchase.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
     }
     setOptimizing(false)
     setSaving(false)
@@ -227,9 +271,13 @@ export default function AdminShopPurchases() {
       await deleteDoc(doc(db, 'shopPurchases', deleteTarget.id))
       setPurchases(prev => prev.filter(item => item.id !== deleteTarget.id))
       setDeleteTarget(null)
-      setMessage('Purchase deleted.')
+      setToastType('success')
+      setToastMessage('Purchase deleted successfully.')
     } catch (err) {
-      setError(err.message || 'Could not delete purchase.')
+      const msg = err.message || 'Could not delete purchase.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
     }
     setDeleting(null)
   }
@@ -238,6 +286,11 @@ export default function AdminShopPurchases() {
 
   return (
     <div className="admin-shop-page">
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+        </div>
+      )}
       <div className="admin-shop-header">
         <div>
           <h1>Shop Purchases</h1>
@@ -310,7 +363,28 @@ export default function AdminShopPurchases() {
         <div className="admin-shop-grid">
           {filteredPurchases.map(item => (
             <div key={item.id} className="card admin-shop-card" role="button" tabIndex={0} onClick={() => openPurchase(item)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') openPurchase(item) }}>
-              <div className="admin-shop-card-image">
+                <div
+                className="admin-shop-card-image"
+                role="button"
+                tabIndex={0}
+                onClick={event => {
+                  event.stopPropagation()
+                  if (item.imageUrl) {
+                    setImageViewerSrc(item.imageUrl)
+                    setShowImageViewer(true)
+                  }
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    if (item.imageUrl) {
+                      setImageViewerSrc(item.imageUrl)
+                      setShowImageViewer(true)
+                    }
+                  }
+                }}
+              >
                 {item.imageUrl ? <img src={item.imageUrl} alt={item.productName} loading="lazy" /> : <ImagePlus size={18} />}
               </div>
               <div className="admin-shop-card-main">
@@ -380,9 +454,20 @@ export default function AdminShopPurchases() {
               <div className="admin-shop-field-wide">
                 <label style={L}>Image</label>
                 {(preview || form.imageUrl) ? (
-                  <div className="admin-shop-preview">
+                  <div
+                    className="admin-shop-preview"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openImageViewer(preview || form.imageUrl)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        openImageViewer(preview || form.imageUrl)
+                      }
+                    }}
+                  >
                     <img src={preview || form.imageUrl} alt="" />
-                    <button type="button" onClick={clearImage} aria-label="Remove image"><X size={14} /></button>
+                    <button type="button" onClick={event => { event.stopPropagation(); requestRemoveImage() }} aria-label="Remove image"><X size={14} /></button>
                   </div>
                 ) : (
                   <div className="admin-shop-image-actions">
@@ -408,6 +493,28 @@ export default function AdminShopPurchases() {
           </div>
         </div>
       )}
+
+      {showImageViewer && imageViewerSrc && (
+        <div className="admin-shop-image-viewer-overlay" onClick={closeImageViewer}>
+          <div className="admin-shop-image-viewer" onClick={event => event.stopPropagation()}>
+            <button type="button" className="admin-shop-image-viewer-close" onClick={closeImageViewer} aria-label="Close image preview">
+              <X size={20} />
+            </button>
+            <img src={imageViewerSrc} alt="Purchase preview" />
+          </div>
+        </div>
+      )}
+
+      <ConfirmModal
+        open={showRemoveImageConfirm}
+        title="Remove image?"
+        message={`Remove the current image from ${editingPurchase?.productName || 'this purchase'}?`}
+        confirmText="Remove image"
+        cancelText="Keep image"
+        danger
+        onCancel={() => setShowRemoveImageConfirm(false)}
+        onConfirm={confirmRemoveImage}
+      />
 
       <ConfirmModal
         open={!!deleteTarget}

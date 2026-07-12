@@ -2,12 +2,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
-import { Calendar, ChevronRight, Clock, Home, Plus, Store, UserRound, X } from 'lucide-react'
+import { Calendar, ChevronRight, Clock, Home, PawPrint, Plus, Store, UserRound, X } from 'lucide-react'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
+import Toast from '../components/Toast'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel, getPaymentOptionLabel } from '../utils/bookingSettings'
 import { SERVICES } from '../utils/services'
 
@@ -127,6 +128,10 @@ function petLine(booking) {
   return [booking.petName, booking.petBreed].filter(Boolean).join(' - ') || 'Pet details not added'
 }
 
+function petImageUrlFor(booking) {
+  return booking.petPhotoUrl || booking.petImageUrl || booking.petPhoto || booking.petImage || booking.pet?.photoUrl || ''
+}
+
 export default function MyBookings() {
   const { user } = useAuth()
   const { sendNotification } = useNotifications()
@@ -135,9 +140,12 @@ export default function MyBookings() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [selectedBooking, setSelectedBooking] = useState(null)
+  const [previewImage, setPreviewImage] = useState(null)
   const [cancellingId, setCancellingId] = useState('')
   const [cancelTarget, setCancelTarget] = useState(null)
   const [cancelReason, setCancelReason] = useState('')
+  const [cancelToast, setCancelToast] = useState('')
+  const [rescheduleToast, setRescheduleToast] = useState('')
   const [rescheduleTarget, setRescheduleTarget] = useState(null)
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [rescheduleSlot, setRescheduleSlot] = useState('')
@@ -147,6 +155,18 @@ export default function MyBookings() {
   useEffect(() => {
     fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!cancelToast) return
+    const t = window.setTimeout(() => setCancelToast(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [cancelToast])
+
+  useEffect(() => {
+    if (!rescheduleToast) return
+    const t = window.setTimeout(() => setRescheduleToast(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [rescheduleToast])
 
   useEffect(() => {
     if (!rescheduleTarget?.id || !rescheduleDate) {
@@ -159,13 +179,13 @@ export default function MyBookings() {
         const q = query(
           collection(db, 'bookings'),
           where('date', '==', rescheduleDate),
-          where('status', 'in', ['pending', 'confirmed'])
+          where('status', 'in', ['pending', 'confirmed', 'completed'])
         )
         const snap = await getDocs(q)
         const slotCounts = {}
         snap.docs
           .map(d => d.data())
-          .filter(item => item.id !== rescheduleTarget.id && (item.bookingType || 'store') === (rescheduleTarget.bookingType || 'store'))
+          .filter(item => item.id !== rescheduleTarget.id && (item.status || '') !== 'cancelled')
           .forEach(item => { slotCounts[item.slot] = (slotCounts[item.slot] || 0) + 1 })
         const capacity = Math.max(1, Number(bookingSettings?.slotCapacity || 1))
         if (!ignore) setRescheduleBookedSlots(Object.entries(slotCounts).filter(([, count]) => count >= capacity).map(([slot]) => slot))
@@ -202,6 +222,23 @@ export default function MyBookings() {
     [bookings, filter]
   )
 
+  const bookingSummary = useMemo(() => {
+    const counts = { total: bookings.length, upcoming: 0, completed: 0, cancelled: 0 }
+    bookings.forEach(booking => {
+      if (booking.status === 'completed') counts.completed += 1
+      else if (booking.status === 'cancelled') counts.cancelled += 1
+      else counts.upcoming += 1
+    })
+    return counts
+  }, [bookings])
+
+  const openPreviewImage = (event, url, label) => {
+    if (!url) return
+    event.preventDefault()
+    event.stopPropagation()
+    setPreviewImage({ url, label })
+  }
+
   const openRescheduleModal = (booking) => {
     setRescheduleTarget(booking)
     setRescheduleDate(booking.date || '')
@@ -218,6 +255,11 @@ export default function MyBookings() {
     if (!rescheduleTarget || !rescheduleDate || !rescheduleSlot) return
     const previousDate = rescheduleTarget.date || ''
     const previousSlot = rescheduleTarget.slot || ''
+    const sameAsCurrent = String(rescheduleDate || '') === String(previousDate) && String(rescheduleSlot || '') === String(previousSlot)
+    if (sameAsCurrent) {
+      setRescheduleToast('Cannot reschedule to the same slot. Please choose a different slot.')
+      return
+    }
     const oldBookingStart = parseAppointmentStart(rescheduleTarget)
     const newBookingStart = rescheduleDate && rescheduleSlot ? (() => {
       const match = String(rescheduleSlot || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
@@ -280,6 +322,7 @@ export default function MyBookings() {
       setRescheduleTarget(null)
       setRescheduleDate('')
       setRescheduleSlot('')
+      setRescheduleToast('Appointment rescheduled successfully.')
     } catch (err) {
       console.error('FIREBASE ERROR:', err)
       alert('Could not reschedule booking. Please try again.')
@@ -314,6 +357,7 @@ export default function MyBookings() {
       }
       setCancelTarget(null)
       setCancelReason('')
+      setCancelToast('Appointment cancelled successfully.')
     } catch (err) {
       console.error("FIREBASE ERROR:", err);
       alert('Could not cancel booking. Please try again.')
@@ -323,15 +367,47 @@ export default function MyBookings() {
 
   return (
     <div className="my-bookings-page">
+      {cancelToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={cancelToast} type="success" onClose={() => setCancelToast('')} />
+        </div>
+      )}
+      {rescheduleToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300, marginTop: '72px' }}>
+          <Toast message={rescheduleToast} type={rescheduleToast.includes('Cannot') ? 'error' : 'success'} onClose={() => setRescheduleToast('')} />
+        </div>
+      )}
       <div className="my-bookings-shell">
         <div className="my-bookings-header">
-          <div>
-            <h1>My Bookings</h1>
-            <p>{bookings.length} total appointment{bookings.length !== 1 ? 's' : ''}</p>
+          <div className="my-bookings-title-group">
+            <PawPrint size={20} className="my-bookings-paw-icon" />
+            <div>
+              <h1>My Bookings</h1>
+              <p>{bookings.length} total appointment{bookings.length !== 1 ? 's' : ''}</p>
+            </div>
           </div>
           <Link to="/book" className="btn btn-primary my-bookings-new">
             <Plus size={16} /> New Booking
           </Link>
+        </div>
+
+        <div className="my-bookings-stats" aria-label="Booking summary">
+          <div className="my-bookings-stat-card">
+            <span>Total</span>
+            <strong>{bookingSummary.total}</strong>
+          </div>
+          <div className="my-bookings-stat-card">
+            <span>Upcoming</span>
+            <strong>{bookingSummary.upcoming}</strong>
+          </div>
+          <div className="my-bookings-stat-card">
+            <span>Completed</span>
+            <strong>{bookingSummary.completed}</strong>
+          </div>
+          <div className="my-bookings-stat-card">
+            <span>Cancelled</span>
+            <strong>{bookingSummary.cancelled}</strong>
+          </div>
         </div>
 
         <div className="my-bookings-filters" role="tablist" aria-label="Booking status filters">
@@ -355,48 +431,124 @@ export default function MyBookings() {
           </div>
         ) : (
           <div className="my-bookings-list">
-            {filtered.map(booking => (
-              <button key={booking.id} type="button" className="my-booking-row" onClick={() => setSelectedBooking(booking)}>
-                <span className="my-booking-date">
-                  <strong>{booking.date || '-'}</strong>
-                  <small>{formatSlot(booking.slot)}</small>
-                </span>
-                <span className="my-booking-main">
-                  <strong>{appointmentTitle(booking)}</strong>
-                  <small>{petLine(booking)}</small>
-                </span>
-                <span className="my-booking-badges">
-                  <span className={`badge ${STATUS_BADGE[booking.status] || 'badge-pending'} my-booking-status`}>{statusLabel(booking.status)}</span>
-                  {(booking.rescheduleCount || 0) > 0 && (
-                    <span className="badge badge-rescheduled">
-                      Rescheduled
-                    </span>
-                  )}
-                </span>
-                <ChevronRight size={17} className="my-booking-chevron" />
-              </button>
-            ))}
+            {filtered.map(booking => {
+              const petImage = petImageUrlFor(booking)
+              return (
+                <div
+                  key={booking.id}
+                  role="button"
+                  tabIndex={0}
+                  className="my-booking-row"
+                  onClick={(event) => {
+                    if (event.target.closest && (event.target.closest('button') || event.target.closest('.my-booking-preview-side'))) return
+                    setSelectedBooking(booking)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setSelectedBooking(booking)
+                    }
+                  }}
+                >
+                  <div className="my-booking-row-top">
+                    <div className="my-booking-date">
+                      <strong><Calendar size={12} /> {booking.date || '-'}</strong>
+                      <small><Clock size={12} /> {formatSlot(booking.slot)}</small>
+                    </div>
+                    <div className="my-booking-badges">
+                      <span className={`badge ${STATUS_BADGE[booking.status] || 'badge-pending'} my-booking-status`}>{statusLabel(booking.status)}</span>
+                      {(booking.rescheduleCount || 0) > 0 && (
+                        <span className="badge badge-rescheduled">Rescheduled</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="my-booking-row-body">
+                    <div className="my-booking-main-row">
+                      {petImage ? <img className="my-booking-pet-thumb" src={petImage} alt={petLine(booking)} /> : <div className="my-booking-pet-thumb placeholder"><PawPrint size={14} /></div>}
+                      <div className="my-booking-main-copy">
+                        <strong title={appointmentTitle(booking)}>{appointmentTitle(booking)}</strong>
+                        <small title={petLine(booking)}>{petLine(booking)}</small>
+                        <div className="my-booking-row-meta">
+                          <span>{getBookingTypeLabel(booking.bookingType || 'store')}</span>
+                        </div>
+                      </div>
+                    </div>
+                    {(booking.beforeImageUrl || booking.afterImageUrl) && (
+                      <div className="my-booking-preview-side" onClick={event => event.stopPropagation()}>
+                        <div className="my-booking-preview-copy">
+                          <span>Before & After</span>
+                          <strong>Transformation</strong>
+                        </div>
+                        <div className="my-booking-row-images">
+                          {booking.beforeImageUrl && (
+                            <button type="button" onClick={(event) => openPreviewImage(event, booking.beforeImageUrl, 'Before')} onMouseDown={(event) => event.stopPropagation()} onTouchStart={(event) => event.stopPropagation()}>
+                              <img src={booking.beforeImageUrl} alt="Before appointment" />
+                              <span className="my-booking-preview-caption">Before</span>
+                            </button>
+                          )}
+                          {booking.afterImageUrl && (
+                            <button type="button" onClick={(event) => openPreviewImage(event, booking.afterImageUrl, 'After')} onMouseDown={(event) => event.stopPropagation()} onTouchStart={(event) => event.stopPropagation()}>
+                              <img src={booking.afterImageUrl} alt="After appointment" />
+                              <span className="my-booking-preview-caption">After</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <ChevronRight size={17} className="my-booking-chevron" />
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
+
+      {previewImage && (
+        <div className="my-booking-image-lightbox" onClick={() => setPreviewImage(null)}>
+          <div className="my-booking-image-lightbox-shell" onClick={event => event.stopPropagation()}>
+            <div className="my-booking-image-lightbox-head">
+              <span>{previewImage.label}</span>
+              <button type="button" onClick={() => setPreviewImage(null)} aria-label="Close image preview"><X size={18} /></button>
+            </div>
+            <img src={previewImage.url} alt={previewImage.label} />
+          </div>
+        </div>
+      )}
 
       {selectedBooking && (
         <div className="my-booking-modal-overlay" onClick={() => setSelectedBooking(null)}>
           <section className="my-booking-modal" onClick={event => event.stopPropagation()}>
             <div className="my-booking-modal-head">
               <div>
-                <span className={`badge ${STATUS_BADGE[selectedBooking.status] || 'badge-pending'}`}>{statusLabel(selectedBooking.status)}</span>
-                {(selectedBooking.rescheduleCount || 0) > 0 && (
-                  <span className="badge badge-rescheduled" style={{ marginLeft: '8px' }}>
-                    Rescheduled
-                  </span>
-                )}
+                <div className="my-booking-modal-badges">
+                  <span className={`badge ${STATUS_BADGE[selectedBooking.status] || 'badge-pending'}`}>{statusLabel(selectedBooking.status)}</span>
+                  {(selectedBooking.rescheduleCount || 0) > 0 && (
+                    <span className="badge badge-rescheduled">
+                      Rescheduled
+                    </span>
+                  )}
+                </div>
                 <h2>{appointmentTitle(selectedBooking)}</h2>
-                <p>{shortId(selectedBooking.id)}</p>
+                <p>{shortId(selectedBooking.id)} • {selectedBooking.date || '-'} • {formatSlot(selectedBooking.slot)}</p>
               </div>
               <button type="button" onClick={() => setSelectedBooking(null)} aria-label="Close booking details">
                 <X size={18} />
               </button>
+            </div>
+
+            <div className="my-booking-modal-hero">
+              <div className="my-booking-modal-hero-content">
+                {petImageUrlFor(selectedBooking) ? <img className="my-booking-modal-pet-image" src={petImageUrlFor(selectedBooking)} alt={petLine(selectedBooking)} /> : <div className="my-booking-modal-pet-image placeholder"><PawPrint size={18} /></div>}
+                <div>
+                  <div className="my-booking-modal-hero-label">Appointment overview</div>
+                  <div className="my-booking-modal-hero-title">{appointmentTitle(selectedBooking)}</div>
+                </div>
+              </div>
+              <div className="my-booking-modal-hero-meta">
+                <span>{getBookingTypeLabel(selectedBooking.bookingType || 'store')}</span>
+                {selectedBooking.phone ? <span>{selectedBooking.phone}</span> : null}
+              </div>
             </div>
 
             <div className="my-booking-detail-grid">
@@ -404,22 +556,31 @@ export default function MyBookings() {
               <Detail label="Breed" value={selectedBooking.petBreed || selectedBooking.petType || '-'} />
               <Detail label="Date" value={selectedBooking.date || '-'} icon={<Calendar size={15} />} />
               <Detail label="Time" value={formatSlot(selectedBooking.slot)} icon={<Clock size={15} />} />
-              <Detail label="Request Sent" value={formatDateTime(selectedBooking.createdAt)} />
-              <Detail label="Appointment Date & Time" value={formatAppointmentStart(selectedBooking)} />
               {selectedBooking.status === 'cancelled' && <Detail label="Cancelled By" value={selectedBooking.cancelledBy === 'admin' ? 'Paw Paw' : 'You'} />}
-              {selectedBooking.status === 'cancelled' && <Detail label="Cancelled At" value={formatDateTime(selectedBooking.cancelledAt)} />}
               {selectedBooking.status === 'cancelled' && selectedBooking.cancellationReason && <Detail label="Reason" value={selectedBooking.cancellationReason} />}
               <Detail label="Visit" value={getBookingTypeLabel(selectedBooking.bookingType || 'store')} icon={(selectedBooking.bookingType || 'store') === 'home' ? <Home size={15} /> : <Store size={15} />} />
-              {assignedWorker(selectedBooking) && <Detail label="Assigned To" value={`${assignedWorker(selectedBooking)}${selectedBooking.assignedTeamMemberIsOwner ? ' (Owner)' : ''}`} icon={<UserRound size={15} />} />}
-              {selectedBooking.packageNames?.length > 0 && <Detail label="Packages" value={selectedBooking.packageNames.join(', ')} />}
-              {serviceNamesFor(selectedBooking).length > 0 && <Detail label="Services" value={serviceNamesFor(selectedBooking).join(', ')} />}
-              {(selectedBooking.rescheduleCount || 0) > 0 && <Detail label="Reschedules" value={`${selectedBooking.rescheduleCount || 0} time${(selectedBooking.rescheduleCount || 0) === 1 ? '' : 's'}`} />}
-              {(selectedBooking.rescheduledBy || selectedBooking.previousDate) && <Detail label="Last Rescheduled" value={selectedBooking.rescheduledBy ? `${selectedBooking.rescheduledBy === 'admin' ? 'Admin' : 'You'} · ${selectedBooking.previousDate || '-'} ${selectedBooking.previousSlot ? `• ${formatSlot(selectedBooking.previousSlot)}` : ''}` : `${selectedBooking.previousDate || '-'} ${selectedBooking.previousSlot ? `• ${formatSlot(selectedBooking.previousSlot)}` : ''}`} />}
-              {Number(selectedBooking.visitCharge || 0) > 0 && <Detail label="Visit Charge" value={`Rs ${money(selectedBooking.visitCharge)}`} />}
-              {Number(selectedBooking.estimatedTotal || 0) > 0 && <Detail label="Estimated Total" value={`Rs ${money(selectedBooking.estimatedTotal)}+`} />}
-              {(selectedBooking.paymentMode || selectedBooking.paymentPreference) && <Detail label="Payment" value={selectedBooking.paymentMode ? getPaymentModeLabel(selectedBooking.paymentMode) : getPaymentOptionLabel(selectedBooking.paymentPreference)} />}
-              {Number(selectedBooking.amountCollected || 0) > 0 && <Detail label="Paid" value={`Rs ${money(selectedBooking.amountCollected)}`} />}
+              {selectedBooking.address && <Detail label="Address" value={selectedBooking.address} />}
             </div>
+
+            {(selectedBooking.beforeImageUrl || selectedBooking.afterImageUrl) && (
+              <div className="my-booking-image-section">
+                <h3>Before & After</h3>
+                <div className="my-booking-image-grid">
+                  {selectedBooking.beforeImageUrl && (
+                    <button type="button" className="my-booking-image-card" onClick={() => setPreviewImage({ url: selectedBooking.beforeImageUrl, label: 'Before' })}>
+                      <div className="my-booking-image-label-row"><span>Before</span><span className="my-booking-image-icon">↔</span></div>
+                      <img src={selectedBooking.beforeImageUrl} alt="Before appointment" />
+                    </button>
+                  )}
+                  {selectedBooking.afterImageUrl && (
+                    <button type="button" className="my-booking-image-card" onClick={() => setPreviewImage({ url: selectedBooking.afterImageUrl, label: 'After' })}>
+                      <div className="my-booking-image-label-row"><span>After</span><span className="my-booking-image-icon">↔</span></div>
+                      <img src={selectedBooking.afterImageUrl} alt="After appointment" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {selectedBooking.address && (
               <div className="my-booking-detail-note">
@@ -454,6 +615,7 @@ export default function MyBookings() {
                 <p>{selectedBooking.notes}</p>
               </div>
             )}
+
           </section>
         </div>
       )}
@@ -494,7 +656,19 @@ export default function MyBookings() {
                     const isBooked = rescheduleBookedSlots.includes(slot)
                     const disabled = isPast || isBooked
                     return (
-                      <button key={slot} type="button" disabled={disabled} onClick={() => setRescheduleSlot(slot)} className={`slot-btn slot-btn-available${isPast ? ' slot-btn-past' : ''}${isBooked ? ' slot-btn-booked' : ''}${rescheduleSlot === slot ? ' selected' : ''}`}>
+                      <button
+                        key={slot}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => {
+                          if (rescheduleTarget?.date === rescheduleDate && rescheduleTarget?.slot === slot) {
+                            setRescheduleToast('Cannot reschedule to the same slot. Please choose a different slot.')
+                            return
+                          }
+                          setRescheduleSlot(slot)
+                        }}
+                        className={`slot-btn slot-btn-available${isPast ? ' slot-btn-past' : ''}${isBooked ? ' slot-btn-booked' : ''}${rescheduleSlot === slot ? ' selected' : ''}`}
+                      >
                         {slot}
                       </button>
                     )
@@ -549,10 +723,22 @@ export default function MyBookings() {
 
         .my-bookings-header {
           display: flex;
-          align-items: flex-start;
+          align-items: center;
           justify-content: space-between;
           gap: 14px;
           margin-bottom: 22px;
+        }
+
+        .my-bookings-title-group {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+        }
+
+        .my-bookings-paw-icon {
+          color: var(--accent);
+          flex-shrink: 0;
         }
 
         .my-bookings-header h1 {
@@ -574,6 +760,36 @@ export default function MyBookings() {
           font-size: 13px;
           padding: 10px 16px;
           flex-shrink: 0;
+        }
+
+        .my-bookings-stats {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 16px;
+        }
+
+        .my-bookings-stat-card {
+          background: linear-gradient(135deg, rgba(212,175,55,0.12), rgba(255,255,255,0.03));
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          padding: 12px 14px;
+          display: grid;
+          gap: 4px;
+        }
+
+        .my-bookings-stat-card span {
+          color: var(--muted);
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+        }
+
+        .my-bookings-stat-card strong {
+          color: var(--text);
+          font-size: 18px;
+          font-weight: 900;
         }
 
         .my-bookings-filters {
@@ -609,17 +825,17 @@ export default function MyBookings() {
 
         .my-booking-row {
           width: 100%;
-          display: grid;
-          grid-template-columns: minmax(84px, 112px) minmax(0, 1fr) auto 18px;
-          gap: 12px;
-          align-items: center;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
           text-align: left;
-          background: var(--card);
+          background: linear-gradient(135deg, rgba(255,255,255,0.03), rgba(212,175,55,0.04));
           border: 1px solid var(--border);
-          border-radius: 14px;
+          border-radius: 16px;
           padding: 14px;
           cursor: pointer;
-          box-shadow: 0 12px 34px rgba(0,0,0,0.05);
+          box-shadow: 0 14px 40px rgba(0,0,0,0.08);
+          position: relative;
         }
 
         .my-booking-row:hover,
@@ -628,62 +844,205 @@ export default function MyBookings() {
           outline: none;
         }
 
-        .my-booking-date,
-        .my-booking-main {
+        .my-booking-row-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        .my-booking-date {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
           min-width: 0;
         }
 
         .my-booking-date strong,
-        .my-booking-date small,
-        .my-booking-main strong,
-        .my-booking-main small {
-          display: block;
-        }
-
-        .my-booking-date strong {
+        .my-booking-main-copy strong {
           color: var(--text);
           font-size: 13px;
           font-weight: 800;
         }
 
+        .my-booking-date strong {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+
         .my-booking-date small,
-        .my-booking-date em {
+        .my-booking-main-copy small {
           color: var(--muted);
           font-size: 12px;
-          margin-top: 4px;
           font-style: normal;
         }
 
-        .my-booking-date em {
-          font-size: 11px;
+        .my-booking-date small {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
         }
 
-        .my-booking-main strong {
-          color: var(--text);
-          font-size: 15px;
-          font-weight: 900;
-          line-height: 1.35;
-          overflow-wrap: anywhere;
+        .my-booking-row-body {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
         }
 
-        .my-booking-main small {
+        .my-booking-main-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .my-booking-preview-side {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 6px;
+          flex-shrink: 0;
+          margin-left: auto;
+        }
+
+        .my-booking-preview-copy {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 2px;
+        }
+
+        .my-booking-preview-copy span {
           color: var(--muted);
-          font-size: 13px;
+          font-size: 11px;
+          font-weight: 700;
+        }
+
+        .my-booking-preview-copy strong {
+          color: var(--text);
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+        }
+
+        .my-booking-pet-thumb,
+        .my-booking-modal-pet-image {
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
+          object-fit: cover;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          flex-shrink: 0;
+        }
+
+        .my-booking-pet-thumb.placeholder,
+        .my-booking-modal-pet-image.placeholder {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--accent);
+        }
+
+        .my-booking-main-copy {
+          min-width: 0;
+          flex: 1;
+        }
+
+        .my-booking-main-copy strong,
+        .my-booking-main-copy small {
+          display: block;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          display: -webkit-box;
+          -webkit-box-orient: vertical;
+        }
+
+        .my-booking-main-copy strong {
+          font-size: 15px;
+          line-height: 1.35;
+          -webkit-line-clamp: 2;
+        }
+
+        .my-booking-main-copy small {
           margin-top: 5px;
-          overflow-wrap: anywhere;
+          -webkit-line-clamp: 2;
+        }
+
+        .my-booking-row-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 8px;
+        }
+
+        .my-booking-row-meta span {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 8px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.04);
+          color: var(--muted);
+          font-size: 11px;
+          font-weight: 700;
+          border: 1px solid var(--border);
+        }
+
+        .my-booking-row-images {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+          justify-content: flex-start;
+        }
+
+        .my-booking-row-images button {
+          padding: 0;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          overflow: hidden;
+          background: transparent;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .my-booking-row-images img {
+          display: block;
+          width: 54px;
+          height: 54px;
+          object-fit: cover;
+        }
+
+        .my-booking-preview-caption {
+          color: var(--muted);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+          padding-bottom: 4px;
         }
 
         .my-booking-status {
-          justify-self: end;
           text-transform: capitalize;
           white-space: nowrap;
         }
 
         .my-booking-badges {
-          justify-self: end;
           display: inline-flex;
           gap: 8px;
           align-items: center;
+          flex-wrap: wrap;
+          justify-content: flex-end;
         }
 
         .badge-rescheduled {
@@ -749,7 +1108,76 @@ export default function MyBookings() {
           justify-content: space-between;
           gap: 12px;
           align-items: flex-start;
-          margin-bottom: 18px;
+          margin-bottom: 14px;
+        }
+
+        .my-booking-modal-badges {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+
+        .my-booking-modal-hero {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: flex-start;
+          padding: 14px;
+          border-radius: 14px;
+          border: 1px solid var(--border);
+          background: linear-gradient(135deg, rgba(212,175,55,0.12), rgba(255,255,255,0.03));
+          margin-bottom: 12px;
+        }
+
+        .my-booking-modal-hero-content {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+        }
+
+        .my-booking-modal-pet-image {
+          width: 48px;
+          height: 48px;
+          border-radius: 12px;
+          object-fit: cover;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          flex-shrink: 0;
+        }
+
+        .my-booking-modal-hero-label {
+          color: var(--accent);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 1.8px;
+          text-transform: uppercase;
+          margin-bottom: 6px;
+        }
+
+        .my-booking-modal-hero-title {
+          color: var(--text);
+          font-size: 16px;
+          font-weight: 900;
+          line-height: 1.35;
+        }
+
+        .my-booking-modal-hero-meta {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          gap: 8px;
+        }
+
+        .my-booking-modal-hero-meta span {
+          border: 1px solid var(--border);
+          background: rgba(255,255,255,0.04);
+          color: var(--muted);
+          padding: 6px 10px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 700;
         }
 
         .my-booking-modal-head h2 {
@@ -821,6 +1249,115 @@ export default function MyBookings() {
           margin-top: 10px;
         }
 
+        .my-booking-image-section {
+          margin-top: 12px;
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 14px;
+        }
+
+        .my-booking-image-section h3 {
+          color: var(--text);
+          font-size: 14px;
+          font-weight: 900;
+          margin: 0 0 10px;
+        }
+
+        .my-booking-image-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .my-booking-image-card {
+          display: grid;
+          gap: 6px;
+          text-align: left;
+          background: transparent;
+          border: none;
+          padding: 0;
+          cursor: pointer;
+          min-width: 0;
+        }
+
+        .my-booking-image-label-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          color: var(--muted);
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+        }
+
+        .my-booking-image-icon {
+          color: var(--accent);
+        }
+
+        .my-booking-image-card img {
+          width: 100%;
+          aspect-ratio: 4 / 3;
+          object-fit: cover;
+          border-radius: 12px;
+          border: 1px solid var(--border);
+          background: var(--card);
+        }
+
+        .my-booking-image-lightbox {
+          position: fixed;
+          inset: 0;
+          z-index: 1200;
+          background: rgba(0,0,0,0.72);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 18px;
+        }
+
+        .my-booking-image-lightbox-shell {
+          width: min(900px, 100%);
+          max-height: min(90vh, 900px);
+          display: grid;
+          gap: 10px;
+        }
+
+        .my-booking-image-lightbox-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .my-booking-image-lightbox-head span {
+          color: white;
+          font-size: 13px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+
+        .my-booking-image-lightbox-head button {
+          width: 38px;
+          height: 38px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.24);
+          background: rgba(255,255,255,0.12);
+          color: white;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+
+        .my-booking-image-lightbox img {
+          width: 100%;
+          max-height: 80vh;
+          object-fit: contain;
+          border-radius: 16px;
+          background: #111;
+        }
+
         .my-booking-cancel-btn {
           width: 100%;
           justify-content: center;
@@ -842,24 +1379,90 @@ export default function MyBookings() {
           }
 
           .my-bookings-header {
-            display: grid;
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+          }
+
+          .my-bookings-title-group {
+            flex: 1 1 auto;
+            min-width: 0;
+            gap: 8px;
+          }
+
+          .my-bookings-header h1 {
+            font-size: clamp(22px, 5.4vw, 28px);
+            line-height: 1.1;
+            margin-bottom: 0;
+          }
+
+          .my-bookings-header p {
+            display: none;
+          }
+
+          .my-bookings-stats {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            scrollbar-width: none;
+          }
+
+          .my-bookings-stat-card {
+            flex: 0 0 84px;
+            min-width: 84px;
+            padding: 10px 10px;
+          }
+
+          .my-bookings-stat-card span {
+            font-size: 8px;
+            letter-spacing: 0.8px;
+          }
+
+          .my-bookings-stat-card strong {
+            font-size: 14px;
+            line-height: 1.1;
           }
 
           .my-bookings-new {
-            width: fit-content;
+            width: auto;
+            margin-left: 0;
+            flex-shrink: 0;
+            font-size: 11px;
+            padding: 8px 11px;
+          }
+
+          .my-bookings-filters {
+            gap: 6px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            padding-bottom: 2px;
+            scrollbar-width: none;
+          }
+
+          .my-bookings-filters button {
+            font-size: 11px;
+            padding: 7px 10px;
+            flex: 0 0 auto;
           }
 
           .my-booking-row {
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 10px;
             padding: 13px;
           }
 
-          .my-booking-date {
-            grid-column: 1 / -1;
-            display: flex;
-            gap: 10px;
+          .my-booking-row-top {
+            flex-wrap: wrap;
             align-items: center;
+            gap: 8px;
+          }
+
+          .my-booking-date {
+            flex-direction: row;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
           }
 
           .my-booking-date strong,
@@ -867,14 +1470,40 @@ export default function MyBookings() {
             margin: 0;
           }
 
-          .my-booking-main {
-            grid-column: 1;
+          .my-booking-row-body {
+            flex-direction: row;
+            align-items: center;
+            gap: 10px;
           }
 
-          .my-booking-status {
-            grid-column: 2;
-            grid-row: 2;
-            align-self: start;
+          .my-booking-main-row {
+            flex: 1 1 auto;
+            min-width: 0;
+            gap: 8px;
+          }
+
+          .my-booking-main-copy {
+            flex: 1 1 auto;
+            min-width: 0;
+          }
+
+          .my-booking-preview-side {
+            align-items: flex-start;
+            margin-left: 0;
+            width: auto;
+            flex-shrink: 0;
+          }
+
+          .my-booking-preview-copy {
+            align-items: flex-start;
+          }
+
+          .my-booking-row-images {
+            justify-content: flex-start;
+          }
+
+          .my-booking-badges {
+            justify-content: flex-start;
           }
 
           .my-booking-chevron {
@@ -893,8 +1522,21 @@ export default function MyBookings() {
             padding: 18px;
           }
 
+          .my-booking-modal-hero {
+            flex-direction: column;
+          }
+
+          .my-booking-modal-hero-meta {
+            justify-content: flex-start;
+          }
+
           .my-booking-detail-grid {
             grid-template-columns: 1fr;
+          }
+
+          .my-booking-image-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
           }
         }
       `}</style>

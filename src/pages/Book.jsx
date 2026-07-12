@@ -1,7 +1,7 @@
 // src/pages/Book.jsx
 import { useState, useEffect, useRef } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc, setDoc, Timestamp } from 'firebase/firestore'
+import { collection, addDoc, getDocs, onSnapshot, query, where, serverTimestamp, doc, getDoc, setDoc, Timestamp } from 'firebase/firestore'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
@@ -11,6 +11,7 @@ import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getP
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { renderServiceIcon } from '../utils/serviceIcons.jsx'
+import Toast from '../components/Toast'
 
 const parseSlotStart = (dateString, slotLabel) => {
   const match = String(slotLabel || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
@@ -72,10 +73,17 @@ export default function Book() {
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
   const [bookingSettings, setBookingSettings] = useState(null)
+  const [bookingToast, setBookingToast] = useState('')
 
   useEffect(() => {
     bookingTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [step, done])
+
+  useEffect(() => {
+    if (!bookingToast) return
+    const t = window.setTimeout(() => setBookingToast(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [bookingToast])
 
   // Fetch packages and service details
   useEffect(() => {
@@ -138,35 +146,40 @@ export default function Book() {
 
   // Fetch booked slots
   useEffect(() => {
-    if (!form.date || selectedServices.length === 0) {
+    if (!form.date) {
       setBookedSlots([])
       return
     }
-    async function fetchBooked() {
-      try {
-        const q = query(
-          collection(db, 'bookings'),
-          where('date', '==', form.date),
-          where('status', 'in', [BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED])
-        )
-        const snap = await getDocs(q)
-        const slotCounts = {}
-        snap.docs
-          .map(d => d.data())
-          .filter(b => {
-            const bookingServices = Array.isArray(b.serviceIds) ? b.serviceIds : [b.serviceId]
-            return bookingServices.some(id => selectedServices.includes(id)) && (b.bookingType || 'store') === form.bookingType
-          })
-          .forEach(b => { slotCounts[b.slot] = (slotCounts[b.slot] || 0) + 1 })
-        const capacity = Math.max(1, Number(bookingSettings?.slotCapacity || 1))
-        setBookedSlots(Object.entries(slotCounts).filter(([, count]) => count >= capacity).map(([slot]) => slot))
-      } catch {}
-    }
-    fetchBooked()
-  }, [form.date, form.bookingType, selectedServices, bookingSettings])
+    const q = query(
+      collection(db, 'bookings'),
+      where('date', '==', form.date)
+    )
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const slotCounts = {}
+      snap.docs
+        .map(d => d.data())
+        .filter(b => {
+          const status = String(b.status || '').toLowerCase()
+          return status !== BOOKING_STATUS.CANCELLED
+        })
+        .forEach(b => {
+          const slot = String(b.slot || '').trim()
+          if (!slot) return
+          slotCounts[slot] = (slotCounts[slot] || 0) + 1
+        })
+      const capacity = Math.max(1, Number(bookingSettings?.slotCapacity || 1))
+      const nextBooked = Object.entries(slotCounts).filter(([, count]) => count >= capacity).map(([slot]) => slot)
+      setBookedSlots(nextBooked)
+      setForm(prev => (prev.slot && nextBooked.includes(prev.slot) ? { ...prev, slot: '' } : prev))
+    }, () => {
+      setBookedSlots([])
+    })
+    return () => unsubscribe()
+  }, [form.date, form.bookingType, bookingSettings?.slotCapacity])
 
   const availability = getAvailabilityForDate(bookingSettings || undefined, form.date)
   const availableSlots = form.bookingType === 'home' ? availability.homeSlots : availability.storeSlots
+  const blockedDateSlots = Array.isArray(bookingSettings?.blockedSlots?.[form.date]) ? bookingSettings.blockedSlots[form.date] : []
   const isToday = form.date === dateKeyLocal()
   const bookableSlots = isToday ? availableSlots.filter(slot => isFutureSlotForDate(form.date, slot)) : availableSlots
   const visitOptions = [
@@ -246,6 +259,28 @@ export default function Book() {
     return min > 0 ? `Rs ${min}+` : selectedService?.price || ''
   }
 
+  const checkSlotCapacity = async (slotLabel) => {
+    if (!slotLabel || !form.date) return false
+    try {
+      const latestSettings = await fetchBookingSettings(db)
+      const q = query(
+        collection(db, 'bookings'),
+        where('date', '==', form.date)
+      )
+      const snap = await getDocs(q)
+      const capacity = Math.max(1, Number(latestSettings?.slotCapacity || bookingSettings?.slotCapacity || 1))
+      const count = snap.docs
+        .map(d => d.data())
+        .filter(b => {
+          const status = String(b.status || '').toLowerCase()
+          return status !== BOOKING_STATUS.CANCELLED && String(b.slot || '').trim() === String(slotLabel || '').trim()
+        })
+        .length
+      return count >= capacity
+    } catch {
+      return false
+    }
+  }
 
   const pastelFor = (index) => ({ '--service-pastel': SERVICE_PASTELS[index % SERVICE_PASTELS.length] })
   const handleSubmit = async () => {
@@ -253,9 +288,15 @@ export default function Book() {
       alert('Your account is blocked from booking. Please contact the admin.')
       return
     }
-    if ((selectedServices.length === 0 && selectedPackages.length === 0) || !form.petName || !form.ownerName || !form.phone || !form.date || !form.slot || !bookableSlots.includes(form.slot) || bookedSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim())) return
+    if ((selectedServices.length === 0 && selectedPackages.length === 0) || !form.petName || !form.ownerName || !form.phone || !form.date || !form.slot || !bookableSlots.includes(form.slot) || bookedSlots.includes(form.slot) || blockedDateSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim())) return
     setLoading(true)
     try {
+      const capacityReached = await checkSlotCapacity(form.slot)
+      if (capacityReached) {
+        alert('That time slot is no longer available. Please choose another time.')
+        setLoading(false)
+        return
+      }
       const breed = form.customBreed || form.petBreed
       const bookingStart = parseSlotStart(form.date, form.slot)
       const bookingData = {
@@ -283,10 +324,7 @@ export default function Book() {
       }
       const ref = await addDoc(collection(db, 'bookings'), bookingData)
       setBookingRef({ id: ref.id, ...bookingData })
-
-
-
-
+      setBookingToast('Thank you! Your appointment request has been submitted successfully.')
       setDone(true)
     } catch (err) { alert(err?.message || 'Booking failed. Please try again.') }
     setLoading(false)
@@ -316,6 +354,11 @@ export default function Book() {
 
   if (done && bookingRef) return (
     <div style={S.page}>
+      {bookingToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={bookingToast} type="success" onClose={() => setBookingToast('')} />
+        </div>
+      )}
       <div ref={bookingTopRef} style={{ ...S.wrap, textAlign: 'center' }}>
         <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(52,211,153,0.1)', border: '2px solid rgba(52,211,153,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', color: '#34d399' }}>
           <CheckCircle size={36} />
@@ -354,6 +397,11 @@ export default function Book() {
 
   return (
     <div style={S.page}>
+      {bookingToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={bookingToast} type="success" onClose={() => setBookingToast('')} />
+        </div>
+      )}
       <div ref={bookingTopRef} style={S.wrap}>
         <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Book Appointment</h1>
         <p style={{ color: 'var(--muted)', marginBottom: '28px', fontSize: '14px' }}>Fill the details below to schedule your visit</p>
@@ -630,13 +678,18 @@ export default function Book() {
                   {availableSlots.map(slot => {
                     const isPast = isToday && !isFutureSlotForDate(form.date, slot)
                     const isBooked = bookedSlots.includes(slot)
-                    const disabled = isPast || isBooked
+                    const isBlocked = blockedDateSlots.includes(slot)
+                    const isFull = isBooked
+                    const disabled = isPast || isFull || isBlocked
                     return (
                       <button
                         key={slot}
                         disabled={disabled}
-                        onClick={() => update('slot', slot)}
-                        className={`slot-btn slot-btn-available${isPast ? ' slot-btn-past' : ''}${isBooked ? ' slot-btn-booked' : ''}${form.slot === slot ? ' selected' : ''}`}
+                        onClick={() => {
+                          if (!disabled) update('slot', slot)
+                        }}
+                        className={`slot-btn slot-btn-available${isPast ? ' slot-btn-past' : ''}${isFull ? ' slot-btn-full' : ''}${isBlocked ? ' slot-btn-blocked' : ''}${form.slot === slot ? ' selected' : ''}`}
+                        title={isBlocked ? 'Blocked by admin' : isFull ? 'This slot is full' : undefined}
                       >
                         {slot}
                       </button>
@@ -648,7 +701,7 @@ export default function Book() {
                 ) : bookableSlots.length === 0 ? (
                   <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '8px' }}>No future slots are available for this visit type today.</p>
                 ) : (
-                  <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>Green slots are available. Gray slots are past or already booked.</p>
+                  <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>Green slots are available. Gray slots are past or already booked. Red slots are unavailable/blocked by admin.</p>
                 )}
               </div>
 

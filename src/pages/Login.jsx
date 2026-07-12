@@ -1,5 +1,5 @@
 // src/pages/Login.jsx
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
@@ -34,7 +34,13 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [captchaVerified, setCaptchaVerified] = useState(false)
 
-  if (user) { navigate(isAdmin ? '/admin' : '/', { replace: true }); return null }
+  useEffect(() => {
+    if (user) {
+      navigate(isAdmin ? '/admin' : '/', { replace: true })
+    }
+  }, [user, isAdmin, navigate])
+
+  if (user) return null
 
   const requireCaptcha = () => {
     if (captchaVerified) return true

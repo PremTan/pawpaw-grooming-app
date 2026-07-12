@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
 import { ArrowRight, BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Store, UserCheck, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { calculatePublicStats } from '../utils/publicStats'
@@ -13,10 +14,11 @@ import { fetchBookingSettings } from '../utils/bookingSettings'
 import { OWNER_ASSIGNEE_ID, buildAssigneePatch, getAssigneeLabel, getOwnerAssignee } from '../utils/teamMembers'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 
-const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', assignedTeamMemberId: OWNER_ASSIGNEE_ID, date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: 'walkin', userEmail: 'walkin@offline' }
+const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', assignedTeamMemberId: OWNER_ASSIGNEE_ID, date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: '', userEmail: '' }
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
+const normalizePhone = (value) => String(value || '').replace(/\D/g, '').slice(-10)
 const toDate = (value) => {
   if (!value) return null
   if (value.toDate) return value.toDate()
@@ -29,7 +31,19 @@ const monthLabel = (key) => {
   const [year, month] = key.split('-').map(Number)
   return new Date(year, month - 1, 1).toLocaleString('en-IN', { month: 'short' })
 }
-const uniqueCustomerKey = (b) => b.userId && b.userId !== 'walkin' ? b.userId : (b.phone || b.ownerName || b.id)
+const buildWalkinCustomerIdentity = (booking) => {
+  const phone = normalizePhone(booking?.phone)
+  const ownerName = String(booking?.ownerName || booking?.name || '').trim().toLowerCase()
+  if (phone && ownerName) return `walkin:${phone}:${ownerName}`
+  if (phone) return `walkin:${phone}`
+  if (ownerName) return `walkin:${ownerName}`
+  return booking?.id || 'walkin:unknown'
+}
+const uniqueCustomerKey = (b) => {
+  const bookingUserId = b?.userId && b.userId !== 'walkin' && b.userId !== 'walkin@offline' ? b.userId : ''
+  if (bookingUserId) return bookingUserId
+  return buildWalkinCustomerIdentity(b)
+}
 
 function buildSeries(bookings, mode) {
   if (mode === 'monthly') {
@@ -98,6 +112,8 @@ export default function AdminDashboard() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
   const [bookingSettings, setBookingSettings] = useState(null)
   const [teamMembers, setTeamMembers] = useState([])
   const [serviceDetails, setServiceDetails] = useState({})
@@ -196,6 +212,12 @@ export default function AdminDashboard() {
   useEffect(() => { fetchData() }, [])
 
   useEffect(() => {
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [toastMessage])
+
+  useEffect(() => {
     async function fetchTeamMembers() {
       try {
         const snap = await getDocs(query(collection(db, 'teamMembers'), orderBy('createdAt', 'desc')))
@@ -227,7 +249,7 @@ export default function AdminDashboard() {
   const walkinCustomers = useMemo(() => {
     const map = new Map()
     data.bookings.forEach(booking => {
-      const key = booking.userId && booking.userId !== 'walkin' ? booking.userId : (booking.phone || booking.ownerName || booking.userEmail)
+      const key = uniqueCustomerKey(booking)
       if (!key || map.has(key)) return
       map.set(key, booking)
     })
@@ -236,10 +258,10 @@ export default function AdminDashboard() {
 
   const applyWalkinCustomer = key => {
     if (!key) {
-      setWalkin(prev => ({ ...prev, ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', address: '', userId: 'walkin', userEmail: 'walkin@offline' }))
+      setWalkin(prev => ({ ...prev, ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', address: '', userId: '', userEmail: '' }))
       return
     }
-    const customer = walkinCustomers.find(item => (item.userId && item.userId !== 'walkin' ? item.userId : (item.phone || item.ownerName || item.userEmail)) === key)
+    const customer = walkinCustomers.find(item => uniqueCustomerKey(item) === key)
     if (!customer) return
     setWalkin(prev => ({
       ...prev,
@@ -249,8 +271,8 @@ export default function AdminDashboard() {
       petType: customer.petType || 'Dog',
       petBreed: customer.petBreed || '',
       address: customer.address || '',
-      userId: customer.userId && customer.userId !== 'walkin' ? customer.userId : 'walkin',
-      userEmail: customer.userEmail || (customer.userId && customer.userId !== 'walkin' ? '' : 'walkin@offline'),
+      userId: customer.userId && customer.userId !== 'walkin' && customer.userId !== 'walkin@offline' ? customer.userId : '',
+      userEmail: customer.userEmail || '',
     }))
   }
 
@@ -258,9 +280,25 @@ export default function AdminDashboard() {
 
   const handleSave = async () => {
     const { ownerName, phone, petName, serviceId, date, slot } = walkin
-    if (!ownerName || !phone || !petName || !serviceId || !date || !slot) { setError('Please fill all required fields *'); return }
-    if (walkin.bookingType === 'home' && !walkin.address.trim()) { setError('Please enter home visit address'); return }
-    setSaving(true); setError('')
+    if (!ownerName || !phone || !petName || !serviceId || !date || !slot) {
+      const msg = 'Please fill all required fields.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
+      setSuccess(false)
+      return
+    }
+    if (walkin.bookingType === 'home' && !walkin.address.trim()) {
+      const msg = 'Please enter the home visit address.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
+      setSuccess(false)
+      return
+    }
+    setSaving(true)
+    setError('')
+    setSuccess(false)
     try {
       const svc = serviceCatalog.find(s => s.id === serviceId)
       const assignee = assigneeOptions.find(item => item.id === walkin.assignedTeamMemberId) || ownerAssignee
@@ -275,13 +313,27 @@ export default function AdminDashboard() {
         estimatedTotal: walkinServiceAmount + visitCharge,
         serviceName: svc?.name || '',
         serviceIds: [serviceId],
-        userId: walkin.userId || 'walkin', userEmail: walkin.userEmail || 'walkin@offline', isWalkIn: true,
+        userId: walkin.userId || '',
+        userEmail: walkin.userEmail || '',
+        isWalkIn: true,
         status: totalCollected ? BOOKING_STATUS.COMPLETED : BOOKING_STATUS.CONFIRMED,
         createdAt: serverTimestamp(),
       })
-      setSuccess(true); setWalkin(EMPTY); await fetchData()
-      setTimeout(() => { setSuccess(false); setShowModal(false) }, 2000)
-    } catch { setError('Failed to save. Try again.') }
+      setWalkin(EMPTY)
+      await fetchData()
+      setToastType('success')
+      setToastMessage('Walk-in booking saved successfully.')
+      setSuccess(true)
+      window.setTimeout(() => {
+        setSuccess(false)
+        setShowModal(false)
+      }, 2000)
+    } catch {
+      const msg = 'Failed to save offline appointment. Please try again.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
+    }
     setSaving(false)
   }
 
@@ -305,6 +357,11 @@ export default function AdminDashboard() {
 
   return (
     <div className="admin-page admin-dashboard">
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+        </div>
+      )}
       <div className="admin-page-header">
         <div>
           <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '28px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>Dashboard</h1>
@@ -443,9 +500,6 @@ export default function AdminDashboard() {
                 <button type="button" className="walkin-modal-close" onClick={() => setShowModal(false)} aria-label="Close offline appointment"><X size={20} /></button>
               </div>
 
-              {success && <div style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399', fontSize: '13px', padding: '12px', borderRadius: '10px', marginBottom: '16px' }}>Walk-in booking saved!</div>}
-              {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', fontSize: '13px', padding: '12px', borderRadius: '10px', marginBottom: '16px' }}>{error}</div>}
-
               <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '10px', padding: '12px', marginBottom: '20px', display: 'flex', gap: '10px' }}>
                 <UserCheck size={16} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: '1px' }} />
                 <p style={{ color: 'var(--muted)', fontSize: '12px', lineHeight: 1.6 }}>
@@ -459,7 +513,7 @@ export default function AdminDashboard() {
                   <select className="input" onChange={e => applyWalkinCustomer(e.target.value)} defaultValue="">
                     <option value="">New walk-in customer</option>
                     {walkinCustomers.map(customer => {
-                      const key = customer.userId && customer.userId !== 'walkin' ? customer.userId : (customer.phone || customer.ownerName || customer.userEmail)
+                      const key = uniqueCustomerKey(customer)
                       return <option key={key} value={key}>{customer.ownerName || 'Customer'} - {customer.phone || customer.userEmail || '-'}</option>
                     })}
                   </select>

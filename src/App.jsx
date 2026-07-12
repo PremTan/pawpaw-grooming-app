@@ -24,6 +24,7 @@ import AdminLayout    from './admin/AdminLayout'
 import AdminDashboard from './admin/AdminDashboard'
 import AdminBookings  from './admin/AdminBookings'
 import AdminReviews   from './admin/AdminReviews'
+import AdminGoogleReviews from './admin/AdminGoogleReviews'
 import AdminCustomers from './admin/AdminCustomers'
 import AdminBlockedUsers from './admin/AdminBlockedUsers'
 import AdminGallery   from './admin/AdminGallery'
@@ -88,6 +89,7 @@ export default function App() {
         <Route path="bookings/:bookingId" element={<AdminBookings />} />
         <Route path="invoices" element={<AdminInvoices />} />
         <Route path="reviews"   element={<AdminReviews />} />
+        <Route path="google-reviews" element={<AdminGoogleReviews />} />
         <Route path="customers" element={<AdminCustomers />} />
         <Route path="blocked-users" element={<AdminBlockedUsers />} />
         <Route path="services"  element={<AdminServices />} />
