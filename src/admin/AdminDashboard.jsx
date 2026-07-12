@@ -14,10 +14,11 @@ import { fetchBookingSettings } from '../utils/bookingSettings'
 import { OWNER_ASSIGNEE_ID, buildAssigneePatch, getAssigneeLabel, getOwnerAssignee } from '../utils/teamMembers'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 
-const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', assignedTeamMemberId: OWNER_ASSIGNEE_ID, date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: 'walkin', userEmail: 'walkin@offline' }
+const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', assignedTeamMemberId: OWNER_ASSIGNEE_ID, date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: '', userEmail: '' }
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
+const normalizePhone = (value) => String(value || '').replace(/\D/g, '').slice(-10)
 const toDate = (value) => {
   if (!value) return null
   if (value.toDate) return value.toDate()
@@ -30,7 +31,19 @@ const monthLabel = (key) => {
   const [year, month] = key.split('-').map(Number)
   return new Date(year, month - 1, 1).toLocaleString('en-IN', { month: 'short' })
 }
-const uniqueCustomerKey = (b) => b.userId && b.userId !== 'walkin' ? b.userId : (b.phone || b.ownerName || b.id)
+const buildWalkinCustomerIdentity = (booking) => {
+  const phone = normalizePhone(booking?.phone)
+  const ownerName = String(booking?.ownerName || booking?.name || '').trim().toLowerCase()
+  if (phone && ownerName) return `walkin:${phone}:${ownerName}`
+  if (phone) return `walkin:${phone}`
+  if (ownerName) return `walkin:${ownerName}`
+  return booking?.id || 'walkin:unknown'
+}
+const uniqueCustomerKey = (b) => {
+  const bookingUserId = b?.userId && b.userId !== 'walkin' && b.userId !== 'walkin@offline' ? b.userId : ''
+  if (bookingUserId) return bookingUserId
+  return buildWalkinCustomerIdentity(b)
+}
 
 function buildSeries(bookings, mode) {
   if (mode === 'monthly') {
@@ -236,7 +249,7 @@ export default function AdminDashboard() {
   const walkinCustomers = useMemo(() => {
     const map = new Map()
     data.bookings.forEach(booking => {
-      const key = booking.userId && booking.userId !== 'walkin' ? booking.userId : (booking.phone || booking.ownerName || booking.userEmail)
+      const key = uniqueCustomerKey(booking)
       if (!key || map.has(key)) return
       map.set(key, booking)
     })
@@ -245,10 +258,10 @@ export default function AdminDashboard() {
 
   const applyWalkinCustomer = key => {
     if (!key) {
-      setWalkin(prev => ({ ...prev, ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', address: '', userId: 'walkin', userEmail: 'walkin@offline' }))
+      setWalkin(prev => ({ ...prev, ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', address: '', userId: '', userEmail: '' }))
       return
     }
-    const customer = walkinCustomers.find(item => (item.userId && item.userId !== 'walkin' ? item.userId : (item.phone || item.ownerName || item.userEmail)) === key)
+    const customer = walkinCustomers.find(item => uniqueCustomerKey(item) === key)
     if (!customer) return
     setWalkin(prev => ({
       ...prev,
@@ -258,8 +271,8 @@ export default function AdminDashboard() {
       petType: customer.petType || 'Dog',
       petBreed: customer.petBreed || '',
       address: customer.address || '',
-      userId: customer.userId && customer.userId !== 'walkin' ? customer.userId : 'walkin',
-      userEmail: customer.userEmail || (customer.userId && customer.userId !== 'walkin' ? '' : 'walkin@offline'),
+      userId: customer.userId && customer.userId !== 'walkin' && customer.userId !== 'walkin@offline' ? customer.userId : '',
+      userEmail: customer.userEmail || '',
     }))
   }
 
@@ -300,7 +313,9 @@ export default function AdminDashboard() {
         estimatedTotal: walkinServiceAmount + visitCharge,
         serviceName: svc?.name || '',
         serviceIds: [serviceId],
-        userId: walkin.userId || 'walkin', userEmail: walkin.userEmail || 'walkin@offline', isWalkIn: true,
+        userId: walkin.userId || '',
+        userEmail: walkin.userEmail || '',
+        isWalkIn: true,
         status: totalCollected ? BOOKING_STATUS.COMPLETED : BOOKING_STATUS.CONFIRMED,
         createdAt: serverTimestamp(),
       })
@@ -498,7 +513,7 @@ export default function AdminDashboard() {
                   <select className="input" onChange={e => applyWalkinCustomer(e.target.value)} defaultValue="">
                     <option value="">New walk-in customer</option>
                     {walkinCustomers.map(customer => {
-                      const key = customer.userId && customer.userId !== 'walkin' ? customer.userId : (customer.phone || customer.ownerName || customer.userEmail)
+                      const key = uniqueCustomerKey(customer)
                       return <option key={key} value={key}>{customer.ownerName || 'Customer'} - {customer.phone || customer.userEmail || '-'}</option>
                     })}
                   </select>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs, orderBy, query } from 'firebase/firestore'
 import { Download, Eye, MessageCircle, ReceiptText } from 'lucide-react'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 import { db } from '../firebase'
 import { PET_TYPES } from '../utils/services'
 import { fetchBusinessInfo } from '../utils/businessInfo'
@@ -27,6 +28,8 @@ export default function AdminInvoices() {
   const [generated, setGenerated] = useState(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
 
   useEffect(() => {
     async function load() {
@@ -48,6 +51,12 @@ export default function AdminInvoices() {
     }
     load()
   }, [])
+
+  useEffect(() => {
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [toastMessage])
 
   const completedBookings = useMemo(() => bookings.filter(booking => booking.status === 'completed'), [bookings])
   const selectedBooking = completedBookings.find(booking => booking.id === selectedId)
@@ -111,23 +120,36 @@ export default function AdminInvoices() {
 
   const generateFromAppointment = () => {
     if (!selectedBooking) {
-      setError('Select a completed appointment first.')
+      const msg = 'Select a completed appointment first.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
       return
     }
     setError('')
+    setToastType('success')
+    setToastMessage('Invoice generated successfully.')
     setGenerated({ booking: selectedBooking, label: `${selectedBooking.ownerName || 'Customer'} - ${shortId(selectedBooking.id)}` })
   }
 
   const generateCustom = () => {
     if (!custom.ownerName || !custom.phone || !custom.petName || !custom.serviceName || !custom.date || !custom.amountCollected) {
-      setError('Please fill customer, pet, service, date and amount.')
+      const msg = 'Please fill customer, pet, service, date and amount.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
       return
     }
     if (custom.bookingType === 'home' && !custom.address.trim()) {
-      setError('Please add address for home visit invoice.')
+      const msg = 'Please add address for home visit invoice.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
       return
     }
     setError('')
+    setToastType('success')
+    setToastMessage('Invoice generated successfully.')
     setGenerated({ booking: makeCustomBooking(), label: `${custom.ownerName} - custom invoice` })
   }
 
@@ -161,6 +183,11 @@ export default function AdminInvoices() {
 
   return (
     <div className="admin-page">
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+        </div>
+      )}
       <div className="admin-page-header">
         <div>
           <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '28px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>Invoices</h1>

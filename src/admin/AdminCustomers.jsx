@@ -5,12 +5,23 @@ import { collection, doc, getDocs, serverTimestamp, setDoc } from 'firebase/fire
 import { Ban, CalendarDays, ChevronRight, Phone, Search, ShieldCheck, X } from 'lucide-react'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
 const statusClass = (status = 'pending') => status === 'confirmed' ? 'badge-confirmed' : status === 'completed' ? 'badge-completed' : status === 'cancelled' ? 'badge-cancelled' : 'badge-pending'
-const customerKey = (booking) => booking.userId || booking.phone || booking.id
 const normalizePhone = (value) => String(value || '').replace(/\D/g, '').slice(-10)
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase()
+const buildCustomerIdentityKey = (booking) => {
+  const normalizedUserId = booking?.userId && booking.userId !== 'walkin' && booking.userId !== 'walkin@offline' ? booking.userId : ''
+  if (normalizedUserId) return normalizedUserId
+  const phone = normalizePhone(booking?.phone)
+  const ownerName = String(booking?.ownerName || booking?.name || '').trim().toLowerCase()
+  if (phone && ownerName) return `walkin:${phone}:${ownerName}`
+  if (phone) return `walkin:${phone}`
+  if (ownerName) return `walkin:${ownerName}`
+  return booking?.id || 'walkin:unknown'
+}
+const customerKey = (booking) => buildCustomerIdentityKey(booking)
 const profilePhoto = (data) => data ? (
   data.photoURL ||
   data.photoUrl ||
@@ -42,10 +53,18 @@ export default function AdminCustomers() {
   const [selectedKey, setSelectedKey] = useState(null)
   const [savingBlock, setSavingBlock] = useState('')
   const [blockError, setBlockError] = useState('')
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
 
   useEffect(() => {
     fetchCustomers()
   }, [])
+
+  useEffect(() => {
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [toastMessage])
 
   async function fetchCustomers() {
     setLoading(true)
@@ -76,7 +95,8 @@ export default function AdminCustomers() {
 
     bookings.forEach(booking => {
       const key = customerKey(booking)
-      const profile = (booking.userId ? profiles[booking.userId] : null)
+      const bookingUserId = booking.userId && booking.userId !== 'walkin' && booking.userId !== 'walkin@offline' ? booking.userId : ''
+      const profile = (bookingUserId ? profiles[bookingUserId] : null)
         || profilesByEmail[normalizeEmail(booking.userEmail || booking.email)]
         || profilesByPhone[normalizePhone(booking.phone)]
         || null
@@ -85,7 +105,7 @@ export default function AdminCustomers() {
           key,
           phone: profile?.phone || booking.phone || '',
           ownerName: profile?.name || booking.ownerName || 'Unknown',
-          userId: booking.userId || profile?.id || profile?.userId || '',
+          userId: bookingUserId || profile?.id || profile?.userId || '',
           userEmail: profile?.email || booking.userEmail || '',
           photoURL: profilePhoto(profile) || profilePhoto(booking),
           isWalkIn: booking.isWalkIn,
@@ -169,8 +189,13 @@ export default function AdminCustomers() {
           photoURL: customer.photoURL || prev[customer.userId]?.photoURL || '',
         },
       }))
+      setToastType('success')
+      setToastMessage(nextBlocked ? 'Customer blocked successfully.' : 'Customer unblocked successfully.')
     } catch (err) {
-      setBlockError(err.message || 'Could not update customer block status.')
+      const msg = err.message || 'Could not update customer block status.'
+      setBlockError(msg)
+      setToastType('error')
+      setToastMessage(msg)
     }
     setSavingBlock('')
   }
@@ -207,6 +232,11 @@ export default function AdminCustomers() {
 
   return (
     <div className="admin-customers-page">
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+        </div>
+      )}
       <div className="admin-customers-head">
         <h1>Customers</h1>
         <p>{activeCustomers.length} active customers</p>

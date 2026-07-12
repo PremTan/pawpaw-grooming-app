@@ -3,6 +3,7 @@ import { CalendarOff, Clock, Copy, Home, Minus, Plus, Save, Store, Trash2 } from
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 import { DAYS, DURATION_OPTIONS, VISIT_MODES, countOpenDays, getAvailabilityForDate, normalizeBookingSettings } from '../utils/bookingSettings'
 
 const MAX_WINDOWS = 4
@@ -29,6 +30,8 @@ export default function AdminBookingSettings() {
   const [blockedDate, setBlockedDate] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
 
   useEffect(() => {
     async function fetchSettings() {
@@ -42,6 +45,12 @@ export default function AdminBookingSettings() {
     }
     fetchSettings()
   }, [])
+
+  useEffect(() => {
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [toastMessage])
 
   const updateRoot = (patch) => setSettings(prev => ({ ...prev, ...patch }))
 
@@ -115,6 +124,7 @@ export default function AdminBookingSettings() {
     setSaving(true)
     setError('')
     setMessage('')
+    setToastMessage('')
     try {
       const daysOpen = countOpenDays(settings)
       await Promise.all([
@@ -131,9 +141,15 @@ export default function AdminBookingSettings() {
           statsUpdatedAt: serverTimestamp(),
         }, { merge: true }),
       ])
-      setMessage('Booking availability updated successfully.')
+      const successMsg = 'Booking availability updated successfully.'
+      setMessage(successMsg)
+      setToastType('success')
+      setToastMessage(successMsg)
     } catch (err) {
-      setError(err.message || 'Could not save booking settings.')
+      const msg = err.message || 'Could not save booking settings.'
+      setError(msg)
+      setToastType('error')
+      setToastMessage(msg)
     }
     setSaving(false)
   }
@@ -164,6 +180,11 @@ export default function AdminBookingSettings() {
 
   return (
     <div className="booking-settings-page">
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+        </div>
+      )}
       <div className="booking-settings-head">
         <div>
           <h1>Booking Settings</h1>

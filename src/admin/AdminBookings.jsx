@@ -116,7 +116,8 @@ export default function AdminBookings() {
   const [completionPreviewUrls, setCompletionPreviewUrls] = useState({ before: '', after: '' })
   const [completionUploading, setCompletionUploading] = useState({ before: false, after: false })
   const [cropperState, setCropperState] = useState(null)
-  const [completionToast, setCompletionToast] = useState('')
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
@@ -193,10 +194,10 @@ export default function AdminBookings() {
   }, [])
 
   useEffect(() => {
-    if (!completionToast) return
-    const t = window.setTimeout(() => setCompletionToast(''), 3500)
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
     return () => window.clearTimeout(t)
-  }, [completionToast])
+  }, [toastMessage])
 
   useEffect(() => {
     if (!rescheduleTarget?.id || !rescheduleDate) {
@@ -343,8 +344,12 @@ export default function AdminBookings() {
       setRescheduleTarget(null)
       setRescheduleDate('')
       setRescheduleSlot('')
+      setToastType('success')
+      setToastMessage('Appointment rescheduled successfully.')
     } catch (err) {
       console.error('FIREBASE ERROR:', err)
+      setToastType('error')
+      setToastMessage('Could not reschedule booking. Please try again.')
       alert('Could not reschedule booking. Please try again.')
     }
     setReschedulingId('')
@@ -387,7 +392,12 @@ export default function AdminBookings() {
           })
         }
       }
-    } catch {}
+      setToastType('success')
+      setToastMessage(status === 'confirmed' ? 'Booking approved successfully.' : 'Booking cancelled successfully.')
+    } catch {
+      setToastType('error')
+      setToastMessage('Could not update booking status. Please try again.')
+    }
     setUpdating(null)
   }
 
@@ -478,7 +488,8 @@ export default function AdminBookings() {
         completedAt: new Date(),
       })
       await syncPublicStats(db)
-      setCompletionToast('Appointment marked completed successfully.')
+      setToastType('success')
+      setToastMessage('Appointment marked completed successfully.')
       if (cashModal.userId && cashModal.userId !== 'walkin') {
         await sendNotification(cashModal.userId, {
           title: 'Appointment completed',
@@ -488,7 +499,10 @@ export default function AdminBookings() {
           actionUrl: '/my-bookings',
         })
       }
-    } catch {}
+    } catch {
+      setToastType('error')
+      setToastMessage('Could not complete appointment. Please try again.')
+    }
     closeCompletionModal()
     setUpdating(null)
   }
@@ -501,7 +515,11 @@ export default function AdminBookings() {
     try {
       await updateDoc(doc(db, 'bookings', booking.id), patch)
       patchBooking(booking.id, patch)
+      setToastType('success')
+      setToastMessage('Team member assigned successfully.')
     } catch {
+      setToastType('error')
+      setToastMessage('Could not assign team member. Please try again.')
       alert('Could not assign team member. Please try again.')
     }
     setUpdating(null)
@@ -514,7 +532,7 @@ export default function AdminBookings() {
 
   return (
     <div className="admin-bookings-page">
-      {completionToast && <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}><Toast message={completionToast} type="success" onClose={() => setCompletionToast('')} /></div>}
+      {toastMessage && <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}><Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} /></div>}
       <div className="admin-bookings-header">
         <div>
           <h1>Bookings</h1>
@@ -547,7 +565,19 @@ export default function AdminBookings() {
       ) : (
         <div className="admin-booking-list">
           {paginated.map(b => (
-            <button key={b.id} type="button" className="admin-booking-card" onClick={() => setSelectedBooking(b)}>
+            <div
+              key={b.id}
+              className="admin-booking-card"
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedBooking(b)}
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  setSelectedBooking(b)
+                }
+              }}
+            >
               <div className="admin-booking-main">
                 <div className="admin-booking-title-row">
                   <strong>{b.ownerName || 'Customer'}</strong>
@@ -603,7 +633,7 @@ export default function AdminBookings() {
                   {/* overflow removed — all actions shown inline; icon-only used for Cancel and WA on small screens */}
                 </div>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       )}

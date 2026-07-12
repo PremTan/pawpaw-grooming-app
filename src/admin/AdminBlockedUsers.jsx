@@ -4,6 +4,7 @@ import { collection, doc, getDocs, serverTimestamp, setDoc } from 'firebase/fire
 import { Phone, Search, ShieldCheck } from 'lucide-react'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 
 export default function AdminBlockedUsers() {
   const [profiles, setProfiles] = useState([])
@@ -12,10 +13,18 @@ export default function AdminBlockedUsers() {
   const [search, setSearch] = useState('')
   const [savingId, setSavingId] = useState('')
   const [error, setError] = useState('')
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
 
   useEffect(() => {
     fetchBlockedUsers()
   }, [])
+
+  useEffect(() => {
+    if (!toastMessage) return
+    const t = window.setTimeout(() => setToastMessage(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [toastMessage])
 
   async function fetchBlockedUsers() {
     setLoading(true)
@@ -69,14 +78,24 @@ export default function AdminBlockedUsers() {
         unblockedAt: serverTimestamp(),
       }, { merge: true })
       setProfiles(prev => prev.map(profile => profile.id === blockedUser.id ? { ...profile, blocked: false } : profile))
+      setToastType('success')
+      setToastMessage('User unblocked successfully.')
     } catch (err) {
-      setError(err.message || 'Could not unblock user.')
+      const msg = err.message || 'Could not unblock user.'
+      setError(msg)
+      setToastType('error')
+      setToastMessage(msg)
     }
     setSavingId('')
   }
 
   return (
     <div className="admin-customers-page">
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+        </div>
+      )}
       <div className="admin-customers-head">
         <h1>Blocked Users</h1>
         <p>{blockedUsers.length} blocked user{blockedUsers.length === 1 ? '' : 's'}</p>
