@@ -46,9 +46,9 @@ service cloud.firestore {
 
     match /reviews/{id} {
       allow read: if true;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow create: if request.auth != null && (isAdmin() || request.auth.uid == request.resource.data.userId);
+      allow update: if request.auth != null && (isAdmin() || (request.auth.uid == resource.data.userId && request.resource.data.userId == resource.data.userId));
+      allow delete: if request.auth != null && (isAdmin() || request.auth.uid == resource.data.userId);
     }
 
     match /notifications/{id} {

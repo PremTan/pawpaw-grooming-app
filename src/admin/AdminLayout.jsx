@@ -26,6 +26,7 @@ const LINKS = [
   { to:'/admin/footer', label:'Footer Settings', icon:<Share2 size={17}/> },
   { to:'/admin/gallery',   label:'Gallery',    icon:<Image size={17}/> },
   { to:'/admin/reviews',   label:'Reviews',    icon:<MessageSquare size={17}/> },
+  { to:'/admin/google-reviews',   label:'Google Reviews',    icon:<MessageSquare size={17}/> },
 ]
 
 export default function AdminLayout() {
