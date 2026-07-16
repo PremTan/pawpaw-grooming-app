@@ -8,6 +8,7 @@ import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import { cropImageFile, isSupportedImage, optimizeImageForUpload, validateImageFile } from '../utils/imageCompression'
 import { uploadToCloudinary } from '../utils/cloudinary'
+import { getRelativeTime } from '../utils/dateUtils'
 import { Crop as CropIcon, ImagePlus, Send, X, BadgeCheck, Search, Filter, Image as ImageIcon } from 'lucide-react'
 
 function Stars({ value, onChange, readonly = false }) {
@@ -415,9 +416,12 @@ export default function Reviews() {
                         ))}
                       </div>
                     )}
-                    {r.createdAt?.toDate && (
+                    {(r.source === 'google' ? r.reviewDate : r.createdAt?.toDate) && (
                       <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>
-                        {r.createdAt.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {r.source === 'google'
+                          ? getRelativeTime(r.reviewDate || r.createdAt?.toDate()) || (r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '')
+                          : getRelativeTime(r.createdAt.toDate()) || r.createdAt.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                        }
                       </p>
                     )}
                   </div>
