@@ -1,12 +1,14 @@
 import { formatImageSize, optimizeImageForUpload, shouldOptimizeImage } from './imageCompression'
 
-function logImageUpload(originalFile, uploadFile, optimized) {
+function logUpload(originalFile, uploadFile, optimized, resourceType) {
   const savedBytes = Math.max(originalFile.size - uploadFile.size, 0)
   const savedPercent = originalFile.size ? Math.round((savedBytes / originalFile.size) * 100) : 0
 
-  console.info('[Image upload]', {
+  console.info('[Cloudinary upload]', {
+    resourceType,
     fileName: originalFile.name,
-    type: uploadFile.type || originalFile.type,
+    originalType: originalFile.type,
+    uploadType: uploadFile.type || originalFile.type,
     optimized,
     originalSize: formatImageSize(originalFile.size),
     uploadSize: formatImageSize(uploadFile.size),
@@ -18,33 +20,41 @@ function logImageUpload(originalFile, uploadFile, optimized) {
 export async function uploadToCloudinary(file, options = {}) {
   const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
   const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
-  const { onOptimizeStart, onOptimizeProgress, onOptimizeEnd } = options
+  const { onOptimizeStart, onOptimizeProgress, onOptimizeEnd, resourceType = 'image', returnJson = false } = options
 
   if (!cloudName || !uploadPreset) {
     throw new Error('Cloudinary is not configured. Add VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET to .env')
   }
 
-  const willOptimize = shouldOptimizeImage(file)
-  let uploadFile
-  try {
-    if (willOptimize) onOptimizeStart?.()
-    uploadFile = await optimizeImageForUpload(file, { onProgress: onOptimizeProgress })
-  } finally {
-    if (willOptimize) onOptimizeEnd?.()
+  let uploadFile = file
+  let optimized = false
+
+  if (resourceType === 'image' && shouldOptimizeImage(file)) {
+    try {
+      onOptimizeStart?.()
+      uploadFile = await optimizeImageForUpload(file, { onProgress: onOptimizeProgress })
+      optimized = true
+    } finally {
+      onOptimizeEnd?.()
+    }
   }
 
-  logImageUpload(file, uploadFile, willOptimize)
+  logUpload(file, uploadFile, optimized, resourceType)
 
   const data = new FormData()
   data.append('file', uploadFile)
   data.append('upload_preset', uploadPreset)
+  if (resourceType === 'video') {
+    data.append('resource_type', 'video')
+  }
 
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+  const url = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`
+  const res = await fetch(url, {
     method: 'POST',
     body: data,
   })
   const json = await res.json()
 
   if (json.error) throw new Error(json.error.message)
-  return json.secure_url
+  return returnJson ? json : json.secure_url
 }

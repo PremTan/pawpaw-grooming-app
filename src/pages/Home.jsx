@@ -705,7 +705,7 @@ export default function Home() {
       ] = await Promise.allSettled([
         getDocs(collection(db, 'bookings')),
         getDocs(query(collection(db, 'reviews'), orderBy('createdAt', 'desc'), limit(6))),
-        getDocs(query(collection(db, 'gallery'), orderBy('createdAt', 'desc'), limit(5))),
+        getDocs(collection(db, 'gallery')),
         getDocs(collection(db, 'serviceDetails')),
         getDocs(collection(db, 'packages')),
         getDoc(doc(db, 'settings', 'whyChooseUs')),
@@ -767,7 +767,15 @@ export default function Home() {
           setPackages(packagesResult.value.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
         }
         if (galleryResult.status === 'fulfilled') {
-          setGalleryImages(galleryResult.value.docs.map(d => ({ id: d.id, ...d.data() })).filter(image => image.url).slice(0, 5))
+          const galleryItems = galleryResult.value.docs.map(d => ({ id: d.id, ...d.data() })).filter(image => image.url)
+          setGalleryImages(galleryItems.sort((a, b) => {
+            const aPos = Number(a.position ?? -1)
+            const bPos = Number(b.position ?? -1)
+            if (bPos !== aPos) return bPos - aPos
+            const aCreated = a.createdAt?.toMillis ? a.createdAt.toMillis() : a.createdAt ? a.createdAt.seconds * 1000 : 0
+            const bCreated = b.createdAt?.toMillis ? b.createdAt.toMillis() : b.createdAt ? b.createdAt.seconds * 1000 : 0
+            return bCreated - aCreated
+          }).slice(0, 5))
         }
         const savedFeatures = featuresResult.status === 'fulfilled' && featuresResult.value.exists() && Array.isArray(featuresResult.value.data().features)
           ? featuresResult.value.data().features
@@ -954,13 +962,26 @@ export default function Home() {
           <div className="gallery-mobile-slider">
             <div className="home-gallery-slider-frame">
               {galleryImages.map((image, index) => (
-                <img
-                  key={image.id}
-                  src={image.url}
-                  alt={image.caption || 'Gallery image'}
-                  onClick={() => { setGalleryIndex(index); setGalleryLightbox(galleryImages[index]) }}
-                  className={index === galleryIndex ? 'active' : ''}
-                />
+                image.type === 'video' ? (
+                  <video
+                    key={image.id}
+                    src={image.url}
+                    muted
+                    loop
+                    playsInline
+                    autoPlay
+                    onClick={() => { setGalleryIndex(index); setGalleryLightbox(galleryImages[index]) }}
+                    className={index === galleryIndex ? 'active' : ''}
+                  />
+                ) : (
+                  <img
+                    key={image.id}
+                    src={image.url}
+                    alt={image.caption || 'Gallery image'}
+                    onClick={() => { setGalleryIndex(index); setGalleryLightbox(galleryImages[index]) }}
+                    className={index === galleryIndex ? 'active' : ''}
+                  />
+                )
               ))}
               {galleryImages.length > 1 && <>
                 <button onClick={() => setGalleryIndex(i => (i - 1 + galleryImages.length) % galleryImages.length)} aria-label="Previous gallery image"><ChevronLeft size={16} /></button>
@@ -983,7 +1004,11 @@ export default function Home() {
           <div className="gallery-desktop-grid home-gallery-grid">
             {galleryImages.map((image) => (
               <button key={image.id} onClick={() => setGalleryLightbox(image)}>
-                <img src={image.url} alt={image.caption || 'Gallery image'} loading="lazy" />
+                {image.type === 'video' ? (
+                  <video src={image.url} muted loop playsInline autoPlay preload="metadata" />
+                ) : (
+                  <img src={image.url} alt={image.caption || 'Gallery image'} loading="lazy" />
+                )}
               </button>
             ))}
           </div>
@@ -1159,7 +1184,17 @@ export default function Home() {
             <button onClick={() => setGalleryLightbox(null)} aria-label="Close gallery image" style={{ marginLeft: 'auto', marginBottom: '12px', width: '36px', height: '36px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <X size={18} />
             </button>
-            <img src={galleryLightbox.url} alt={galleryLightbox.caption || ''} style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain' }} />
+            {galleryLightbox.type === 'video' ? (
+              <video
+                src={galleryLightbox.url}
+                controls
+                autoPlay
+                playsInline
+                style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain', background: '#000' }}
+              />
+            ) : (
+              <img src={galleryLightbox.url} alt={galleryLightbox.caption || ''} style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain' }} />
+            )}
             {galleryLightbox.caption && <p style={{ color:'#fff', textAlign:'center', marginTop:'14px', fontSize:'15px' }}>{galleryLightbox.caption}</p>}
           </div>
         </div>

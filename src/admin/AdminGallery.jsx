@@ -2,15 +2,21 @@
 import { useCallback, useEffect, useState } from 'react'
 import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, orderBy, query, updateDoc } from 'firebase/firestore'
 import Cropper from 'react-easy-crop'
-import { Bath, Grid2X2, Heart, Image, PawPrint, Plus, Scissors, Sparkles, Trash2, Upload, X, Pencil } from 'lucide-react'
+import { Bath, Grid2X2, Heart, Image, PawPrint, Plus, Scissors, Sparkles, Trash2, Upload, X, Pencil, Play } from 'lucide-react'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
+import Toast from '../components/Toast'
 import ConfirmModal from '../components/ConfirmModal'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
+import { VIDEO_FILE_ACCEPT, validateVideoFile, getVideoMetadata } from '../utils/videoCompression'
 
-const CATEGORIES = ['grooming', 'bath', 'happy-pets', 'before-after', 'haircut', 'styling', 'nail', 'general']
-const EMPTY = { url: '', caption: '', category: 'grooming' }
+const FILTERS = [
+  { key: 'all', label: 'All', icon: Grid2X2 },
+  { key: 'image', label: 'Images', icon: Image },
+  { key: 'video', label: 'Videos', icon: Play },
+]
+const EMPTY = { type: 'image', url: '', title: '', caption: '', thumbnailUrl: '', duration: '', publicId: '', position: null }
 const GALLERY_ASPECT = 3 / 4
 const GALLERY_OUTPUT = { width: 900, height: 1200 }
 
@@ -78,6 +84,8 @@ export default function AdminGallery() {
   const [deleting, setDeleting] = useState(null)
   const [lightbox, setLightbox] = useState(null)
   const [filterCat, setFilterCat] = useState('all')
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
   const [editingId, setEditingId] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [cropData, setCropData] = useState(null)
@@ -85,15 +93,41 @@ export default function AdminGallery() {
   const [zoom, setZoom] = useState(1)
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
 
+  const mapGalleryDoc = (doc) => {
+    const data = doc.data()
+    const type = data.type || (data.url || data.mediaUrl ? 'image' : 'video')
+    return {
+      id: doc.id,
+      type,
+      url: data.mediaUrl || data.url || '',
+      thumbnailUrl: data.thumbnailUrl || '',
+      title: data.title || data.caption || '',
+      caption: data.caption || '',
+      category: data.category || 'general',
+      duration: data.duration || '',
+      position: Number(data.position || 0),
+      publicId: data.publicId || '',
+      active: data.active !== false,
+      createdAt: data.createdAt,
+      raw: data,
+    }
+  }
+
+  const sortGalleryItems = (items) => items.slice().sort((a, b) => {
+    const aPos = Number(a.position ?? -1)
+    const bPos = Number(b.position ?? -1)
+    if (bPos !== aPos) return bPos - aPos
+    const aCreated = a.createdAt?.toMillis ? a.createdAt.toMillis() : a.createdAt ? a.createdAt.seconds * 1000 : 0
+    const bCreated = b.createdAt?.toMillis ? b.createdAt.toMillis() : b.createdAt ? b.createdAt.seconds * 1000 : 0
+    return bCreated - aCreated
+  })
+
   const fetchImages = async () => {
     try {
-      const snap = await getDocs(query(collection(db, 'gallery'), orderBy('createdAt', 'desc')))
-      setImages(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      const snap = await getDocs(collection(db, 'gallery'))
+      setImages(sortGalleryItems(snap.docs.map(mapGalleryDoc)))
     } catch {
-      try {
-        const snap = await getDocs(collection(db, 'gallery'))
-        setImages(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-      } catch {}
+      setImages([])
     }
     setLoading(false)
   }
@@ -117,25 +151,38 @@ export default function AdminGallery() {
     setZoom(1)
   }
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const selectedFile = e.target.files?.[0]
     e.target.value = ''
     if (!selectedFile) return
+    setError('')
+
     try {
+      if (form.type === 'video') {
+        validateVideoFile(selectedFile)
+        const metadata = await getVideoMetadata(selectedFile)
+        if (metadata.duration > 30) {
+          throw new Error('Video must be 30 seconds or shorter.')
+        }
+        setForm(prev => ({ ...prev, url: '', duration: metadata.duration }))
+        setFile(selectedFile)
+        if (preview) URL.revokeObjectURL(preview)
+        setPreview(URL.createObjectURL(selectedFile))
+        return
+      }
+
       validateImageFile(selectedFile)
+      const reader = new FileReader()
+      reader.addEventListener('load', () => {
+        setCrop({ x: 0, y: 0 })
+        setZoom(1)
+        setCroppedAreaPixels(null)
+        setCropData({ src: reader.result, fileName: selectedFile.name })
+      })
+      reader.readAsDataURL(selectedFile)
     } catch (err) {
       setError(err.message)
-      return
     }
-    setError('')
-    const reader = new FileReader()
-    reader.addEventListener('load', () => {
-      setCrop({ x: 0, y: 0 })
-      setZoom(1)
-      setCroppedAreaPixels(null)
-      setCropData({ src: reader.result, fileName: selectedFile.name })
-    })
-    reader.readAsDataURL(selectedFile)
   }
 
   const onCropComplete = useCallback((_, croppedPixels) => setCroppedAreaPixels(croppedPixels), [])
@@ -161,24 +208,62 @@ export default function AdminGallery() {
     setError('')
     setSaving(true)
     try {
-      let url = form.url
+      let mediaUrl = form.url
+      let thumbnailUrl = form.thumbnailUrl
+      let duration = form.duration
+
       if (file) {
-        url = await uploadToCloudinary(file, {
-          onOptimizeStart: () => setOptimizing(true),
-          onOptimizeEnd: () => setOptimizing(false),
-        })
+        if (form.type === 'video') {
+          const videoMeta = await getVideoMetadata(file)
+          duration = Math.round(videoMeta.duration)
+
+          const uploadResult = await uploadToCloudinary(file, { resourceType: 'video', returnJson: true })
+          mediaUrl = uploadResult.secure_url
+          form.publicId = uploadResult.public_id || form.publicId
+          if (!mediaUrl) {
+            throw new Error('Video upload failed. No Cloudinary URL returned.')
+          }
+        } else {
+          const uploadResult = await uploadToCloudinary(file, {
+            onOptimizeStart: () => setOptimizing(true),
+            onOptimizeEnd: () => setOptimizing(false),
+            returnJson: true,
+          })
+          mediaUrl = uploadResult.secure_url
+          form.publicId = uploadResult.public_id || form.publicId
+        }
       }
-      if (!url) {
-        setError('Please provide an image.')
+
+      if (!mediaUrl) {
+        setError(form.type === 'video' ? 'Please provide a video.' : 'Please provide an image.')
         setSaving(false)
         return
       }
-      const payload = { url, caption: form.caption.trim(), category: form.category, updatedAt: serverTimestamp() }
+
+      const payload = {
+        type: form.type,
+        mediaUrl,
+        url: mediaUrl,
+        title: form.title.trim(),
+        caption: form.caption.trim(),
+        duration: form.type === 'video' ? duration : '',
+        thumbnailUrl: form.type === 'video' ? thumbnailUrl : '',
+        position: form.position ? Number(form.position) : null,
+        publicId: form.publicId || '',
+        active: true,
+        updatedAt: serverTimestamp(),
+      }
+
       if (editingId) {
         await updateDoc(doc(db, 'gallery', editingId), payload)
+        setToastType('success')
+        setToastMessage('Gallery media updated successfully.')
       } else {
         await addDoc(collection(db, 'gallery'), { ...payload, createdAt: serverTimestamp() })
+        setToastType('success')
+        setToastMessage('Gallery media added successfully.')
       }
+
       closeModal()
       setForm(EMPTY)
       setFile(null)
@@ -187,6 +272,8 @@ export default function AdminGallery() {
     } catch (e) {
       console.error('Gallery upload error:', e)
       setError(e.message || 'Upload failed. Check Cloudinary settings.')
+      setToastType('error')
+      setToastMessage(e.message || 'Upload failed. Check Cloudinary settings.')
     }
     setOptimizing(false)
     setSaving(false)
@@ -194,19 +281,39 @@ export default function AdminGallery() {
 
   const handleDelete = async (id) => {
     setDeleting(id)
+    const deletingItem = images.find(i => i.id === id)
     try {
+      if (deletingItem) {
+        console.log('Deleting gallery media:', { id, publicId: deletingItem.publicId, url: deletingItem.url })
+      }
       await deleteDoc(doc(db, 'gallery', id))
       setImages(p => p.filter(i => i.id !== id))
       setDeleteTarget(null)
-    } catch {}
+      setToastType('success')
+      setToastMessage('Gallery media deleted successfully.')
+    } catch (e) {
+      console.error('Gallery delete error:', e)
+      setToastType('error')
+      setToastMessage('Could not delete gallery media. Please try again.')
+    }
     setDeleting(null)
   }
 
   const handleEdit = (img) => {
     setEditingId(img.id)
-    setForm({ url: img.url || '', caption: img.caption || '', category: img.category || 'general' })
+    setForm({
+      type: img.type || (img.url || img.mediaUrl ? 'image' : 'video'),
+      url: img.url || img.mediaUrl || '',
+      title: img.title || img.caption || '',
+      caption: img.caption || '',
+      category: img.category || 'general',
+      thumbnailUrl: img.thumbnailUrl || '',
+      duration: img.duration || '',
+      publicId: img.publicId || '',
+      position: img.position ?? null,
+    })
     setFile(null)
-    setPreview('')
+    setPreview(img.thumbnailUrl || img.url || img.mediaUrl || '')
     setError('')
     setShowModal(true)
   }
@@ -215,11 +322,11 @@ export default function AdminGallery() {
     if (preview) URL.revokeObjectURL(preview)
     setFile(null)
     setPreview('')
-    setForm(p => ({ ...p, url: '' }))
+    setForm(p => ({ ...p, url: '', thumbnailUrl: '', duration: '' }))
   }
 
-  const filtered = filterCat === 'all' ? images : images.filter(i => i.category === filterCat)
-  const filterOptions = ['all', ...new Set([...CATEGORIES, ...images.map(i => i.category).filter(Boolean)])]
+  const filtered = filterCat === 'all' ? images : images.filter(i => i.type === filterCat)
+  const filterOptions = FILTERS
   const L = { fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }
 
   return (
@@ -228,21 +335,20 @@ export default function AdminGallery() {
         <div>
           <p className="gallery-kicker"><PawPrint size={14} /> Paw Paw Gallery <PawPrint size={14} /></p>
           <h1>Gallery</h1>
-          <p>{images.length} images shown to customers. New uploads are cropped to 900 x 1200.</p>
+          <p>{images.length} items shown to customers.</p>
         </div>
         <button onClick={openAddModal} className="btn btn-primary">
-          <Plus size={16} /> Add Image
+          <Plus size={16} /> Add Media
         </button>
       </div>
 
       <div className="gallery-filters admin-gallery-filters">
-        {filterOptions.map(cat => {
-          const meta = getCategoryMeta(cat)
-          const Icon = meta.icon
+        {filterOptions.map(option => {
+          const Icon = option.icon
           return (
-            <button key={cat} onClick={() => setFilterCat(cat)} className={filterCat === cat ? 'active' : ''}>
+            <button key={option.key} onClick={() => setFilterCat(option.key)} className={filterCat === option.key ? 'active' : ''}>
               <Icon size={17} />
-              <span>{meta.label}</span>
+              <span>{option.label}</span>
             </button>
           )
         })}
@@ -251,26 +357,37 @@ export default function AdminGallery() {
       {loading ? <Spinner text="Loading gallery..." /> : filtered.length === 0 ? (
         <div className="admin-gallery-empty">
           <Image size={40} />
-          <p>No images yet</p>
-          <span>Upload grooming, bath, and happy pet photos.</span>
-          <button onClick={openAddModal} className="btn btn-primary"><Upload size={16} /> Upload Image</button>
+          <p>No media yet</p>
+          <span>Upload grooming, bath, and happy pet photos and videos.</span>
+          <button onClick={openAddModal} className="btn btn-primary"><Upload size={16} /> Upload Media</button>
         </div>
       ) : (
         <div className="gallery-tile-grid admin-gallery-grid">
           {filtered.map(img => (
             <div key={img.id} className="gallery-tile admin-gallery-tile">
               <button type="button" className="admin-gallery-image-button" onClick={() => setLightbox(img)}>
-                <img src={img.url} alt={img.caption || 'Gallery image'} loading="lazy" />
+                {img.type === 'video' ? (
+                  <div className="admin-gallery-video-preview">
+                    {img.thumbnailUrl ? (
+                      <img src={img.thumbnailUrl} alt={img.title || img.caption || 'Video thumbnail'} loading="lazy" />
+                    ) : (
+                      <div className="admin-gallery-video-placeholder" />
+                    )}
+                    <div className="admin-gallery-video-overlay"><Play size={22} /></div>
+                  </div>
+                ) : (
+                  <img src={img.url} alt={img.caption || 'Gallery image'} loading="lazy" />
+                )}
               </button>
-              {img.caption && (
+              {(img.title || img.caption) && (
                 <div className="gallery-tile-caption">
-                  <p>{img.caption}</p>
+                  <p>{img.title || img.caption}</p>
                   <span>{getCategoryMeta(img.category).label}</span>
                 </div>
               )}
               <div className="admin-gallery-actions">
-                <button type="button" onClick={() => handleEdit(img)} title="Edit image"><Pencil size={14} /></button>
-                <button type="button" onClick={() => setDeleteTarget(img)} disabled={deleting === img.id} title="Delete image"><Trash2 size={14} /></button>
+                <button type="button" onClick={() => handleEdit(img)} title="Edit media"><Pencil size={14} /></button>
+                <button type="button" onClick={() => setDeleteTarget(img)} disabled={deleting === img.id} title="Delete media"><Trash2 size={14} /></button>
               </div>
             </div>
           ))}
@@ -282,8 +399,8 @@ export default function AdminGallery() {
           <div className="modal-box admin-gallery-modal" onClick={e => e.stopPropagation()}>
             <div className="admin-gallery-modal-head">
               <div>
-                <h2>{editingId ? 'Edit Image' : 'Add Image'}</h2>
-                <p>Crop every gallery image to the same portrait size.</p>
+                <h2>{editingId ? `Edit ${form.type === 'video' ? 'Video' : 'Image'}` : `Add ${form.type === 'video' ? 'Video' : 'Image'}`}</h2>
+                <p>{form.type === 'video' ? 'Upload and compress a short video for the gallery.' : 'Crop every gallery image to the same portrait size.'}</p>
               </div>
               <button type="button" onClick={closeModal} aria-label="Close"><X size={20} /></button>
             </div>
@@ -292,26 +409,43 @@ export default function AdminGallery() {
 
             <div className="admin-gallery-form">
               <div>
-                <label style={L}>Image File</label>
+                <label style={L}>Media Type</label>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button type="button" className={`btn ${form.type === 'image' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setForm(p => ({ ...p, type: 'image', url: '', thumbnailUrl: '', duration: '' }))}>Image</button>
+                  <button type="button" className={`btn ${form.type === 'video' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setForm(p => ({ ...p, type: 'video', url: '', thumbnailUrl: '', duration: '' }))}>Video</button>
+                </div>
+              </div>
+
+              <div>
+                <label style={L}>{form.type === 'video' ? 'Video File' : 'Image File'}</label>
                 {preview || form.url ? (
-                  <div className="admin-gallery-preview">
-                    <img src={preview || form.url} alt="" />
-                    <button type="button" onClick={clearImage} aria-label="Remove image"><X size={14} /></button>
+                  <div className="admin-gallery-preview" style={{ position: 'relative' }}>
+                    {form.type === 'video' ? (
+                      <video controls src={preview || form.url} style={{ width: '100%', borderRadius: '10px' }} />
+                    ) : (
+                      <img src={preview || form.url} alt="" />
+                    )}
+                    <button type="button" onClick={clearImage} aria-label="Remove media"><X size={14} /></button>
                   </div>
                 ) : (
                   <label className="admin-gallery-upload-drop">
                     <PawPrint size={28} />
-                    <span>Click to choose and crop image</span>
-                    <small>JPG, PNG, WEBP up to 10MB</small>
-                    <input type="file" accept={IMAGE_FILE_ACCEPT} onChange={handleFileChange} />
+                    <span>{form.type === 'video' ? 'Click to choose a video' : 'Click to choose and crop image'}</span>
+                    <small>{form.type === 'video' ? 'MP4, MOV, WEBM up to 30s and 20MB' : 'JPG, PNG, WEBP up to 10MB'}</small>
+                    <input type="file" accept={form.type === 'video' ? VIDEO_FILE_ACCEPT : IMAGE_FILE_ACCEPT} onChange={handleFileChange} />
                   </label>
                 )}
                 {(preview || form.url) && (
                   <label className="btn btn-secondary admin-gallery-replace">
-                    <Upload size={15} /> Replace and Crop
-                    <input type="file" accept={IMAGE_FILE_ACCEPT} onChange={handleFileChange} />
+                    <Upload size={15} /> Replace {form.type === 'video' ? 'Video' : 'Image'}
+                    <input type="file" accept={form.type === 'video' ? VIDEO_FILE_ACCEPT : IMAGE_FILE_ACCEPT} onChange={handleFileChange} />
                   </label>
                 )}
+              </div>
+
+              <div>
+                <label style={L}>Title</label>
+                <input className="input" placeholder="Title for gallery media" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
               </div>
 
               <div>
@@ -320,16 +454,18 @@ export default function AdminGallery() {
               </div>
 
               <div>
-                <label style={L}>Category</label>
-                <select className="input" value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}>
-                  {CATEGORIES.map(c => <option key={c} value={c}>{getCategoryMeta(c).label}</option>)}
+                <label style={L}>Position (optional, 1-5)</label>
+                <select className="input" value={form.position ?? ''} onChange={e => setForm(p => ({ ...p, position: e.target.value ? Number(e.target.value) : null }))}>
+                  <option value="">None</option>
+                  {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
+                <small style={{ color: 'var(--muted)', display: 'block', marginTop: '6px' }}>Only use positions 1–5 for featured home gallery placement.</small>
               </div>
 
               <div className="admin-gallery-modal-actions">
                 <button type="button" onClick={closeModal} className="btn btn-secondary">Cancel</button>
                 <button type="button" onClick={handleSave} disabled={saving || (!file && !form.url)} className="btn btn-primary">
-                  {optimizing ? 'Optimizing image...' : saving ? 'Uploading...' : 'Save Image'}
+                  {optimizing ? (form.type === 'video' ? 'Preparing video...' : 'Optimizing image...') : saving ? (form.type === 'video' ? 'Uploading video...' : 'Uploading...') : `Save ${form.type === 'video' ? 'Video' : 'Image'}`}
                 </button>
               </div>
             </div>
@@ -375,12 +511,21 @@ export default function AdminGallery() {
       {lightbox && (
         <div onClick={() => setLightbox(null)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.95)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
           <div onClick={e => e.stopPropagation()} style={{ maxWidth:'900px', width:'100%' }}>
-            <img src={lightbox.url} alt={lightbox.caption || ''} style={{ width:'100%', borderRadius:'16px', maxHeight:'80vh', objectFit:'contain' }} />
+            {lightbox.type === 'video' ? (
+              <video controls autoPlay poster={lightbox.thumbnailUrl || undefined} style={{ width:'100%', borderRadius:'16px', maxHeight:'80vh', objectFit:'contain', background: '#000' }}>
+                <source src={lightbox.url} type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
+            ) : (
+              <img src={lightbox.url} alt={lightbox.caption || ''} style={{ width:'100%', borderRadius:'16px', maxHeight:'80vh', objectFit:'contain' }} />
+            )}
             {lightbox.caption && <p style={{ color:'#fff', textAlign:'center', marginTop:'14px', fontSize:'15px' }}>{lightbox.caption}</p>}
             <button className="gallery-lightbox-close" onClick={() => setLightbox(null)}>Close</button>
           </div>
         </div>
       )}
+
+      {toastMessage && <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />}
     </div>
   )
 }

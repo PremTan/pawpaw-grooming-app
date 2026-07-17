@@ -316,7 +316,7 @@ export default function AdminDashboard() {
         userId: walkin.userId || '',
         userEmail: walkin.userEmail || '',
         isWalkIn: true,
-        status: totalCollected ? BOOKING_STATUS.COMPLETED : BOOKING_STATUS.CONFIRMED,
+        status: BOOKING_STATUS.CONFIRMED,
         createdAt: serverTimestamp(),
       })
       setWalkin(EMPTY)
@@ -503,7 +503,7 @@ export default function AdminDashboard() {
               <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '10px', padding: '12px', marginBottom: '20px', display: 'flex', gap: '10px' }}>
                 <UserCheck size={16} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: '1px' }} />
                 <p style={{ color: 'var(--muted)', fontSize: '12px', lineHeight: 1.6 }}>
-                  This booking is marked as <strong style={{ color: 'var(--accent)' }}>Walk-in</strong>. If amount is entered, status auto-sets to <strong style={{ color: 'var(--accent)' }}>Completed</strong>.
+                  This booking is marked as <strong style={{ color: 'var(--accent)' }}>Walk-in</strong>. Amount entry will be recorded, but the appointment remains <strong style={{ color: 'var(--accent)' }}>Confirmed</strong> until it is explicitly completed.
                 </p>
               </div>
 
