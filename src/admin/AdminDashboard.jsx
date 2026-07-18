@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs, addDoc, serverTimestamp, doc, setDoc, orderBy, query } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
-import { ArrowRight, BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Store, UserCheck, X } from 'lucide-react'
+import { ArrowRight, BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Search, Store, UserCheck, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
@@ -109,6 +109,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [walkin, setWalkin] = useState(EMPTY)
+  const [walkinCustomerSearch, setWalkinCustomerSearch] = useState('')
+  const [showWalkinDropdown, setShowWalkinDropdown] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -256,6 +258,14 @@ export default function AdminDashboard() {
     return Array.from(map.values()).sort((a, b) => (a.ownerName || '').localeCompare(b.ownerName || ''))
   }, [data.bookings])
 
+  const walkinCustomerLabel = customer => `${customer.ownerName || 'Customer'} - ${customer.phone || customer.userEmail || '-'}`
+  const filteredWalkinCustomers = useMemo(() => {
+    if (!walkinCustomerSearch.trim()) return walkinCustomers
+    const search = walkinCustomerSearch.trim().toLowerCase()
+    return walkinCustomers.filter(customer => walkinCustomerLabel(customer).toLowerCase().includes(search))
+  }, [walkinCustomerSearch, walkinCustomers])
+  const walkinCustomerLabelToKey = useMemo(() => new Map(filteredWalkinCustomers.map(customer => [walkinCustomerLabel(customer), uniqueCustomerKey(customer)])), [filteredWalkinCustomers])
+
   const applyWalkinCustomer = key => {
     if (!key) {
       setWalkin(prev => ({ ...prev, ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', address: '', userId: '', userEmail: '' }))
@@ -274,6 +284,22 @@ export default function AdminDashboard() {
       userId: customer.userId && customer.userId !== 'walkin' && customer.userId !== 'walkin@offline' ? customer.userId : '',
       userEmail: customer.userEmail || '',
     }))
+  }
+
+  const handleWalkinCustomerSearchChange = value => {
+    setWalkinCustomerSearch(value)
+    const key = walkinCustomerLabelToKey.get(value)
+    if (value === '') {
+      applyWalkinCustomer('')
+    } else if (key) {
+      applyWalkinCustomer(key)
+    }
+    setShowWalkinDropdown(true)
+  }
+
+  const clearWalkinCustomerSearch = () => {
+    setWalkinCustomerSearch('')
+    applyWalkinCustomer('')
   }
 
   const upd = (k, v) => setWalkin(p => ({ ...p, [k]: v }))
@@ -510,13 +536,49 @@ export default function AdminDashboard() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div>
                   <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Existing Customer</label>
-                  <select className="input" onChange={e => applyWalkinCustomer(e.target.value)} defaultValue="">
-                    <option value="">New walk-in customer</option>
-                    {walkinCustomers.map(customer => {
-                      const key = uniqueCustomerKey(customer)
-                      return <option key={key} value={key}>{customer.ownerName || 'Customer'} - {customer.phone || customer.userEmail || '-'}</option>
-                    })}
-                  </select>
+                  <div style={{ position: 'relative' }}>
+                    <div className={`select-with-icon${walkinCustomerSearch ? ' has-clear' : ''}`}>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Search or select by dropdown"
+                        value={walkinCustomerSearch}
+                        onChange={e => handleWalkinCustomerSearchChange(e.target.value)}
+                        onFocus={() => setShowWalkinDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowWalkinDropdown(false), 120)}
+                        autoComplete="off"
+                      />
+                      {walkinCustomerSearch && (
+                        <button type="button" className="select-clear-button" onClick={clearWalkinCustomerSearch} aria-label="Clear walkin customer selection">
+                          <X size={14} />
+                        </button>
+                      )}
+                      <Search size={16} className="select-icon" />
+                    </div>
+                    {showWalkinDropdown && filteredWalkinCustomers.length > 0 && (
+                      <div className="dropdown-list">
+                        {filteredWalkinCustomers.map(customer => {
+                          const key = uniqueCustomerKey(customer)
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              className="dropdown-item"
+                              onMouseDown={event => event.preventDefault()}
+                              onClick={() => {
+                                const label = walkinCustomerLabel(customer)
+                                handleWalkinCustomerSearchChange(label)
+                                applyWalkinCustomer(key)
+                                setShowWalkinDropdown(false)
+                              }}
+                            >
+                              {walkinCustomerLabel(customer)}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="admin-form-grid">
                   <div>

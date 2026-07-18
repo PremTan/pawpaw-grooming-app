@@ -1064,29 +1064,24 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
               )}
 
               {canEditDateTime && (
-                <div style={{ display: 'grid', gap: '14px', gridTemplateColumns: '1fr 1fr' }}>
-                  <div>
+                <div style={{ display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                  <div style={{ minWidth: 0 }}>
                     <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Date</label>
                     <input className="input" type="date" value={editDate} onChange={e => { setEditDate(e.target.value); setEditSlot('') }} />
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Time</label>
-                    <select className="input" value={editSlot} onChange={e => setEditSlot(e.target.value)}>
-                      <option value="">Select time</option>
-                      {availableSlots.map(slot => (
-                        <option key={slot} value={slot}>{slot}</option>
-                      ))}
-                    </select>
+                    <input className="input" type="time" value={editSlot} onChange={e => setEditSlot(e.target.value)} />
                   </div>
                 </div>
               )}
 
-              <div style={{ display: 'grid', gap: '14px', gridTemplateColumns: '1fr 1fr' }}>
-                <div>
+              <div style={{ display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                <div style={{ minWidth: 0 }}>
                   <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Amount Collected</label>
                   <input className="input" type="number" min="0" value={editAmountCollected} onChange={e => setEditAmountCollected(e.target.value)} placeholder="Rs 0" />
                 </div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Visit Charge</label>
                   <input className="input" type="number" min="0" value={editVisitCharge} onChange={e => setEditVisitCharge(e.target.value)} placeholder="Rs 0" />
                 </div>

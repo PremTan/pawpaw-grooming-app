@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs, orderBy, query } from 'firebase/firestore'
-import { Download, Eye, MessageCircle, ReceiptText } from 'lucide-react'
+import { Download, Eye, MessageCircle, ReceiptText, Search, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import { db } from '../firebase'
@@ -24,6 +24,10 @@ export default function AdminInvoices() {
   const [businessInfo, setBusinessInfo] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState('')
+  const [appointmentSearch, setAppointmentSearch] = useState('')
+  const [customCustomerSearch, setCustomCustomerSearch] = useState('')
+  const [showAppointmentDropdown, setShowAppointmentDropdown] = useState(false)
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [custom, setCustom] = useState(blankCustom)
   const [generated, setGenerated] = useState(null)
   const [busy, setBusy] = useState('')
@@ -69,6 +73,70 @@ export default function AdminInvoices() {
     })
     return Array.from(map.values())
   }, [bookings])
+
+  const appointmentLabel = booking => `${booking.ownerName || 'Customer'} - ${booking.petName || 'Pet'} - ${booking.date || '-'} - Rs ${money(booking.amountCollected || booking.estimatedTotal)}`
+  const customerLabel = customer => `${customer.ownerName || 'Customer'} - ${customer.phone || customer.userEmail || '-'}`
+
+  const filteredCompletedBookings = useMemo(() => {
+    if (!appointmentSearch.trim()) return completedBookings
+    const search = appointmentSearch.trim().toLowerCase()
+    return completedBookings.filter(booking =>
+      appointmentLabel(booking).toLowerCase().includes(search)
+    )
+  }, [appointmentSearch, completedBookings])
+
+  const appointmentLabelToId = useMemo(() => new Map(filteredCompletedBookings.map(booking => [appointmentLabel(booking), booking.id])), [filteredCompletedBookings])
+
+  const filteredCustomers = useMemo(() => {
+    if (!customCustomerSearch.trim()) return customers
+    const search = customCustomerSearch.trim().toLowerCase()
+    return customers.filter(customer =>
+      customerLabel(customer).toLowerCase().includes(search)
+    )
+  }, [customCustomerSearch, customers])
+
+  const customerLabelToKey = useMemo(() => new Map(filteredCustomers.map(customer => [customerLabel(customer), customer.phone || customer.ownerName || customer.userEmail])), [filteredCustomers])
+
+  const handleAppointmentSearchChange = value => {
+    setAppointmentSearch(value)
+    const matchId = appointmentLabelToId.get(value)
+    setSelectedId(matchId || '')
+    setShowAppointmentDropdown(true)
+  }
+
+  const handleAppointmentSelect = booking => {
+    setAppointmentSearch(appointmentLabel(booking))
+    setSelectedId(booking.id)
+    setShowAppointmentDropdown(false)
+  }
+
+  const clearAppointmentSearch = () => {
+    setAppointmentSearch('')
+    setSelectedId('')
+    setShowAppointmentDropdown(false)
+  }
+
+  const clearCustomerSearch = () => {
+    setCustomCustomerSearch('')
+    setShowCustomerDropdown(false)
+    applyCustomer('')
+  }
+
+  const handleCustomerSearchChange = value => {
+    setCustomCustomerSearch(value)
+    const key = customerLabelToKey.get(value)
+    if (key) {
+      applyCustomer(key)
+    }
+    setShowCustomerDropdown(true)
+  }
+
+  const handleCustomerSelect = customer => {
+    const label = customerLabel(customer)
+    setCustomCustomerSearch(label)
+    applyCustomer(customer.phone || customer.ownerName || customer.userEmail)
+    setShowCustomerDropdown(false)
+  }
 
   const invoiceInfo = businessInfo || { contact: {}, footer: {}, whatsappNumber: '' }
   const upd = (key, value) => setCustom(prev => ({ ...prev, [key]: value }))
@@ -209,12 +277,42 @@ export default function AdminInvoices() {
             <div>
               <h2 style={{ color: 'var(--text)', fontSize: '16px', fontWeight: 800, marginBottom: '6px' }}>Choose Completed Appointment</h2>
               <p style={{ color: 'var(--muted)', fontSize: '12px', marginBottom: '14px' }}>Only completed appointments can be used for invoice generation. Details are locked in this mode.</p>
-              <select className="input" value={selectedId} onChange={event => setSelectedId(event.target.value)}>
-                <option value="">Select completed appointment</option>
-                {completedBookings.map(booking => (
-                  <option key={booking.id} value={booking.id}>{booking.ownerName || 'Customer'} - {booking.petName || 'Pet'} - {booking.date || '-'} - Rs {money(booking.amountCollected || booking.estimatedTotal)}</option>
-                ))}
-              </select>
+              <div style={{ position: 'relative' }}>
+                <label className="invoice-label">Search or select appointment</label>
+                <div className={`select-with-icon${appointmentSearch ? ' has-clear' : ''}`}>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Search or select by dropdown"
+                    value={appointmentSearch}
+                    onChange={event => handleAppointmentSearchChange(event.target.value)}
+                    onFocus={() => setShowAppointmentDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowAppointmentDropdown(false), 120)}
+                    autoComplete="off"
+                  />
+                  {appointmentSearch && (
+                    <button type="button" className="select-clear-button" onClick={clearAppointmentSearch} aria-label="Clear appointment search">
+                      <X size={14} />
+                    </button>
+                  )}
+                  <Search size={16} className="select-icon" />
+                </div>
+                {showAppointmentDropdown && filteredCompletedBookings.length > 0 && (
+                  <div className="dropdown-list">
+                    {filteredCompletedBookings.map(booking => (
+                      <button
+                        key={booking.id}
+                        type="button"
+                        className="dropdown-item"
+                        onMouseDown={event => event.preventDefault()}
+                        onClick={() => handleAppointmentSelect(booking)}
+                      >
+                        {appointmentLabel(booking)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {selectedBooking ? (
                 <div className="admin-booking-detail-grid" style={{ marginTop: '16px' }}>
@@ -239,6 +337,9 @@ export default function AdminInvoices() {
             <CustomInvoiceForm
               custom={custom}
               customers={customers}
+              filteredCustomers={filteredCustomers}
+              customCustomerSearch={customCustomerSearch}
+              onCustomerSearchChange={handleCustomerSearchChange}
               visitChargeFor={visitChargeFor}
               onApplyCustomer={applyCustomer}
               onChange={upd}
@@ -267,11 +368,28 @@ export default function AdminInvoices() {
   )
 }
 
-function CustomInvoiceForm({ custom, customers, visitChargeFor, onApplyCustomer, onChange, onGenerate }) {
+function CustomInvoiceForm({ custom, filteredCustomers, customCustomerSearch, onCustomerSearchChange, visitChargeFor, onApplyCustomer, onChange, onGenerate }) {
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
+
+  const customerLabel = customer => `${customer.ownerName || 'Customer'} - ${customer.phone || customer.userEmail || '-'}`
+
   const setVisitType = bookingType => {
     onChange('bookingType', bookingType)
     onChange('visitCharge', String(visitChargeFor(bookingType) || ''))
     if (bookingType === 'store') onChange('address', '')
+  }
+
+  const handleCustomerSelect = customer => {
+    const label = customerLabel(customer)
+    onCustomerSearchChange(label)
+    onApplyCustomer(customer.phone || customer.ownerName || customer.userEmail)
+    setShowCustomerDropdown(false)
+  }
+
+  const clearCustomerSearch = () => {
+    onCustomerSearchChange('')
+    onApplyCustomer('')
+    setShowCustomerDropdown(false)
   }
 
   const total = (Number(custom.amountCollected || 0) || 0) + (Number(custom.visitCharge || 0) || 0) + (Number(custom.gstAmount || 0) || 0)
@@ -284,13 +402,44 @@ function CustomInvoiceForm({ custom, customers, visitChargeFor, onApplyCustomer,
       <div style={{ display: 'grid', gap: '14px' }}>
         <div>
           <label className="invoice-label">Choose Customer</label>
-          <select className="input" onChange={event => onApplyCustomer(event.target.value)} defaultValue="">
-            <option value="">Add manually</option>
-            {customers.map(customer => {
-              const key = customer.phone || customer.ownerName || customer.userEmail
-              return <option key={key} value={key}>{customer.ownerName || 'Customer'} - {customer.phone || customer.userEmail || '-'}</option>
-            })}
-          </select>
+          <div style={{ position: 'relative' }}>
+            <div className={`select-with-icon${customCustomerSearch ? ' has-clear' : ''}`}>
+              <input
+                type="text"
+                className="input"
+                placeholder="Search or select by dropdown"
+                value={customCustomerSearch}
+                onChange={event => onCustomerSearchChange(event.target.value)}
+                onFocus={() => setShowCustomerDropdown(true)}
+                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 120)}
+                autoComplete="off"
+              />
+              {customCustomerSearch && (
+                <button type="button" className="select-clear-button" onClick={clearCustomerSearch} aria-label="Clear customer search">
+                  <X size={14} />
+                </button>
+              )}
+              <Search size={16} className="select-icon" />
+            </div>
+            {showCustomerDropdown && filteredCustomers.length > 0 && (
+              <div className="dropdown-list">
+                {filteredCustomers.map(customer => {
+                  const key = customer.phone || customer.ownerName || customer.userEmail
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className="dropdown-item"
+                      onMouseDown={event => event.preventDefault()}
+                      onClick={() => handleCustomerSelect(customer)}
+                    >
+                      {customerLabel(customer)}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="admin-form-grid">
