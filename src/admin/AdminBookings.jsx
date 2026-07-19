@@ -1066,11 +1066,11 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
               {canEditDateTime && (
                 <div style={{ display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
                   <div style={{ minWidth: 0 }}>
-                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Date</label>
+                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Date *</label>
                     <input className="input" type="date" value={editDate} onChange={e => { setEditDate(e.target.value); setEditSlot('') }} />
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Time</label>
+                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Time *</label>
                     <input className="input" type="time" value={editSlot} onChange={e => setEditSlot(e.target.value)} />
                   </div>
                 </div>
