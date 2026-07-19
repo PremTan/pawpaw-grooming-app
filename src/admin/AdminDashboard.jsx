@@ -9,12 +9,12 @@ import Toast from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { calculatePublicStats } from '../utils/publicStats'
-import { BOOKING_STATUS, PET_TYPES } from '../utils/services'
+import { BOOKING_STATUS, CAT_BREEDS, DOG_BREEDS, PET_TYPES } from '../utils/services'
 import { fetchBookingSettings } from '../utils/bookingSettings'
 import { OWNER_ASSIGNEE_ID, buildAssigneePatch, getAssigneeLabel, getOwnerAssignee } from '../utils/teamMembers'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 
-const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', assignedTeamMemberId: OWNER_ASSIGNEE_ID, date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: '', userEmail: '' }
+const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceIds: [], serviceId: '', assignedTeamMemberId: OWNER_ASSIGNEE_ID, date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: '', userEmail: '' }
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
@@ -111,6 +111,7 @@ export default function AdminDashboard() {
   const [walkin, setWalkin] = useState(EMPTY)
   const [walkinCustomerSearch, setWalkinCustomerSearch] = useState('')
   const [showWalkinDropdown, setShowWalkinDropdown] = useState(false)
+  const [showServicePackageOptions, setShowServicePackageOptions] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -119,6 +120,7 @@ export default function AdminDashboard() {
   const [bookingSettings, setBookingSettings] = useState(null)
   const [teamMembers, setTeamMembers] = useState([])
   const [serviceDetails, setServiceDetails] = useState({})
+  const [packageOptions, setPackageOptions] = useState([])
   const today = format(startOfToday(), 'yyyy-MM-dd')
 
   const fetchData = async () => {
@@ -234,6 +236,21 @@ export default function AdminDashboard() {
     fetchTeamMembers()
   }, [])
 
+  useEffect(() => {
+    async function fetchPackages() {
+      try {
+        const snap = await getDocs(query(collection(db, 'packages'), orderBy('createdAt', 'desc')))
+        setPackageOptions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
+      } catch {
+        try {
+          const snap = await getDocs(collection(db, 'packages'))
+          setPackageOptions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
+        } catch {}
+      }
+    }
+    fetchPackages()
+  }, [])
+
   const serviceCatalog = useMemo(() => buildServiceCatalog(serviceDetails), [serviceDetails])
   const ownerAssignee = useMemo(() => getOwnerAssignee(user), [user])
   const assignableTeamMembers = useMemo(() => teamMembers.filter(member => member.active !== false), [teamMembers])
@@ -302,11 +319,14 @@ export default function AdminDashboard() {
     applyWalkinCustomer('')
   }
 
+  const setWalkinServiceIds = (ids) => setWalkin(p => ({ ...p, serviceIds: ids, serviceId: ids[0] || '' }))
   const upd = (k, v) => setWalkin(p => ({ ...p, [k]: v }))
 
+  const breedOptions = walkin.petType === 'Dog' ? DOG_BREEDS : walkin.petType === 'Cat' ? CAT_BREEDS : ['Other']
+
   const handleSave = async () => {
-    const { ownerName, phone, petName, serviceId, date, slot } = walkin
-    if (!ownerName || !phone || !petName || !serviceId || !date || !slot) {
+    const { ownerName, phone, petName, serviceIds, date, slot } = walkin
+    if (!ownerName || !phone || !petName || !serviceIds?.length || !date || !slot) {
       const msg = 'Please fill all required fields.'
       setToastType('error')
       setToastMessage(msg)
@@ -326,7 +346,9 @@ export default function AdminDashboard() {
     setError('')
     setSuccess(false)
     try {
-      const svc = serviceCatalog.find(s => s.id === serviceId)
+      const selectedServices = walkin.serviceIds.map(id => serviceCatalog.find(s => s.id === id)).filter(Boolean)
+      const selectedPackages = walkin.serviceIds.map(id => packageOptions.find(pkg => pkg.id === id)).filter(Boolean)
+      const selectedItems = [...selectedServices, ...selectedPackages]
       const assignee = assigneeOptions.find(item => item.id === walkin.assignedTeamMemberId) || ownerAssignee
       const visitCharge = walkinVisitCharge()
       const totalCollected = walkin.amountCollected || walkin.visitCharge !== '' ? walkinServiceAmount + visitCharge : ''
@@ -337,8 +359,10 @@ export default function AdminDashboard() {
         serviceTotal: walkinServiceAmount,
         visitCharge,
         estimatedTotal: walkinServiceAmount + visitCharge,
-        serviceName: svc?.name || '',
-        serviceIds: [serviceId],
+        serviceName: selectedItems.map(item => item.name).join(', '),
+        serviceIds: walkin.serviceIds,
+        selectedPackages: selectedPackages.map(pkg => pkg.id),
+        packageNames: selectedPackages.map(pkg => pkg.name),
         userId: walkin.userId || '',
         userEmail: walkin.userEmail || '',
         isWalkIn: true,
@@ -346,14 +370,11 @@ export default function AdminDashboard() {
         createdAt: serverTimestamp(),
       })
       setWalkin(EMPTY)
-      await fetchData()
       setToastType('success')
       setToastMessage('Walk-in booking saved successfully.')
       setSuccess(true)
-      window.setTimeout(() => {
-        setSuccess(false)
-        setShowModal(false)
-      }, 2000)
+      setShowModal(false)
+      await fetchData()
     } catch {
       const msg = 'Failed to save offline appointment. Please try again.'
       setToastType('error')
@@ -597,17 +618,66 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Pet Type</label>
-                    <select className="input" value={walkin.petType} onChange={e => upd('petType', e.target.value)}>
+                    <select className="input" value={walkin.petType} onChange={e => {
+                      const value = e.target.value
+                      setWalkin(prev => ({ ...prev, petType: value, petBreed: '' }))
+                    }}>
                       {PET_TYPES.map(t => <option key={t}>{t}</option>)}
                     </select>
                   </div>
                 </div>
                 <div>
-                  <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Service *</label>
-                  <select className="input" value={walkin.serviceId} onChange={e => upd('serviceId', e.target.value)}>
-                    <option value="">Select a service</option>
-                    {serviceCatalog.map(s => <option key={s.id} value={s.id}>{s.name} - {s.price}</option>)}
+                  <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Breed</label>
+                  <select className="input" value={walkin.petBreed} onChange={e => upd('petBreed', e.target.value)}>
+                    <option value="">Select breed</option>
+                    {breedOptions.map(breed => (
+                      <option key={breed} value={breed}>{breed}</option>
+                    ))}
                   </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '8px' }}>Services / Packages *</label>
+                  <button type="button" onClick={() => setShowServicePackageOptions(prev => !prev)} className="btn btn-secondary" style={{ marginBottom: '10px', width: '100%', justifyContent: 'space-between' }}>
+                    <span>{showServicePackageOptions ? 'Hide' : 'Select'} services / packages</span>
+                    <span>{showServicePackageOptions ? '▲' : '▼'}</span>
+                  </button>
+                  {showServicePackageOptions && (
+                    <div style={{ display: 'grid', gap: '10px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button type="button" onClick={() => setShowServicePackageOptions(false)} style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px' }}>Hide dropdown</button>
+                      </div>
+                      {serviceCatalog.map(service => (
+                        <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: 'var(--text)' }}>
+                          <input
+                            type="checkbox"
+                            checked={walkin.serviceIds.includes(service.id)}
+                            onChange={() => {
+                              const nextIds = walkin.serviceIds.includes(service.id)
+                                ? walkin.serviceIds.filter(id => id !== service.id)
+                                : [...walkin.serviceIds, service.id]
+                              setWalkin(prev => ({ ...prev, serviceIds: nextIds, serviceId: nextIds[0] || '' }))
+                            }}
+                          />
+                          <span>{service.name} - {service.price}</span>
+                        </label>
+                      ))}
+                      {packageOptions.map(pkg => (
+                        <label key={pkg.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: 'var(--text)' }}>
+                          <input
+                            type="checkbox"
+                            checked={walkin.serviceIds.includes(pkg.id)}
+                            onChange={() => {
+                              const nextIds = walkin.serviceIds.includes(pkg.id)
+                                ? walkin.serviceIds.filter(id => id !== pkg.id)
+                                : [...walkin.serviceIds, pkg.id]
+                              setWalkin(prev => ({ ...prev, serviceIds: nextIds, serviceId: nextIds[0] || '' }))
+                            }}
+                          />
+                          <span>Package: {pkg.name} - {pkg.price}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Assigned Team Member</label>
