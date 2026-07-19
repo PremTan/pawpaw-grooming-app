@@ -3,18 +3,18 @@ import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs, addDoc, serverTimestamp, doc, setDoc, orderBy, query } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
-import { ArrowRight, BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Store, UserCheck, X } from 'lucide-react'
+import { ArrowRight, BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Search, Store, UserCheck, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { calculatePublicStats } from '../utils/publicStats'
-import { BOOKING_STATUS, PET_TYPES } from '../utils/services'
+import { BOOKING_STATUS, CAT_BREEDS, DOG_BREEDS, PET_TYPES } from '../utils/services'
 import { fetchBookingSettings } from '../utils/bookingSettings'
 import { OWNER_ASSIGNEE_ID, buildAssigneePatch, getAssigneeLabel, getOwnerAssignee } from '../utils/teamMembers'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 
-const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceId: '', assignedTeamMemberId: OWNER_ASSIGNEE_ID, date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: '', userEmail: '' }
+const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceIds: [], serviceId: '', assignedTeamMemberId: OWNER_ASSIGNEE_ID, date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: '', userEmail: '' }
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
@@ -109,6 +109,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [walkin, setWalkin] = useState(EMPTY)
+  const [walkinCustomerSearch, setWalkinCustomerSearch] = useState('')
+  const [showWalkinDropdown, setShowWalkinDropdown] = useState(false)
+  const [showServicePackageOptions, setShowServicePackageOptions] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -117,6 +120,7 @@ export default function AdminDashboard() {
   const [bookingSettings, setBookingSettings] = useState(null)
   const [teamMembers, setTeamMembers] = useState([])
   const [serviceDetails, setServiceDetails] = useState({})
+  const [packageOptions, setPackageOptions] = useState([])
   const today = format(startOfToday(), 'yyyy-MM-dd')
 
   const fetchData = async () => {
@@ -232,6 +236,21 @@ export default function AdminDashboard() {
     fetchTeamMembers()
   }, [])
 
+  useEffect(() => {
+    async function fetchPackages() {
+      try {
+        const snap = await getDocs(query(collection(db, 'packages'), orderBy('createdAt', 'desc')))
+        setPackageOptions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
+      } catch {
+        try {
+          const snap = await getDocs(collection(db, 'packages'))
+          setPackageOptions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
+        } catch {}
+      }
+    }
+    fetchPackages()
+  }, [])
+
   const serviceCatalog = useMemo(() => buildServiceCatalog(serviceDetails), [serviceDetails])
   const ownerAssignee = useMemo(() => getOwnerAssignee(user), [user])
   const assignableTeamMembers = useMemo(() => teamMembers.filter(member => member.active !== false), [teamMembers])
@@ -256,6 +275,14 @@ export default function AdminDashboard() {
     return Array.from(map.values()).sort((a, b) => (a.ownerName || '').localeCompare(b.ownerName || ''))
   }, [data.bookings])
 
+  const walkinCustomerLabel = customer => `${customer.ownerName || 'Customer'} - ${customer.phone || customer.userEmail || '-'}`
+  const filteredWalkinCustomers = useMemo(() => {
+    if (!walkinCustomerSearch.trim()) return walkinCustomers
+    const search = walkinCustomerSearch.trim().toLowerCase()
+    return walkinCustomers.filter(customer => walkinCustomerLabel(customer).toLowerCase().includes(search))
+  }, [walkinCustomerSearch, walkinCustomers])
+  const walkinCustomerLabelToKey = useMemo(() => new Map(filteredWalkinCustomers.map(customer => [walkinCustomerLabel(customer), uniqueCustomerKey(customer)])), [filteredWalkinCustomers])
+
   const applyWalkinCustomer = key => {
     if (!key) {
       setWalkin(prev => ({ ...prev, ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', address: '', userId: '', userEmail: '' }))
@@ -276,11 +303,30 @@ export default function AdminDashboard() {
     }))
   }
 
+  const handleWalkinCustomerSearchChange = value => {
+    setWalkinCustomerSearch(value)
+    const key = walkinCustomerLabelToKey.get(value)
+    if (value === '') {
+      applyWalkinCustomer('')
+    } else if (key) {
+      applyWalkinCustomer(key)
+    }
+    setShowWalkinDropdown(true)
+  }
+
+  const clearWalkinCustomerSearch = () => {
+    setWalkinCustomerSearch('')
+    applyWalkinCustomer('')
+  }
+
+  const setWalkinServiceIds = (ids) => setWalkin(p => ({ ...p, serviceIds: ids, serviceId: ids[0] || '' }))
   const upd = (k, v) => setWalkin(p => ({ ...p, [k]: v }))
 
+  const breedOptions = walkin.petType === 'Dog' ? DOG_BREEDS : walkin.petType === 'Cat' ? CAT_BREEDS : ['Other']
+
   const handleSave = async () => {
-    const { ownerName, phone, petName, serviceId, date, slot } = walkin
-    if (!ownerName || !phone || !petName || !serviceId || !date || !slot) {
+    const { ownerName, phone, petName, serviceIds, date, slot } = walkin
+    if (!ownerName || !phone || !petName || !serviceIds?.length || !date || !slot) {
       const msg = 'Please fill all required fields.'
       setToastType('error')
       setToastMessage(msg)
@@ -300,7 +346,9 @@ export default function AdminDashboard() {
     setError('')
     setSuccess(false)
     try {
-      const svc = serviceCatalog.find(s => s.id === serviceId)
+      const selectedServices = walkin.serviceIds.map(id => serviceCatalog.find(s => s.id === id)).filter(Boolean)
+      const selectedPackages = walkin.serviceIds.map(id => packageOptions.find(pkg => pkg.id === id)).filter(Boolean)
+      const selectedItems = [...selectedServices, ...selectedPackages]
       const assignee = assigneeOptions.find(item => item.id === walkin.assignedTeamMemberId) || ownerAssignee
       const visitCharge = walkinVisitCharge()
       const totalCollected = walkin.amountCollected || walkin.visitCharge !== '' ? walkinServiceAmount + visitCharge : ''
@@ -311,23 +359,22 @@ export default function AdminDashboard() {
         serviceTotal: walkinServiceAmount,
         visitCharge,
         estimatedTotal: walkinServiceAmount + visitCharge,
-        serviceName: svc?.name || '',
-        serviceIds: [serviceId],
+        serviceName: selectedItems.map(item => item.name).join(', '),
+        serviceIds: walkin.serviceIds,
+        selectedPackages: selectedPackages.map(pkg => pkg.id),
+        packageNames: selectedPackages.map(pkg => pkg.name),
         userId: walkin.userId || '',
         userEmail: walkin.userEmail || '',
         isWalkIn: true,
-        status: totalCollected ? BOOKING_STATUS.COMPLETED : BOOKING_STATUS.CONFIRMED,
+        status: BOOKING_STATUS.CONFIRMED,
         createdAt: serverTimestamp(),
       })
       setWalkin(EMPTY)
-      await fetchData()
       setToastType('success')
       setToastMessage('Walk-in booking saved successfully.')
       setSuccess(true)
-      window.setTimeout(() => {
-        setSuccess(false)
-        setShowModal(false)
-      }, 2000)
+      setShowModal(false)
+      await fetchData()
     } catch {
       const msg = 'Failed to save offline appointment. Please try again.'
       setToastType('error')
@@ -503,20 +550,56 @@ export default function AdminDashboard() {
               <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '10px', padding: '12px', marginBottom: '20px', display: 'flex', gap: '10px' }}>
                 <UserCheck size={16} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: '1px' }} />
                 <p style={{ color: 'var(--muted)', fontSize: '12px', lineHeight: 1.6 }}>
-                  This booking is marked as <strong style={{ color: 'var(--accent)' }}>Walk-in</strong>. If amount is entered, status auto-sets to <strong style={{ color: 'var(--accent)' }}>Completed</strong>.
+                  This booking is marked as <strong style={{ color: 'var(--accent)' }}>Walk-in</strong>. Amount entry will be recorded, but the appointment remains <strong style={{ color: 'var(--accent)' }}>Confirmed</strong> until it is explicitly completed.
                 </p>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div>
                   <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Existing Customer</label>
-                  <select className="input" onChange={e => applyWalkinCustomer(e.target.value)} defaultValue="">
-                    <option value="">New walk-in customer</option>
-                    {walkinCustomers.map(customer => {
-                      const key = uniqueCustomerKey(customer)
-                      return <option key={key} value={key}>{customer.ownerName || 'Customer'} - {customer.phone || customer.userEmail || '-'}</option>
-                    })}
-                  </select>
+                  <div style={{ position: 'relative' }}>
+                    <div className={`select-with-icon${walkinCustomerSearch ? ' has-clear' : ''}`}>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Search or select by dropdown"
+                        value={walkinCustomerSearch}
+                        onChange={e => handleWalkinCustomerSearchChange(e.target.value)}
+                        onFocus={() => setShowWalkinDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowWalkinDropdown(false), 120)}
+                        autoComplete="off"
+                      />
+                      {walkinCustomerSearch && (
+                        <button type="button" className="select-clear-button" onClick={clearWalkinCustomerSearch} aria-label="Clear walkin customer selection">
+                          <X size={14} />
+                        </button>
+                      )}
+                      <Search size={16} className="select-icon" />
+                    </div>
+                    {showWalkinDropdown && filteredWalkinCustomers.length > 0 && (
+                      <div className="dropdown-list">
+                        {filteredWalkinCustomers.map(customer => {
+                          const key = uniqueCustomerKey(customer)
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              className="dropdown-item"
+                              onMouseDown={event => event.preventDefault()}
+                              onClick={() => {
+                                const label = walkinCustomerLabel(customer)
+                                handleWalkinCustomerSearchChange(label)
+                                applyWalkinCustomer(key)
+                                setShowWalkinDropdown(false)
+                              }}
+                            >
+                              {walkinCustomerLabel(customer)}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="admin-form-grid">
                   <div>
@@ -535,17 +618,66 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Pet Type</label>
-                    <select className="input" value={walkin.petType} onChange={e => upd('petType', e.target.value)}>
+                    <select className="input" value={walkin.petType} onChange={e => {
+                      const value = e.target.value
+                      setWalkin(prev => ({ ...prev, petType: value, petBreed: '' }))
+                    }}>
                       {PET_TYPES.map(t => <option key={t}>{t}</option>)}
                     </select>
                   </div>
                 </div>
                 <div>
-                  <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Service *</label>
-                  <select className="input" value={walkin.serviceId} onChange={e => upd('serviceId', e.target.value)}>
-                    <option value="">Select a service</option>
-                    {serviceCatalog.map(s => <option key={s.id} value={s.id}>{s.name} - {s.price}</option>)}
+                  <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Breed</label>
+                  <select className="input" value={walkin.petBreed} onChange={e => upd('petBreed', e.target.value)}>
+                    <option value="">Select breed</option>
+                    {breedOptions.map(breed => (
+                      <option key={breed} value={breed}>{breed}</option>
+                    ))}
                   </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '8px' }}>Services / Packages *</label>
+                  <button type="button" onClick={() => setShowServicePackageOptions(prev => !prev)} className="btn btn-secondary" style={{ marginBottom: '10px', width: '100%', justifyContent: 'space-between' }}>
+                    <span>{showServicePackageOptions ? 'Hide' : 'Select'} services / packages</span>
+                    <span>{showServicePackageOptions ? '▲' : '▼'}</span>
+                  </button>
+                  {showServicePackageOptions && (
+                    <div style={{ display: 'grid', gap: '10px', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button type="button" onClick={() => setShowServicePackageOptions(false)} style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px' }}>Hide dropdown</button>
+                      </div>
+                      {serviceCatalog.map(service => (
+                        <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: 'var(--text)' }}>
+                          <input
+                            type="checkbox"
+                            checked={walkin.serviceIds.includes(service.id)}
+                            onChange={() => {
+                              const nextIds = walkin.serviceIds.includes(service.id)
+                                ? walkin.serviceIds.filter(id => id !== service.id)
+                                : [...walkin.serviceIds, service.id]
+                              setWalkin(prev => ({ ...prev, serviceIds: nextIds, serviceId: nextIds[0] || '' }))
+                            }}
+                          />
+                          <span>{service.name} - {service.price}</span>
+                        </label>
+                      ))}
+                      {packageOptions.map(pkg => (
+                        <label key={pkg.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: 'var(--text)' }}>
+                          <input
+                            type="checkbox"
+                            checked={walkin.serviceIds.includes(pkg.id)}
+                            onChange={() => {
+                              const nextIds = walkin.serviceIds.includes(pkg.id)
+                                ? walkin.serviceIds.filter(id => id !== pkg.id)
+                                : [...walkin.serviceIds, pkg.id]
+                              setWalkin(prev => ({ ...prev, serviceIds: nextIds, serviceId: nextIds[0] || '' }))
+                            }}
+                          />
+                          <span>Package: {pkg.name} - {pkg.price}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '5px' }}>Assigned Team Member</label>

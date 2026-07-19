@@ -126,6 +126,7 @@ export default function AdminBookings() {
   const [cancelTarget, setCancelTarget] = useState(null)
   const [cancelReason, setCancelReason] = useState('')
   const [bookingSettings, setBookingSettings] = useState(null)
+  const [packageOptions, setPackageOptions] = useState([])
   const [rescheduleTarget, setRescheduleTarget] = useState(null)
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [rescheduleSlot, setRescheduleSlot] = useState('')
@@ -172,6 +173,21 @@ export default function AdminBookings() {
       }
     }
     fetchTeamMembers()
+  }, [])
+
+  useEffect(() => {
+    async function fetchPackages() {
+      try {
+        const snap = await getDocs(query(collection(db, 'packages'), orderBy('createdAt', 'desc')))
+        setPackageOptions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
+      } catch {
+        try {
+          const snap = await getDocs(collection(db, 'packages'))
+          setPackageOptions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
+        } catch {}
+      }
+    }
+    fetchPackages()
   }, [])
 
   useEffect(() => {
@@ -274,6 +290,21 @@ export default function AdminBookings() {
   const patchBooking = (id, patch) => {
     setBookings(prev => prev.map(x => x.id === id ? { ...x, ...patch } : x))
     setSelectedBooking(prev => prev?.id === id ? { ...prev, ...patch } : prev)
+  }
+
+  const saveBookingUpdates = async (id, patch) => {
+    setUpdating(id)
+    try {
+      await updateDoc(doc(db, 'bookings', id), patch)
+      patchBooking(id, { ...patch, updatedAt: new Date(), bookingStartAt: patch.bookingStartAt || null })
+      setToastType('success')
+      setToastMessage('Booking details updated successfully.')
+    } catch (err) {
+      console.error('SAVE BOOKING ERROR:', err)
+      setToastType('error')
+      setToastMessage('Could not update booking details. Please try again.')
+    }
+    setUpdating(null)
   }
 
   const openRescheduleModal = (booking) => {
@@ -654,7 +685,11 @@ export default function AdminBookings() {
           updating={updating}
           assignee={assigneeFor(selectedBooking)}
           assigneeOptions={assigneeOptions}
+          serviceCatalog={serviceCatalog}
+          packageOptions={packageOptions}
+          bookingSettings={bookingSettings}
           onAssign={assignBooking}
+          onSave={saveBookingUpdates}
           onClose={() => { setSelectedBooking(null); if (bookingId) navigate('/admin/bookings') }}
           onStatus={updateStatus}
           onCancelBooking={openCancelModal}
@@ -808,8 +843,92 @@ function cancellationActor(booking) {
   return '-'
 }
 
-function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, assignee, assigneeOptions, onAssign, onClose, onStatus, onCancelBooking, onReschedule, canReschedule }) {
+function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, assignee, assigneeOptions, serviceCatalog, packageOptions, bookingSettings, onAssign, onSave, onClose, onStatus, onCancelBooking, onReschedule, canReschedule }) {
   const [lightboxImage, setLightboxImage] = useState(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editServiceIds, setEditServiceIds] = useState(Array.isArray(booking.serviceIds) && booking.serviceIds.length ? booking.serviceIds : booking.serviceId ? [booking.serviceId] : [])
+  const [editPackageIds, setEditPackageIds] = useState(Array.isArray(booking.selectedPackages) ? booking.selectedPackages : [])
+  const [editBookingType, setEditBookingType] = useState(booking.bookingType || 'store')
+  const [editAddress, setEditAddress] = useState(booking.address || '')
+  const [editDate, setEditDate] = useState(booking.date || '')
+  const [editSlot, setEditSlot] = useState(booking.slot || '')
+  const [editAmountCollected, setEditAmountCollected] = useState(booking.amountCollected != null ? String(booking.amountCollected) : '')
+  const [editVisitCharge, setEditVisitCharge] = useState(booking.visitCharge != null ? String(booking.visitCharge) : '')
+  const [editError, setEditError] = useState('')
+  const [showServicePackageOptions, setShowServicePackageOptions] = useState(false)
+
+  useEffect(() => {
+    const initialServiceIds = Array.isArray(booking.serviceIds) && booking.serviceIds.length
+      ? booking.serviceIds
+      : booking.serviceId
+        ? [booking.serviceId]
+        : []
+    const initialPackages = Array.isArray(booking.selectedPackages) && booking.selectedPackages.length
+      ? booking.selectedPackages
+      : Array.isArray(booking.packageNames) && booking.packageNames.length
+        ? packageOptions.filter(pkg => booking.packageNames.includes(pkg.name)).map(pkg => pkg.id)
+        : []
+
+    setEditServiceIds(initialServiceIds)
+    setEditPackageIds(initialPackages)
+    setEditBookingType(booking.bookingType || 'store')
+    setEditAddress(booking.address || '')
+    setEditDate(booking.date || '')
+    setEditSlot(booking.slot || '')
+    setEditAmountCollected(booking.amountCollected != null ? String(booking.amountCollected) : '')
+    setEditVisitCharge(booking.visitCharge != null ? String(booking.visitCharge) : '')
+    setEditError('')
+    setShowServicePackageOptions(false)
+    setIsEditing(false)
+  }, [booking, packageOptions])
+
+  const canEditBooking = ['confirmed', 'completed'].includes(booking.status)
+  const currentServices = serviceCatalog.filter(service => editServiceIds.includes(service.id))
+  const currentServiceNames = currentServices.length ? currentServices.map(service => service.name) : []
+  const selectedPackages = packageOptions.filter(pkg => editPackageIds.includes(pkg.id))
+  const availability = editDate ? getAvailabilityForDate(bookingSettings || undefined, editDate) : { open: false, storeSlots: [], homeSlots: [] }
+  const availableSlots = editBookingType === 'home' ? availability.homeSlots : availability.storeSlots
+
+  const togglePackage = (id) => {
+    setEditError('')
+    setEditPackageIds(prev => prev.includes(id) ? prev.filter(pkgId => pkgId !== id) : [...prev, id])
+  }
+
+  const toggleService = (id) => {
+    setEditError('')
+    setEditServiceIds(prev => prev.includes(id) ? prev.filter(svcId => svcId !== id) : [...prev, id])
+  }
+
+  const saveBookingChanges = async () => {
+    if (!editServiceIds.length && !editPackageIds.length) {
+      setEditError('Select at least one service or package before saving.')
+      return
+    }
+
+    const serviceNameValue = currentServiceNames.length
+      ? currentServiceNames.join(', ')
+      : selectedPackages.map(pkg => pkg.name).join(', ')
+
+    const patch = {
+      serviceId: editServiceIds[0] || '',
+      serviceName: serviceNameValue,
+      serviceIds: editServiceIds,
+      serviceNames: currentServiceNames,
+      selectedPackages: editPackageIds,
+      packageNames: selectedPackages.map(pkg => pkg.name),
+      bookingType: editBookingType,
+      address: editBookingType === 'home' ? editAddress : '',
+      date: editDate,
+      slot: editSlot,
+      amountCollected: parseFloat(editAmountCollected) || 0,
+      visitCharge: parseFloat(editVisitCharge) || 0,
+    }
+    const startDate = parseAppointmentStart({ date: editDate, slot: editSlot })
+    if (startDate) patch.bookingStartAt = Timestamp.fromDate(startDate)
+    await onSave(booking.id, patch)
+  }
+
+  const canEditDateTime = !!booking.isWalkIn
   const detailRows = [
     ['Booking ID', shortId(booking.id)],
     ['Owner', booking.ownerName || '-'],
@@ -854,16 +973,135 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
           <button type="button" onClick={onClose} aria-label="Close booking details"><X size={18} /></button>
         </div>
 
-        <div className="admin-booking-detail-grid">
-          {detailRows.map(([label, value]) => (
-            <div key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
-            </div>
-          ))}
-        </div>
+        {!isEditing && (
+          <div className="admin-booking-detail-grid">
+            {detailRows.map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+        )}
 
-        {(booking.beforeImageUrl || booking.afterImageUrl) && (
+        {canEditBooking && !isEditing && (
+          <div style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsEditing(true)}>Edit booking details</button>
+          </div>
+        )}
+
+        {canEditBooking && isEditing && (
+          <div className="admin-booking-edit-panel" style={{ marginTop: '18px', padding: '18px', borderRadius: '16px', background: 'var(--surface-alt)', border: '1px solid var(--border)' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: 'var(--text)', fontSize: '15px' }}>{booking.status === 'completed' ? 'Edit completed booking' : 'Edit confirmed booking'}</h3>
+            </div>
+
+            <div style={{ display: 'grid', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Services / Packages</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', minHeight: '46px', padding: '10px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                  {currentServices.map(service => (
+                    <span key={service.id} style={{ padding: '6px 10px', borderRadius: '999px', background: 'rgba(164, 118, 0, 0.12)', color: '#8f6a00', fontSize: '13px' }}>
+                      {service.name}
+                    </span>
+                  ))}
+                  {selectedPackages.map(pkg => (
+                    <span key={pkg.id} style={{ padding: '6px 10px', borderRadius: '999px', background: 'rgba(0, 91, 139, 0.12)', color: '#005b8b', fontSize: '13px' }}>
+                      {pkg.name}
+                    </span>
+                  ))}
+                  {!currentServices.length && !selectedPackages.length && (
+                    <span style={{ color: 'var(--muted)' }}>No service or package selected</span>
+                  )}
+                </div>
+                <button type="button" className="btn btn-secondary" style={{ marginTop: '10px' }} onClick={() => setShowServicePackageOptions(prev => !prev)}>
+                  {showServicePackageOptions ? 'Hide options ▲' : 'Edit services/packages ▼'}
+                </button>
+                {showServicePackageOptions && (
+                  <div style={{ marginTop: '12px', display: 'grid', gap: '12px', padding: '14px', borderRadius: '16px', border: '1px solid var(--border)', background: 'var(--surface-alt)' }}>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 700, color: 'var(--text)' }}>Services</p>
+                      <div style={{ display: 'grid', gap: '8px', marginTop: '10px' }}>
+                        {serviceCatalog.map(service => (
+                          <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: 'var(--text)' }}>
+                            <input type="checkbox" checked={editServiceIds.includes(service.id)} onChange={() => toggleService(service.id)} />
+                            <span>{service.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 700, color: 'var(--text)' }}>Packages</p>
+                      <div style={{ display: 'grid', gap: '8px', marginTop: '10px' }}>
+                        {packageOptions.map(pkg => (
+                          <label key={pkg.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: 'var(--text)' }}>
+                            <input type="checkbox" checked={editPackageIds.includes(pkg.id)} onChange={() => togglePackage(pkg.id)} />
+                            <span>{pkg.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Visit Type</label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {['store', 'home'].map(type => (
+                    <button key={type} type="button" onClick={() => setEditBookingType(type)} className={editBookingType === type ? 'btn btn-primary' : 'btn btn-secondary'} style={{ minWidth: '120px' }}>
+                      {getBookingTypeLabel(type)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {editBookingType === 'home' && (
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Home Visit Address</label>
+                  <input className="input" type="text" value={editAddress} onChange={e => setEditAddress(e.target.value)} placeholder="Enter customer address" />
+                </div>
+              )}
+
+              {canEditDateTime && (
+                <div style={{ display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Date *</label>
+                    <input className="input" type="date" value={editDate} onChange={e => { setEditDate(e.target.value); setEditSlot('') }} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Time *</label>
+                    <input className="input" type="time" value={editSlot} onChange={e => setEditSlot(e.target.value)} />
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                <div style={{ minWidth: 0 }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Amount Collected</label>
+                  <input className="input" type="number" min="0" value={editAmountCollected} onChange={e => setEditAmountCollected(e.target.value)} placeholder="Rs 0" />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Visit Charge</label>
+                  <input className="input" type="number" min="0" value={editVisitCharge} onChange={e => setEditVisitCharge(e.target.value)} placeholder="Rs 0" />
+                </div>
+              </div>
+            </div>
+
+            {editError && (
+              <div style={{ marginTop: '8px', color: '#b91c1c', fontSize: '13px' }}>{editError}</div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '18px' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => { setIsEditing(false); setEditError('') }} disabled={updating === booking.id}>Cancel</button>
+              <button type="button" onClick={saveBookingChanges} disabled={updating === booking.id} className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
+                {updating === booking.id ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {(booking.beforeImageUrl || booking.afterImageUrl) && !isEditing && (
           <div className="admin-booking-image-section" style={{ marginTop: '16px' }}>
             <h3 style={{ color: 'var(--text)', fontSize: '14px', fontWeight: 900, marginBottom: '10px' }}>Before & After</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
@@ -873,13 +1111,15 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
           </div>
         )}
 
-        <div className="admin-booking-assignee-panel">
-          <label>Assigned Team Member</label>
-          <select className="input" value={assignee?.id || OWNER_ASSIGNEE_ID} onChange={e => onAssign(booking, e.target.value)} disabled={booking.status !== 'confirmed' || updating === booking.id}>
-            {assigneeOptions.map(member => <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>)}
-          </select>
-          {booking.status !== 'confirmed' && <p>Assignments can be changed after an appointment is confirmed.</p>}
-        </div>
+        {!isEditing && (
+          <div className="admin-booking-assignee-panel">
+            <label>Assigned Team Member</label>
+            <select className="input" value={assignee?.id || OWNER_ASSIGNEE_ID} onChange={e => onAssign(booking, e.target.value)} disabled={booking.status !== 'confirmed' || updating === booking.id}>
+              {assigneeOptions.map(member => <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>)}
+            </select>
+            {booking.status !== 'confirmed' && <p>Assignments can be changed after an appointment is confirmed.</p>}
+          </div>
+        )}
 
         {lightboxImage && (
           <div className="modal-overlay" onClick={() => setLightboxImage(null)} style={{ zIndex: 1400 }}>
@@ -893,31 +1133,33 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
           </div>
         )}
 
-        <div className="admin-booking-detail-actions">
-          {booking.status === 'pending' && (
-            <button type="button" onClick={() => onStatus(booking, 'confirmed')} disabled={updating === booking.id} className="btn btn-secondary">
-              <CheckCircle2 size={15} /> Approve
-            </button>
-          )}
-          {canReschedule && (
-            <button type="button" onClick={() => onReschedule(booking)} disabled={updating === booking.id} className="btn btn-secondary">
-              <Clock size={15} /> Reschedule
-            </button>
-          )}
-          {booking.status === 'confirmed' && (
-            <button type="button" onClick={() => onStatus(booking, 'completed')} disabled={updating === booking.id} className="btn btn-primary">
-              <IndianRupee size={15} /> Complete
-            </button>
-          )}
-          {['pending', 'confirmed'].includes(booking.status) && (
-            <button type="button" onClick={() => onCancelBooking(booking)} disabled={updating === booking.id} className="btn btn-danger">
-              <X size={15} /> Cancel
-            </button>
-          )}
-          <a className="btn btn-secondary" href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(booking, shopName)}` : '#'} target="_blank" rel="noopener noreferrer">
-            <MessageCircle size={15} /> Booking WA
-          </a>
-        </div>
+        {!isEditing && (
+          <div className="admin-booking-detail-actions">
+            {booking.status === 'pending' && (
+              <button type="button" onClick={() => onStatus(booking, 'confirmed')} disabled={updating === booking.id} className="btn btn-secondary">
+                <CheckCircle2 size={15} /> Approve
+              </button>
+            )}
+            {canReschedule && (
+              <button type="button" onClick={() => onReschedule(booking)} disabled={updating === booking.id} className="btn btn-secondary">
+                <Clock size={15} /> Reschedule
+              </button>
+            )}
+            {booking.status === 'confirmed' && (
+              <button type="button" onClick={() => onStatus(booking, 'completed')} disabled={updating === booking.id} className="btn btn-primary">
+                <IndianRupee size={15} /> Complete
+              </button>
+            )}
+            {['pending', 'confirmed'].includes(booking.status) && (
+              <button type="button" onClick={() => onCancelBooking(booking)} disabled={updating === booking.id} className="btn btn-danger">
+                <X size={15} /> Cancel
+              </button>
+            )}
+            <a className="btn btn-secondary" href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(booking, shopName)}` : '#'} target="_blank" rel="noopener noreferrer">
+              <MessageCircle size={15} /> Booking WA
+            </a>
+          </div>
+        )}
       </div>
     </div>
   )

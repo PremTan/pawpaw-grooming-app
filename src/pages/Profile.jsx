@@ -370,7 +370,10 @@ export default function Profile() {
             <p style={{ color: 'var(--muted)', fontSize: '13px' }}>This account uses Google sign-in. Password changes are managed through your Google account.</p>
           ) : (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+              <p style={{ color: 'var(--muted)', fontSize: '13px', marginBottom: '18px' }}>
+                If you forgot your password, please go to the login page and use the Forgot Password flow there.
+              </p>
+              <div className="profile-password-grid">
                 <div>
                   <label style={L}>Current Password</label>
                   <div style={{ position: 'relative' }}>
@@ -454,6 +457,10 @@ export default function Profile() {
         .profile-crop-stage { position: relative; width: 100%; height: min(62vh, 420px); min-height: 300px; margin-top: 16px; background: #111; }
         .profile-crop-zoom { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; padding: 16px 18px 0; color: var(--muted); font-size: 12px; font-weight: 800; }
         .profile-crop-zoom input { accent-color: var(--accent); }
+        .profile-password-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+        @media (max-width: 700px) {
+          .profile-password-grid { grid-template-columns: 1fr; }
+        }
         .profile-crop-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px 18px 18px; }
       `}</style>
     </div>
