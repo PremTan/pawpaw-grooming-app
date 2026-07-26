@@ -34,10 +34,11 @@ const getSalaryStatus = (monthlySalary = 0, salaryPaid = 0) => {
 }
 const getSalaryStatusClass = status => status === 'Paid' ? 'success' : status === 'Partially Paid' ? 'partial' : 'due'
 const getPaymentBadgeClass = type => {
-  if (type === 'Salary') return 'badge badge-completed'
-  if (type === 'Advance') return 'badge badge-pending'
-  if (type === 'Bonus' || type === 'Incentive') return 'badge badge-online'
-  if (type === 'Deduction') return 'badge badge-cancelled'
+  const normalized = (type || '').toString().trim().toLowerCase()
+  if (normalized === 'salary') return 'badge badge-completed'
+  if (normalized === 'advance') return 'badge badge-pending'
+  if (normalized === 'bonus' || normalized === 'incentive') return 'badge badge-online'
+  if (normalized === 'deduction') return 'badge badge-cancelled'
   return 'badge'
 }
 const getMonthOptions = (count = 7) => {
@@ -99,6 +100,7 @@ export default function AdminTeam() {
     notes: '',
   })
   const [paymentFilter, setPaymentFilter] = useState('All')
+  const [showAllPayments, setShowAllPayments] = useState(false)
   const [selectedPayrollMonth, setSelectedPayrollMonth] = useState({ month: new Date().getMonth() + 1, year: new Date().getFullYear() })
   const [editingPayment, setEditingPayment] = useState(null)
   const [deletingPayment, setDeletingPayment] = useState(null)
@@ -137,11 +139,46 @@ export default function AdminTeam() {
   const fetchPaymentsForMember = async memberId => {
     if (!memberId) return
     setPayrollLoading(true)
-    try {
+    const normalizePayment = data => {
+      const paymentType = (data.paymentType || 'Salary').toString().trim()
+      const salaryMonth = Number(data.salaryMonth) || 0
+      const salaryYear = Number(data.salaryYear) || 0
+      const parsedDate = data.paymentDate ? new Date(data.paymentDate) : null
+      return {
+        ...data,
+        paymentType,
+        paymentTypeLower: paymentType.toLowerCase(),
+        salaryMonth: salaryMonth || (parsedDate ? parsedDate.getMonth() + 1 : 0),
+        salaryYear: salaryYear || (parsedDate ? parsedDate.getFullYear() : 0),
+        amount: Number(data.amount) || 0,
+      }
+    }
+
+    const loadPayments = async () => {
       const snap = await getDocs(query(collection(db, 'employeePayments'), where('teamMemberId', '==', memberId)))
-      const memberPayments = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      memberPayments.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
+      return snap.docs.map(d => ({ id: d.id, ...normalizePayment(d.data()) }))
+    }
+
+    try {
+      const memberPayments = await loadPayments()
+
+      memberPayments.sort((a, b) => {
+        const aCreated = a.createdAt?.toMillis?.() || 0
+        const bCreated = b.createdAt?.toMillis?.() || 0
+        if (aCreated !== bCreated) return bCreated - aCreated
+        return new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime()
+      })
       setPayments(memberPayments)
+      setShowAllPayments(false)
+
+      if (memberPayments.length > 0) {
+        const latestPayment = memberPayments[0]
+        const latestMonth = Number(latestPayment.salaryMonth) || (latestPayment.paymentDate ? new Date(latestPayment.paymentDate).getMonth() + 1 : new Date().getMonth() + 1)
+        const latestYear = Number(latestPayment.salaryYear) || (latestPayment.paymentDate ? new Date(latestPayment.paymentDate).getFullYear() : new Date().getFullYear())
+        setSelectedPayrollMonth({ month: latestMonth, year: latestYear })
+      } else {
+        setSelectedPayrollMonth({ month: new Date().getMonth() + 1, year: new Date().getFullYear() })
+      }
     } catch (error) {
       console.error('Failed to fetch payments for member:', error)
       setPayments([])
@@ -152,13 +189,28 @@ export default function AdminTeam() {
   const fetchPayrollDashboard = async () => {
     try {
       const snap = await getDocs(collection(db, 'employeePayments'))
-      const allPayments = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const allPayments = snap.docs.map(d => {
+        const data = d.data()
+        const normalizedPaymentType = (data.paymentType || 'Salary').toString().trim()
+        const salaryMonth = Number(data.salaryMonth) || 0
+        const salaryYear = Number(data.salaryYear) || 0
+        const parsedDate = data.paymentDate ? new Date(data.paymentDate) : null
+        return {
+          id: d.id,
+          ...data,
+          paymentType: normalizedPaymentType,
+          paymentTypeLower: normalizedPaymentType.toLowerCase(),
+          salaryMonth: salaryMonth || (parsedDate ? parsedDate.getMonth() + 1 : 0),
+          salaryYear: salaryYear || (parsedDate ? parsedDate.getFullYear() : 0),
+          amount: Number(data.amount) || 0,
+        }
+      })
       const currentMonth = new Date().getMonth() + 1
       const currentYear = new Date().getFullYear()
-      const paidThisMonth = allPayments.filter(payment => Number(payment.salaryMonth) === currentMonth && Number(payment.salaryYear) === currentYear).reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0)
-      const advancePaid = allPayments.filter(payment => payment.paymentType === 'Advance').reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0)
+      const paidThisMonth = allPayments.filter(payment => payment.salaryMonth === currentMonth && payment.salaryYear === currentYear).reduce((sum, payment) => sum + payment.amount, 0)
+      const advancePaid = allPayments.filter(payment => payment.paymentTypeLower === 'advance').reduce((sum, payment) => sum + payment.amount, 0)
       const salaryPaidByMember = new Map()
-      allPayments.filter(payment => payment.paymentType === 'Salary' && Number(payment.salaryMonth) === currentMonth && Number(payment.salaryYear) === currentYear)
+      allPayments.filter(payment => payment.paymentTypeLower === 'salary' && payment.salaryMonth === currentMonth && payment.salaryYear === currentYear)
         .forEach(payment => {
           const current = salaryPaidByMember.get(payment.teamMemberId) || 0
           salaryPaidByMember.set(payment.teamMemberId, current + (Number(payment.amount) || 0))
@@ -190,7 +242,6 @@ export default function AdminTeam() {
     }
     fetchPaymentsForMember(selectedMember.id)
     setPaymentFilter('All')
-    setSelectedPayrollMonth({ month: new Date().getMonth() + 1, year: new Date().getFullYear() })
   }, [selectedMember])
 
   useEffect(() => {
@@ -368,9 +419,13 @@ export default function AdminTeam() {
       salaryYear: Number(payment.salaryYear) || selectedPayrollMonth.year,
       notes: payment.notes || '',
     } : {
+      amount: '',
       paymentType: type,
+      paymentMethod: 'Cash',
+      paymentDate: format(new Date(), 'yyyy-MM-dd'),
       salaryMonth: selectedPayrollMonth.month,
       salaryYear: selectedPayrollMonth.year,
+      notes: '',
     }
     setEditingPayment(payment)
     setPaymentForm(values)
@@ -505,14 +560,20 @@ export default function AdminTeam() {
   }
 
   const filteredPayments = payments
-    .filter(payment => Number(payment.salaryMonth) === selectedPayrollMonth.month && Number(payment.salaryYear) === selectedPayrollMonth.year)
-    .filter(payment => paymentFilter === 'All' ? true : payment.paymentType === paymentFilter)
-    .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
+    .filter(payment => paymentFilter === 'All' ? true : payment.paymentTypeLower === paymentFilter.toLowerCase())
+    .sort((a, b) => {
+      const aCreated = a.createdAt?.toMillis?.() || 0
+      const bCreated = b.createdAt?.toMillis?.() || 0
+      if (aCreated !== bCreated) return bCreated - aCreated
+      return new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime()
+    })
+
+  const displayedPayments = showAllPayments ? filteredPayments : filteredPayments.slice(0, 3)
 
   const memberSalary = Number(selectedMember?.monthlySalary || 0)
-  const monthPayments = payments.filter(payment => Number(payment.salaryMonth) === selectedPayrollMonth.month && Number(payment.salaryYear) === selectedPayrollMonth.year)
-  const salaryPaidThisMonth = monthPayments.filter(payment => payment.paymentType === 'Salary').reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0)
-  const advancePaid = monthPayments.filter(payment => payment.paymentType === 'Advance').reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0)
+  const monthPayments = payments.filter(payment => payment.salaryMonth === selectedPayrollMonth.month && payment.salaryYear === selectedPayrollMonth.year)
+  const salaryPaidThisMonth = monthPayments.filter(payment => payment.paymentTypeLower === 'salary').reduce((sum, payment) => sum + payment.amount, 0)
+  const advancePaid = monthPayments.filter(payment => payment.paymentTypeLower === 'advance').reduce((sum, payment) => sum + payment.amount, 0)
   const totalPaidThisMonth = monthPayments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0)
   const lastPaymentDate = monthPayments
     .map(payment => new Date(payment.paymentDate))
@@ -684,7 +745,6 @@ export default function AdminTeam() {
                     <div className="admin-team-payroll-summary-head">
                       <div>
                         <span className="section-label">Payroll Summary</span>
-                        <h3>{selectedMonthLabel}</h3>
                       </div>
                       <div className="admin-team-month-controls">
                         <button type="button" className="icon-btn" onClick={() => updateSelectedPayrollMonth(-1)} aria-label="Previous month">
@@ -760,30 +820,41 @@ export default function AdminTeam() {
                     <div className="admin-team-payment-history-head">
                       <div>
                         <h4>Payment History</h4>
-                        <p>{filteredPayments.length} records for {selectedMonthLabel}</p>
+                        <p>{showAllPayments ? `${filteredPayments.length} records` : `${Math.min(3, filteredPayments.length)} latest records`}</p>
                       </div>
                       <div className="admin-team-payment-history-actions">
                         <div className="admin-team-payment-filters">
-                          {FILTER_TYPES.map(filter => (
-                            <button key={filter} type="button" className={`badge admin-team-payment-filter${paymentFilter === filter ? ' selected' : ''}`} onClick={() => setPaymentFilter(filter)}>
-                              {filter}
-                            </button>
-                          ))}
+                          <label htmlFor="payment-filter-dropdown" className="sr-only">Payment type</label>
+                          <select
+                            id="payment-filter-dropdown"
+                            className="input admin-team-payment-filter-select"
+                            value={paymentFilter}
+                            onChange={e => {
+                              setPaymentFilter(e.target.value)
+                              setShowAllPayments(false)
+                            }}
+                          >
+                            {FILTER_TYPES.map(filter => (
+                              <option key={filter} value={filter}>{filter}</option>
+                            ))}
+                          </select>
                         </div>
-                        <button type="button" className="btn btn-secondary admin-team-view-all" onClick={() => setPaymentFilter('All')}>
-                          View All
-                        </button>
+                        {filteredPayments.length > 3 && (
+                          <button type="button" className="btn btn-secondary admin-team-view-all" onClick={() => setShowAllPayments(prev => !prev)}>
+                            {showAllPayments ? 'Show Less' : 'View All'}
+                          </button>
+                        )}
                       </div>
                     </div>
 
                     {payrollLoading ? <Spinner text="Loading payroll..." /> : filteredPayments.length === 0 ? (
                       <div className="admin-booking-empty">
                         <Users size={24} style={{ margin: '0 auto 10px', color: 'var(--muted)' }} />
-                        No payments for the selected month.
+                        No payments found for this employee.
                       </div>
                     ) : (
                       <div className="admin-team-payment-list">
-                        {filteredPayments.map(payment => (
+                        {displayedPayments.map(payment => (
                           <div key={payment.id} className="admin-team-payment-card">
                             <div className="admin-team-payment-card-main">
                               <div className={`admin-team-payment-icon ${payment.paymentType?.toLowerCase()}`}>
