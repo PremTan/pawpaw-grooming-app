@@ -581,13 +581,6 @@ export default function MyBookings() {
                 </div>
               </div>
             )}
-
-            {selectedBooking.address && (
-              <div className="my-booking-detail-note">
-                <strong>Address</strong>
-                <p>{selectedBooking.address}</p>
-              </div>
-            )}
               {canRescheduleBooking(selectedBooking) && (
                 <button
                   type="button"

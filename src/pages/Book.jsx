@@ -61,6 +61,8 @@ export default function Book() {
   const [selectedPetId, setSelectedPetId] = useState('')
   const [selectedServices, setSelectedServices] = useState(preService ? [preService] : [])
   const [selectedPackages, setSelectedPackages] = useState([])
+  const [profileAddresses, setProfileAddresses] = useState([])
+  const [showAddressOptions, setShowAddressOptions] = useState(false)
   const [form, setForm] = useState({
     serviceId: preService, petName: '', petType: 'Dog', petBreed: '', customBreed: '',
     ownerName: user?.displayName || '', phone: '',
@@ -135,7 +137,9 @@ export default function Book() {
         if (!snap.exists()) return
         const data = snap.data()
         const profileAddresses = Array.isArray(data.addresses) && data.addresses.length ? data.addresses : []
-        const defaultProfileAddress = profileAddresses.find(item => item.isDefault) || profileAddresses[0] || null
+        const normalizedAddresses = profileAddresses.length ? profileAddresses : data.address ? [{ id: `address-${Date.now()}`, type: 'Home', address: data.address, isDefault: true }] : []
+        const defaultProfileAddress = normalizedAddresses.find(item => item.isDefault) || normalizedAddresses[0] || null
+        setProfileAddresses(normalizedAddresses)
         setForm(prev => ({
           ...prev,
           ownerName: prev.ownerName || data.name || '',
@@ -671,7 +675,44 @@ export default function Book() {
               {form.bookingType === 'home' && (
                 <div style={{ marginBottom: '20px' }}>
                   <label style={S.label}>Home Visit Address *</label>
-                  <textarea className="input" rows={3} value={form.address} onChange={e => update('address', e.target.value)} placeholder="Enter complete visit address" style={{ resize: 'vertical' }} />
+                  <div style={{ marginBottom: '12px', padding: '16px', borderRadius: '16px', border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'nowrap' }}>
+                      <span style={{ color: 'var(--muted)', fontSize: '12px', fontWeight: 700, letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Selected address</span>
+                      <span style={{ color: 'var(--text)', fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap' }}>Type - {profileAddresses.find(addr => addr.address === form.address)?.type || 'Home'}</span>
+                    </div>
+                    <textarea
+                      className="input"
+                      rows={3}
+                      value={form.address}
+                      onChange={e => update('address', e.target.value)}
+                      placeholder="Enter complete visit address"
+                      style={{ width: '100%', resize: 'vertical', minHeight: '72px', color: 'var(--text)', background: 'var(--card)', borderRadius: '12px', border: '1px solid var(--border)', padding: '12px' }}
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px', marginTop: '14px' }}>
+                      <button type="button" className="btn btn-secondary" style={{ whiteSpace: 'nowrap' }} onClick={() => setShowAddressOptions(prev => !prev)}>
+                        {showAddressOptions ? 'Hide' : 'Choose'}
+                      </button>
+                      <button type="button" className="btn btn-secondary" style={{ whiteSpace: 'nowrap' }} onClick={() => navigate('/profile')}>
+                        Manage
+                      </button>
+                    </div>
+                  </div>
+                  {showAddressOptions && (
+                    <div style={{ display: 'grid', gap: '10px', marginBottom: '12px' }}>
+                      {profileAddresses.length > 0 ? profileAddresses.map(address => (
+                        <button key={address.id} type="button" onClick={() => { update('address', address.address); setShowAddressOptions(false) }}
+                          style={{ textAlign: 'left', padding: '14px 16px', borderRadius: '14px', border: `1px solid ${address.address === form.address ? 'var(--accent)' : 'var(--border)'}`, background: address.address === form.address ? 'var(--accent-bg)' : 'var(--card)', color: 'var(--text)', cursor: 'pointer' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '6px' }}>
+                            <span style={{ fontWeight: 700 }}>{address.type}</span>
+                            {address.isDefault && <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', background: 'rgba(255,201,61,0.2)', borderRadius: '999px', padding: '4px 8px' }}>Default</span>}
+                          </div>
+                          <div style={{ color: 'var(--muted)', fontSize: '13px', lineHeight: 1.5 }}>{address.address}</div>
+                        </button>
+                      )) : (
+                        <div style={{ color: 'var(--muted)', fontSize: '13px' }}>No saved addresses found. Use Manage Addresses to add one.</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
