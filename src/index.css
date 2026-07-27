@@ -3147,11 +3147,1052 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 }
 
 .admin-team-detail-modal {
-  max-width: 440px;
+  max-width: 1100px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
 }
 
 .admin-team-detail-body {
-  padding: 18px;
+  padding: 24px;
+  overflow-y: auto;
+  max-height: calc(85vh - 80px);
+}
+
+/* Admin Team Detail Grid - Two Column Layout */
+.admin-team-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) minmax(380px, 1.3fr);
+  gap: 32px;
+  align-items: start;
+}
+
+/* Profile Panel */
+.admin-team-profile-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.admin-team-profile-head {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.admin-team-profile-head > .admin-team-profile-avatar {
+  flex: 0 0 auto;
+  width: fit-content;
+}
+
+.admin-team-profile-avatar img,
+.admin-team-profile-avatar .admin-team-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 12px;
+  border: 2px solid var(--accent-border);
+}
+
+.admin-team-profile-head > div:not(.admin-team-profile-avatar) {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-team-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.admin-team-title strong {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.admin-team-title .badge {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.admin-team-profile-head p {
+  color: var(--muted);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.admin-team-profile-head p svg {
+  flex-shrink: 0;
+}
+
+/* Stats Card Grid */
+.admin-team-stat-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(80px, 1fr));
+  gap: 10px;
+}
+
+.admin-team-stat-card {
+  padding: 14px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.admin-team-stat-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.admin-team-stat-card span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.admin-team-stat-card strong {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+/* Info Panel */
+.admin-team-info-panel {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.admin-team-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  gap: 12px;
+}
+
+.admin-team-info-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-team-info-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.admin-team-info-left span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.admin-team-status-indicator {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.admin-team-status-indicator::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+.admin-team-info-row.status-row.inactive .admin-team-status-indicator {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.admin-team-info-row.status-row.inactive .admin-team-status-indicator::before {
+  background: #ef4444;
+}
+
+/* Status text color coding */
+.admin-team-info-row.status-row strong {
+  color: #10b981;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.admin-team-info-row.status-row.inactive strong {
+  color: #ef4444;
+}
+
+/* Detail Actions */
+.admin-team-detail-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.admin-team-edit-button,
+.admin-team-activate-button,
+.admin-team-deactivate-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-team-edit-button:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.admin-team-deactivate-button {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.admin-team-deactivate-button:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.admin-team-activate-button {
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.admin-team-activate-button:hover {
+  background: rgba(16, 185, 129, 0.1);
+}
+
+/* Payroll Panel */
+.admin-team-payroll-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.admin-team-payroll-summary-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-team-payroll-summary-head > div:first-child {
+  flex: 1;
+}
+
+.section-label {
+  display: block;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.admin-team-payroll-summary-head h3 {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.admin-team-month-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-team-month-controls .icon-btn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-team-month-controls .icon-btn:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.admin-team-month-select-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.admin-team-month-select {
+  padding: 6px 10px 6px 34px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.admin-team-month-select-wrapper svg {
+  position: absolute;
+  left: 10px;
+  pointer-events: none;
+  color: var(--muted);
+}
+
+/* Payroll Card Grid */
+.admin-team-payroll-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.admin-team-payroll-card-sm {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: center;
+}
+
+.admin-team-payroll-card-sm span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.admin-team-payroll-card-sm strong {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.admin-team-paid-card {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.admin-team-paid-card strong {
+  color: #10b981;
+}
+
+.admin-team-pending-card {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.admin-team-pending-card strong {
+  color: #ef4444;
+}
+
+.admin-team-advance-card {
+  background: rgba(212, 175, 55, 0.08);
+  border-color: var(--accent-border);
+}
+
+.admin-team-advance-card strong {
+  color: var(--accent);
+}
+
+/* Payroll Meta Row */
+.admin-team-payroll-meta-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.admin-team-payroll-status-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.admin-team-payroll-status-box span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.admin-team-payroll-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 6px;
+  width: fit-content;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.admin-team-payroll-status-pill.success {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.admin-team-payroll-status-pill.partial {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.admin-team-payroll-status-pill.due {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.admin-team-last-payment {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-team-last-payment > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.admin-team-last-payment.admin-team-last-payment-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-team-last-payment-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.admin-team-last-payment span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.admin-team-last-payment strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* Payroll Actions Row */
+.admin-team-payroll-actions-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-team-pay-button,
+.admin-team-advance-button,
+.admin-team-bonus-button,
+.admin-team-add-payment-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-team-pay-button {
+  border-color: #10b981;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.admin-team-pay-button:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.admin-team-advance-button {
+  border-color: var(--accent-border);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.admin-team-advance-button:hover:not(:disabled) {
+  background: rgba(212, 175, 55, 0.15);
+}
+
+.admin-team-bonus-button {
+  border-color: #a78bfa;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.08);
+}
+
+.admin-team-bonus-button:hover:not(:disabled) {
+  background: rgba(167, 139, 250, 0.12);
+}
+
+.admin-team-add-payment-button {
+  grid-column: auto;
+  border-color: #d4af37;
+  color: #8b6508;
+  background: rgba(212, 175, 55, 0.15);
+}
+
+.admin-team-add-payment-button:hover:not(:disabled) {
+  background: rgba(212, 175, 55, 0.25);
+  color: #a67c00;
+  border-color: #d4af37;
+}
+
+/* Payment History */
+.admin-team-payment-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.admin-team-payment-history-head > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-team-payment-history-head h4 {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 2px;
+}
+
+.admin-team-payment-history-head p {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.admin-team-payment-history-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.admin-team-payment-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-right: 0;
+}
+
+.admin-team-payment-filter {
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-team-payment-filter-select {
+  min-width: 140px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.admin-team-payment-filter-select:focus {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+}
+
+.admin-team-payment-filter:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.admin-team-payment-filter.selected {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.admin-team-view-all {
+  padding: 5px 10px;
+  font-size: 10px;
+}
+
+/* Payment List */
+.admin-team-payment-list {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  background: var(--surface);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.admin-team-payment-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 10px 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  min-height: 80px;
+}
+
+.admin-team-payment-card-main {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-team-payment-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex-shrink: 0;
+  color: var(--text);
+}
+
+.admin-team-payment-icon.salary {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.admin-team-payment-icon.advance {
+  background: rgba(212, 175, 55, 0.15);
+  color: var(--accent);
+}
+
+.admin-team-payment-icon.bonus {
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+}
+
+.admin-team-payment-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.admin-team-payment-card-title strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-team-payment-card-title span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.admin-team-payment-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-weight: 800;
+  justify-self: end;
+}
+
+.admin-team-payment-amount span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.admin-team-payment-amount strong {
+  color: #10b981;
+  font-size: 13px;
+}
+
+.admin-team-payment-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  grid-column: 1 / -1;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.admin-team-payment-card-meta > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 10px;
+}
+
+.admin-team-payment-label {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.admin-team-payment-card-meta strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-team-payment-notes {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-team-payment-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  justify-self: end;
+  align-self: center;
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.admin-team-payment-card-actions .btn-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.admin-team-payment-card-actions .btn-icon.btn-danger {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+}
+
+.admin-team-payment-card-actions .btn-icon.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.admin-team-payment-card-actions .btn-icon:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.admin-team-payment-card-actions .btn-danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+/* Export Button */
+.admin-team-export-button {
+  width: 100%;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-team-export-button:hover {
+  background: rgba(212, 175, 55, 0.15);
+}
+
+/* Owner Note */
+.admin-team-owner-note {
+  padding: 16px;
+  border: 1px solid var(--accent-border);
+  border-radius: 12px;
+  background: var(--accent-bg);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Detail Actions */
+.admin-team-detail-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.admin-team-edit-button,
+.admin-team-activate-button,
+.admin-team-deactivate-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-team-edit-button:hover:not(:disabled) {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.admin-team-deactivate-button {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.admin-team-deactivate-button:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.admin-team-activate-button {
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.admin-team-activate-button:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.1);
+}
+
+/* Responsive Design */
+@media (max-width: 1000px) {
+  .admin-team-detail-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .admin-team-payroll-card-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .admin-team-payroll-actions-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .admin-team-add-payment-button {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .admin-team-detail-modal {
+    max-width: 95vw;
+  }
+
+  .admin-team-detail-body {
+    padding: 16px;
+    max-height: calc(90vh - 70px);
+  }
+
+  .admin-team-stat-card-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .admin-team-payroll-card-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .admin-team-payroll-actions-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .admin-team-add-payment-button {
+    grid-column: auto;
+  }
+
+  .admin-team-last-payment.admin-team-last-payment-inline {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .admin-team-payment-history-actions {
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .admin-team-payment-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: auto;
+    justify-content: flex-start;
+  }
+
+  .admin-team-payment-list {
+    max-height: 280px;
+  }
+
+  .admin-team-payment-card {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-team-payment-card-main {
+    grid-column: 1;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .admin-team-payment-card-actions {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+    width: 100%;
+  }
+
+  .admin-team-payment-card-meta {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .admin-team-payment-notes {
+    grid-column: 1 / -1;
+  }
 }
 
 .admin-team-detail-top {
@@ -3203,6 +4244,10 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 
 @media (max-width: 420px) {
   .admin-team-detail-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-team-payment-card-meta {
     grid-template-columns: 1fr;
   }
 }
