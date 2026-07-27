@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, updateProfile } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import Cropper from 'react-easy-crop'
-import { Eye, EyeOff, Lock, Plus, Save, User, Upload, X } from 'lucide-react'
+import { Eye, EyeOff, Lock, Pencil, Plus, Save, Trash2, User, Upload, X } from 'lucide-react'
 import { auth, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import Spinner from '../components/Spinner'
@@ -127,7 +127,24 @@ export default function Profile() {
     setAddressForm(prev => ({ ...prev, [key]: value }))
   }
 
-  const saveAddress = () => {
+  const persistAddresses = async (nextAddresses) => {
+    if (!user?.uid) return false
+    try {
+      const defaultAddress = getDefaultAddress(nextAddresses)
+      await setDoc(doc(db, 'profiles', user.uid), {
+        addresses: nextAddresses,
+        address: defaultAddress?.address || '',
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
+      return true
+    } catch (err) {
+      setToastType('error')
+      setToastMessage(err.message || 'Could not save address changes.')
+      return false
+    }
+  }
+
+  const saveAddress = async () => {
     const trimmed = addressForm.address.trim()
     if (!trimmed) {
       setAddressFormError('Please enter the address.')
@@ -147,6 +164,9 @@ export default function Profile() {
     if (!next.some(item => item.isDefault)) {
       next[0].isDefault = true
     }
+
+    const saved = await persistAddresses(next)
+    if (!saved) return
 
     setAddresses(next)
     setForm(prev => ({ ...prev, address: getDefaultAddress(next)?.address || prev.address }))
@@ -170,12 +190,16 @@ export default function Profile() {
     setDeleteAddressId(null)
   }
 
-  const confirmDeleteAddress = () => {
+  const confirmDeleteAddress = async () => {
     if (!deleteAddressId) return
     const next = addresses.filter(item => item.id !== deleteAddressId)
     if (next.length && !next.some(item => item.isDefault)) {
       next[0].isDefault = true
     }
+
+    const saved = await persistAddresses(next)
+    if (!saved) return
+
     setAddresses(next)
     setForm(prev => ({ ...prev, address: getDefaultAddress(next)?.address || prev.address }))
     closeDeleteModal()
@@ -388,7 +412,7 @@ export default function Profile() {
       <div style={{ maxWidth: '980px', margin: '0 auto', padding: '40px 20px 80px' }}>
         <div style={{ marginBottom: '28px' }}>
           <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>My Profile</h1>
-          <p style={{ color: 'var(--muted)', fontSize: '14px', maxWidth: '720px' }}>Save your details once and use them for future bookings. Manage multiple addresses and change your password securely from one place.</p>
+          <p style={{ color: 'var(--muted)', fontSize: '14px', maxWidth: '720px' }}>Update your contact and address details in one place.</p>
         </div>
         {isBlocked && (
           <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', fontSize: '13px', padding: '12px 14px', borderRadius: '16px', marginBottom: '18px' }}>
@@ -477,20 +501,20 @@ export default function Profile() {
                 {addresses.map(address => (
                   <div key={address.id} className={`profile-address-item${address.isDefault ? ' default' : ''}`}>
                     <div className="profile-address-item-head">
-                      <span className="profile-address-type">{address.type}</span>
-                      {address.isDefault && <span className="profile-pill profile-pill-default">Default</span>}
-                    </div>
-                    <p className="profile-address-text">{address.address}</p>
-                    <div className="profile-address-actions">
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        <button type="button" className="btn btn-secondary profile-address-edit" onClick={() => openAddressModal(address)}>
-                          Edit
+                      <div className="profile-address-type-row">
+                        <span className="profile-address-type">{address.type}</span>
+                        {address.isDefault && <span className="profile-pill profile-pill-default">Default</span>}
+                      </div>
+                      <div className="profile-address-actions">
+                        <button type="button" className="icon-button profile-address-edit" onClick={() => openAddressModal(address)} aria-label="Edit address" title="Edit address">
+                          <Pencil size={16} />
                         </button>
-                        <button type="button" className="btn btn-danger profile-address-delete" onClick={() => openDeleteConfirm(address.id)}>
-                          Delete
+                        <button type="button" className="icon-button profile-address-delete" onClick={() => openDeleteConfirm(address.id)} aria-label="Delete address" title="Delete address">
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </div>
+                    <p className="profile-address-text">{address.address}</p>
                   </div>
                 ))}
               </div>
@@ -509,15 +533,16 @@ export default function Profile() {
               <div className="profile-password-card">
                 <div>
                   <strong>Change Password</strong>
-                  <p>Use a strong password to keep your account secure.</p>
+                  <p className="profile-password-note">If you forgot your password, use the Forgot Password option on the login page instead.</p>
                 </div>
-                <button type="button" className="btn btn-primary" onClick={() => setPasswordModalOpen(true)}>
+                <button type="button" className="btn btn-primary profile-change-password-button" onClick={() => setPasswordModalOpen(true)}>
                   Change Password
                 </button>
               </div>
             ) : (
               <div className="profile-password-card profile-password-info">
                 <p>This account uses Google sign-in. Password changes are managed through your Google account.</p>
+                <p className="profile-password-note">If you forgot your password, use the Forgot Password option on the login page.</p>
               </div>
             )}
           </section>
@@ -681,18 +706,25 @@ export default function Profile() {
         .profile-save-button { width: fit-content; }
         .profile-addresses-panel, .profile-password-panel { min-height: 260px; }
         .profile-address-list { display: grid; gap: 14px; }
-        .profile-address-item { border: 1px solid var(--border); border-radius: 18px; padding: 18px; background: var(--surface); display: grid; gap: 12px; }
+        .profile-address-item { border: 1px solid var(--border); border-radius: 18px; padding: 14px; background: var(--surface); display: grid; gap: 10px; }
         .profile-address-item.default { box-shadow: 0 0 0 1px rgba(255, 185, 0, 0.14); }
-        .profile-address-item-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-        .profile-address-type { font-size: 12px; font-weight: 800; color: var(--accent); letter-spacing: 0.8px; text-transform: uppercase; }
-        .profile-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+        .profile-address-item-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: nowrap; }
+        .profile-address-type { font-size: 11px; font-weight: 800; color: var(--accent); letter-spacing: 0.8px; text-transform: uppercase; }
+        .profile-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; }
         .profile-pill-default { background: rgba(255, 201, 61, 0.15); color: #b97a00; }
-        .profile-address-text { margin: 0; color: var(--text); line-height: 1.6; }
-        .profile-address-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
-        .profile-address-default, .profile-address-edit, .profile-address-delete { min-width: 105px; }
+        .profile-address-text { margin: 0; color: var(--text); line-height: 1.5; font-size: 14px; }
+        .profile-address-type-row { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }
+        .profile-address-actions { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+        .icon-button { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease; }
+        .icon-button:hover { background: rgba(255, 255, 255, 0.08); }
+        .profile-address-edit { color: var(--accent); border-color: rgba(255, 185, 0, 0.25); }
+        .profile-address-delete { color: #ef4444; border-color: rgba(239, 68, 68, 0.18); }
+        .profile-address-default, .profile-address-edit, .profile-address-delete { min-width: unset; }
         .profile-empty-state { display: grid; gap: 14px; padding: 18px; border: 1px dashed var(--border); border-radius: 18px; background: var(--surface); }
         .profile-password-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--border); border-radius: 18px; padding: 18px; background: var(--surface); }
         .profile-password-card strong { display: block; font-size: 15px; margin-bottom: 6px; }
+        .profile-password-note { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; max-width: 420px; }
+        .profile-change-password-button { white-space: nowrap; min-width: 150px; }
         .profile-password-info { padding: 22px; }
         .profile-modal-overlay { z-index: 120; }
         .profile-modal-box { max-width: 520px; width: min(94vw, 520px); overflow: hidden; }
@@ -711,10 +743,19 @@ export default function Profile() {
           .profile-personal-panel { grid-column: auto; }
         }
         @media (max-width: 560px) {
-          .profile-panel { padding: 18px; }
+          .profile-panel { padding: 16px; }
           .profile-fields-grid { grid-template-columns: 1fr; }
-          .profile-address-actions { flex-direction: column; align-items: stretch; }
-          .profile-address-actions button { width: 100%; }
+          .profile-photo-row { gap: 10px; align-items: center; flex-wrap: nowrap; }
+          .profile-photo-preview { width: 64px; height: 64px; }
+          .profile-photo-actions { width: auto; flex: 1; min-width: 0; }
+          .profile-upload-button { width: 100%; padding: 10px 12px; font-size: 13px; white-space: nowrap; }
+          .profile-address-item { padding: 12px; }
+          .profile-address-actions { flex-direction: row; align-items: center; justify-content: flex-end; }
+          .profile-address-actions button { width: 34px; }
+          .profile-address-text { font-size: 13px; line-height: 1.4; }
+          .profile-password-card { flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; }
+          .profile-change-password-button { width: 100%; min-width: auto; }
+          .profile-password-note { font-size: 12px; line-height: 1.4; }
           .profile-modal-actions { grid-template-columns: 1fr; }
           .profile-crop-actions { grid-template-columns: 1fr; }
         }
