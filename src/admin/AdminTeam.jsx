@@ -706,38 +706,42 @@ export default function AdminTeam() {
                     </div>
                   </div>
 
-                  <div className="admin-team-info-panel">
-                    <div className="admin-team-info-row">
-                      <div className="admin-team-info-left">
-                        <div className="admin-team-info-icon"><Calendar size={16} /></div>
-                        <span>Joining Date</span>
+                  {!selectedMember.isOwner && (
+                    <>
+                      <div className="admin-team-info-panel">
+                        <div className="admin-team-info-row">
+                          <div className="admin-team-info-left">
+                            <div className="admin-team-info-icon"><Calendar size={16} /></div>
+                            <span>Joining Date</span>
+                          </div>
+                          <strong>{formatShortDate(selectedMember.joiningDate)}</strong>
+                        </div>
+                        <div className="admin-team-info-row">
+                          <div className="admin-team-info-left">
+                            <div className="admin-team-info-icon"><IndianRupee size={16} /></div>
+                            <span>Monthly Salary</span>
+                          </div>
+                          <strong>{formatCurrency(Number(selectedMember.monthlySalary) || 0)}</strong>
+                        </div>
+                        <div className={`admin-team-info-row status-row${selectedMember.active === false ? ' inactive' : ''}`}>
+                          <div className="admin-team-info-left">
+                            <div className="admin-team-status-indicator" />
+                            <span>Status</span>
+                          </div>
+                          <strong>{selectedMember.active === false ? 'Inactive' : 'Active'}</strong>
+                        </div>
                       </div>
-                      <strong>{formatShortDate(selectedMember.joiningDate)}</strong>
-                    </div>
-                    <div className="admin-team-info-row">
-                      <div className="admin-team-info-left">
-                        <div className="admin-team-info-icon"><IndianRupee size={16} /></div>
-                        <span>Monthly Salary</span>
-                      </div>
-                      <strong>{formatCurrency(Number(selectedMember.monthlySalary) || 0)}</strong>
-                    </div>
-                    <div className={`admin-team-info-row status-row${selectedMember.active === false ? ' inactive' : ''}`}>
-                      <div className="admin-team-info-left">
-                        <div className="admin-team-status-indicator" />
-                        <span>Status</span>
-                      </div>
-                      <strong>{selectedMember.active === false ? 'Inactive' : 'Active'}</strong>
-                    </div>
-                  </div>
 
-                  <div className="admin-team-detail-actions">
-                    <button type="button" className="btn admin-team-edit-button" onClick={() => openEdit(selectedMember)}>
-                      <Edit3 size={18} /> Edit
-                    </button>
-                    <button type="button" className={selectedMember.active === false ? 'btn admin-team-activate-button' : 'btn admin-team-deactivate-button'} onClick={() => toggleMember(selectedMember)} disabled={saving}>
-                      <Trash2 size={18} /> {selectedMember.active === false ? 'Activate' : 'Deactivate'}
-                    </button>
-                  </div>
+                      <div className="admin-team-detail-actions">
+                        <button type="button" className="btn admin-team-edit-button" onClick={() => openEdit(selectedMember)}>
+                          <Edit3 size={18} /> Edit
+                        </button>
+                        <button type="button" className={selectedMember.active === false ? 'btn admin-team-activate-button' : 'btn admin-team-deactivate-button'} onClick={() => toggleMember(selectedMember)} disabled={saving}>
+                          <Trash2 size={18} /> {selectedMember.active === false ? 'Activate' : 'Deactivate'}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </section>
 
                 {!selectedMember.isOwner && (
