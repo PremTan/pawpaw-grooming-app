@@ -134,10 +134,13 @@ export default function Book() {
         const snap = await getDoc(doc(db, 'profiles', user.uid))
         if (!snap.exists()) return
         const data = snap.data()
+        const profileAddresses = Array.isArray(data.addresses) && data.addresses.length ? data.addresses : []
+        const defaultProfileAddress = profileAddresses.find(item => item.isDefault) || profileAddresses[0] || null
         setForm(prev => ({
           ...prev,
           ownerName: prev.ownerName || data.name || '',
           phone: prev.phone || data.phone || '',
+          address: prev.address || defaultProfileAddress?.address || data.address || '',
         }))
       } catch {}
     }
