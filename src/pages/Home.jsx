@@ -400,7 +400,16 @@ function HeroSlider() {
     upcomingPetProfile?.photo,
     upcomingPetProfile?.imageUrl,
   ]
+  const recommendedPetImageCandidates = [
+    recommendedVisit?.petPhotoUrl,
+    recommendedVisit?.petPhoto,
+    recommendedVisit?.photoUrl,
+    recommendedVisit?.pet?.photoUrl,
+    recommendedVisit?.pet?.photo,
+    recommendedVisit?.pet?.imageUrl,
+  ]
   const petImageUrl = petImageCandidates.find(Boolean) || ''
+  const recommendedPetImageUrl = recommendedPetImageCandidates.find(Boolean) || ''
   const petNameLabel = upcomingAppointment?.petName || upcomingPetProfile?.name || upcomingAppointment?.pet?.name || 'Pet details'
   const rescheduleAvailability = rescheduleDate ? getAvailabilityForDate(bookingSettings || undefined, rescheduleDate) : { open: false, storeSlots: [], homeSlots: [] }
   const rescheduleSlots = (rescheduleTarget?.bookingType || 'store') === 'home' ? rescheduleAvailability.homeSlots : rescheduleAvailability.storeSlots
@@ -601,7 +610,11 @@ function HeroSlider() {
                   <div className="upcoming-appointment-main">
                     <div className="upcoming-appointment-photo-stack">
                       <div className="upcoming-appointment-photo">
-                        <PawPrint size={28} />
+                        {recommendedPetImageUrl ? (
+                          <img src={recommendedPetImageUrl} alt={recommendedVisit.petName || recommendedVisit.pet?.name || 'Pet'} />
+                        ) : (
+                          <PawPrint size={28} />
+                        )}
                       </div>
                     </div>
                     <div className="upcoming-appointment-details">
@@ -628,14 +641,13 @@ function HeroSlider() {
                       <div className="upcoming-appointment-photo">
                         <PawPrint size={28} />
                       </div>
-                      <div className="upcoming-appointment-photo-caption">No upcoming appointments</div>
                     </div>
                     <div className="upcoming-appointment-details">
-                      <h4>No upcoming appointments</h4>
+                      <h4>No Upcoming Appointment</h4>
                       <div className="upcoming-appointment-meta-column">
-                        <span className="upcoming-appointment-info-item">
+                        {/* <span className="upcoming-appointment-info-item">
                           Ready for your pet&apos;s next grooming?
-                        </span>
+                        </span> */}
                         <span className="upcoming-appointment-info-item">
                           Book an appointment and give them the care they deserve.
                         </span>
