@@ -138,6 +138,18 @@ function getUpcomingStatusText(booking) {
   return start.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
 
+function getRecommendedVisitRelativeText(date) {
+  if (!date) return ''
+  const today = new Date()
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const diffDays = Math.round((date.getTime() - todayDay.getTime()) / 86400000)
+  if (diffDays <= 0) return 'Today'
+  if (diffDays === 1) return 'Tomorrow'
+  if (diffDays <= 7) return `In ${diffDays} days`
+  const weeks = Math.round(diffDays / 7)
+  return `In about ${weeks} week${weeks === 1 ? '' : 's'}`
+}
+
 function dateKeyLocal(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
@@ -210,6 +222,7 @@ function HeroSlider() {
   const [paused, setPaused] = useState(false)
   const [upcomingAppointment, setUpcomingAppointment] = useState(null)
   const [upcomingPetProfile, setUpcomingPetProfile] = useState(null)
+  const [recommendedVisit, setRecommendedVisit] = useState(null)
   const [bookingSettings, setBookingSettings] = useState(null)
   const [rescheduleToast, setRescheduleToast] = useState('')
   const [rescheduleTarget, setRescheduleTarget] = useState(null)
@@ -306,11 +319,30 @@ function HeroSlider() {
           })
 
         const nextBooking = filtered[0] || null
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const recommendationCandidates = bookings
+          .filter(booking => String(booking?.status || '').toLowerCase() === 'completed')
+          .map(booking => {
+            const days = Number(booking?.nextRecommendedVisitDays)
+            if (!Number.isFinite(days) || days <= 0) return null
+            const completedAt = booking?.completedAt?.toDate ? booking.completedAt.toDate() : parseAppointmentStart(booking) || (booking?.date ? new Date(`${booking.date}T00:00:00`) : null)
+            if (!completedAt || Number.isNaN(completedAt.getTime())) return null
+            const recommendedDate = new Date(completedAt)
+            recommendedDate.setDate(recommendedDate.getDate() + days)
+            return { ...booking, recommendedDate }
+          })
+          .filter(Boolean)
+          .filter(booking => booking.recommendedDate.getTime() >= today.getTime())
+          .sort((a, b) => a.recommendedDate.getTime() - b.recommendedDate.getTime())
+        const nextRecommendation = recommendationCandidates[0] || null
         setUpcomingAppointment(nextBooking)
         setUpcomingPetProfile(findPetProfileForBooking(nextBooking, petLookup))
+        setRecommendedVisit(nextRecommendation)
       } catch {
         setUpcomingAppointment(null)
         setUpcomingPetProfile(null)
+        setRecommendedVisit(null)
       }
     }
 
@@ -355,6 +387,8 @@ function HeroSlider() {
   const navigate = useNavigate()
   const slideCopy = HERO_COPY[current % HERO_COPY.length]
   const appointmentDateParts = getAppointmentDateParts(upcomingAppointment)
+  const recommendedDateLabel = recommendedVisit?.recommendedDate ? recommendedVisit.recommendedDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
+  const recommendedDateRelativeText = recommendedVisit?.recommendedDate ? getRecommendedVisitRelativeText(recommendedVisit.recommendedDate) : ''
   const petImageCandidates = [
     upcomingAppointment?.petPhotoUrl,
     upcomingAppointment?.petPhoto,
@@ -506,15 +540,9 @@ function HeroSlider() {
           </div>
         </div>
 
-        {upcomingAppointment && (
+        {(user?.uid || user?.email) && (
           <section className="upcoming-appointment-section">
-            <div
-              className="upcoming-appointment-card"
-              onClick={handleAppointmentCardClick}
-              onKeyDown={handleAppointmentCardKeyDown}
-              role="button"
-              tabIndex={0}
-            >
+            <div className="upcoming-appointment-card">
               <div className="upcoming-appointment-header">
                 <div className="upcoming-appointment-title-wrap">
                   <p className="section-label upcoming-appointment-title">
@@ -522,51 +550,101 @@ function HeroSlider() {
                     Upcoming Appointment
                   </p>
                 </div>
-                <Link to="/my-bookings" className="home-pill-link" onClick={event => event.stopPropagation()}>View All <ArrowRight size={16} /></Link>
+                <Link to="/my-bookings" className="home-pill-link">View All <ArrowRight size={16} /></Link>
               </div>
-              <div className="upcoming-appointment-body">
-                <div className="upcoming-appointment-main">
-                  <div className="upcoming-appointment-photo-stack">
-                    <div className="upcoming-appointment-photo">
-                      {petImageUrl ? (
-                        <img src={petImageUrl} alt={petNameLabel || 'Pet'} />
-                      ) : (
-                        <div className="upcoming-appointment-photo-fallback">
-                          <PawPrint size={28} />
-                        </div>
-                      )}
+              {upcomingAppointment ? (
+                <div className="upcoming-appointment-body">
+                  <div className="upcoming-appointment-main">
+                    <div className="upcoming-appointment-photo-stack">
+                      <div className="upcoming-appointment-photo">
+                        {petImageUrl ? (
+                          <img src={petImageUrl} alt={petNameLabel || 'Pet'} />
+                        ) : (
+                          <div className="upcoming-appointment-photo-fallback">
+                            <PawPrint size={28} />
+                          </div>
+                        )}
+                      </div>
+                      <div className="upcoming-appointment-photo-caption">{petNameLabel}</div>
                     </div>
-                    <div className="upcoming-appointment-photo-caption">{petNameLabel}</div>
-                  </div>
-                  <div className="upcoming-appointment-details">
-                    <div className="upcoming-appointment-meta">
-                      <span className="upcoming-appointment-status">{getUpcomingStatusText(upcomingAppointment)}</span>
-                      <span className="upcoming-appointment-visit-pill">
-                        {(upcomingAppointment.bookingType || 'store') === 'home' ? <HomeIcon size={14} /> : <Store size={14} />}
-                        {(upcomingAppointment.bookingType || 'store') === 'home' ? 'Home Visit' : 'At Centre'}
-                      </span>
-                    </div>
-                    <h4>{upcomingAppointment.serviceName || 'Appointment'}</h4>
-                    <div className="upcoming-appointment-meta-column">
-                      <span className="upcoming-appointment-info-item">
-                        <Calendar size={14} />
-                        <span className="upcoming-appointment-info-text">
-                          <span className="upcoming-appointment-info-date-time">
-                            {appointmentDateParts.dateLabel}
-                            <span className="upcoming-appointment-info-separator">•</span>
-                            {appointmentDateParts.timeLabel}
+                    <div className="upcoming-appointment-details">
+                      <div className="upcoming-appointment-meta">
+                        <span className="upcoming-appointment-status">{getUpcomingStatusText(upcomingAppointment)}</span>
+                        <span className="upcoming-appointment-visit-pill">
+                          {(upcomingAppointment.bookingType || 'store') === 'home' ? <HomeIcon size={14} /> : <Store size={14} />}
+                          {(upcomingAppointment.bookingType || 'store') === 'home' ? 'Home Visit' : 'At Centre'}
+                        </span>
+                      </div>
+                      <h4>{upcomingAppointment.serviceName || 'Appointment'}</h4>
+                      <div className="upcoming-appointment-meta-column">
+                        <span className="upcoming-appointment-info-item">
+                          <Calendar size={14} />
+                          <span className="upcoming-appointment-info-text">
+                            <span className="upcoming-appointment-info-date-time">
+                              {appointmentDateParts.dateLabel}
+                              <span className="upcoming-appointment-info-separator">•</span>
+                              {appointmentDateParts.timeLabel}
+                            </span>
                           </span>
                         </span>
-                      </span>
+                      </div>
                     </div>
                   </div>
+                  {canRescheduleBooking(upcomingAppointment) && (
+                    <button type="button" className="upcoming-appointment-reschedule-btn" onClick={handleRescheduleClick}>
+                      Reschedule
+                    </button>
+                  )}
                 </div>
-                {canRescheduleBooking(upcomingAppointment) && (
-                  <button type="button" className="upcoming-appointment-reschedule-btn" onClick={handleRescheduleClick}>
-                    Reschedule
-                  </button>
-                )}
-              </div>
+              ) : recommendedVisit ? (
+                <div className="upcoming-appointment-body" style={{ cursor: 'default' }}>
+                  <div className="upcoming-appointment-main">
+                    <div className="upcoming-appointment-photo-stack">
+                      <div className="upcoming-appointment-photo">
+                        <PawPrint size={28} />
+                      </div>
+                    </div>
+                    <div className="upcoming-appointment-details">
+                      <div className="upcoming-appointment-meta">
+                        <span className="upcoming-appointment-status">NEXT VISIT RECOMMENDED</span>
+                      </div>
+                      <h4>{recommendedVisit.petName || recommendedVisit.pet?.name || 'Pet'} · {recommendedVisit.serviceName || 'Service'}</h4>
+                      <div className="upcoming-appointment-meta-column">
+                        <span className="upcoming-appointment-info-item">
+                          Recommended around {recommendedDateLabel}
+                        </span>
+                        <span className="upcoming-appointment-info-item">
+                          {recommendedDateRelativeText}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <Link to="/book" className="btn btn-primary">Book Appointment</Link>
+                </div>
+              ) : (
+                <div className="upcoming-appointment-body" style={{ cursor: 'default' }}>
+                  <div className="upcoming-appointment-main">
+                    <div className="upcoming-appointment-photo-stack">
+                      <div className="upcoming-appointment-photo">
+                        <PawPrint size={28} />
+                      </div>
+                      <div className="upcoming-appointment-photo-caption">No upcoming appointments</div>
+                    </div>
+                    <div className="upcoming-appointment-details">
+                      <h4>No upcoming appointments</h4>
+                      <div className="upcoming-appointment-meta-column">
+                        <span className="upcoming-appointment-info-item">
+                          Ready for your pet&apos;s next grooming?
+                        </span>
+                        <span className="upcoming-appointment-info-item">
+                          Book an appointment and give them the care they deserve.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <Link to="/book" className="btn btn-primary">Book Appointment</Link>
+                </div>
+              )}
             </div>
             {rescheduleTarget && (
               <div className="modal-overlay" onClick={() => { setRescheduleTarget(null); setRescheduleDate(''); setRescheduleSlot(''); setRescheduleBookedSlots([]) }}>

@@ -112,6 +112,7 @@ export default function AdminBookings() {
   const [updating, setUpdating] = useState(null)
   const [cashModal, setCashModal] = useState(null)
   const [cashAmt, setCashAmt] = useState('')
+  const [recommendedVisitDays, setRecommendedVisitDays] = useState('')
   const [completionImageUrls, setCompletionImageUrls] = useState({ before: '', after: '' })
   const [completionPreviewUrls, setCompletionPreviewUrls] = useState({ before: '', after: '' })
   const [completionUploading, setCompletionUploading] = useState({ before: false, after: false })
@@ -488,6 +489,7 @@ export default function AdminBookings() {
   const closeCompletionModal = () => {
     setCashModal(null)
     setCashAmt('')
+    setRecommendedVisitDays('')
     resetCompletionUploads()
   }
 
@@ -507,6 +509,7 @@ export default function AdminBookings() {
       const patch = {
         status: 'completed',
         amountCollected: amt,
+        nextRecommendedVisitDays: recommendedVisitDays ? parseInt(recommendedVisitDays, 10) : null,
         beforeImageUrl: beforeImageUrl || null,
         afterImageUrl: afterImageUrl || null,
         updatedAt: serverTimestamp(),
@@ -769,6 +772,8 @@ export default function AdminBookings() {
                 <input className="input" type="number" min="0" placeholder="e.g. 600" value={cashAmt} onChange={e => setCashAmt(e.target.value)} autoFocus />
               </div>
               {cashAmt && <p className="admin-booking-confirm-money">Rs {money(cashAmt)} will be recorded</p>}
+              <label style={{ marginTop: '16px', display: 'block', fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>Next recommended visit (days, optional)</label>
+              <input className="input" type="number" min="1" placeholder="e.g. 30" value={recommendedVisitDays} onChange={e => setRecommendedVisitDays(e.target.value)} />
               <div style={{ marginTop: '16px', display: 'grid', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>Before image (optional)</label>
