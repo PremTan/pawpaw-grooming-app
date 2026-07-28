@@ -17,7 +17,11 @@ function hasAddress(profile) {
 }
 
 function getTodayKey() {
-  return new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function loadLastShownDate(storageKey) {
@@ -42,7 +46,6 @@ export default function CompleteProfilePopup() {
   const [showPopup, setShowPopup] = useState(false)
   const [popupChecked, setPopupChecked] = useState(false)
 
-  const sessionKey = user?.uid ? `complete-profile-popup-session-${user.uid}` : null
   const storageKey = user?.uid ? `complete-profile-popup-lastshown-${user.uid}` : null
 
   const missingItems = useMemo(() => {
@@ -74,12 +77,6 @@ export default function CompleteProfilePopup() {
   useEffect(() => {
     if (!user?.uid || popupChecked) return
 
-    const alreadyShownThisSession = sessionKey ? window.sessionStorage.getItem(sessionKey) === '1' : false
-    if (alreadyShownThisSession) {
-      setPopupChecked(true)
-      return
-    }
-
     if (!missingItems.length) {
       setPopupChecked(true)
       return
@@ -91,15 +88,13 @@ export default function CompleteProfilePopup() {
 
     if (shouldShow) {
       saveLastShownDate(storageKey, todayKey)
-      window.sessionStorage.setItem(sessionKey, '1')
       setShowPopup(true)
     }
 
     setPopupChecked(true)
-  }, [user?.uid, missingItems.length, popupChecked, sessionKey, storageKey])
+  }, [user?.uid, missingItems.length, popupChecked, storageKey])
 
   const closePopup = () => {
-    if (sessionKey) window.sessionStorage.setItem(sessionKey, '1')
     setShowPopup(false)
   }
 
