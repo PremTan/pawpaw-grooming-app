@@ -51,6 +51,7 @@ export default function Book() {
   const [searchParams] = useSearchParams()
   const preService = searchParams.get('service') || ''
   const prePackage = searchParams.get('package') || ''
+  const preVisit = searchParams.get('visit') || ''
 
   const bookingTopRef = useRef(null)
 
@@ -66,7 +67,7 @@ export default function Book() {
   const [form, setForm] = useState({
     serviceId: preService, petName: '', petType: 'Dog', petBreed: '', customBreed: '',
     ownerName: user?.displayName || '', phone: '',
-    date: format(addDays(startOfToday(), 1), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', notes: '',
+    date: format(addDays(startOfToday(), 1), 'yyyy-MM-dd'), slot: '', bookingType: preVisit === 'home' ? 'home' : 'store', address: '', notes: '',
   })
   const [bookedSlots, setBookedSlots] = useState([])
   const [loading, setLoading] = useState(false)
