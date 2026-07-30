@@ -231,6 +231,7 @@ function HeroSlider() {
   const [rescheduleBookedSlots, setRescheduleBookedSlots] = useState([])
   const [reschedulingId, setReschedulingId] = useState('')
 
+  const isHeroImagesLoading = heroImages === null
   const images = heroImages || []
 
   const next = () => {
@@ -516,14 +517,20 @@ function HeroSlider() {
       <div className="home-redesign-inner">
         <div className="mobile-hero-card">
           <div className="mobile-hero-media" aria-label="Pet grooming hero images">
-            {images.length ? images.map((image, i) => (
-              <img
-                key={image.src}
-                src={image.src}
-                alt={image.alt}
-                className={i === current ? 'active' : ''}
-              />
-            )) : <div className="mobile-hero-empty"><Scissors size={34} /><span>Add hero banners from admin</span></div>}
+            {images.length ? (
+              images.map((image, i) => (
+                <img
+                  key={image.src}
+                  src={image.src}
+                  alt={image.alt}
+                  className={i === current ? 'active' : ''}
+                />
+              ))
+            ) : isHeroImagesLoading ? (
+              <div className="mobile-hero-empty"><Scissors size={34} /><span>Loading images…</span></div>
+            ) : (
+              <div className="mobile-hero-empty"><Scissors size={34} /><span>Welcome to Paw Paw</span></div>
+            )}
           </div>
           {images.length > 1 && (
             <>

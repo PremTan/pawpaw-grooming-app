@@ -41,7 +41,7 @@ function saveLastShownDate(storageKey, date) {
 }
 
 export default function CompleteProfilePopup() {
-  const { user, profile } = useAuth()
+  const { user, profile, profileLoading } = useAuth()
   const navigate = useNavigate()
   const [showPopup, setShowPopup] = useState(false)
   const [popupChecked, setPopupChecked] = useState(false)
@@ -49,7 +49,7 @@ export default function CompleteProfilePopup() {
   const storageKey = user?.uid ? `complete-profile-popup-lastshown-${user.uid}` : null
 
   const missingItems = useMemo(() => {
-    if (!user?.uid) return []
+    if (!user?.uid || profileLoading) return []
 
     const missing = []
 
@@ -75,7 +75,7 @@ export default function CompleteProfilePopup() {
   }, [user?.uid, profile])
 
   useEffect(() => {
-    if (!user?.uid || popupChecked) return
+    if (!user?.uid || profileLoading || popupChecked) return
 
     if (!missingItems.length) {
       setPopupChecked(true)
@@ -92,7 +92,7 @@ export default function CompleteProfilePopup() {
     }
 
     setPopupChecked(true)
-  }, [user?.uid, missingItems.length, popupChecked, storageKey])
+  }, [user?.uid, missingItems.length, popupChecked, storageKey, profileLoading])
 
   const closePopup = () => {
     setShowPopup(false)
