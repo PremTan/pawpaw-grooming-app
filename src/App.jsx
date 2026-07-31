@@ -5,7 +5,6 @@ import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import Spinner from './components/Spinner'
-import CompleteProfilePopup from './components/CompleteProfilePopup'
 
 // Pages
 import Home        from './pages/Home'
@@ -109,7 +108,6 @@ export default function App() {
       <Route path="*" element={
         <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
           <Navbar />
-          <CompleteProfilePopup />
           <main style={{ flex: 1 }}>
             <Routes>
               <Route path="/"           element={<AdminHomeRedirect><Home /></AdminHomeRedirect>} />

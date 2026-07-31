@@ -261,6 +261,8 @@ export default function Profile() {
     try {
       const cleanPhone = form.phone.replace(/\D/g, '').slice(0, 10)
       const defaultAddress = getDefaultAddress(addresses)
+      const hasAddress = Boolean((defaultAddress?.address || form.address.trim()).trim())
+      const hasPhone = Boolean(cleanPhone)
       const data = {
         name: form.name.trim(),
         phone: cleanPhone,
@@ -269,6 +271,7 @@ export default function Profile() {
         email: user.email,
         userId: user.uid,
         photoURL: profile?.photoURL || user.photoURL || '',
+        isProfileComplete: hasPhone && hasAddress,
         updatedAt: serverTimestamp(),
       }
 
@@ -382,6 +385,7 @@ export default function Profile() {
         phone: form.phone.replace(/\D/g, '').slice(0, 10),
         photoURL,
         userId: user.uid,
+        isProfileComplete: Boolean(form.phone.replace(/\D/g, '').slice(0, 10)) && Boolean(form.address?.trim()),
         updatedAt: serverTimestamp(),
       }, { merge: true })
 

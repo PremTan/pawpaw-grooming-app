@@ -18,6 +18,9 @@ async function syncProfileFromAuth(authUser, nameOverride = '') {
     name: existing.name || nameOverride || authUser.displayName || '',
     photoURL: existing.photoURL || existing.photoUrl || authUser.photoURL || '',
     phone: existing.phone || '',
+    address: existing.address || '',
+    addresses: Array.isArray(existing.addresses) ? existing.addresses : [],
+    isProfileComplete: Boolean(existing.phone || '').trim() && (Boolean(existing.address || '').trim() || (Array.isArray(existing.addresses) && existing.addresses.some((addr) => Boolean(addr?.address?.toString().trim())))),
     userId: authUser.uid,
     updatedAt: serverTimestamp(),
   }, { merge: true })

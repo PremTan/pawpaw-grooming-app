@@ -41,15 +41,29 @@ function saveLastShownDate(storageKey, date) {
 }
 
 export default function CompleteProfilePopup() {
-  const { user, profile, profileLoading } = useAuth()
+  const { user, profile, profileLoading, isAdmin } = useAuth()
   const navigate = useNavigate()
   const [showPopup, setShowPopup] = useState(false)
   const [popupChecked, setPopupChecked] = useState(false)
 
   const storageKey = user?.uid ? `complete-profile-popup-lastshown-${user.uid}` : null
 
+  const profileStateKey = useMemo(() => {
+    if (!user?.uid || profileLoading) return null
+
+    return JSON.stringify({
+      uid: user.uid,
+      isProfileComplete: Boolean(profile?.isProfileComplete),
+      phone: profile?.phone?.toString() || '',
+      address: profile?.address?.toString() || '',
+      addresses: Array.isArray(profile?.addresses)
+        ? profile.addresses.map((addr) => addr?.address?.toString() || '')
+        : [],
+    })
+  }, [user?.uid, profileLoading, profile?.isProfileComplete, profile?.phone, profile?.address, profile?.addresses])
+
   const missingItems = useMemo(() => {
-    if (!user?.uid || profileLoading) return []
+    if (!user?.uid || profileLoading || isAdmin) return []
 
     const missing = []
 
@@ -66,19 +80,38 @@ export default function CompleteProfilePopup() {
       missing.push({
         key: 'address',
         label: 'Address',
-        description: 'Add your address to find nearby services',
+        description: 'Add your address to autofill address while booking',
         icon: <MapPin size={18} />,
       })
     }
 
     return missing
-  }, [user?.uid, profile])
+  }, [user?.uid, profileLoading, isAdmin, profile])
 
   useEffect(() => {
-    if (!user?.uid || profileLoading || popupChecked) return
+    setPopupChecked(false)
+  }, [profileStateKey])
+
+  useEffect(() => {
+    if (!user?.uid || profileLoading || isAdmin) {
+      setPopupChecked(false)
+      setShowPopup(false)
+      return
+    }
+
+    if (popupChecked) return
+
+    const isComplete = Boolean(profile?.isProfileComplete)
+
+    if (isComplete) {
+      setPopupChecked(true)
+      setShowPopup(false)
+      return
+    }
 
     if (!missingItems.length) {
       setPopupChecked(true)
+      setShowPopup(false)
       return
     }
 
@@ -92,7 +125,7 @@ export default function CompleteProfilePopup() {
     }
 
     setPopupChecked(true)
-  }, [user?.uid, missingItems.length, popupChecked, storageKey, profileLoading])
+  }, [user?.uid, profileLoading, isAdmin, missingItems.length, popupChecked, storageKey, profileStateKey, profile?.isProfileComplete])
 
   const closePopup = () => {
     setShowPopup(false)
