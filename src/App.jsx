@@ -1,6 +1,6 @@
 // src/App.jsx
 import { useEffect } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
@@ -77,6 +77,18 @@ function AdminHomeRedirect({ children }) {
   return children
 }
 
+function PublicLayout() {
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
+      <Navbar />
+      <main style={{ flex: 1 }}>
+        <Outlet />
+      </main>
+      <Footer />
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <>
@@ -105,27 +117,19 @@ export default function App() {
       </Route>
 
       {/* Public — main layout */}
-      <Route path="*" element={
-        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
-          <Navbar />
-          <main style={{ flex: 1 }}>
-            <Routes>
-              <Route path="/"           element={<AdminHomeRedirect><Home /></AdminHomeRedirect>} />
-              <Route path="/services"   element={<Services />} />
-              <Route path="/services/:serviceId" element={<ServiceDetail />} />
-              <Route path="/reviews"    element={<Reviews />} />
-              <Route path="/gallery"    element={<Gallery />} />
-              <Route path="/login"      element={<Login />} />
-              <Route path="/book"       element={<ProtectedRoute><Book /></ProtectedRoute>} />
-              <Route path="/profile"    element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-              <Route path="/my-pets"    element={<ProtectedRoute><MyPets /></ProtectedRoute>} />
-              <Route path="/my-bookings" element={<ProtectedRoute><MyBookings /></ProtectedRoute>} />
-              <Route path="*"           element={<NotFound />} />
-            </Routes>
-          </main>
-          <Footer />
-        </div>
-      } />
+      <Route element={<PublicLayout />}>
+        <Route index element={<AdminHomeRedirect><Home /></AdminHomeRedirect>} />
+        <Route path="services" element={<Services />} />
+        <Route path="services/:serviceId" element={<ServiceDetail />} />
+        <Route path="reviews" element={<Reviews />} />
+        <Route path="gallery" element={<Gallery />} />
+        <Route path="login" element={<Login />} />
+        <Route path="book" element={<ProtectedRoute><Book /></ProtectedRoute>} />
+        <Route path="profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="my-pets" element={<ProtectedRoute><MyPets /></ProtectedRoute>} />
+        <Route path="my-bookings" element={<ProtectedRoute><MyBookings /></ProtectedRoute>} />
+        <Route path="*" element={<NotFound />} />
+      </Route>
       </Routes>
     </>
   )
