@@ -625,25 +625,80 @@ function HeroSlider() {
                   </div>
                 </div>
               ) : upcomingAppointment ? (
+                <div
+                  className="upcoming-appointment-body"
+                  role="button"
+                  tabIndex={0}
+                  onClick={handleAppointmentCardClick}
+                  onKeyDown={handleAppointmentCardKeyDown}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="upcoming-appointment-main">
+                    <div className="upcoming-appointment-photo-stack">
+                      <div className="upcoming-appointment-photo">
+                          {petImageUrl ? (
+                            <img src={petImageUrl} alt={petNameLabel} />
+                          ) : (
+                            <PawPrint size={28} />
+                          )}
+                        </div>
+                        <div className="upcoming-appointment-petname">{petNameLabel}</div>
+                    </div>
+                    <div className="upcoming-appointment-details">
+                      <div className="upcoming-appointment-meta">
+                        <span className="upcoming-appointment-status">{getUpcomingStatusLabel(upcomingAppointment)}</span>
+                        <span
+                          className="upcoming-appointment-type"
+                          style={{ border: '1px solid rgba(0,0,0,0.06)', padding: '6px 10px', borderRadius: '999px', display: 'inline-flex', gap: '8px', alignItems: 'center', fontSize: '13px' }}
+                        >
+                          {(upcomingAppointment?.bookingType || 'store') === 'home' ? (
+                            <>
+                              <HomeIcon size={14} />
+                              <span>Home Visit</span>
+                            </>
+                          ) : (
+                            <>
+                              <Store size={14} />
+                              <span>At Centre</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      <h4>{upcomingAppointment?.serviceName || 'Service'}</h4>
+                      <div className="upcoming-appointment-meta-column">
+                        <span className="upcoming-appointment-info-item">
+                          <Calendar size={14} /> <strong>{appointmentDateParts.dateLabel} • {appointmentDateParts.timeLabel}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  {canRescheduleBooking(upcomingAppointment) ? (
+                    <button className="btn btn-secondary" onClick={handleRescheduleClick} onKeyDown={e => e.stopPropagation()}>Reschedule</button>
+                  ) : (
+                    <div style={{ width: 120 }} />
+                  )}
+                </div>
+              ) : recommendedVisit ? (
                 <div className="upcoming-appointment-body" style={{ cursor: 'default' }}>
                   <div className="upcoming-appointment-main">
                     <div className="upcoming-appointment-photo-stack">
                       <div className="upcoming-appointment-photo">
-                        {recommendedPetImageUrl ? (
-                          <img src={recommendedPetImageUrl} alt={recommendedVisit.petName || recommendedVisit.pet?.name || 'Pet'} />
-                        ) : (
-                          <PawPrint size={28} />
-                        )}
-                      </div>
+                          {recommendedPetImageUrl ? (
+                            <img src={recommendedPetImageUrl} alt={recommendedVisit?.petName || recommendedVisit?.pet?.name || 'Pet'} />
+                          ) : (
+                            <PawPrint size={28} />
+                          )}
+                        </div>
+                        <div className="upcoming-appointment-petname">{recommendedVisit?.petName || recommendedVisit?.pet?.name || 'Pet'}</div>
                     </div>
                     <div className="upcoming-appointment-details">
                       <div className="upcoming-appointment-meta">
                         <span className="upcoming-appointment-status">NEXT VISIT RECOMMENDED</span>
                       </div>
-                      <h4>{recommendedVisit.petName || recommendedVisit.pet?.name || 'Pet'} · {recommendedVisit.serviceName || 'Service'}</h4>
+                      <h4>{recommendedVisit?.petName || recommendedVisit?.pet?.name || 'Pet'} · {recommendedVisit?.serviceName || 'Service'}</h4>
                       <div className="upcoming-appointment-meta-column">
                         <span className="upcoming-appointment-info-item">
-                          Recommended around {recommendedDateLabel}
+                          Recommended around <strong>{recommendedDateLabel}</strong>
                         </span>
                         <span className="upcoming-appointment-info-item">
                           {recommendedDateRelativeText}
@@ -664,9 +719,6 @@ function HeroSlider() {
                     <div className="upcoming-appointment-details">
                       <h4>No Upcoming Appointment</h4>
                       <div className="upcoming-appointment-meta-column">
-                        {/* <span className="upcoming-appointment-info-item">
-                          Ready for your pet&apos;s next grooming?
-                        </span> */}
                         <span className="upcoming-appointment-info-item">
                           Book an appointment and give them the care they deserve.
                         </span>
