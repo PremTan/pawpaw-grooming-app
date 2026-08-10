@@ -49,8 +49,17 @@ export default function Book() {
   const { user, isBlocked } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const preServices = searchParams.getAll('service')
   const preService = searchParams.get('service') || ''
   const prePackage = searchParams.get('package') || ''
+  const preVisit = searchParams.get('visit') || ''
+  const preServiceName = searchParams.get('serviceName') || ''
+  const preDate = searchParams.get('date') || ''
+  const prePetName = searchParams.get('petName') || ''
+  const prePetType = searchParams.get('petType') || ''
+  const prePetBreed = searchParams.get('petBreed') || ''
+  const preCustomBreed = searchParams.get('customBreed') || ''
+  const preAddress = searchParams.get('address') || ''
 
   const bookingTopRef = useRef(null)
 
@@ -59,14 +68,23 @@ export default function Book() {
   const [pets, setPets] = useState([])
   const [serviceDetails, setServiceDetails] = useState({})
   const [selectedPetId, setSelectedPetId] = useState('')
-  const [selectedServices, setSelectedServices] = useState(preService ? [preService] : [])
+  const [selectedServices, setSelectedServices] = useState(preServices.length ? preServices : preService ? [preService] : [])
   const [selectedPackages, setSelectedPackages] = useState([])
   const [profileAddresses, setProfileAddresses] = useState([])
   const [showAddressOptions, setShowAddressOptions] = useState(false)
   const [form, setForm] = useState({
-    serviceId: preService, petName: '', petType: 'Dog', petBreed: '', customBreed: '',
-    ownerName: user?.displayName || '', phone: '',
-    date: format(addDays(startOfToday(), 1), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', notes: '',
+    serviceId: preServices[0] || preService || '',
+    petName: prePetName,
+    petType: prePetType || 'Dog',
+    petBreed: prePetBreed,
+    customBreed: preCustomBreed,
+    ownerName: user?.displayName || '',
+    phone: '',
+    date: preDate || format(addDays(startOfToday(), 1), 'yyyy-MM-dd'),
+    slot: '',
+    bookingType: preVisit === 'home' ? 'home' : 'store',
+    address: preAddress,
+    notes: '',
   })
   const [bookedSlots, setBookedSlots] = useState([])
   const [loading, setLoading] = useState(false)
@@ -207,8 +225,36 @@ export default function Book() {
   useEffect(() => {
     if (!Object.keys(serviceDetails).length) return
     const visibleIds = new Set(visibleServices.map(s => s.id))
-    setSelectedServices(prev => prev.filter(id => visibleIds.has(id)))
-  }, [serviceDetails])
+    setSelectedServices(prev => {
+      const filtered = prev.filter(id => visibleIds.has(id))
+      if (filtered.length) return filtered
+      if (preServices.length) {
+        const matchedIds = preServices.filter(id => visibleIds.has(id))
+        if (matchedIds.length) return matchedIds
+      }
+      if (preServiceName) {
+        const matched = visibleServices.find(s => String(s.name || '').toLowerCase() === preServiceName.toLowerCase())
+        return matched ? [matched.id] : []
+      }
+      return []
+    })
+  }, [serviceDetails, preServiceName, preServices])
+
+  useEffect(() => {
+    if (!prePetName || !pets.length || selectedPetId) return
+    const matchedPet = pets.find(p => String(p.name || '').trim().toLowerCase() === String(prePetName || '').trim().toLowerCase())
+    if (!matchedPet) return
+    const petBreedOptions = matchedPet.type === 'Dog' ? DOG_BREEDS : matchedPet.type === 'Cat' ? CAT_BREEDS : []
+    setSelectedPetId(matchedPet.id)
+    setForm(prev => ({
+      ...prev,
+      petName: matchedPet.name || '',
+      petType: matchedPet.type || 'Dog',
+      petBreed: matchedPet.breed && petBreedOptions.includes(matchedPet.breed) ? matchedPet.breed : '',
+      customBreed: matchedPet.breed && !petBreedOptions.includes(matchedPet.breed) ? matchedPet.breed : '',
+      notes: prev.notes || matchedPet.notes || '',
+    }))
+  }, [pets, prePetName, selectedPetId])
 
   const applyPet = (pet) => {
     const petBreedOptions = pet.type === 'Dog' ? DOG_BREEDS : pet.type === 'Cat' ? CAT_BREEDS : []

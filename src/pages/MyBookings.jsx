@@ -1,8 +1,8 @@
 // src/pages/MyBookings.jsx
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
-import { Calendar, ChevronRight, Clock, Home, PawPrint, Plus, Store, UserRound, X } from 'lucide-react'
+import { Calendar, ChevronRight, ChevronDown, Clock, Home, PawPrint, Plus, Store, UserRound, X } from 'lucide-react'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
@@ -11,6 +11,7 @@ import ConfirmModal from '../components/ConfirmModal'
 import Toast from '../components/Toast'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel, getPaymentOptionLabel } from '../utils/bookingSettings'
 import { SERVICES } from '../utils/services'
+import { buildServiceCatalog } from '../utils/serviceCatalog'
 
 const STATUS_BADGE = {
   pending: 'badge-pending',
@@ -109,6 +110,36 @@ function serviceIdsFor(booking) {
   return booking.serviceId ? [booking.serviceId] : []
 }
 
+function getPriceRange(value) {
+  const values = String(value || '')
+    .match(/\d[\d,]*(?:\.\d+)?/g)
+    ?.map(item => Number(item.replace(/,/g, '')))
+    .filter(item => Number.isFinite(item) && item > 0) || []
+  if (!values.length) return { min: 0, max: 0 }
+  return { min: Math.min(...values), max: Math.max(...values) }
+}
+
+function getPackagePriceRange(pkg) {
+  const value = pkg?.priceRange || pkg?.price
+  return getPriceRange(value)
+}
+
+function formatRangeLabel(range) {
+  if (!range) return ''
+  const { min, max } = range
+  if (min <= 0 && max <= 0) return ''
+  if (max > min) return `Rs ${min} - Rs ${max}+`
+  return `Rs ${min}+`
+}
+
+function formatBookingEstimate(booking) {
+  const min = Number(booking.estimatedTotal || 0)
+  const max = Number(booking.estimatedTotalMax || booking.estimatedTotal || 0)
+  if (max > min) return `Rs ${money(min)} – Rs ${money(max)}+`
+  if (min > 0) return `Rs ${money(min)}`
+  return 'Rs 0'
+}
+
 function serviceNamesFor(booking) {
   if (Array.isArray(booking.serviceNames) && booking.serviceNames.length) return booking.serviceNames
   const ids = serviceIdsFor(booking)
@@ -151,6 +182,17 @@ export default function MyBookings() {
   const [rescheduleSlot, setRescheduleSlot] = useState('')
   const [rescheduleBookedSlots, setRescheduleBookedSlots] = useState([])
   const [reschedulingId, setReschedulingId] = useState('')
+  const [packages, setPackages] = useState([])
+  const [serviceDetails, setServiceDetails] = useState({})
+  const [editingAppointmentId, setEditingAppointmentId] = useState(null)
+  const [editServiceIds, setEditServiceIds] = useState([])
+  const [editPackageIds, setEditPackageIds] = useState([])
+  const [editBookingType, setEditBookingType] = useState('store')
+  const [editAddress, setEditAddress] = useState('')
+  const [profileAddresses, setProfileAddresses] = useState([])
+  const [editFullOpen, setEditFullOpen] = useState(false)
+  const editAddressRef = useRef(null)
+  const [savingEdit, setSavingEdit] = useState(false)
 
   useEffect(() => {
     fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
@@ -198,6 +240,24 @@ export default function MyBookings() {
   }, [rescheduleTarget?.id, rescheduleDate, bookingSettings, rescheduleTarget?.bookingType])
 
   useEffect(() => {
+    async function loadCatalog() {
+      try {
+        const [packagesSnap, detailsSnap] = await Promise.all([
+          getDocs(collection(db, 'packages')),
+          getDocs(collection(db, 'serviceDetails')),
+        ])
+        const details = {}
+        detailsSnap.docs.forEach(docItem => {
+          details[docItem.id] = { id: docItem.id, ...docItem.data() }
+        })
+        setServiceDetails(details)
+        setPackages(packagesSnap.docs.map(docItem => ({ id: docItem.id, ...docItem.data() })).filter(pkg => pkg.active !== false))
+      } catch {}
+    }
+    loadCatalog()
+  }, [])
+
+  useEffect(() => {
     async function fetch() {
       try {
         const q = query(collection(db, 'bookings'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'))
@@ -222,6 +282,8 @@ export default function MyBookings() {
     [bookings, filter]
   )
 
+  const visibleServices = useMemo(() => buildServiceCatalog(serviceDetails), [serviceDetails])
+
   const bookingSummary = useMemo(() => {
     const counts = { total: bookings.length, upcoming: 0, completed: 0, cancelled: 0 }
     bookings.forEach(booking => {
@@ -244,6 +306,139 @@ export default function MyBookings() {
     setRescheduleDate(booking.date || '')
     setRescheduleSlot(booking.slot || '')
     setRescheduleBookedSlots([])
+  }
+
+  const openEditAppointment = (booking) => {
+    setEditingAppointmentId(booking.id)
+    setEditServiceIds(serviceIdsFor(booking))
+    setEditPackageIds(Array.isArray(booking.selectedPackages) ? booking.selectedPackages : [])
+    setEditBookingType(booking.bookingType || 'store')
+    // Only prefill address for home visits. Prevent carrying stored address into store bookings.
+    setEditAddress((booking.bookingType || 'store') === 'home' ? (booking.address || '') : '')
+    // Open full edit form overlay
+    setEditFullOpen(true)
+    // push history state so mobile back button closes the form
+    try {
+      window.history.pushState({ myBookingsEdit: booking.id }, '')
+    } catch (e) {}
+  }
+
+  // Fetch user profile addresses for autofill/selection
+  useEffect(() => {
+    let ignore = false
+    async function fetchProfile() {
+      try {
+        if (!user?.uid) return
+        const snap = await getDocs(query(collection(db, 'profiles'), where('__name__', '==', user.uid)))
+        if (!snap || !snap.docs || snap.docs.length === 0) return
+        const data = snap.docs[0].data()
+        const profileAddresses = Array.isArray(data.addresses) && data.addresses.length ? data.addresses : []
+        const normalized = profileAddresses.length ? profileAddresses : data.address ? [{ id: `address-${Date.now()}`, type: 'Home', address: data.address, isDefault: true }] : []
+        if (!ignore) setProfileAddresses(normalized)
+      } catch (err) {}
+    }
+    fetchProfile()
+    return () => { ignore = true }
+  }, [user?.uid])
+
+  // Handle browser back button to close the edit overlay
+  useEffect(() => {
+    if (!editFullOpen) return undefined
+    const onPop = () => {
+      setEditFullOpen(false)
+      setEditingAppointmentId(null)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [editFullOpen])
+
+  // Prevent body scrolling while full-edit overlay is open
+  useEffect(() => {
+    if (!editFullOpen) return undefined
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev || '' }
+  }, [editFullOpen])
+
+  // Autofill default profile address when switching to home visit
+  useEffect(() => {
+    if (editBookingType !== 'home') return
+    if (String(editAddress || '').trim()) return
+    const def = profileAddresses.find(a => a.isDefault) || profileAddresses[0]
+    if (def) setEditAddress(def.address || '')
+  }, [editBookingType, profileAddresses])
+
+  const selectedEditServices = visibleServices.filter(service => editServiceIds.includes(service.id))
+  const selectedEditPackages = packages.filter(pkg => editPackageIds.includes(pkg.id))
+
+  const editServicePriceRange = () => selectedEditServices.reduce((total, service) => {
+    const range = getPriceRange(service.price)
+    const fallback = Number(service.basePrice || 0)
+    const min = range.min || fallback
+    const max = range.max || min
+    return { min: total.min + min, max: total.max + max }
+  }, { min: 0, max: 0 })
+
+  const editPackagePriceRange = () => selectedEditPackages.reduce((total, pkg) => {
+    const range = getPackagePriceRange(pkg)
+    return { min: total.min + range.min, max: total.max + (range.max || range.min) }
+  }, { min: 0, max: 0 })
+
+  const editServiceTotal = () => editServicePriceRange().min + editPackagePriceRange().min
+  const editVisitCharge = () => {
+    if (!bookingSettings?.fixedVisitCharges) return 0
+    const raw = editBookingType === 'home' ? bookingSettings.homeVisitCharge : bookingSettings.centerVisitCharge
+    return Number(raw || 0) || 0
+  }
+  const editEstimatedTotal = () => editServiceTotal() + editVisitCharge()
+  const editEstimatedTotalMax = () => editServicePriceRange().max + editPackagePriceRange().max + editVisitCharge()
+  const editTotalPrice = () => {
+    const min = editEstimatedTotal()
+    const max = editEstimatedTotalMax()
+    if (min > 0 && max > min) return `Rs ${min} - Rs ${max}+`
+    return min > 0 ? `Rs ${min}+` : ''
+  }
+
+  const saveEditAppointment = async () => {
+    if (!selectedBooking || !editingAppointmentId || savingEdit) return
+    if (editServiceIds.length === 0 && editPackageIds.length === 0) return
+    if (editBookingType === 'home' && !String(editAddress || '').trim()) return
+
+    setSavingEdit(true)
+    try {
+      const nextServiceNames = selectedEditServices.map(service => service.name)
+      const nextPackageNames = selectedEditPackages.map(pkg => pkg.name)
+      const patch = {
+        serviceId: editServiceIds[0] || '',
+        serviceIds: editServiceIds,
+        serviceNames: nextServiceNames,
+        selectedPackages: editPackageIds,
+        packageNames: nextPackageNames,
+        serviceName: [...nextServiceNames, ...nextPackageNames].filter(Boolean).join(', ') || selectedBooking.serviceName || 'Appointment',
+        bookingType: editBookingType,
+        // Clear stored address when switching to In Store
+        address: editBookingType === 'home' ? editAddress : '',
+        serviceTotal: editServiceTotal(),
+        visitCharge: editVisitCharge(),
+        estimatedTotal: editEstimatedTotal(),
+        estimatedTotalMax: editEstimatedTotalMax(),
+        updatedAt: serverTimestamp(),
+      }
+      await setDoc(doc(db, 'bookings', selectedBooking.id), patch, { merge: true })
+      const localPatch = { ...patch, updatedAt: new Date() }
+      setBookings(prev => prev.map(item => item.id === selectedBooking.id ? { ...item, ...localPatch } : item))
+      setSelectedBooking(prev => prev?.id === selectedBooking.id ? { ...prev, ...localPatch } : prev)
+      setEditingAppointmentId(null)
+      setRescheduleToast('Appointment updated successfully.')
+      // close full edit overlay if open by navigating back
+      if (editFullOpen) {
+        try { window.history.back() } catch (e) { setEditFullOpen(false) }
+      }
+    } catch (err) {
+      console.error('FIREBASE ERROR:', err)
+      alert('Could not update booking. Please try again.')
+    }
+    setSavingEdit(false)
   }
 
   const rescheduleAvailability = rescheduleDate ? getAvailabilityForDate(bookingSettings || undefined, rescheduleDate) : { open: false, storeSlots: [], homeSlots: [] }
@@ -470,6 +665,10 @@ export default function MyBookings() {
                         <small title={petLine(booking)}>{petLine(booking)}</small>
                         <div className="my-booking-row-meta">
                           <span>{getBookingTypeLabel(booking.bookingType || 'store')}</span>
+                          <span>{booking.status === 'completed'
+                            ? `Paid Amount: Rs ${money(booking.amountCollected || booking.estimatedTotal)}`
+                            : `Est. total - ${formatBookingEstimate(booking)}`
+                          }</span>
                         </div>
                       </div>
                     </div>
@@ -532,9 +731,14 @@ export default function MyBookings() {
                 <h2>{appointmentTitle(selectedBooking)}</h2>
                 <p>{shortId(selectedBooking.id)} • {selectedBooking.date || '-'} • {formatSlot(selectedBooking.slot)}</p>
               </div>
-              <button type="button" onClick={() => setSelectedBooking(null)} aria-label="Close booking details">
-                <X size={18} />
-              </button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {selectedBooking.status === 'pending' && (
+                  <button type="button" className="btn btn-ghost" onClick={() => openEditAppointment(selectedBooking)}>Edit</button>
+                )}
+                <button type="button" onClick={() => setSelectedBooking(null)} aria-label="Close booking details">
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             <div className="my-booking-modal-hero">
@@ -562,6 +766,214 @@ export default function MyBookings() {
               {selectedBooking.address && <Detail label="Address" value={selectedBooking.address} />}
             </div>
 
+            {selectedBooking.status === 'pending' && editingAppointmentId === selectedBooking.id ? (
+              <div className="my-booking-edit-section">
+                <h3>Edit appointment</h3>
+                <div className="my-booking-edit-grid">
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label className="input-label" style={{ display: 'block', marginBottom: '8px' }}>Services & Packages</label>
+                    <details className="my-booking-dropdown">
+                      <summary>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, width: '100%', minWidth: 0 }}>
+                          <div className="my-booking-dropdown-summary" title={(() => {
+                            const names = []
+                            selectedEditServices.forEach(s => names.push(s.name))
+                            selectedEditPackages.forEach(p => names.push(p.name))
+                            return names.join(', ')
+                          })()}>
+                            {(() => {
+                              const names = []
+                              selectedEditServices.forEach(s => names.push(s.name))
+                              selectedEditPackages.forEach(p => names.push(p.name))
+                              if (!names.length) return 'Edit Services / Packages'
+                              return names.join(', ')
+                            })()}
+                          </div>
+                          <div className="my-booking-dropdown-toggle" aria-hidden>
+                            <ChevronDown size={16} className="my-booking-dropdown-icon" />
+                          </div>
+                        </div>
+                      </summary>
+                      <div style={{ padding: '10px', display: 'grid', gap: '10px' }}>
+                        <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '8px', background: 'var(--card)', maxHeight: '340px', overflow: 'auto' }}>
+                          <div style={{ display: 'grid', gap: '10px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>Services / Packages</div>
+                            <div className="my-booking-checkbox-list" style={{ display: 'grid', gap: '4px' }}>
+                              {[...visibleServices.map(service => ({
+                                id: service.id,
+                                name: service.name,
+                                priceLabel: formatRangeLabel(getPriceRange(service.price || service.basePrice)) || (service.basePrice ? `Rs ${service.basePrice}` : ''),
+                                checked: editServiceIds.includes(service.id),
+                                onChange: () => setEditServiceIds(prev => prev.includes(service.id) ? prev.filter(id => id !== service.id) : [...prev, service.id]),
+                              })), ...packages.map(pkg => ({
+                                id: pkg.id,
+                                name: pkg.name,
+                                priceLabel: formatRangeLabel(getPackagePriceRange(pkg)) || (pkg.price ? String(pkg.price) : ''),
+                                checked: editPackageIds.includes(pkg.id),
+                                onChange: () => setEditPackageIds(prev => prev.includes(pkg.id) ? prev.filter(id => id !== pkg.id) : [...prev, pkg.id]),
+                              }))].map(item => (
+                                <label key={item.id} className="my-booking-checkbox-item" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '6px 4px', justifyContent: 'space-between' }}>
+                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: '1 1 0', minWidth: 0 }}>
+                                    <input type="checkbox" checked={item.checked} onChange={item.onChange} style={{ flexShrink: 0, marginTop: 4 }} />
+                                    <span style={{ fontSize: '14px', flex: '1 1 0', minWidth: 0, wordBreak: 'break-word' }}>{item.name}</span>
+                                  </div>
+                                  <div style={{ color: 'var(--muted)', fontSize: '13px', whiteSpace: 'nowrap', flexShrink: 0 }}>{item.priceLabel}</div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                </div>
+
+                <div className="my-booking-edit-grid" style={{ marginTop: '12px' }}>
+                  <div>
+                    <label className="input-label" style={{ display: 'block', marginBottom: '8px' }}>Visit Type</label>
+                    <select className="input" value={editBookingType} onChange={(event) => setEditBookingType(event.target.value)}>
+                      <option value="store">In Store</option>
+                      <option value="home">Home Visit</option>
+                    </select>
+                  </div>
+                  {editBookingType === 'home' && (
+                    <div>
+                      <label className="input-label" style={{ display: 'block', marginBottom: '8px' }}>Address</label>
+                      <textarea className="input" rows="3" value={editAddress} onChange={(event) => setEditAddress(event.target.value)} placeholder="Enter your address for the home visit" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="my-booking-edit-summary" style={{ marginTop: '12px' }}>
+                  <span>Estimated Total</span>
+                  <strong>{editTotalPrice() || 'Rs 0'}</strong>
+                </div>
+
+                <div className="my-booking-modal-actions" style={{ marginTop: '16px' }}>
+                  <button type="button" className="btn btn-secondary" onClick={() => setEditingAppointmentId(null)}>Cancel</button>
+                  <button type="button" className="btn btn-primary" onClick={saveEditAppointment} disabled={savingEdit || (editServiceIds.length === 0 && editPackageIds.length === 0) || (editBookingType === 'home' && !String(editAddress || '').trim())}>
+                    {savingEdit ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Full screen edit overlay (opened via Edit) */}
+            {editingAppointmentId === selectedBooking.id && editFullOpen && (
+              <div className="my-booking-edit-full-overlay" onClick={() => { try { window.history.back() } catch(e){ setEditFullOpen(false); setEditingAppointmentId(null) } }}>
+                <div className="my-booking-edit-full" onClick={e => e.stopPropagation()}>
+                  <div className="my-booking-edit-full-head">
+                    <button type="button" className="icon-btn" onClick={() => { try { window.history.back() } catch(e){ setEditFullOpen(false); setEditingAppointmentId(null) } }} aria-label="Back"><ChevronRight style={{ transform: 'rotate(180deg)' }} size={18} /></button>
+                    <h3>Edit appointment</h3>
+                  </div>
+                  <div className="my-booking-edit-full-body">
+                    <div style={{ marginBottom: 12 }}>
+                      <label className="input-label">Services & Packages</label>
+                      <details className="my-booking-dropdown">
+                        <summary>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, width: '100%', minWidth: 0 }}>
+                            <div className="my-booking-dropdown-summary" title={(() => {
+                              const names = []
+                              selectedEditServices.forEach(s => names.push(s.name))
+                              selectedEditPackages.forEach(p => names.push(p.name))
+                              return names.join(', ')
+                            })()}>
+                              {(() => {
+                                const names = []
+                                selectedEditServices.forEach(s => names.push(s.name))
+                                selectedEditPackages.forEach(p => names.push(p.name))
+                                if (!names.length) return 'Edit Services / Packages'
+                                return names.join(', ')
+                              })()}
+                            </div>
+                            <div className="my-booking-dropdown-toggle" aria-hidden>
+                              <ChevronDown size={16} className="my-booking-dropdown-icon" />
+                            </div>
+                          </div>
+                        </summary>
+                        <div style={{ padding: '10px', display: 'grid', gap: '10px' }}>
+                          <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '8px', background: 'var(--card)', maxHeight: '520px', overflow: 'auto' }}>
+                            <div style={{ display: 'grid', gap: '10px' }}>
+                              <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>Services / Packages</div>
+                              <div className="my-booking-checkbox-list" style={{ display: 'grid', gap: '4px' }}>
+                                {[...visibleServices.map(service => ({
+                                  id: service.id,
+                                  name: service.name,
+                                  priceLabel: formatRangeLabel(getPriceRange(service.price || service.basePrice)) || (service.basePrice ? `Rs ${service.basePrice}` : ''),
+                                  checked: editServiceIds.includes(service.id),
+                                  onChange: () => setEditServiceIds(prev => prev.includes(service.id) ? prev.filter(id => id !== service.id) : [...prev, service.id]),
+                                })), ...packages.map(pkg => ({
+                                  id: pkg.id,
+                                  name: pkg.name,
+                                  priceLabel: formatRangeLabel(getPackagePriceRange(pkg)) || (pkg.price ? String(pkg.price) : ''),
+                                  checked: editPackageIds.includes(pkg.id),
+                                  onChange: () => setEditPackageIds(prev => prev.includes(pkg.id) ? prev.filter(id => id !== pkg.id) : [...prev, pkg.id]),
+                                }))].map(item => (
+                                  <label key={item.id} className="my-booking-checkbox-item" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '8px 6px', justifyContent: 'space-between' }}>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: '1 1 0', minWidth: 0 }}>
+                                      <input type="checkbox" checked={item.checked} onChange={item.onChange} style={{ flexShrink: 0, marginTop: 4 }} />
+                                      <span style={{ fontSize: '14px', flex: '1 1 0', minWidth: 0, wordBreak: 'break-word' }}>{item.name}</span>
+                                    </div>
+                                    <div style={{ color: 'var(--muted)', fontSize: '13px', whiteSpace: 'nowrap', flexShrink: 0 }}>{item.priceLabel}</div>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </details>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label className="input-label">Visit Type</label>
+                        <select className="input" value={editBookingType} onChange={(event) => setEditBookingType(event.target.value)}>
+                          <option value="store">In Store</option>
+                          <option value="home">Home Visit</option>
+                        </select>
+                      </div>
+                      {editBookingType === 'home' && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <label className="input-label">Address</label>
+                          <div style={{ marginBottom: 8 }}>
+                            {profileAddresses.length > 0 ? (
+                              <select className="input" value={editAddress} onChange={(e) => setEditAddress(e.target.value)}>
+                                <option value="">Select address</option>
+                                {profileAddresses.map(a => (
+                                  <option key={a.id} value={a.address}>{a.address}{a.isDefault ? ' (Default)' : ''}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <select className="input" value={editAddress} onChange={(e) => setEditAddress(e.target.value)}>
+                                <option value="">No saved addresses</option>
+                              </select>
+                            )}
+                          </div>
+                          <textarea ref={editAddressRef} className="input" rows="3" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} placeholder="Enter your address for the home visit" />
+                          <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                            <button type="button" className="btn btn-ghost" onClick={() => { setEditAddress(''); setTimeout(() => editAddressRef.current?.focus(), 50) }}>Use custom</button>
+                            <Link to="/profile" className="btn btn-ghost">Manage addresses</Link>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="my-booking-edit-summary" style={{ marginTop: 12 }}>
+                      <span>Estimated Total</span>
+                      <strong>{editTotalPrice() || 'Rs 0'}</strong>
+                    </div>
+
+                    <div style={{ marginTop: 16, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                      <button type="button" className="btn btn-secondary" onClick={() => { try { window.history.back() } catch(e){ setEditFullOpen(false); setEditingAppointmentId(null) } }}>Back</button>
+                      <button type="button" className="btn btn-primary" onClick={saveEditAppointment} disabled={savingEdit || (editServiceIds.length === 0 && editPackageIds.length === 0) || (editBookingType === 'home' && !String(editAddress || '').trim())}>
+                        {savingEdit ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {(selectedBooking.beforeImageUrl || selectedBooking.afterImageUrl) && (
               <div className="my-booking-image-section">
                 <h3>Before & After</h3>
@@ -581,16 +993,25 @@ export default function MyBookings() {
                 </div>
               </div>
             )}
-              {canRescheduleBooking(selectedBooking) && (
-                <button
-                  type="button"
-                  className="btn btn-secondary my-booking-reschedule-btn"
-                  disabled={reschedulingId === selectedBooking.id}
-                  onClick={() => openRescheduleModal(selectedBooking)}
-                >
-                  Reschedule
-                </button>
-              )}
+            {selectedBooking.status === 'pending' && (
+              <button
+                type="button"
+                className="btn btn-secondary my-booking-reschedule-btn"
+                onClick={() => editingAppointmentId === selectedBooking.id ? setEditingAppointmentId(null) : openEditAppointment(selectedBooking)}
+              >
+                {editingAppointmentId === selectedBooking.id ? 'Close Edit' : 'Edit Appointment'}
+              </button>
+            )}
+            {canRescheduleBooking(selectedBooking) && (
+              <button
+                type="button"
+                className="btn btn-secondary my-booking-reschedule-btn"
+                disabled={reschedulingId === selectedBooking.id}
+                onClick={() => openRescheduleModal(selectedBooking)}
+              >
+                Reschedule
+              </button>
+            )}
             {canCancelBooking(selectedBooking, bookingSettings) && (
               <button
                 type="button"
@@ -902,6 +1323,92 @@ export default function MyBookings() {
           margin-left: auto;
         }
 
+        .my-booking-dropdown summary::-webkit-details-marker { display:none }
+        .my-booking-dropdown summary {
+          list-style: none;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 10px 12px;
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          background: var(--card);
+          cursor: pointer;
+          height: 44px;
+          min-height: 44px;
+          overflow: hidden;
+          min-width: 0;
+          width: 100%;
+        }
+        .my-booking-dropdown summary > div {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          width: 100%;
+          min-width: 0;
+          overflow: hidden;
+        }
+        .my-booking-dropdown-label { font-weight: 800; color: var(--text); }
+        .my-booking-dropdown-summary {
+          color: var(--muted);
+          font-size: 13px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          display: block;
+          flex: 1 1 0;
+          width: 0;
+          min-width: 0;
+          max-width: calc(100% - 52px);
+          line-height: 20px;
+        }
+        .my-booking-dropdown-toggle {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          width: 36px;
+          height: 36px;
+          min-width: 36px;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: rgba(255,255,255,0.02);
+        }
+        .my-booking-checkbox-list { padding: 8px 0 0 0; }
+        .my-booking-checkbox-item input[type="checkbox"] { width: 18px; height: 18px }
+        .my-booking-dropdown-icon { color: var(--muted); transition: transform 160ms ease }
+        .my-booking-dropdown[open] summary .my-booking-dropdown-icon { transform: none }
+
+        .my-booking-dropdown-toggle {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: rgba(255,255,255,0.02);
+        }
+
+        /* Keep dropdown panel from pushing the page; scroll inside the panel */
+        .my-booking-dropdown > div {
+          max-height: 320px;
+          overflow: auto;
+        }
+
+        /* Constrain full-edit overlay so page doesn't scroll; body scroll stays inside modal */
+        .my-booking-edit-full {
+          max-height: calc(100vh - 80px);
+          overflow: hidden;
+        }
+
+        .my-booking-edit-full-body {
+          overflow: auto;
+          max-height: calc(100vh - 160px);
+          padding-right: 8px;
+        }
+
         .my-booking-preview-copy {
           display: flex;
           flex-direction: column;
@@ -1186,6 +1693,49 @@ export default function MyBookings() {
           color: var(--muted);
           font-family: 'DM Mono', monospace;
           font-size: 12px;
+        }
+
+        .my-booking-edit-full-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 1400;
+          background: rgba(0,0,0,0.36);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 18px;
+        }
+
+        .my-booking-edit-full {
+          width: min(900px, 100%);
+          max-height: min(88vh, 1200px);
+          overflow: auto;
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 18px;
+          padding: 20px;
+        }
+
+        .my-booking-edit-full-head {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          margin-bottom: 12px;
+        }
+
+        .my-booking-edit-full-head h3 { margin: 0; font-size: 18px; font-weight: 900 }
+        .my-booking-edit-full-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
+        .my-booking-edit-full .input { width: 100%; box-sizing: border-box }
+        .my-booking-edit-full .my-booking-checkbox-list { max-height: 240px }
+
+        @media (max-width: 640px) {
+          .my-booking-edit-full { padding: 12px }
+          .my-booking-edit-full-body { grid-template-columns: 1fr !important }
+          .my-booking-dropdown-summary { max-width: 100% }
+          .my-booking-edit-full .my-booking-checkbox-list { max-height: 180px }
+          .my-booking-edit-full .btn { display: block; width: 100%; }
+          .my-booking-edit-full .my-booking-edit-summary { flex-direction: column; align-items: flex-start; gap: 8px }
+          .my-booking-edit-full .my-booking-edit-summary strong { font-size: 16px }
         }
 
         .my-booking-modal-head button {

@@ -112,6 +112,7 @@ export default function AdminBookings() {
   const [updating, setUpdating] = useState(null)
   const [cashModal, setCashModal] = useState(null)
   const [cashAmt, setCashAmt] = useState('')
+  const [recommendedVisitDays, setRecommendedVisitDays] = useState('')
   const [completionImageUrls, setCompletionImageUrls] = useState({ before: '', after: '' })
   const [completionPreviewUrls, setCompletionPreviewUrls] = useState({ before: '', after: '' })
   const [completionUploading, setCompletionUploading] = useState({ before: false, after: false })
@@ -488,6 +489,7 @@ export default function AdminBookings() {
   const closeCompletionModal = () => {
     setCashModal(null)
     setCashAmt('')
+    setRecommendedVisitDays('')
     resetCompletionUploads()
   }
 
@@ -507,6 +509,7 @@ export default function AdminBookings() {
       const patch = {
         status: 'completed',
         amountCollected: amt,
+        nextRecommendedVisitDays: recommendedVisitDays ? parseInt(recommendedVisitDays, 10) : null,
         beforeImageUrl: beforeImageUrl || null,
         afterImageUrl: afterImageUrl || null,
         updatedAt: serverTimestamp(),
@@ -769,6 +772,8 @@ export default function AdminBookings() {
                 <input className="input" type="number" min="0" placeholder="e.g. 600" value={cashAmt} onChange={e => setCashAmt(e.target.value)} autoFocus />
               </div>
               {cashAmt && <p className="admin-booking-confirm-money">Rs {money(cashAmt)} will be recorded</p>}
+              <label style={{ marginTop: '16px', display: 'block', fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>Next recommended visit (days, optional)</label>
+              <input className="input" type="number" min="1" placeholder="e.g. 30" value={recommendedVisitDays} onChange={e => setRecommendedVisitDays(e.target.value)} />
               <div style={{ marginTop: '16px', display: 'grid', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>Before image (optional)</label>
@@ -854,6 +859,7 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
   const [editSlot, setEditSlot] = useState(booking.slot || '')
   const [editAmountCollected, setEditAmountCollected] = useState(booking.amountCollected != null ? String(booking.amountCollected) : '')
   const [editVisitCharge, setEditVisitCharge] = useState(booking.visitCharge != null ? String(booking.visitCharge) : '')
+  const [editAssignedTeamMemberId, setEditAssignedTeamMemberId] = useState(assignee?.id || OWNER_ASSIGNEE_ID)
   const [editError, setEditError] = useState('')
   const [showServicePackageOptions, setShowServicePackageOptions] = useState(false)
 
@@ -877,10 +883,11 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
     setEditSlot(booking.slot || '')
     setEditAmountCollected(booking.amountCollected != null ? String(booking.amountCollected) : '')
     setEditVisitCharge(booking.visitCharge != null ? String(booking.visitCharge) : '')
+    setEditAssignedTeamMemberId(assignee?.id || OWNER_ASSIGNEE_ID)
     setEditError('')
     setShowServicePackageOptions(false)
     setIsEditing(false)
-  }, [booking, packageOptions])
+  }, [booking, packageOptions, assignee])
 
   const canEditBooking = ['confirmed', 'completed'].includes(booking.status)
   const currentServices = serviceCatalog.filter(service => editServiceIds.includes(service.id))
@@ -909,6 +916,7 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
       ? currentServiceNames.join(', ')
       : selectedPackages.map(pkg => pkg.name).join(', ')
 
+    const selectedAssignee = assigneeOptions.find(item => item.id === editAssignedTeamMemberId) || ownerAssignee
     const patch = {
       serviceId: editServiceIds[0] || '',
       serviceName: serviceNameValue,
@@ -922,6 +930,7 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
       slot: editSlot,
       amountCollected: parseFloat(editAmountCollected) || 0,
       visitCharge: parseFloat(editVisitCharge) || 0,
+      ...buildAssigneePatch(selectedAssignee),
     }
     const startDate = parseAppointmentStart({ date: editDate, slot: editSlot })
     if (startDate) patch.bookingStartAt = Timestamp.fromDate(startDate)
@@ -1062,6 +1071,15 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
                   <input className="input" type="text" value={editAddress} onChange={e => setEditAddress(e.target.value)} placeholder="Enter customer address" />
                 </div>
               )}
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Assigned Team Member</label>
+                <select className="input" value={editAssignedTeamMemberId} onChange={e => setEditAssignedTeamMemberId(e.target.value)}>
+                  {assigneeOptions.map(member => (
+                    <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>
+                  ))}
+                </select>
+              </div>
 
               {canEditDateTime && (
                 <div style={{ display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>

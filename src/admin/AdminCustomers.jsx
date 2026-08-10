@@ -51,10 +51,19 @@ export default function AdminCustomers() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedKey, setSelectedKey] = useState(null)
+  const [showImagePreview, setShowImagePreview] = useState(false)
   const [savingBlock, setSavingBlock] = useState('')
   const [blockError, setBlockError] = useState('')
   const [toastMessage, setToastMessage] = useState('')
   const [toastType, setToastType] = useState('success')
+
+  const openCustomerImage = () => {
+    if (selected?.photoURL) {
+      setShowImagePreview(true)
+    }
+  }
+
+  const closeCustomerImage = () => setShowImagePreview(false)
 
   useEffect(() => {
     fetchCustomers()
@@ -259,10 +268,25 @@ export default function AdminCustomers() {
         <div className="modal-overlay" onClick={() => setSelectedKey(null)}>
           <div className="modal-box admin-customer-modal" onClick={e => e.stopPropagation()}>
             <div className="admin-customer-modal-head">
-              <CustomerAvatar customer={selected} large />
+              <button
+                type="button"
+                className="admin-customer-image-button"
+                onClick={openCustomerImage}
+                style={{ all: 'unset', cursor: selected.photoURL ? 'pointer' : 'default' }}
+                aria-label={selected.photoURL ? 'Open customer image' : undefined}
+              >
+                <CustomerAvatar customer={selected} large />
+              </button>
               <div>
                 <h2>{selected.ownerName}</h2>
-                <p><Phone size={14} /> {selected.phone || 'No phone'}</p>
+                <p>
+                  <Phone size={14} />
+                  {selected.phone ? (
+                    <a href={`tel:${selected.phone}`} style={{ color: 'inherit', textDecoration: 'none', marginLeft: '6px' }}>
+                      {selected.phone}
+                    </a>
+                  ) : ' No phone'}
+                </p>
                 {selected.userEmail && <p>{selected.userEmail}</p>}
               </div>
               <button type="button" onClick={() => setSelectedKey(null)} aria-label="Close customer details"><X size={20} /></button>
@@ -284,6 +308,15 @@ export default function AdminCustomers() {
                 {savingBlock === selected.userId ? 'Saving...' : selected.blocked ? 'Unblock' : 'Block'}
               </button>
             </div>
+
+            {showImagePreview && selected.photoURL && (
+              <div className="modal-overlay" style={{ zIndex: 1400 }} onClick={closeCustomerImage}>
+                <div className="modal-box admin-customer-image-preview" style={{ maxWidth: '92vw', width: 'min(680px, calc(100vw - 32px))', padding: '18px', background: 'var(--card)', position: 'relative' }} onClick={e => e.stopPropagation()}>
+                  <button type="button" onClick={closeCustomerImage} aria-label="Close image preview" style={{ position: 'absolute', top: '14px', right: '14px', width: '40px', height: '40px', borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={18} /></button>
+                  <img src={selected.photoURL} alt={selected.ownerName || 'Customer'} style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: '14px' }} />
+                </div>
+              </div>
+            )}
 
             <div className="admin-customer-stats">
               <div><strong>{selected.bookings.length}</strong><span>Total Bookings</span></div>

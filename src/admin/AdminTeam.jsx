@@ -610,10 +610,40 @@ export default function AdminTeam() {
   }
 
   const money = value => Number(value || 0).toLocaleString('en-IN')
+  const [showImagePreview, setShowImagePreview] = useState(false)
+  const [imagePreviewHistoryPushed, setImagePreviewHistoryPushed] = useState(false)
 
   const Avatar = ({ person, owner: isOwner = false }) => (
     person.photoUrl ? <img className="admin-team-photo" src={person.photoUrl} alt={person.name || 'Team member'} /> : <div className="admin-team-avatar"><UserRound size={isOwner ? 18 : 19} /></div>
   )
+
+  const openProfileImage = () => {
+    if (!selectedMember?.photoUrl) return
+    if (window?.history?.pushState) {
+      window.history.pushState({ adminTeamImagePreview: true }, '')
+      setImagePreviewHistoryPushed(true)
+    }
+    setShowImagePreview(true)
+  }
+
+  const closeProfileImage = () => {
+    setShowImagePreview(false)
+    if (imagePreviewHistoryPushed) {
+      setImagePreviewHistoryPushed(false)
+      window.history.back()
+    }
+  }
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (showImagePreview) {
+        setShowImagePreview(false)
+        setImagePreviewHistoryPushed(false)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [showImagePreview])
 
   return (
     <div className="admin-page">
@@ -674,7 +704,7 @@ export default function AdminTeam() {
               <div className="admin-team-detail-grid">
                 <section className="admin-team-profile-panel">
                   <div className="admin-team-profile-head">
-                    <div className="admin-team-profile-avatar">
+                    <div className="admin-team-profile-avatar" style={{ cursor: selectedMember?.photoUrl ? 'pointer' : 'default' }} onClick={selectedMember?.photoUrl ? openProfileImage : undefined}>
                         <Avatar person={selectedMember} owner={selectedMember.isOwner} />
                     </div>
                     <div>
@@ -684,7 +714,14 @@ export default function AdminTeam() {
                         {!selectedMember.isOwner && selectedMember.active === false && <span className="badge badge-cancelled">Inactive</span>}
                       </div>
                       <p><Mail size={13} /> {selectedMember.email || '-'}</p>
-                      <p><Phone size={13} /> {selectedMember.phone || '-'}</p>
+                      <p>
+                        <Phone size={13} />
+                        {selectedMember.phone ? (
+                          <a href={`tel:${selectedMember.phone}`} style={{ color: 'inherit', textDecoration: 'none', marginLeft: '6px' }}>
+                            {selectedMember.phone}
+                          </a>
+                        ) : '-'}
+                      </p>
                     </div>
                   </div>
 
@@ -743,6 +780,15 @@ export default function AdminTeam() {
                     </>
                   )}
                 </section>
+
+                {showImagePreview && selectedMember?.photoUrl && (
+                  <div className="modal-overlay" style={{ zIndex: 1400 }} onClick={closeProfileImage}>
+                    <div className="modal-box admin-team-image-preview" style={{ maxWidth: '92vw', width: 'min(680px, calc(100vw - 32px))', padding: '18px', background: 'var(--card)', position: 'relative' }} onClick={e => e.stopPropagation()}>
+                      <button type="button" onClick={closeProfileImage} aria-label="Close image preview" style={{ position: 'absolute', top: '14px', right: '14px', width: '40px', height: '40px', borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={18} /></button>
+                      <img src={selectedMember.photoUrl} alt={selectedMember.name || 'Team member'} style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: '14px' }} />
+                    </div>
+                  </div>
+                )}
 
                 {!selectedMember.isOwner && (
                   <section className="admin-team-payroll-panel">
