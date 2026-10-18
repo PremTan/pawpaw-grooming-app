@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import SetPasswordModal from './SetPasswordModal'
 import {
+  Building2,
   Calendar,
   ChevronDown,
   Home,
@@ -74,13 +75,15 @@ export default function Navbar() {
   const navLinks = [
     { path: '/', label: 'Home', icon: <Home size={14} /> },
     { path: '/services', label: 'Services', icon: <Scissors size={14} /> },
+    { path: '/boarding', label: 'Pet Boarding', icon: <Building2 size={14} /> },
     { path: '/reviews', label: 'Reviews', icon: <MessageSquare size={14} /> },
     { path: '/gallery', label: 'Gallery', icon: <Image size={14} /> },
     { path: '/?view=public#contact', label: 'Contact Us', icon: <Phone size={14} /> },
   ]
 
   const userLinks = [
-    { path: '/book', label: 'Book', icon: <Calendar size={14} /> },
+    { path: '/book', label: 'Book Grooming', icon: <Calendar size={14} /> },
+    { path: '/boarding', label: 'Book Boarding', icon: <Building2 size={14} /> },
     { path: '/my-bookings', label: 'My Bookings', icon: <Calendar size={14} /> },
     { path: '/my-pets', label: 'My Pets', icon: <PawPrint size={14} /> },
     { path: '/profile', label: 'Profile', icon: <User size={14} /> },

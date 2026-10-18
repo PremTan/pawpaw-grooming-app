@@ -4,7 +4,7 @@ import { Link, Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { doc, setDoc } from 'firebase/firestore'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
-import { Award, Ban, LayoutDashboard, CalendarCheck, CalendarClock, Home, MessageSquare, Users, UserRoundCog, Image, Images, Package, LogOut, ReceiptText, Scissors, MapPin, Share2, Menu, X, ShoppingCart } from 'lucide-react'
+import { Award, Ban, Building2, LayoutDashboard, CalendarCheck, CalendarClock, Home, MessageSquare, Users, UserRoundCog, Image, Images, Package, LogOut, ReceiptText, Scissors, MapPin, Share2, Menu, X, ShoppingCart } from 'lucide-react'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import NotificationBell from '../components/NotificationBell'
 import BrandLogo from '../components/BrandLogo'
@@ -12,6 +12,7 @@ import BrandLogo from '../components/BrandLogo'
 const LINKS = [
   { to:'/admin',           label:'Dashboard',  icon:<LayoutDashboard size={17}/>, end:true },
   { to:'/admin/bookings',  label:'Bookings',   icon:<CalendarCheck size={17}/> },
+  { to:'/admin/boarding',  label:'Pet Boarding', icon:<Building2 size={17}/> },
   { to:'/admin/invoices',  label:'Invoices',   icon:<ReceiptText size={17}/> },
   { to:'/admin/booking-settings', label:'Booking Settings', icon:<CalendarClock size={17}/> },
   { to:'/admin/customers', label:'Customers',  icon:<Users size={17}/> },

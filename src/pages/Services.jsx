@@ -140,6 +140,49 @@ export default function Services() {
               </section>
             )}
 
+            {/* Pet Boarding Spotlight Banner */}
+            <div style={{
+              margin: '36px 0 24px',
+              background: 'linear-gradient(135deg, rgba(212,175,55,0.08) 0%, rgba(255,255,255,0.03) 100%), var(--card)',
+              border: '1.5px solid var(--accent-border)',
+              borderRadius: '20px',
+              padding: '24px 28px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '18px',
+            }}>
+              <div>
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'var(--accent-bg)',
+                  border: '1px solid var(--accent-border)',
+                  color: 'var(--accent)',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  letterSpacing: '1px',
+                  textTransform: 'uppercase',
+                  padding: '3px 10px',
+                  borderRadius: '999px',
+                  marginBottom: '8px',
+                }}>
+                  Overnight Stays
+                </span>
+                <h3 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text)', margin: '0 0 6px' }}>
+                  Looking for Pet Boarding?
+                </h3>
+                <p style={{ color: 'var(--muted)', fontSize: '13px', margin: 0, maxWidth: '520px', lineHeight: 1.5 }}>
+                  Spacious suites, 24/7 supervision, daily exercise, personalized feeding, and daily WhatsApp updates. Dogs ₹800/day · Cats ₹600/day.
+                </p>
+              </div>
+              <Link to="/boarding" className="btn btn-primary" style={{ padding: '12px 24px', fontSize: '14px', textDecoration: 'none' }}>
+                <Calendar size={16} /> Book Pet Boarding
+              </Link>
+            </div>
+
             <div className="services-help-strip">
               <span><PawPrint size={34} /></span>
               <div>

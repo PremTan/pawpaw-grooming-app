@@ -12150,3 +12150,428 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   border-color: var(--accent);
   color: #000;
 }
+
+/* ============================================================
+   PET BOARDING HOMEPAGE SECTION (Compact Responsive Mockup)
+   ============================================================ */
+.home-boarding-card {
+  position: relative;
+  background: linear-gradient(180deg, #FFFDF9 0%, #FAF6EE 100%);
+  border: 1.5px solid #EFE6D8;
+  border-radius: 28px;
+  padding: 30px 36px 30px;
+  box-shadow: 0 10px 32px rgba(184, 134, 11, 0.05);
+  overflow: hidden;
+  margin: 32px 0 36px;
+}
+
+.home-boarding-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 14px;
+}
+
+.home-boarding-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #FAF3E3;
+  border: 1px solid #EADBBE;
+  color: #A2751E;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.home-boarding-new-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: linear-gradient(135deg, #E5B338 0%, #BF841A 100%);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  box-shadow: 0 3px 10px rgba(191, 132, 26, 0.35);
+  text-transform: uppercase;
+}
+
+.home-boarding-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 32px;
+  align-items: center;
+}
+
+.home-boarding-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-boarding-title {
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: clamp(28px, 3.5vw, 42px);
+  line-height: 1.15;
+  font-weight: 800;
+  color: #2B1D15;
+  margin: 0 0 10px;
+}
+
+.home-boarding-title .gold-accent {
+  color: #C08820;
+}
+
+.home-boarding-desc {
+  color: #65544B;
+  font-size: 14.5px;
+  line-height: 1.5;
+  max-width: 480px;
+  margin: 0 0 22px;
+}
+
+/* Mobile image hidden on desktop */
+.home-boarding-media-mobile {
+  display: none !important;
+}
+
+/* Desktop image shown on desktop */
+.home-boarding-media-desktop {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.home-boarding-pets-img {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 24px rgba(160, 120, 60, 0.08));
+}
+
+.home-boarding-prices {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  max-width: 450px;
+  margin-bottom: 22px;
+}
+
+.home-boarding-price-card {
+  background: #FFFFFF;
+  border: 1.2px solid #EFE6D8;
+  border-radius: 16px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 14px rgba(60, 40, 20, 0.04);
+}
+
+.home-boarding-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #FAF3E3;
+}
+
+.home-boarding-price-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #2E221B;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.home-boarding-price-amount {
+  font-size: 18px;
+  font-weight: 800;
+  color: #C08820;
+}
+
+.home-boarding-price-unit {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #C08820;
+}
+
+.home-boarding-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.home-boarding-btn-primary {
+  background: linear-gradient(135deg, #B8860B 0%, #A2700E 100%);
+  color: #FFFFFF !important;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 22px;
+  font-size: 13.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(184, 134, 11, 0.28);
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.home-boarding-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(184, 134, 11, 0.35);
+}
+
+.home-boarding-closed-pill {
+  background: #F4EFE6;
+  border: 1px solid #DFD5C5;
+  color: #7D6A5C;
+  border-radius: 12px;
+  padding: 11px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: not-allowed;
+  user-select: none;
+}
+
+.home-boarding-btn-secondary {
+  background: #FFFFFF;
+  border: 1.5px solid #C59836;
+  color: #996914 !important;
+  border-radius: 12px;
+  padding: 11px 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.home-boarding-btn-secondary:hover {
+  background: #FAF3E3;
+}
+
+/* ============================================================
+   RESPONSIVE PET BOARDING BANNER
+   ============================================================ */
+/* Tablet adjustments (641px - 900px) */
+@media (max-width: 900px) and (min-width: 641px) {
+  .home-boarding-card {
+    padding: 24px 28px;
+    border-radius: 24px;
+  }
+  .home-boarding-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: 20px;
+  }
+  .home-boarding-pets-img {
+    max-width: 360px;
+  }
+}
+
+/* Compact Mobile Viewport (<= 640px) */
+@media (max-width: 640px) {
+  .home-boarding-card {
+    padding: 18px 16px 20px;
+    border-radius: 22px;
+    margin: 18px 0 24px;
+  }
+
+  .home-boarding-top-bar {
+    margin-bottom: 10px;
+  }
+
+  .home-boarding-pill {
+    font-size: 10px;
+    padding: 4px 10px;
+    gap: 4px;
+    letter-spacing: 0.8px;
+  }
+
+  .home-boarding-new-badge {
+    font-size: 10px;
+    padding: 4px 10px;
+    gap: 4px;
+    letter-spacing: 0.8px;
+  }
+
+  .home-boarding-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .home-boarding-content {
+    width: 100%;
+  }
+
+  .home-boarding-title {
+    font-size: clamp(21px, 5.8vw, 26px);
+    line-height: 1.2;
+    margin: 0 0 6px;
+  }
+
+  .home-boarding-desc {
+    font-size: 12.5px;
+    line-height: 1.45;
+    margin: 0 0 4px;
+  }
+
+  /* Show mobile pet image below description, hide desktop image */
+  .home-boarding-media-desktop {
+    display: none !important;
+  }
+
+  .home-boarding-media-mobile {
+    display: flex !important;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin: 12px 0 14px;
+  }
+
+  .home-boarding-media-mobile .home-boarding-pets-img {
+    width: 100%;
+    max-width: 100%;
+    max-height: 200px;
+    object-fit: contain;
+    border-radius: 16px;
+    display: block;
+    margin: 0 auto;
+  }
+
+  .home-boarding-prices {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    margin-bottom: 12px;
+  }
+
+  .home-boarding-price-card {
+    padding: 8px 10px;
+    border-radius: 14px;
+    gap: 8px;
+  }
+
+  .home-boarding-avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .home-boarding-price-label {
+    font-size: 11px;
+    margin-bottom: 1px;
+    white-space: nowrap;
+  }
+
+  .home-boarding-price-amount {
+    font-size: 15px;
+  }
+
+  .home-boarding-price-unit {
+    font-size: 11px;
+  }
+
+  /* Single-line action buttons on mobile */
+  .home-boarding-actions {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .home-boarding-btn-primary {
+    flex: 1.25 1 0;
+    min-width: 0;
+    justify-content: center;
+    padding: 10px 8px;
+    font-size: 12.5px;
+    border-radius: 12px;
+    white-space: nowrap;
+    gap: 5px;
+  }
+
+  .home-boarding-btn-secondary {
+    flex: 0.85 1 0;
+    min-width: 0;
+    justify-content: center;
+    padding: 10px 8px;
+    font-size: 12px;
+    border-radius: 12px;
+    white-space: nowrap;
+    gap: 4px;
+  }
+
+  .home-boarding-closed-pill {
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 12px;
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+/* Extra small mobile screens (<= 375px) */
+@media (max-width: 375px) {
+  .home-boarding-card {
+    padding: 15px 12px 16px;
+  }
+
+  .home-boarding-title {
+    font-size: 20px;
+  }
+
+  .home-boarding-media-mobile .home-boarding-pets-img {
+    max-height: 175px;
+  }
+
+  .home-boarding-avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .home-boarding-price-card {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .home-boarding-price-amount {
+    font-size: 14px;
+  }
+
+  .home-boarding-btn-primary {
+    font-size: 11px;
+    padding: 9px 5px;
+    gap: 3px;
+  }
+
+  .home-boarding-btn-secondary {
+    font-size: 10.5px;
+    padding: 9px 5px;
+    gap: 3px;
+  }
+}

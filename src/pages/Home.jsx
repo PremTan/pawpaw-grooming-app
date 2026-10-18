@@ -9,10 +9,11 @@ import Toast from '../components/Toast'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
 import { countOpenDays, fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
+import { fetchBoardingSettings } from '../utils/boardingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
 import { useAuth } from '../context/AuthContext'
 import { BOOKING_STATUS } from '../utils/services'
-import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle } from 'lucide-react'
+import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils } from 'lucide-react'
 
 const DEFAULT_HERO_IMAGES = []
 const DEFAULT_VISIT_IMAGES = [
@@ -226,6 +227,8 @@ function HeroSlider() {
   const [recommendedVisit, setRecommendedVisit] = useState(null)
   const [upcomingLoading, setUpcomingLoading] = useState(true)
   const [bookingSettings, setBookingSettings] = useState(null)
+  const [boardingSettings, setBoardingSettings] = useState(null)
+  const [showBoardingLearnMore, setShowBoardingLearnMore] = useState(false)
   const [rescheduleToast, setRescheduleToast] = useState('')
   const [rescheduleTarget, setRescheduleTarget] = useState(null)
   const [rescheduleDate, setRescheduleDate] = useState('')
@@ -286,6 +289,7 @@ function HeroSlider() {
 
   useEffect(() => {
     fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
+    fetchBoardingSettings(db).then(setBoardingSettings).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -588,6 +592,193 @@ function HeroSlider() {
             <Link to="/services" className="btn btn-secondary">View Services <ArrowRight size={16} /></Link>
           </div>
         </div>
+
+        {/* Pet Boarding — Your Pet's Home Away From Home (Matches Reference Mockup) */}
+        <section className="home-boarding-section" aria-label="Pet Boarding Suites">
+          <div className="home-boarding-card">
+            {/* Top Bar with PET BOARDING pill and NEW badge */}
+            <div className="home-boarding-top-bar">
+              <div className="home-boarding-pill">
+                <PawPrint size={13} /> PET BOARDING
+              </div>
+              {(boardingSettings?.showNewBadge !== false) && (
+                <div className="home-boarding-new-badge" aria-label="New feature announcement">
+                  <Sparkles size={11} /> NEW
+                </div>
+              )}
+            </div>
+
+            <div className="home-boarding-grid">
+              <div className="home-boarding-content">
+                <h2 className="home-boarding-title">
+                  Your Pet's Home <br />
+                  <span className="gold-accent">Away From Home</span>
+                </h2>
+
+                <p className="home-boarding-desc">
+                  Safe, clean and comfortable stay for your furry family with loving care while you are away.
+                </p>
+
+                {/* Mobile Pet Image (Directly below description, above pricing cards) */}
+                <div className="home-boarding-media home-boarding-media-mobile">
+                  <img
+                    src="/boarding-hero-pets.png"
+                    alt="Dog and cat resting comfortably together in cozy pet boarding suite"
+                    className="home-boarding-pets-img"
+                    onError={e => { e.currentTarget.style.display = 'none' }}
+                  />
+                </div>
+
+                {/* Pricing Cards */}
+                <div className="home-boarding-prices">
+                  <div className="home-boarding-price-card">
+                    <img
+                      src="/boarding-dog-avatar.png"
+                      alt="Dog Boarding"
+                      className="home-boarding-avatar"
+                      onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+                    />
+                    <div>
+                      <div className="home-boarding-price-label">Dog Boarding</div>
+                      <div className="home-boarding-price-amount">
+                        ₹{boardingSettings?.dogDailyRate || 800} <span className="home-boarding-price-unit">/ day</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="home-boarding-price-card">
+                    <img
+                      src="/boarding-cat-avatar.png"
+                      alt="Cat Boarding"
+                      className="home-boarding-avatar"
+                      onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+                    />
+                    <div>
+                      <div className="home-boarding-price-label">Cat Boarding</div>
+                      <div className="home-boarding-price-amount">
+                        ₹{boardingSettings?.catDailyRate || 600} <span className="home-boarding-price-unit">/ day</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="home-boarding-actions">
+                  {(boardingSettings?.acceptBookings !== false) ? (
+                    <Link to="/boarding" className="home-boarding-btn-primary">
+                      <Calendar size={16} /> Book Pet Boarding <ArrowRight size={15} />
+                    </Link>
+                  ) : (
+                    <div className="home-boarding-closed-pill" title="Boarding reservations are temporarily closed">
+                      <Clock size={15} /> Boarding Bookings Temporarily Closed
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowBoardingLearnMore(true)}
+                    className="home-boarding-btn-secondary"
+                  >
+                    Learn More <ArrowRight size={15} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Desktop Pet Image (Right side) */}
+              <div className="home-boarding-media home-boarding-media-desktop">
+                <img
+                  src="/boarding-hero-pets.png"
+                  alt="Dog and cat resting comfortably together in cozy pet boarding suite"
+                  className="home-boarding-pets-img"
+                  onError={e => { e.currentTarget.style.display = 'none' }}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Learn More Modal */}
+        {showBoardingLearnMore && (
+          <div className="modal-overlay" onClick={() => setShowBoardingLearnMore(false)}>
+            <div className="reschedule-modal-card" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
+              <div className="reschedule-modal-header">
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text)' }}>
+                    Paw Paw Pet Boarding Guide
+                  </h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--muted)' }}>
+                    Everything you need to know about our overnight care for dogs & cats
+                  </p>
+                </div>
+                <button type="button" className="icon-btn" onClick={() => setShowBoardingLearnMore(false)}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gap: '12px', margin: '16px 0', maxHeight: '60vh', overflowY: 'auto' }}>
+                <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <HomeIcon size={16} /> 1. Cozy, Sanitized Suites
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    Climate-controlled, clean, and spacious rooms designed to feel like home. Separate quiet spaces for cats and lively play zones for dogs.
+                  </p>
+                </div>
+
+                <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Utensils size={16} /> 2. Tailored Meals & Fresh Water
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    We follow your pet's exact feeding routine. Bring their favorite food or choose Paw Paw's nutritious fresh home food or packaged kibble.
+                  </p>
+                </div>
+
+                <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <PawPrint size={16} /> 3. Daily Walks, Play & Cuddles
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    Dogs enjoy morning and evening walks plus outdoor playtime. Cats receive interactive indoor play, scratching posts, and gentle attention.
+                  </p>
+                </div>
+
+                <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <MessageCircle size={16} /> 4. Daily WhatsApp Updates
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    Stay connected while you travel with daily photos and videos showing your furry family eating, playing, and relaxing happily.
+                  </p>
+                </div>
+
+                <div style={{ padding: '14px', background: 'var(--accent-bg)', borderRadius: '14px', border: '1px solid var(--accent-border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px' }}>
+                    Transparent Daily Rates & No Advance Fees
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.5 }}>
+                    <strong>Dog Boarding:</strong> ₹{boardingSettings?.dogDailyRate || 800} / day · <strong>Cat Boarding:</strong> ₹{boardingSettings?.catDailyRate || 600} / day. No online payments required in advance; pay upon check-in or pick-up.
+                  </div>
+                </div>
+              </div>
+
+              <div className="reschedule-modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowBoardingLearnMore(false)}>
+                  Close
+                </button>
+                {(boardingSettings?.acceptBookings !== false) && (
+                  <Link
+                    to="/boarding"
+                    className="btn btn-primary"
+                    onClick={() => setShowBoardingLearnMore(false)}
+                  >
+                    <Calendar size={15} /> Book Pet Boarding
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {(user?.uid || user?.email) && (
           <section className="upcoming-appointment-section">

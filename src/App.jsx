@@ -10,6 +10,7 @@ import Spinner from './components/Spinner'
 import Home        from './pages/Home'
 import Services    from './pages/Services'
 import Book        from './pages/Book'
+import BookBoarding from './pages/BookBoarding'
 import MyBookings  from './pages/MyBookings'
 import MyPets      from './pages/MyPets'
 import Profile     from './pages/Profile'
@@ -23,6 +24,7 @@ import NotFound    from './pages/NotFound'
 import AdminLayout    from './admin/AdminLayout'
 import AdminDashboard from './admin/AdminDashboard'
 import AdminBookings  from './admin/AdminBookings'
+import AdminBoarding  from './admin/AdminBoarding'
 import AdminReviews   from './admin/AdminReviews'
 import AdminGoogleReviews from './admin/AdminGoogleReviews'
 import AdminCustomers from './admin/AdminCustomers'
@@ -99,6 +101,7 @@ export default function App() {
         <Route index            element={<AdminDashboard />} />
         <Route path="bookings"  element={<AdminBookings />} />
         <Route path="bookings/:bookingId" element={<AdminBookings />} />
+        <Route path="boarding"  element={<AdminBoarding />} />
         <Route path="invoices" element={<AdminInvoices />} />
         <Route path="reviews"   element={<AdminReviews />} />
         <Route path="google-reviews" element={<AdminGoogleReviews />} />
@@ -125,6 +128,7 @@ export default function App() {
         <Route path="gallery" element={<Gallery />} />
         <Route path="login" element={<Login />} />
         <Route path="book" element={<ProtectedRoute><Book /></ProtectedRoute>} />
+        <Route path="boarding" element={<ProtectedRoute><BookBoarding /></ProtectedRoute>} />
         <Route path="profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="my-pets" element={<ProtectedRoute><MyPets /></ProtectedRoute>} />
         <Route path="my-bookings" element={<ProtectedRoute><MyBookings /></ProtectedRoute>} />

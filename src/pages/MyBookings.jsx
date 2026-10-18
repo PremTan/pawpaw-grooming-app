@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
-import { Calendar, ChevronRight, ChevronDown, Clock, Home, PawPrint, Plus, Store, UserRound, X } from 'lucide-react'
+import { Building2, Calendar, ChevronRight, ChevronDown, Clock, Home, PawPrint, Plus, Scissors, Store, UserRound, X } from 'lucide-react'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
@@ -193,6 +193,66 @@ export default function MyBookings() {
   const [editFullOpen, setEditFullOpen] = useState(false)
   const editAddressRef = useRef(null)
   const [savingEdit, setSavingEdit] = useState(false)
+
+  // Pet Boarding state
+  const [domainTab, setDomainTab] = useState('grooming')
+  const [boardings, setBoardings] = useState([])
+  const [boardingLoading, setBoardingLoading] = useState(false)
+  const [selectedBoarding, setSelectedBoarding] = useState(null)
+  const [boardingCancelTarget, setBoardingCancelTarget] = useState(null)
+  const [boardingCancelReason, setBoardingCancelReason] = useState('')
+  const [cancellingBoardingId, setCancellingBoardingId] = useState('')
+
+  const fetchBoardings = async () => {
+    if (!user?.uid) return
+    setBoardingLoading(true)
+    try {
+      const q = query(collection(db, 'boardingBookings'), where('userId', '==', user.uid))
+      const snap = await getDocs(q)
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      list.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
+      setBoardings(list)
+    } catch {}
+    setBoardingLoading(false)
+  }
+
+  useEffect(() => {
+    if (user?.uid) {
+      fetchBoardings()
+    }
+  }, [user])
+
+  const cancelBoardingBooking = async () => {
+    if (!boardingCancelTarget || !boardingCancelReason.trim()) return
+    setCancellingBoardingId(boardingCancelTarget.id)
+    try {
+      const patch = {
+        status: 'cancelled',
+        cancelledBy: 'user',
+        cancelledAt: serverTimestamp(),
+        cancellationReason: boardingCancelReason.trim(),
+        updatedAt: serverTimestamp(),
+      }
+      await setDoc(doc(db, 'boardingBookings', boardingCancelTarget.id), patch, { merge: true })
+      setBoardings(prev => prev.map(b => b.id === boardingCancelTarget.id ? { ...b, ...patch, cancelledAt: new Date(), updatedAt: new Date() } : b))
+      if (ADMIN_EMAIL) {
+        await sendNotification('', {
+          userEmail: ADMIN_EMAIL,
+          title: 'Pet Boarding Cancelled by Customer',
+          message: `Boarding request for ${boardingCancelTarget.petName} was cancelled by ${boardingCancelTarget.ownerName}. Reason: ${boardingCancelReason.trim()}`,
+          type: 'boarding_cancelled',
+          bookingId: boardingCancelTarget.id,
+          actionUrl: '/admin/boarding',
+        })
+      }
+      setCancelToast('Boarding reservation cancelled successfully.')
+      setBoardingCancelTarget(null)
+      setBoardingCancelReason('')
+    } catch (err) {
+      alert('Could not cancel boarding reservation. Please try again.')
+    }
+    setCancellingBoardingId('')
+  }
 
   useEffect(() => {
     fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
@@ -578,23 +638,171 @@ export default function MyBookings() {
             <PawPrint size={20} className="my-bookings-paw-icon" />
             <div>
               <h1>My Bookings</h1>
-              <p>{bookings.length} total appointment{bookings.length !== 1 ? 's' : ''}</p>
+              <p>{domainTab === 'boarding' ? `${boardings.length} total boarding stay${boardings.length !== 1 ? 's' : ''}` : `${bookings.length} total appointment${bookings.length !== 1 ? 's' : ''}`}</p>
             </div>
           </div>
-          <Link to="/book" className="btn btn-primary my-bookings-new">
-            <Plus size={16} /> New Booking
+          <Link to={domainTab === 'boarding' ? "/boarding" : "/book"} className="btn btn-primary my-bookings-new">
+            <Plus size={16} /> {domainTab === 'boarding' ? 'New Boarding Stay' : 'New Grooming'}
           </Link>
         </div>
 
-        <div className="my-bookings-stats" aria-label="Booking summary">
-          <div className="my-bookings-stat-card">
-            <span>Total</span>
-            <strong>{bookingSummary.total}</strong>
+        {/* Domain Switcher */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '22px' }}>
+          <button
+            type="button"
+            onClick={() => setDomainTab('grooming')}
+            style={{
+              padding: '9px 16px',
+              borderRadius: '12px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: `1.5px solid ${domainTab === 'grooming' ? 'var(--accent)' : 'var(--border)'}`,
+              background: domainTab === 'grooming' ? 'var(--accent-bg)' : 'var(--surface)',
+              color: domainTab === 'grooming' ? 'var(--accent)' : 'var(--muted)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <Scissors size={14} /> Grooming ({bookings.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setDomainTab('boarding')}
+            style={{
+              padding: '9px 16px',
+              borderRadius: '12px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: `1.5px solid ${domainTab === 'boarding' ? 'var(--accent)' : 'var(--border)'}`,
+              background: domainTab === 'boarding' ? 'var(--accent-bg)' : 'var(--surface)',
+              color: domainTab === 'boarding' ? 'var(--accent)' : 'var(--muted)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <Building2 size={14} /> Pet Boarding ({boardings.length})
+          </button>
+        </div>
+
+        {domainTab === 'boarding' ? (
+          <div>
+            {/* Boarding Stats */}
+            <div className="my-bookings-stats">
+              <div className="my-bookings-stat-card">
+                <span>Total Stays</span>
+                <strong>{boardings.length}</strong>
+              </div>
+              <div className="my-bookings-stat-card">
+                <span>Pending Review</span>
+                <strong style={{ color: '#f59e0b' }}>{boardings.filter(b => b.status === 'pending').length}</strong>
+              </div>
+              <div className="my-bookings-stat-card">
+                <span>Confirmed</span>
+                <strong style={{ color: 'var(--accent)' }}>{boardings.filter(b => b.status === 'confirmed').length}</strong>
+              </div>
+              <div className="my-bookings-stat-card">
+                <span>Checked In</span>
+                <strong style={{ color: '#3b82f6' }}>{boardings.filter(b => b.status === 'checked_in').length}</strong>
+              </div>
+            </div>
+
+            {boardingLoading ? (
+              <Spinner text="Loading boarding reservations..." />
+            ) : boardings.length === 0 ? (
+              <div className="my-bookings-empty" style={{ padding: '48px 20px', textAlign: 'center', background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                <Building2 size={36} style={{ color: 'var(--muted)', margin: '0 auto 12px' }} />
+                <p style={{ fontWeight: 700, fontSize: '16px', color: 'var(--text)', margin: '0 0 6px' }}>No boarding stays found</p>
+                <span style={{ color: 'var(--muted)', fontSize: '13px', display: 'block', marginBottom: '18px' }}>Book your pet a cozy stay while you travel.</span>
+                <Link to="/boarding" className="btn btn-primary">Book Pet Boarding</Link>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {boardings.map(b => (
+                  <div
+                    key={b.id}
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(255,255,255,0.03), rgba(212,175,55,0.04))',
+                      border: '1px solid var(--border)',
+                      borderRadius: '16px',
+                      padding: '16px 18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '12px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'var(--accent-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', flexShrink: 0 }}>
+                        {b.petPhotoUrl ? (
+                          <img src={b.petPhotoUrl} alt={b.petName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }} />
+                        ) : (
+                          <PawPrint size={20} />
+                        )}
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <strong style={{ fontSize: '15px', color: 'var(--text)' }}>{b.petName}</strong>
+                          <span className={`badge ${STATUS_BADGE[b.status] || 'badge-pending'}`}>
+                            {statusLabel(b.status)}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
+                          {b.petType} {b.petBreed ? `· ${b.petBreed}` : ''}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 700, marginTop: '2px' }}>
+                          {b.stayDays || 1} Day(s) ({b.stayNights || 0} Nights) · ₹{b.estimatedTotal || 0}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>Stay Dates</div>
+                      <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 600 }}>
+                        {b.checkInDate} → {b.checkOutDate}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBoarding(b)}
+                        className="btn btn-secondary"
+                        style={{ fontSize: '12px', padding: '7px 12px' }}
+                      >
+                        View Details
+                      </button>
+                      {(b.status === 'pending' || b.status === 'confirmed') && (
+                        <button
+                          type="button"
+                          onClick={() => { setBoardingCancelTarget(b); setBoardingCancelReason('') }}
+                          className="btn btn-secondary"
+                          style={{ fontSize: '12px', padding: '7px 10px', color: '#ef4444' }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="my-bookings-stat-card">
-            <span>Upcoming</span>
-            <strong>{bookingSummary.upcoming}</strong>
-          </div>
+        ) : (
+          <div>
+            <div className="my-bookings-stats" aria-label="Booking summary">
+              <div className="my-bookings-stat-card">
+                <span>Total</span>
+                <strong>{bookingSummary.total}</strong>
+              </div>
+              <div className="my-bookings-stat-card">
+                <span>Upcoming</span>
+                <strong>{bookingSummary.upcoming}</strong>
+              </div>
           <div className="my-bookings-stat-card">
             <span>Completed</span>
             <strong>{bookingSummary.completed}</strong>
@@ -699,6 +907,8 @@ export default function MyBookings() {
                 </div>
               )
             })}
+          </div>
+        )}
           </div>
         )}
       </div>
@@ -1120,6 +1330,69 @@ export default function MyBookings() {
         reasonPlaceholder="Please tell us why you are cancelling"
         reasonValue={cancelReason}
         onReasonChange={setCancelReason}
+        reasonRequired
+      />
+
+      {/* Boarding Details Modal */}
+      {selectedBoarding && (
+        <div className="my-booking-modal-overlay" onClick={() => setSelectedBoarding(null)}>
+          <div className="my-booking-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '580px', width: '100%' }}>
+            <div className="my-booking-modal-hero">
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 4px', color: 'var(--text)' }}>
+                  {selectedBoarding.petName}'s Boarding Stay
+                </h2>
+                <span className={`badge ${STATUS_BADGE[selectedBoarding.status] || 'badge-pending'}`}>
+                  {statusLabel(selectedBoarding.status)}
+                </span>
+              </div>
+              <button type="button" className="my-booking-modal-close" onClick={() => setSelectedBoarding(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: '12px', marginTop: '16px', maxHeight: '60vh', overflowY: 'auto' }}>
+              <div style={{ padding: '12px', background: 'var(--surface)', borderRadius: '12px', fontSize: '13px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div><strong>Check-In:</strong> {selectedBoarding.checkInDate} at {selectedBoarding.checkInTime}</div>
+                <div><strong>Check-Out:</strong> {selectedBoarding.checkOutDate} at {selectedBoarding.checkOutTime}</div>
+                <div><strong>Duration:</strong> {selectedBoarding.stayDays} Day(s) ({selectedBoarding.stayNights || 0} Nights)</div>
+                <div><strong>Estimated Total:</strong> ₹{selectedBoarding.estimatedTotal}</div>
+              </div>
+
+              <div style={{ padding: '12px', background: 'var(--surface)', borderRadius: '12px', fontSize: '13px', display: 'grid', gap: '6px' }}>
+                <div><strong>Food Plan:</strong> {selectedBoarding.foodType} ({selectedBoarding.foodProvider})</div>
+                <div><strong>Feeding Schedule:</strong> {selectedBoarding.feedingSchedule}</div>
+                {selectedBoarding.specialDietInstructions && <div><strong>Diet/Water Notes:</strong> {selectedBoarding.specialDietInstructions}</div>}
+                {selectedBoarding.walkingFrequency !== 'N/A' && <div><strong>Walking Routine:</strong> {selectedBoarding.walkingFrequency}</div>}
+                {selectedBoarding.sleepingHabits && <div><strong>Sleeping:</strong> {selectedBoarding.sleepingHabits}</div>}
+                {selectedBoarding.toiletHabits && <div><strong>Toilet Habits:</strong> {selectedBoarding.toiletHabits}</div>}
+                {selectedBoarding.emergencyContactPhone && <div><strong>Emergency Contact:</strong> {selectedBoarding.emergencyContactName} ({selectedBoarding.emergencyContactPhone})</div>}
+              </div>
+            </div>
+
+            <div style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setSelectedBoarding(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Boarding Cancel Modal */}
+      <ConfirmModal
+        open={!!boardingCancelTarget}
+        title="Cancel boarding reservation?"
+        message={boardingCancelTarget ? `Are you sure you want to cancel the boarding reservation for ${boardingCancelTarget.petName} from ${boardingCancelTarget.checkInDate} to ${boardingCancelTarget.checkOutDate}?` : ''}
+        confirmText="Yes, cancel reservation"
+        cancelText="Keep reservation"
+        loading={!!boardingCancelTarget && cancellingBoardingId === boardingCancelTarget.id}
+        onCancel={() => { setBoardingCancelTarget(null); setBoardingCancelReason('') }}
+        onConfirm={cancelBoardingBooking}
+        reasonLabel="Cancellation reason"
+        reasonPlaceholder="Please tell us why you are cancelling this boarding stay"
+        reasonValue={boardingCancelReason}
+        onReasonChange={setBoardingCancelReason}
         reasonRequired
       />
       <style>{`
