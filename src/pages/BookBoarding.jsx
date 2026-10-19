@@ -1879,23 +1879,21 @@ export default function BookBoarding() {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
-          align-items: stretch;
+          align-items: start;
+          margin-bottom: 18px;
         }
 
         .behaviour-separation-row .form-group {
           min-width: 0;
-          display: flex;
-          flex-direction: column;
-          height: 100%;
-          margin-bottom: 18px;
+          margin-bottom: 0;
         }
 
         .behaviour-separation-row .field-label {
           min-height: 28px;
           display: flex;
           align-items: flex-start;
-          flex-grow: 1;
           line-height: 1.25;
+          margin-bottom: 6px;
         }
 
         .behaviour-separation-row .boarding-input,
@@ -1903,7 +1901,7 @@ export default function BookBoarding() {
           width: 100%;
           height: 42px;
           box-sizing: border-box;
-          margin-top: auto;
+          margin-top: 0;
         }
 
         .radio-options-stack {
@@ -2134,11 +2132,13 @@ export default function BookBoarding() {
           }
           .behaviour-separation-row {
             gap: 8px;
+            margin-bottom: 16px;
           }
           .behaviour-separation-row .field-label {
             font-size: 10px;
             letter-spacing: 0.4px;
             min-height: 26px;
+            margin-bottom: 5px;
           }
           .stepper-label {
             font-size: 8.5px;
@@ -2153,6 +2153,10 @@ export default function BookBoarding() {
         @media (max-width: 290px) {
           .behaviour-separation-row {
             grid-template-columns: 1fr;
+            margin-bottom: 16px;
+          }
+          .behaviour-separation-row .form-group:first-child {
+            margin-bottom: 10px;
           }
         }
 

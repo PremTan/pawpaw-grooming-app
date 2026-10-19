@@ -912,12 +912,17 @@ function HeroSlider() {
                 <div className="upcoming-appointment-body" style={{ cursor: 'default' }}>
                   <div className="upcoming-appointment-main">
                     <div className="upcoming-appointment-photo-stack">
-                      <div className="upcoming-appointment-photo">
-                        <PawPrint size={28} />
+                      <div className="upcoming-appointment-photo upcoming-appointment-photo-empty">
+                        <img
+                          src="/boarding-hero-pets.png"
+                          alt="No upcoming appointments"
+                          className="upcoming-appointment-empty-img"
+                          onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+                        />
                       </div>
                     </div>
                     <div className="upcoming-appointment-details">
-                      <h4>No Upcoming Appointment</h4>
+                      <h4>No Upcoming Appointments</h4>
                       <div className="upcoming-appointment-meta-column">
                         <span className="upcoming-appointment-info-item">
                           Book an appointment and give them the care they deserve.
