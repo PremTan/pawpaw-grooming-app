@@ -608,91 +608,77 @@ function HeroSlider() {
               )}
             </div>
 
-            <div className="home-boarding-grid">
-              <div className="home-boarding-content">
-                <h2 className="home-boarding-title">
-                  Your Pet's Home <br />
-                  <span className="gold-accent">Away From Home</span>
-                </h2>
+            <h2 className="home-boarding-title">
+              Your Pet's Home <br />
+              <span className="gold-accent">Away From Home</span>
+            </h2>
 
-                <p className="home-boarding-desc">
-                  Safe, clean and comfortable stay for your furry family with loving care while you are away.
-                </p>
+            <p className="home-boarding-desc">
+              Safe, clean and comfortable stay for your furry family with loving care while you are away.
+            </p>
 
-                {/* Mobile Pet Image (Directly below description, above pricing cards) */}
-                <div className="home-boarding-media home-boarding-media-mobile">
-                  <img
-                    src="/boarding-hero-pets.png"
-                    alt="Dog and cat resting comfortably together in cozy pet boarding suite"
-                    className="home-boarding-pets-img"
-                    onError={e => { e.currentTarget.style.display = 'none' }}
-                  />
-                </div>
+            {/* Large Hero Image (Full available width, rounded) */}
+            <div className="home-boarding-hero-wrap">
+              <img
+                src="/boarding-hero-pets.png"
+                alt="Dog and cat resting comfortably together in cozy pet boarding suite"
+                className="home-boarding-pets-img"
+                onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+              />
+            </div>
 
-                {/* Pricing Cards */}
-                <div className="home-boarding-prices">
-                  <div className="home-boarding-price-card">
-                    <img
-                      src="/boarding-dog-avatar.png"
-                      alt="Dog Boarding"
-                      className="home-boarding-avatar"
-                      onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
-                    />
-                    <div>
-                      <div className="home-boarding-price-label">Dog Boarding</div>
-                      <div className="home-boarding-price-amount">
-                        ₹{boardingSettings?.dogDailyRate || 800} <span className="home-boarding-price-unit">/ day</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="home-boarding-price-card">
-                    <img
-                      src="/boarding-cat-avatar.png"
-                      alt="Cat Boarding"
-                      className="home-boarding-avatar"
-                      onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
-                    />
-                    <div>
-                      <div className="home-boarding-price-label">Cat Boarding</div>
-                      <div className="home-boarding-price-amount">
-                        ₹{boardingSettings?.catDailyRate || 600} <span className="home-boarding-price-unit">/ day</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="home-boarding-actions">
-                  {(boardingSettings?.acceptBookings !== false) ? (
-                    <Link to="/boarding" className="home-boarding-btn-primary">
-                      <Calendar size={16} /> Book Pet Boarding <ArrowRight size={15} />
-                    </Link>
-                  ) : (
-                    <div className="home-boarding-closed-pill" title="Boarding reservations are temporarily closed">
-                      <Clock size={15} /> Boarding Bookings Temporarily Closed
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => setShowBoardingLearnMore(true)}
-                    className="home-boarding-btn-secondary"
-                  >
-                    Learn More <ArrowRight size={15} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Desktop Pet Image (Right side) */}
-              <div className="home-boarding-media home-boarding-media-desktop">
+            {/* Pricing Cards (Attached directly below hero image) */}
+            <div className="home-boarding-prices">
+              <div className="home-boarding-price-card">
                 <img
-                  src="/boarding-hero-pets.png"
-                  alt="Dog and cat resting comfortably together in cozy pet boarding suite"
-                  className="home-boarding-pets-img"
-                  onError={e => { e.currentTarget.style.display = 'none' }}
+                  src="/boarding-dog-avatar.png"
+                  alt="Dog Boarding"
+                  className="home-boarding-avatar"
+                  onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
                 />
+                <div className="home-boarding-price-info">
+                  <div className="home-boarding-price-label">Dog Boarding</div>
+                  <div className="home-boarding-price-amount">
+                    ₹{boardingSettings?.dogDailyRate || 800} <span className="home-boarding-price-unit">/ day</span>
+                  </div>
+                </div>
               </div>
+
+              <div className="home-boarding-price-card">
+                <img
+                  src="/boarding-cat-avatar.png"
+                  alt="Cat Boarding"
+                  className="home-boarding-avatar"
+                  onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+                />
+                <div className="home-boarding-price-info">
+                  <div className="home-boarding-price-label">Cat Boarding</div>
+                  <div className="home-boarding-price-amount">
+                    ₹{boardingSettings?.catDailyRate || 600} <span className="home-boarding-price-unit">/ day</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions (Attached directly below rate cards) */}
+            <div className="home-boarding-actions">
+              {(boardingSettings?.acceptBookings !== false) ? (
+                <Link to="/boarding" className="home-boarding-btn-primary">
+                  <Calendar size={16} /> Book Pet Boarding <ArrowRight size={15} />
+                </Link>
+              ) : (
+                <div className="home-boarding-closed-pill" title="Boarding reservations are temporarily closed">
+                  <Clock size={15} /> Boarding Bookings Temporarily Closed
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowBoardingLearnMore(true)}
+                className="home-boarding-btn-secondary"
+              >
+                Learn More <ArrowRight size={15} />
+              </button>
             </div>
           </div>
         </section>
