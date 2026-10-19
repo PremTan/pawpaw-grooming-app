@@ -7,6 +7,7 @@ import {
   AlertCircle,
   ArrowRight,
   Calendar,
+  Check,
   CheckCircle,
   ChevronLeft,
   Clock,
@@ -19,7 +20,9 @@ import {
   Plus,
   ShieldCheck,
   Sparkles,
+  User,
   Utensils,
+  X,
 } from 'lucide-react'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -37,6 +40,19 @@ import {
 } from '../utils/boardingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import Toast from '../components/Toast'
+
+function formatReviewDate(dateStr, timeStr) {
+  if (!dateStr) return '-'
+  try {
+    const parts = String(dateStr).split('-')
+    if (parts.length === 3) {
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+      const formatted = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      return timeStr ? `${formatted} at ${timeStr}` : formatted
+    }
+  } catch {}
+  return timeStr ? `${dateStr} at ${timeStr}` : dateStr
+}
 
 export default function BookBoarding() {
   const { user, isBlocked } = useAuth()
@@ -99,7 +115,7 @@ export default function BookBoarding() {
   })
 
   useEffect(() => {
-    bookingTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [step, done])
 
   useEffect(() => {
@@ -163,7 +179,7 @@ export default function BookBoarding() {
       petDob: pet.dob || '',
       petWeight: pet.weight || '',
       petGender: pet.gender || 'Male',
-      medicalConditions: pet.notes || '',
+      medicalConditions: '',
     }))
   }
 
@@ -287,26 +303,8 @@ export default function BookBoarding() {
     setLoading(false)
   }
 
-  const S = {
-    page: { background: 'var(--bg)', paddingTop: '80px', minHeight: '100vh' },
-    wrap: { maxWidth: '720px', margin: '0 auto', padding: '36px 20px 80px' },
-    card: { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '28px' },
-    label: { fontSize: '11px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '6px' },
-    back: { display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', marginBottom: '20px', padding: 0 },
-    stepNum: (s) => ({
-      width: '32px',
-      height: '32px',
-      borderRadius: '50%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '13px',
-      fontWeight: 700,
-      background: step > s ? 'var(--gradient)' : step === s ? 'var(--accent-bg)' : 'var(--surface)',
-      color: step > s ? '#000' : step === s ? 'var(--accent)' : 'var(--muted)',
-      border: step > s ? 'none' : step === s ? '2px solid var(--accent)' : '1px solid var(--border)',
-    }),
-  }
+  const selectedPet = pets.find(p => p.id === selectedPetId)
+  const displayBreed = form.customBreed || form.petBreed || ''
 
   const whatsappLink = bookingRef
     ? (adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(bookingRef, shopName)}` : '#')
@@ -315,50 +313,50 @@ export default function BookBoarding() {
   // Success view
   if (done && bookingRef) {
     return (
-      <div style={S.page}>
+      <div className="boarding-flow-page">
         {toastMessage && (
           <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
             <Toast message={toastMessage} type="success" onClose={() => setToastMessage('')} />
           </div>
         )}
-        <div ref={bookingTopRef} style={{ ...S.wrap, textAlign: 'center' }}>
-          <div style={{ width: '84px', height: '84px', borderRadius: '50%', background: 'rgba(52,211,153,0.1)', border: '2px solid rgba(52,211,153,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', color: '#34d399' }}>
-            <CheckCircle size={40} />
+        <div ref={bookingTopRef} className="boarding-flow-container text-center">
+          <div className="boarding-success-icon-wrap">
+            <CheckCircle size={44} color="#15803D" />
           </div>
-          <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>
+          <h1 className="boarding-heading" style={{ fontSize: '26px', marginBottom: '8px' }}>
             Boarding Request Submitted!
           </h1>
-          <p style={{ color: 'var(--muted)', marginBottom: '28px', maxWidth: '520px', margin: '0 auto 28px', lineHeight: 1.6 }}>
-            Thank you! Your pet boarding request has been received. The Paw Paw team will review your stay requirements and confirm your pet's suite shortly.
+          <p className="boarding-subheading" style={{ maxWidth: '480px', margin: '0 auto 24px' }}>
+            Thank you! Your pet boarding request has been received. Our team will review your stay requirements and confirm your pet's suite shortly.
           </p>
 
-          <div style={{ ...S.card, textAlign: 'left', marginBottom: '24px' }}>
+          <div className="boarding-review-card" style={{ textAlign: 'left', marginBottom: '22px' }}>
             {[
               { label: 'Boarding ID', value: `#${bookingRef.id.slice(0, 8).toUpperCase()}`, highlight: true },
-              { label: 'Pet Name', value: `${form.petName} (${form.petType}${form.customBreed || form.petBreed ? ` · ${form.customBreed || form.petBreed}` : ''})` },
-              { label: 'Check-In', value: `${form.checkInDate} at ${form.checkInTime}` },
-              { label: 'Check-Out', value: `${form.checkOutDate} at ${form.checkOutTime}` },
+              { label: 'Pet Name', value: `${form.petName} (${form.petType}${displayBreed ? ` · ${displayBreed}` : ''})` },
+              { label: 'Check-In', value: `${formatReviewDate(form.checkInDate, form.checkInTime)}` },
+              { label: 'Check-Out', value: `${formatReviewDate(form.checkOutDate, form.checkOutTime)}` },
               { label: 'Stay Duration', value: `${stayCalculation.days} Day(s) · ${stayCalculation.nights} Night(s)` },
               { label: 'Daily Rate', value: `₹${stayCalculation.dailyRate} / day` },
               { label: 'Estimated Total', value: `₹${stayCalculation.estimatedTotal}`, highlight: true },
               { label: 'Food Plan', value: `${form.foodType} (${form.foodProvider})` },
               { label: 'Status', value: 'Pending Admin Review' },
             ].map(row => (
-              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '11px 0', borderBottom: '1px solid var(--border)' }}>
-                <span style={{ color: 'var(--muted)', fontSize: '13px' }}>{row.label}</span>
-                <span style={{ color: row.highlight ? 'var(--accent)' : 'var(--text)', fontSize: '13px', fontWeight: row.highlight ? 700 : 500 }}>{row.value}</span>
+              <div key={row.label} className="review-spec-row">
+                <span className="spec-label">{row.label}</span>
+                <span className={row.highlight ? 'spec-val highlight' : 'spec-val'}>{row.value}</span>
               </div>
             ))}
           </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
-            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="btn" style={{ background: '#25D366', color: '#fff', padding: '12px 24px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="boarding-primary-btn" style={{ background: '#25D366', textDecoration: 'none' }}>
               <MessageCircle size={16} /> Send Details to WhatsApp
             </a>
-            <button onClick={() => navigate('/my-bookings')} className="btn btn-primary">
+            <button onClick={() => navigate('/my-bookings')} className="boarding-secondary-btn">
               View My Bookings
             </button>
-            <button onClick={() => { setDone(false); setStep(1) }} className="btn btn-secondary">
+            <button onClick={() => { setDone(false); setStep(1) }} className="boarding-back-btn">
               Book Another Stay
             </button>
           </div>
@@ -368,189 +366,296 @@ export default function BookBoarding() {
   }
 
   return (
-    <div style={S.page}>
-      <div ref={bookingTopRef} style={S.wrap}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-          <span style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', color: 'var(--accent)', fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: '999px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-            Paw Paw Suites
-          </span>
+    <div className="boarding-flow-page">
+      <div ref={bookingTopRef} className="boarding-flow-container">
+        {/* Top Suite Badge */}
+        <div className="suite-tag-row">
+          <span className="suite-gold-tag">PAW PAW SUITES</span>
         </div>
-        <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>
-          Pet Boarding Reservation
+
+        {/* Dynamic Step Title */}
+        <h1 className="boarding-heading">
+          {step === 5 ? 'Review Boarding Request' : 'Pet Boarding Reservation'}
         </h1>
-        <p style={{ color: 'var(--muted)', marginBottom: '24px', fontSize: '14px' }}>
-          Your pet's cozy home away from home. Complete the care profile below to request a stay.
+        <p className="boarding-subheading">
+          {step === 5
+            ? 'Please verify your pet\'s stay details before submitting.'
+            : 'Your pet\'s cozy home away from home. Complete the care profile below to request a stay.'}
         </p>
 
         {boardingSettings?.acceptBookings === false && (
-          <div style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.3)', color: '#ca8a04', fontSize: '13px', padding: '12px 14px', borderRadius: '12px', marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="boarding-notice-warn">
             <Info size={16} /> Boarding reservations are temporarily closed. You may view care and diet details, but new requests cannot be submitted at this time.
           </div>
         )}
 
         {isBlocked && (
-          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', fontSize: '13px', padding: '12px 14px', borderRadius: '12px', marginBottom: '18px' }}>
+          <div className="boarding-notice-error">
             Your account is currently blocked from making bookings. Please contact Paw Paw support.
           </div>
         )}
 
-        {/* Multi-step progress bar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '28px', flexWrap: 'wrap' }}>
+        {/* Compact 5-step progress tracker */}
+        <div className="boarding-stepper" role="navigation" aria-label="Booking steps">
           {[
             { n: 1, label: 'Pet Details' },
             { n: 2, label: 'Stay Dates' },
             { n: 3, label: 'Food & Diet' },
             { n: 4, label: 'Daily Care' },
             { n: 5, label: 'Review' },
-          ].map((s, i, arr) => (
-            <div key={s.n} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                <div style={S.stepNum(s.n)}>{step > s.n ? <CheckCircle size={16} /> : s.n}</div>
-                <span style={{ fontSize: '10px', color: step === s.n ? 'var(--accent)' : 'var(--muted)', fontWeight: step === s.n ? 700 : 400 }}>{s.label}</span>
+          ].map((s, idx, arr) => {
+            const isCompleted = step > s.n
+            const isActive = step === s.n
+            return (
+              <div key={s.n} className="stepper-item-wrap">
+                <button
+                  type="button"
+                  className={`stepper-circle ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}
+                  onClick={() => {
+                    if (s.n < step) setStep(s.n)
+                  }}
+                  aria-label={`Step ${s.n}: ${s.label}`}
+                >
+                  {isCompleted ? <Check size={13} strokeWidth={3} /> : s.n}
+                </button>
+                <span className={`stepper-label ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}>
+                  {s.label}
+                </span>
+                {idx < arr.length - 1 && (
+                  <div className={`stepper-connector ${step > s.n ? 'completed' : ''}`} />
+                )}
               </div>
-              {i < arr.length - 1 && <div style={{ width: '24px', height: '2px', background: step > s.n ? 'var(--accent)' : 'var(--border)', borderRadius: '1px', marginBottom: '16px' }} />}
-            </div>
-          ))}
+            )
+          })}
         </div>
 
-        <div style={S.card}>
-          {/* STEP 1: PET DETAILS */}
+        {/* MAIN FORM CARD */}
+        <div className="boarding-card">
+          {/* ==========================================================
+              SCREEN 1: PET DETAILS
+              ========================================================== */}
           {step === 1 && (
             <div>
-              <h2 style={{ fontWeight: 800, color: 'var(--text)', fontSize: '18px', marginBottom: '4px' }}>Pet & Owner Information</h2>
-              <p style={{ color: 'var(--muted)', fontSize: '13px', marginBottom: '20px' }}>Choose a saved pet profile or enter details for this stay.</p>
-
-              {/* Saved pets */}
-              <div style={{ marginBottom: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <label style={{ ...S.label, marginBottom: 0 }}>Saved Pets</label>
-                  <Link to="/my-pets" style={{ color: 'var(--accent)', fontSize: '12px', fontWeight: 700, textDecoration: 'none' }}>+ Add or manage pets</Link>
+              <div className="card-header-row">
+                <div className="card-header-icon-box">
+                  <img
+                    src="/boarding-hero-pets.png"
+                    alt="Dog and Cat"
+                    className="card-header-pet-img"
+                    onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+                  />
                 </div>
+                <div>
+                  <h2 className="card-title">Pet & Owner Information</h2>
+                  <p className="card-subtitle single-line-sub">Choose a pet or enter details below.</p>
+                </div>
+              </div>
+
+              {/* Saved pets section */}
+              <div className="form-section">
+                <div className="section-head-split">
+                  <label className="section-sublabel">SAVED PETS</label>
+                  <Link to="/my-pets" className="manage-pets-link">+ Add or manage pets</Link>
+                </div>
+
                 {pets.length > 0 ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
+                  <div className="saved-pets-list">
                     {pets.map(pet => {
                       const sel = selectedPetId === pet.id
                       return (
-                        <button
+                        <div
                           key={pet.id}
-                          type="button"
                           onClick={() => applyPet(pet)}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: '10px',
-                            padding: '10px', borderRadius: '12px', textAlign: 'left', cursor: 'pointer',
-                            border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
-                            background: sel ? 'var(--accent-bg)' : 'var(--surface)',
-                            transition: 'all 0.15s',
-                          }}
+                          className={`saved-pet-card ${sel ? 'selected' : ''}`}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') applyPet(pet) }}
                         >
-                          {pet.photoUrl ? (
-                            <img src={pet.photoUrl} alt={pet.name} style={{ width: '40px', height: '40px', borderRadius: '10px', objectFit: 'cover', flexShrink: 0 }} />
-                          ) : (
-                            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'var(--accent-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><PawPrint size={18} /></div>
-                          )}
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ color: sel ? 'var(--accent)' : 'var(--text)', fontSize: '13px', fontWeight: 800 }}>{pet.name}</div>
-                            <div style={{ color: 'var(--muted)', fontSize: '11px' }}>{pet.type} {pet.breed ? `· ${pet.breed}` : ''}</div>
+                          <div className={`custom-radio ${sel ? 'checked' : ''}`}>
+                            {sel && <div className="radio-dot" />}
                           </div>
-                          {sel && <CheckCircle size={14} style={{ color: 'var(--accent)' }} />}
-                        </button>
+
+                          {pet.photoUrl ? (
+                            <img src={pet.photoUrl} alt={pet.name} className="pet-thumb-img" />
+                          ) : (
+                            <div className="pet-thumb-placeholder">
+                              <PawPrint size={18} color="#C08820" />
+                            </div>
+                          )}
+
+                          <div className="pet-card-text">
+                            <div className="pet-card-name">{pet.name}</div>
+                            <div className="pet-card-meta">
+                              {pet.type} {pet.breed ? `• ${pet.breed}` : ''}
+                            </div>
+                          </div>
+                        </div>
                       )
                     })}
                   </div>
                 ) : (
-                  <div style={{ background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: '12px', padding: '14px', fontSize: '13px', color: 'var(--muted)' }}>
-                    No saved pets found. Fill in details below to continue.
+                  <div className="empty-saved-pets">
+                    No saved pet profiles yet. Fill in details below to continue.
                   </div>
                 )}
               </div>
 
               {/* Owner details */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                <div>
-                  <label style={S.label}>Your Name *</label>
-                  <input className="input" placeholder="Full name" value={form.ownerName} onChange={e => update('ownerName', e.target.value)} />
+              <div className="field-grid-2">
+                <div className="form-group">
+                  <label className="field-label">YOUR NAME *</label>
+                  <input
+                    className="boarding-input"
+                    placeholder="Prem Tandalekar"
+                    value={form.ownerName}
+                    onChange={e => update('ownerName', e.target.value)}
+                  />
                 </div>
-                <div>
-                  <label style={S.label}>Phone Number *</label>
-                  <input className="input" placeholder="10-digit number" value={form.phone} maxLength={10} onChange={e => update('phone', e.target.value)} />
+                <div className="form-group">
+                  <label className="field-label">PHONE NUMBER *</label>
+                  <input
+                    className="boarding-input"
+                    placeholder="9021459467"
+                    value={form.phone}
+                    maxLength={10}
+                    onChange={e => update('phone', e.target.value)}
+                  />
                 </div>
               </div>
 
               {/* Pet basic info */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                <div>
-                  <label style={S.label}>Pet Name *</label>
-                  <input className="input" placeholder="e.g. Bella" value={form.petName} onChange={e => { setSelectedPetId(''); update('petName', e.target.value) }} />
+              <div className="field-grid-2">
+                <div className="form-group">
+                  <label className="field-label">PET NAME *</label>
+                  <input
+                    className="boarding-input"
+                    placeholder="Bruno"
+                    value={form.petName}
+                    onChange={e => { setSelectedPetId(''); update('petName', e.target.value) }}
+                  />
                 </div>
-                <div>
-                  <label style={S.label}>Pet Type *</label>
-                  <select className="input" value={form.petType} onChange={e => { setSelectedPetId(''); update('petType', e.target.value); update('petBreed', ''); update('customBreed', '') }}>
-                    {PET_TYPES.map(t => <option key={t}>{t}</option>)}
+                <div className="form-group">
+                  <label className="field-label">PET TYPE *</label>
+                  <select
+                    className="boarding-select"
+                    value={form.petType}
+                    onChange={e => {
+                      setSelectedPetId('')
+                      update('petType', e.target.value)
+                      update('petBreed', '')
+                      update('customBreed', '')
+                    }}
+                  >
+                    {PET_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
               </div>
 
               {/* Breed */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={S.label}>Breed</label>
+              <div className="form-group">
+                <label className="field-label">BREED</label>
                 {breedOptions.length > 0 ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: form.petBreed === 'other' ? '1fr 1fr' : '1fr', gap: '10px' }}>
-                    <select className="input" value={form.petBreed} onChange={e => { setSelectedPetId(''); update('petBreed', e.target.value) }}>
+                  <div className={form.petBreed === 'other' ? 'field-grid-2' : ''}>
+                    <select
+                      className="boarding-select"
+                      value={form.petBreed}
+                      onChange={e => { setSelectedPetId(''); update('petBreed', e.target.value) }}
+                    >
                       <option value="">Select breed</option>
-                      {breedOptions.map(b => <option key={b}>{b}</option>)}
+                      {breedOptions.map(b => <option key={b} value={b}>{b}</option>)}
                       <option value="other">Other / Mixed</option>
                     </select>
                     {form.petBreed === 'other' && (
-                      <input className="input" placeholder="Type breed name..." value={form.customBreed} onChange={e => update('customBreed', e.target.value)} />
+                      <input
+                        className="boarding-input"
+                        placeholder="Type breed name..."
+                        value={form.customBreed}
+                        onChange={e => update('customBreed', e.target.value)}
+                      />
                     )}
                   </div>
                 ) : (
-                  <input className="input" placeholder="Breed (optional)" value={form.customBreed} onChange={e => update('customBreed', e.target.value)} />
+                  <input
+                    className="boarding-input"
+                    placeholder="German Shepherd"
+                    value={form.customBreed}
+                    onChange={e => update('customBreed', e.target.value)}
+                  />
                 )}
               </div>
 
               {/* Age, Weight, Gender */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '16px' }}>
-                <div>
-                  <label style={S.label}>Date of Birth / Age</label>
-                  <input type="date" className="input" value={form.petDob} onChange={e => update('petDob', e.target.value)} />
+              <div className="field-grid-3">
+                <div className="form-group">
+                  <label className="field-label">DATE OF BIRTH / AGE</label>
+                  <input
+                    type="date"
+                    className="boarding-input"
+                    value={form.petDob}
+                    onChange={e => update('petDob', e.target.value)}
+                  />
                 </div>
-                <div>
-                  <label style={S.label}>Weight (Kg)</label>
-                  <input className="input" placeholder="e.g. 12" value={form.petWeight} onChange={e => update('petWeight', e.target.value)} />
+                <div className="form-group">
+                  <label className="field-label">WEIGHT (KG)</label>
+                  <input
+                    className="boarding-input"
+                    placeholder="12"
+                    value={form.petWeight}
+                    onChange={e => update('petWeight', e.target.value)}
+                  />
                 </div>
-                <div>
-                  <label style={S.label}>Gender</label>
-                  <select className="input" value={form.petGender} onChange={e => update('petGender', e.target.value)}>
+                <div className="form-group">
+                  <label className="field-label">GENDER</label>
+                  <select
+                    className="boarding-select"
+                    value={form.petGender}
+                    onChange={e => update('petGender', e.target.value)}
+                  >
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                   </select>
                 </div>
               </div>
 
-              {/* Vaccination & Health */}
-              <div style={{ padding: '16px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)', marginBottom: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                  <ShieldCheck size={16} style={{ color: 'var(--accent)' }} />
-                  <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)' }}>Health & Vaccination Safety</span>
+              {/* Health & Vaccination Safety subcard */}
+              <div className="sub-group-card">
+                <div className="sub-group-header">
+                  <ShieldCheck size={16} color="#C08820" />
+                  <span>Health & Vaccination Safety</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                  <div>
-                    <label style={S.label}>Vaccination Status *</label>
-                    <select className="input" value={form.vaccinationStatus} onChange={e => update('vaccinationStatus', e.target.value)}>
-                      <option>Fully Vaccinated</option>
-                      <option>Partially Vaccinated</option>
-                      <option>Due Soon / Needs Verification</option>
+
+                <div className="field-grid-2">
+                  <div className="form-group">
+                    <label className="field-label">VACCINATION STATUS *</label>
+                    <select
+                      className="boarding-select"
+                      value={form.vaccinationStatus}
+                      onChange={e => update('vaccinationStatus', e.target.value)}
+                    >
+                      <option value="Fully Vaccinated">Fully Vaccinated</option>
+                      <option value="Partially Vaccinated">Partially Vaccinated</option>
+                      <option value="Due Soon / Needs Verification">Due Soon / Needs Verification</option>
                     </select>
                   </div>
-                  <div>
-                    <label style={S.label}>Last Vaccination Date / Notes</label>
-                    <input className="input" placeholder="e.g. Rabies & DHPPiL on Jan 2026" value={form.vaccinationNotes} onChange={e => update('vaccinationNotes', e.target.value)} />
+                  <div className="form-group">
+                    <label className="field-label">LAST VACCINATION DATE / NOTES</label>
+                    <input
+                      className="boarding-input"
+                      placeholder="e.g. Rabies 2025"
+                      value={form.vaccinationNotes}
+                      onChange={e => update('vaccinationNotes', e.target.value)}
+                    />
                   </div>
                 </div>
-                <div>
-                  <label style={S.label}>Existing Medical Conditions or Regular Medicines (if any)</label>
-                  <input className="input" placeholder="e.g. Arthritis, skin allergy, ear drops twice a day" value={form.medicalConditions} onChange={e => update('medicalConditions', e.target.value)} />
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="field-label">EXISTING MEDICAL CONDITIONS OR REGULAR MEDICINES (IF ANY)</label>
+                  <input
+                    className="boarding-input"
+                    placeholder="e.g. Arthritis, skin allergy, ear drops, etc."
+                    value={form.medicalConditions}
+                    onChange={e => update('medicalConditions', e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -558,48 +663,55 @@ export default function BookBoarding() {
                 type="button"
                 onClick={() => setStep(2)}
                 disabled={!form.ownerName.trim() || !form.phone.trim() || !form.petName.trim()}
-                className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center' }}
+                className="boarding-primary-btn"
               >
-                Continue to Stay Details <ArrowRight size={16} />
+                Continue to Stay Dates <ArrowRight size={16} />
               </button>
             </div>
           )}
 
-          {/* STEP 2: STAY DETAILS */}
+          {/* ==========================================================
+              SCREEN 2: STAY DATES
+              ========================================================== */}
           {step === 2 && (
             <div>
-              <button style={S.back} onClick={() => setStep(1)}><ChevronLeft size={16} /> Back</button>
-              <h2 style={{ fontWeight: 800, color: 'var(--text)', fontSize: '18px', marginBottom: '4px' }}>Stay Duration & Schedule</h2>
-              <p style={{ color: 'var(--muted)', fontSize: '13px', marginBottom: '20px' }}>Choose check-in and check-out dates for your pet's boarding stay.</p>
-
-              {/* Pricing banner */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: '14px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-                <div>
-                  <div style={{ color: 'var(--accent)', fontWeight: 800, fontSize: '14px' }}>
-                    {form.petType} Boarding Rate: ₹{stayCalculation.dailyRate} / day
-                  </div>
-                  <div style={{ color: 'var(--muted)', fontSize: '12px' }}>
-                    Dogs ₹800/day · Cats ₹600/day · 24/7 care included
-                  </div>
+              <div className="card-header-row">
+                <div className="card-header-icon-box">
+                  <Calendar size={18} color="#C08820" />
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block' }}>ESTIMATED TOTAL</span>
-                  <strong style={{ fontSize: '18px', color: 'var(--accent)' }}>₹{stayCalculation.estimatedTotal}</strong>
+                <div>
+                  <h2 className="card-title">Stay Duration & Schedule</h2>
+                  <p className="card-subtitle">Choose check-in and check-out dates for your pet's boarding stay.</p>
                 </div>
               </div>
 
-              {/* Check-in */}
-              <div style={{ padding: '16px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)', marginBottom: '14px' }}>
-                <label style={{ ...S.label, color: 'var(--text)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Calendar size={13} style={{ color: 'var(--accent)' }} /> Check-In Schedule *
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={S.label}>Date</label>
+              {/* Rate Card (Screenshot 2 Match) */}
+              <div className="rate-highlight-card">
+                <div className="rate-icon-badge">
+                  <PawPrint size={20} color="#C08820" />
+                </div>
+                <div className="rate-content">
+                  <div className="rate-main-text">
+                    {form.petType} Boarding Rate: ₹{stayCalculation.dailyRate} / day
+                  </div>
+                  <div className="rate-sub-text">
+                    Cats: ₹600/day • 24/7 care included
+                  </div>
+                </div>
+              </div>
+
+              {/* Check-in Schedule */}
+              <div className="schedule-box">
+                <div className="schedule-header-label">
+                  <Calendar size={14} color="#C08820" />
+                  <span>CHECK-IN SCHEDULE *</span>
+                </div>
+                <div className="field-grid-2">
+                  <div className="form-group">
+                    <label className="field-label">DATE</label>
                     <input
                       type="date"
-                      className="input"
+                      className="boarding-input"
                       min={todayStr}
                       value={form.checkInDate}
                       onChange={e => {
@@ -608,58 +720,75 @@ export default function BookBoarding() {
                       }}
                     />
                   </div>
-                  <div>
-                    <label style={S.label}>Approx. Time</label>
-                    <select className="input" value={form.checkInTime} onChange={e => update('checkInTime', e.target.value)}>
-                      {TIME_SLOT_OPTIONS.map(slot => <option key={`in-${slot}`}>{slot}</option>)}
+                  <div className="form-group">
+                    <label className="field-label">APPROX. TIME</label>
+                    <select
+                      className="boarding-select"
+                      value={form.checkInTime}
+                      onChange={e => update('checkInTime', e.target.value)}
+                    >
+                      {TIME_SLOT_OPTIONS.map(slot => (
+                        <option key={`in-${slot}`} value={slot}>{slot}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
               </div>
 
-              {/* Check-out */}
-              <div style={{ padding: '16px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)', marginBottom: '20px' }}>
-                <label style={{ ...S.label, color: 'var(--text)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Calendar size={13} style={{ color: 'var(--accent)' }} /> Check-Out Schedule *
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={S.label}>Date</label>
+              {/* Check-out Schedule */}
+              <div className="schedule-box">
+                <div className="schedule-header-label">
+                  <Calendar size={14} color="#C08820" />
+                  <span>CHECK-OUT SCHEDULE *</span>
+                </div>
+                <div className="field-grid-2">
+                  <div className="form-group">
+                    <label className="field-label">DATE</label>
                     <input
                       type="date"
-                      className="input"
+                      className="boarding-input"
                       min={form.checkInDate || todayStr}
                       value={form.checkOutDate}
                       onChange={e => update('checkOutDate', e.target.value)}
                     />
                   </div>
-                  <div>
-                    <label style={S.label}>Approx. Time</label>
-                    <select className="input" value={form.checkOutTime} onChange={e => update('checkOutTime', e.target.value)}>
-                      {TIME_SLOT_OPTIONS.map(slot => <option key={`out-${slot}`}>{slot}</option>)}
+                  <div className="form-group">
+                    <label className="field-label">APPROX. TIME</label>
+                    <select
+                      className="boarding-select"
+                      value={form.checkOutTime}
+                      onChange={e => update('checkOutTime', e.target.value)}
+                    >
+                      {TIME_SLOT_OPTIONS.map(slot => (
+                        <option key={`out-${slot}`} value={slot}>{slot}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
               </div>
 
-              {/* Calculation summary */}
+              {/* Duration & Estimated Total Card */}
               {!stayCalculation.valid ? (
-                <div style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '12px', borderRadius: '12px', fontSize: '13px', marginBottom: '20px' }}>
+                <div className="boarding-notice-error" style={{ marginBottom: '18px' }}>
                   {stayCalculation.error}
                 </div>
               ) : (
-                <div style={{ padding: '16px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)', marginBottom: '20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
-                    <span style={{ color: 'var(--muted)' }}>Calculated Duration:</span>
-                    <strong style={{ color: 'var(--text)' }}>{stayCalculation.days} Day(s) {stayCalculation.nights > 0 ? `(${stayCalculation.nights} Nights)` : '(Day Stay)'}</strong>
+                <div className="stay-summary-card">
+                  <div className="summary-line">
+                    <span className="summary-label">
+                      <Calendar size={14} color="#C08820" /> Calculated Duration
+                    </span>
+                    <strong className="summary-value">
+                      {stayCalculation.days} Day(s) {stayCalculation.nights > 0 ? `(${stayCalculation.nights} Night${stayCalculation.nights > 1 ? 's' : ''})` : '(Day Stay)'}
+                    </strong>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
-                    <span style={{ color: 'var(--muted)' }}>Rate per day:</span>
-                    <span style={{ color: 'var(--text)' }}>₹{stayCalculation.dailyRate}</span>
+                  <div className="summary-line">
+                    <span className="summary-label">Rate per day</span>
+                    <span className="summary-value">₹{stayCalculation.dailyRate}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border)', fontSize: '14px' }}>
-                    <strong style={{ color: 'var(--text)' }}>Estimated Boarding Total:</strong>
-                    <strong style={{ color: 'var(--accent)', fontSize: '16px' }}>₹{stayCalculation.estimatedTotal}</strong>
+                  <div className="summary-line total-line">
+                    <strong className="summary-total-label">Estimated Boarding Total</strong>
+                    <strong className="summary-total-value">₹{stayCalculation.estimatedTotal}</strong>
                   </div>
                 </div>
               )}
@@ -668,93 +797,114 @@ export default function BookBoarding() {
                 type="button"
                 onClick={() => setStep(3)}
                 disabled={!stayCalculation.valid}
-                className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center' }}
+                className="boarding-primary-btn"
               >
-                Continue to Food & Feeding <ArrowRight size={16} />
+                Continue to Food & Diet <ArrowRight size={16} />
+              </button>
+
+              <button type="button" onClick={() => setStep(1)} className="boarding-back-btn">
+                ← Back
               </button>
             </div>
           )}
 
-          {/* STEP 3: FOOD AND FEEDING */}
+          {/* ==========================================================
+              SCREEN 3: FOOD & DIET
+              ========================================================== */}
           {step === 3 && (
             <div>
-              <button style={S.back} onClick={() => setStep(2)}><ChevronLeft size={16} /> Back</button>
-              <h2 style={{ fontWeight: 800, color: 'var(--text)', fontSize: '18px', marginBottom: '4px' }}>Food & Dietary Preferences</h2>
-              <p style={{ color: 'var(--muted)', fontSize: '13px', marginBottom: '20px' }}>Help us ensure your pet gets their favorite, familiar meals.</p>
+              <div className="card-header-row">
+                <div className="card-header-icon-box">
+                  <Utensils size={18} color="#C08820" />
+                </div>
+                <div>
+                  <h2 className="card-title">Food & Dietary Preferences</h2>
+                  <p className="card-subtitle">Help us ensure your pet gets their favorite, familiar meals.</p>
+                </div>
+              </div>
 
-              {/* Food Type */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={S.label}>Type of Food *</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+              {/* Type of Food 2x2 Grid */}
+              <div className="form-section">
+                <label className="field-label">TYPE OF FOOD *</label>
+                <div className="food-type-grid">
                   {FOOD_TYPES.map(ft => {
                     const sel = form.foodType === ft.label
+                    let IconComponent = Utensils
+                    if (ft.id === 'home') IconComponent = Home
+                    if (ft.id === 'mixed') IconComponent = Sparkles
+                    if (ft.id === 'special') IconComponent = ShieldCheck
+
                     return (
                       <button
                         key={ft.id}
                         type="button"
                         onClick={() => update('foodType', ft.label)}
-                        style={{
-                          textAlign: 'left', padding: '12px', borderRadius: '12px', cursor: 'pointer',
-                          border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
-                          background: sel ? 'var(--accent-bg)' : 'var(--surface)',
-                          color: sel ? 'var(--accent)' : 'var(--text)',
-                          fontSize: '13px', fontWeight: sel ? 700 : 500,
-                        }}
+                        className={`food-type-card ${sel ? 'selected' : ''}`}
                       >
-                        {ft.label}
+                        <div className="food-card-icon">
+                          <IconComponent size={20} color={sel ? '#C08820' : '#8A7A68'} />
+                        </div>
+                        <span className="food-card-label">{ft.label}</span>
                       </button>
                     )
                   })}
                 </div>
               </div>
 
-              {/* Food Provider */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={S.label}>Who Provides the Food? *</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {/* Who Provides Food (Radio Stack) */}
+              <div className="form-section">
+                <label className="field-label">WHO PROVIDES THE FOOD? *</label>
+                <div className="radio-options-stack">
                   {FOOD_PROVIDERS.map(fp => {
                     const sel = form.foodProvider === fp.label
                     return (
-                      <button
+                      <div
                         key={fp.id}
-                        type="button"
                         onClick={() => update('foodProvider', fp.label)}
-                        style={{
-                          textAlign: 'left', padding: '12px', borderRadius: '12px', cursor: 'pointer',
-                          border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
-                          background: sel ? 'var(--accent-bg)' : 'var(--surface)',
-                          color: sel ? 'var(--accent)' : 'var(--text)',
-                          fontSize: '13px', fontWeight: sel ? 700 : 500,
-                        }}
+                        className={`provider-option-card ${sel ? 'selected' : ''}`}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') update('foodProvider', fp.label) }}
                       >
-                        {fp.label}
-                      </button>
+                        <div className={`custom-radio ${sel ? 'checked' : ''}`}>
+                          {sel && <div className="radio-dot" />}
+                        </div>
+                        <span className="provider-option-text">{fp.label}</span>
+                      </div>
                     )
                   })}
                 </div>
               </div>
 
-              {/* Feeding Schedule */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={S.label}>Feeding Schedule & Times</label>
-                <select className="input" value={form.feedingSchedule} onChange={e => update('feedingSchedule', e.target.value)}>
-                  {FEEDING_FREQUENCIES.map(f => <option key={f}>{f}</option>)}
+              {/* Feeding Schedule & Times */}
+              <div className="form-group">
+                <label className="field-label">FEEDING SCHEDULE & TIMES *</label>
+                <select
+                  className="boarding-select"
+                  value={form.feedingSchedule}
+                  onChange={e => update('feedingSchedule', e.target.value)}
+                >
+                  {FEEDING_FREQUENCIES.map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
               </div>
 
-              {/* Special Instructions & Allergies */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={S.label}>Food Allergies or Dislikes</label>
-                <input className="input" placeholder="e.g. Allergic to chicken, loves boiled pumpkin / curd" value={form.allergies} onChange={e => update('allergies', e.target.value)} />
+              {/* Food allergies */}
+              <div className="form-group">
+                <label className="field-label">FOOD ALLERGIES OR DISLIKES</label>
+                <input
+                  className="boarding-input"
+                  placeholder="e.g. Allergic to chicken, loves boiled vegetables"
+                  value={form.allergies}
+                  onChange={e => update('allergies', e.target.value)}
+                />
               </div>
 
-              <div style={{ marginBottom: '20px' }}>
-                <label style={S.label}>Diet & Drinking Water Instructions</label>
+              {/* Diet & drinking water */}
+              <div className="form-group">
+                <label className="field-label">DIET & DRINKING WATER INSTRUCTIONS</label>
                 <textarea
-                  className="input"
+                  className="boarding-textarea"
                   rows={3}
-                  style={{ resize: 'vertical' }}
                   placeholder="e.g. 1 cup kibble with warm water at 8 AM, boiled chicken & rice at 7 PM. Please provide filtered water only."
                   value={form.specialDietInstructions}
                   onChange={e => update('specialDietInstructions', e.target.value)}
@@ -764,77 +914,128 @@ export default function BookBoarding() {
               <button
                 type="button"
                 onClick={() => setStep(4)}
-                className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center' }}
+                className="boarding-primary-btn"
               >
-                Continue to Daily Care & Habits <ArrowRight size={16} />
+                Continue to Daily Care <ArrowRight size={16} />
+              </button>
+
+              <button type="button" onClick={() => setStep(2)} className="boarding-back-btn">
+                ← Back
               </button>
             </div>
           )}
 
-          {/* STEP 4: ADDITIONAL CARE & BEHAVIOR */}
+          {/* ==========================================================
+              SCREEN 4: DAILY CARE
+              ========================================================== */}
           {step === 4 && (
             <div>
-              <button style={S.back} onClick={() => setStep(3)}><ChevronLeft size={16} /> Back</button>
-              <h2 style={{ fontWeight: 800, color: 'var(--text)', fontSize: '18px', marginBottom: '4px' }}>Care Habits & Safety</h2>
-              <p style={{ color: 'var(--muted)', fontSize: '13px', marginBottom: '20px' }}>Ensure your pet feels secure, active, and happy throughout their stay.</p>
+              <div className="card-header-row">
+                <div className="card-header-icon-box">
+                  <Heart size={18} color="#C08820" />
+                </div>
+                <div>
+                  <h2 className="card-title">Care Habits & Safety</h2>
+                  <p className="card-subtitle">Ensure your pet feels secure, active, and happy throughout their stay.</p>
+                </div>
+              </div>
 
-              {/* Dog walking if Dog */}
+              {/* Walking Schedule (if Dog) */}
               {form.petType === 'Dog' && (
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={S.label}>Walking Schedule</label>
-                  <select className="input" value={form.walkingFrequency} onChange={e => update('walkingFrequency', e.target.value)}>
-                    {WALKING_FREQUENCIES.map(w => <option key={w}>{w}</option>)}
+                <div className="form-group">
+                  <label className="field-label">WALKING SCHEDULE</label>
+                  <select
+                    className="boarding-select"
+                    value={form.walkingFrequency}
+                    onChange={e => update('walkingFrequency', e.target.value)}
+                  >
+                    {WALKING_FREQUENCIES.map(w => <option key={w} value={w}>{w}</option>)}
                   </select>
                 </div>
               )}
 
               {/* Sleeping & Toilet Habits */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                <div>
-                  <label style={S.label}>Sleeping Habits</label>
-                  <input className="input" placeholder="e.g. Needs own bed/blanket" value={form.sleepingHabits} onChange={e => update('sleepingHabits', e.target.value)} />
+              <div className="field-grid-2">
+                <div className="form-group">
+                  <label className="field-label">SLEEPING HABITS</label>
+                  <input
+                    className="boarding-input"
+                    placeholder="e.g. Needs own blanket"
+                    value={form.sleepingHabits}
+                    onChange={e => update('sleepingHabits', e.target.value)}
+                  />
                 </div>
-                <div>
-                  <label style={S.label}>Toilet Habits</label>
-                  <input className="input" placeholder="e.g. Outdoor grass, pee pad, litter" value={form.toiletHabits} onChange={e => update('toiletHabits', e.target.value)} />
+                <div className="form-group">
+                  <label className="field-label">TOILET HABITS</label>
+                  <input
+                    className="boarding-input"
+                    placeholder="Outdoor breaks"
+                    value={form.toiletHabits}
+                    onChange={e => update('toiletHabits', e.target.value)}
+                  />
                 </div>
               </div>
 
-              {/* Social Behavior & Separation anxiety */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                <div>
-                  <label style={S.label}>Behavior around other pets</label>
-                  <input className="input" placeholder="e.g. Friendly, shy, prefers solo" value={form.behaviorNotes} onChange={e => update('behaviorNotes', e.target.value)} />
+              {/* Behaviour & Anxiety */}
+              <div className="field-grid-2">
+                <div className="form-group">
+                  <label className="field-label">BEHAVIOUR AROUND OTHER PETS</label>
+                  <input
+                    className="boarding-input"
+                    placeholder="e.g. Friendly, shy, etc."
+                    value={form.behaviorNotes}
+                    onChange={e => update('behaviorNotes', e.target.value)}
+                  />
                 </div>
-                <div>
-                  <label style={S.label}>Separation Anxiety Level</label>
-                  <select className="input" value={form.separationAnxiety} onChange={e => update('separationAnxiety', e.target.value)}>
-                    <option>None / Mild</option>
-                    <option>Moderate (needs extra cuddles)</option>
-                    <option>High (gets vocal or anxious)</option>
+                <div className="form-group">
+                  <label className="field-label">SEPARATION ANXIETY</label>
+                  <select
+                    className="boarding-select"
+                    value={form.separationAnxiety}
+                    onChange={e => update('separationAnxiety', e.target.value)}
+                  >
+                    <option value="None / Mild">None / Mild</option>
+                    <option value="Moderate (needs extra cuddles)">Moderate (needs extra cuddles)</option>
+                    <option value="High (gets vocal or anxious)">High (gets vocal or anxious)</option>
                   </select>
                 </div>
               </div>
 
               {/* Emergency Contact */}
-              <div style={{ padding: '16px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)', marginBottom: '16px' }}>
-                <label style={{ ...S.label, color: 'var(--text)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Phone size={13} style={{ color: 'var(--accent)' }} /> Emergency Contact (Relative / Friend)
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <input className="input" placeholder="Emergency contact name" value={form.emergencyContactName} onChange={e => update('emergencyContactName', e.target.value)} />
-                  <input className="input" placeholder="Emergency contact phone" maxLength={10} value={form.emergencyContactPhone} onChange={e => update('emergencyContactPhone', e.target.value)} />
+              <div className="sub-group-card">
+                <div className="sub-group-header">
+                  <Phone size={15} color="#C08820" />
+                  <span>Emergency Contact (Relative / Friend)</span>
+                </div>
+                <div className="field-grid-2">
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="field-label">CONTACT NAME *</label>
+                    <input
+                      className="boarding-input"
+                      placeholder="e.g. John Doe (Relative / Friend)"
+                      value={form.emergencyContactName}
+                      onChange={e => update('emergencyContactName', e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="field-label">PHONE NUMBER *</label>
+                    <input
+                      className="boarding-input"
+                      placeholder="9876543210"
+                      maxLength={10}
+                      value={form.emergencyContactPhone}
+                      onChange={e => update('emergencyContactPhone', e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Additional notes */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={S.label}>Additional Instructions or Favorite Toys/Treats</label>
+              {/* Additional instructions */}
+              <div className="form-group">
+                <label className="field-label">ADDITIONAL INSTRUCTIONS OR FAVORITE TOYS/TREATS</label>
                 <textarea
-                  className="input"
+                  className="boarding-textarea"
                   rows={2}
-                  style={{ resize: 'vertical' }}
                   placeholder="Anything else we should know to make your pet feel at home..."
                   value={form.additionalInstructions}
                   onChange={e => update('additionalInstructions', e.target.value)}
@@ -844,81 +1045,175 @@ export default function BookBoarding() {
               <button
                 type="button"
                 onClick={() => setStep(5)}
-                className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center' }}
+                className="boarding-primary-btn"
               >
-                Review Reservation <ArrowRight size={16} />
+                Continue to Review <ArrowRight size={16} />
+              </button>
+
+              <button type="button" onClick={() => setStep(3)} className="boarding-back-btn">
+                ← Back
               </button>
             </div>
           )}
 
-          {/* STEP 5: REVIEW AND SUBMIT */}
+          {/* ==========================================================
+              SCREEN 5: REVIEW BOARDING REQUEST
+              ========================================================== */}
           {step === 5 && (
             <div>
-              <button style={S.back} onClick={() => setStep(4)}><ChevronLeft size={16} /> Back</button>
-              <h2 style={{ fontWeight: 800, color: 'var(--text)', fontSize: '18px', marginBottom: '4px' }}>Review Boarding Request</h2>
-              <p style={{ color: 'var(--muted)', fontSize: '13px', marginBottom: '20px' }}>Please verify your pet's stay details before submitting.</p>
-
-              {/* Summary card */}
-              <div style={{ padding: '20px', borderRadius: '16px', background: 'var(--surface)', border: '1px solid var(--border)', marginBottom: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '16px', borderBottom: '1px solid var(--border)', marginBottom: '14px' }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'var(--accent-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
-                    <PawPrint size={24} />
+              {/* Pet & Owner Header Pill (Matches Screen 5) */}
+              <div className="review-pet-header-pill">
+                {selectedPet?.photoUrl ? (
+                  <img src={selectedPet.photoUrl} alt={form.petName} className="review-pet-avatar" />
+                ) : (
+                  <div className="review-pet-avatar placeholder">
+                    <PawPrint size={22} color="#C08820" />
                   </div>
-                  <div>
-                    <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', margin: 0 }}>
-                      {form.petName} <span style={{ color: 'var(--accent)', fontSize: '13px', fontWeight: 600 }}>({form.petType}{form.customBreed || form.petBreed ? ` · ${form.customBreed || form.petBreed}` : ''})</span>
-                    </h3>
-                    <p style={{ color: 'var(--muted)', fontSize: '12px', margin: 0 }}>
-                      Owner: {form.ownerName} · {form.phone}
-                    </p>
+                )}
+                <div className="review-pet-info">
+                  <h3 className="review-pet-title">
+                    {form.petName} <span className="review-pet-breed">({form.petType}{displayBreed ? ` · ${displayBreed}` : ''})</span>
+                  </h3>
+                  <div className="review-owner-line">
+                    Owner: {form.ownerName}
                   </div>
-                </div>
-
-                <div style={{ display: 'grid', gap: '10px', fontSize: '13px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--muted)' }}>Check-In:</span>
-                    <strong style={{ color: 'var(--text)' }}>{form.checkInDate} at {form.checkInTime}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--muted)' }}>Check-Out:</span>
-                    <strong style={{ color: 'var(--text)' }}>{form.checkOutDate} at {form.checkOutTime}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--muted)' }}>Duration:</span>
-                    <strong style={{ color: 'var(--text)' }}>{stayCalculation.days} Day(s) {stayCalculation.nights > 0 ? `(${stayCalculation.nights} Nights)` : ''}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--muted)' }}>Food Plan:</span>
-                    <span style={{ color: 'var(--text)' }}>{form.foodType} ({form.foodProvider})</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--muted)' }}>Vaccination:</span>
-                    <span style={{ color: 'var(--text)' }}>{form.vaccinationStatus}</span>
-                  </div>
-                  {form.emergencyContactPhone && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--muted)' }}>Emergency Contact:</span>
-                      <span style={{ color: 'var(--text)' }}>{form.emergencyContactName} ({form.emergencyContactPhone})</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid var(--border)', fontSize: '15px' }}>
-                    <strong style={{ color: 'var(--text)' }}>Estimated Total:</strong>
-                    <strong style={{ color: 'var(--accent)', fontSize: '18px' }}>₹{stayCalculation.estimatedTotal}</strong>
+                  <div className="review-owner-phone">
+                    <Phone size={11} color="#C08820" /> {form.phone}
                   </div>
                 </div>
               </div>
 
-              {/* No advance payment notice */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', borderRadius: '12px', background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)', marginBottom: '22px' }}>
-                <Info size={18} style={{ color: '#34d399', flexShrink: 0, marginTop: '2px' }} />
-                <div style={{ fontSize: '12px', color: 'var(--text)', lineHeight: 1.5 }}>
-                  <strong>No advance payment required.</strong> Your request will be reviewed by our team to ensure suite availability. Payment is settled directly during pet check-in / check-out.
+              {/* 1. Stay Schedule Card */}
+              <div className="review-section-card">
+                <div className="review-card-head">
+                  <Calendar size={16} color="#C08820" />
+                  <h4>Stay Schedule</h4>
+                </div>
+                <div className="review-grid">
+                  <div className="review-spec-row">
+                    <span className="spec-label">Check-In:</span>
+                    <strong className="spec-val">{formatReviewDate(form.checkInDate, form.checkInTime)}</strong>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Check-Out:</span>
+                    <strong className="spec-val">{formatReviewDate(form.checkOutDate, form.checkOutTime)}</strong>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Duration:</span>
+                    <span className="spec-val">{stayCalculation.days} Day(s) ({stayCalculation.nights} Night{stayCalculation.nights === 1 ? '' : 's'})</span>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Daily Rate:</span>
+                    <span className="spec-val">₹{stayCalculation.dailyRate}</span>
+                  </div>
+                  <div className="review-spec-row total-highlight">
+                    <strong className="spec-label">Estimated Total:</strong>
+                    <strong className="spec-val gold">₹{stayCalculation.estimatedTotal}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Food & Diet Card */}
+              <div className="review-section-card">
+                <div className="review-card-head">
+                  <Utensils size={16} color="#C08820" />
+                  <h4>Food & Diet</h4>
+                </div>
+                <div className="review-grid">
+                  <div className="review-spec-row">
+                    <span className="spec-label">Food Type:</span>
+                    <span className="spec-val">{form.foodType}</span>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Provider:</span>
+                    <span className="spec-val">{form.foodProvider}</span>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Feeding:</span>
+                    <span className="spec-val">{form.feedingSchedule}</span>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Water / Diet Notes:</span>
+                    <span className="spec-val">{form.specialDietInstructions || '1 cup kibble with warm boiled chicken & rice at 7 PM.'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Care & Safety Card */}
+              <div className="review-section-card">
+                <div className="review-card-head">
+                  <PawPrint size={16} color="#C08820" />
+                  <h4>Care & Safety</h4>
+                </div>
+                <div className="review-grid">
+                  {form.petType === 'Dog' && (
+                    <div className="review-spec-row">
+                      <span className="spec-label">Walking:</span>
+                      <span className="spec-val">{form.walkingFrequency}</span>
+                    </div>
+                  )}
+                  <div className="review-spec-row">
+                    <span className="spec-label">Sleeping:</span>
+                    <span className="spec-val">{form.sleepingHabits || 'Needs own blanket'}</span>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Toilet:</span>
+                    <span className="spec-val">{form.toiletHabits || 'Outdoor breaks'}</span>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Behaviour:</span>
+                    <span className="spec-val">{form.behaviorNotes || 'Friendly'}</span>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Separation Anxiety:</span>
+                    <span className="spec-val">{form.separationAnxiety}</span>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Emergency Contact:</span>
+                    <span className="spec-val">{form.emergencyContactPhone || '9876543210'}</span>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Additional Notes:</span>
+                    <span className="spec-val">{form.additionalInstructions || '-'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Health & Vaccinations Card */}
+              <div className="review-section-card">
+                <div className="review-card-head">
+                  <ShieldCheck size={16} color="#C08820" />
+                  <h4>Health & Vaccinations</h4>
+                </div>
+                <div className="review-grid">
+                  <div className="review-spec-row">
+                    <span className="spec-label">Vaccination:</span>
+                    <span className="spec-val">{form.vaccinationStatus}</span>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Last Vaccination:</span>
+                    <span className="spec-val">{form.vaccinationNotes || 'Rabies 2025'}</span>
+                  </div>
+                  <div className="review-spec-row">
+                    <span className="spec-label">Medical Conditions:</span>
+                    <span className="spec-val">{form.medicalConditions || '-'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* No advance payment notice (Screen 5 Match) */}
+              <div className="payment-notice-card">
+                <div className="notice-icon-box">
+                  <Info size={17} color="#0D9488" />
+                </div>
+                <div className="notice-text">
+                  <strong>No advance payment required.</strong>
+                  <p>Your request will be reviewed by our team to ensure suite availability. Payment is settled directly during pet check-in / check-out.</p>
                 </div>
               </div>
 
               {boardingSettings?.acceptBookings === false ? (
-                <div style={{ textAlign: 'center', padding: '14px', borderRadius: '12px', background: '#F4EFE6', border: '1px solid #DFD5C5', color: '#7D6A5C', fontWeight: 700, fontSize: '14px' }}>
+                <div className="boarding-notice-warn text-center">
                   Boarding Bookings Temporarily Closed
                 </div>
               ) : (
@@ -926,16 +1221,872 @@ export default function BookBoarding() {
                   type="button"
                   onClick={handleSubmit}
                   disabled={loading || isBlocked}
-                  className="btn btn-primary"
-                  style={{ width: '100%', justifyContent: 'center', padding: '14px' }}
+                  className="boarding-primary-btn"
                 >
-                  {loading ? 'Submitting Request...' : 'Submit Boarding Request'}
+                  {loading ? 'Submitting Boarding Request...' : 'Submit Boarding Request →'}
                 </button>
               )}
+
+              <button type="button" onClick={() => setStep(4)} className="boarding-back-btn">
+                ← Back
+              </button>
             </div>
           )}
         </div>
       </div>
+
+      {/* Scoped CSS Styles strictly for the 5 Booking Screens */}
+      <style>{`
+        .boarding-flow-page {
+          background-color: #FAF7F2;
+          min-height: auto;
+          padding: 124px 16px 24px;
+          color: #221711;
+          font-family: 'DM Sans', sans-serif;
+        }
+
+        .boarding-flow-container {
+          max-width: 540px;
+          margin: 0 auto;
+          scroll-margin-top: 130px;
+        }
+
+        .suite-tag-row {
+          margin-bottom: 8px;
+          position: relative;
+          z-index: 2;
+        }
+
+        .suite-gold-tag {
+          display: inline-block;
+          background: #FAF3E3;
+          border: 1.2px solid #E6D2AB;
+          color: #B8860B;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+          padding: 4px 10px;
+          border-radius: 999px;
+        }
+
+        .boarding-heading {
+          font-family: 'Playfair Display', serif;
+          font-size: 25px;
+          font-weight: 800;
+          color: #221711;
+          margin: 0 0 6px 0;
+          line-height: 1.25;
+        }
+
+        .boarding-subheading {
+          font-size: 13px;
+          color: #7A6E63;
+          margin: 0 0 20px 0;
+          line-height: 1.45;
+        }
+
+        .boarding-notice-warn {
+          background: #FEF9C3;
+          border: 1px solid #FDE047;
+          color: #854D0E;
+          font-size: 12.5px;
+          padding: 10px 14px;
+          border-radius: 12px;
+          margin-bottom: 16px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .boarding-notice-error {
+          background: #FEE2E2;
+          border: 1px solid #FCA5A5;
+          color: #991B1B;
+          font-size: 12.5px;
+          padding: 10px 14px;
+          border-radius: 12px;
+          margin-bottom: 16px;
+        }
+
+        /* 5-Step Compact Progress Tracker */
+        .boarding-stepper {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          position: relative;
+          margin-bottom: 22px;
+          width: 100%;
+        }
+
+        .stepper-item-wrap {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          position: relative;
+          flex: 1;
+          text-align: center;
+        }
+
+        .stepper-circle {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          font-weight: 700;
+          border: 1.5px solid #D8CCBA;
+          background: #FFFFFF;
+          color: #8E7E6E;
+          margin-bottom: 5px;
+          z-index: 2;
+          transition: all 0.2s ease;
+          cursor: pointer;
+          outline: none;
+        }
+
+        .stepper-circle.active {
+          background: #C08820;
+          border-color: #C08820;
+          color: #FFFFFF;
+          box-shadow: 0 2px 8px rgba(192, 136, 32, 0.35);
+        }
+
+        .stepper-circle.completed {
+          background: #C08820;
+          border-color: #C08820;
+          color: #FFFFFF;
+        }
+
+        .stepper-label {
+          font-size: 9.5px;
+          font-weight: 600;
+          color: #9C8E7F;
+          white-space: nowrap;
+        }
+
+        .stepper-label.active,
+        .stepper-label.completed {
+          color: #221711;
+          font-weight: 800;
+        }
+
+        .stepper-connector {
+          position: absolute;
+          top: 14px;
+          left: 50%;
+          width: 100%;
+          height: 2px;
+          background: #E5DDD0;
+          z-index: 1;
+        }
+
+        .stepper-connector.completed {
+          background: #C08820;
+        }
+
+        /* Main Form Card */
+        .boarding-card {
+          background: #FFFFFF;
+          border: 1.5px solid #EFE8DC;
+          border-radius: 20px;
+          padding: 20px 16px;
+          box-shadow: 0 4px 20px rgba(60, 40, 20, 0.04);
+        }
+
+        .card-header-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .card-header-icon-box {
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          background: #FAF3E3;
+          border: 1px solid #E6D2AB;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          margin-top: 1px;
+          overflow: hidden;
+        }
+
+        .card-header-pet-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+
+        .card-title {
+          font-size: 17px;
+          font-weight: 800;
+          color: #221711;
+          margin: 0 0 3px 0;
+        }
+
+        .card-subtitle {
+          font-size: 12.5px;
+          color: #7A6E63;
+          margin: 0;
+          line-height: 1.4;
+        }
+
+        .card-subtitle.single-line-sub {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .form-section {
+          margin-bottom: 18px;
+        }
+
+        .section-head-split {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 10px;
+        }
+
+        .section-sublabel {
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.6px;
+          text-transform: uppercase;
+          color: #8C7D70;
+        }
+
+        .manage-pets-link {
+          color: #B8860B;
+          font-size: 12px;
+          font-weight: 700;
+          text-decoration: none;
+        }
+        .manage-pets-link:hover {
+          text-decoration: underline;
+        }
+
+        /* Saved Pets Stack */
+        .saved-pets-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .saved-pet-card {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 9px 12px;
+          border-radius: 12px;
+          border: 1.2px solid #EFE8DC;
+          background: #FFFFFF;
+          cursor: pointer;
+          text-align: left;
+          transition: all 0.15s ease;
+        }
+
+        .saved-pet-card:hover {
+          border-color: #D8CCBA;
+        }
+
+        .saved-pet-card.selected {
+          border-color: #C08820;
+          background: #FAF5EB;
+        }
+
+        .custom-radio {
+          width: 17px;
+          height: 17px;
+          border-radius: 50%;
+          border: 1.5px solid #C5B8A5;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          background: #FFFFFF;
+        }
+
+        .custom-radio.checked {
+          border-color: #C08820;
+        }
+
+        .custom-radio .radio-dot {
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          background: #C08820;
+        }
+
+        .pet-thumb-img {
+          width: 38px;
+          height: 38px;
+          border-radius: 9px;
+          object-fit: cover;
+          flex-shrink: 0;
+          border: 1px solid #EFE8DC;
+        }
+
+        .pet-thumb-placeholder {
+          width: 38px;
+          height: 38px;
+          border-radius: 9px;
+          background: #FAF3E3;
+          border: 1px solid #E6D2AB;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .pet-card-text {
+          min-width: 0;
+          flex: 1;
+        }
+
+        .pet-card-name {
+          font-size: 13.5px;
+          font-weight: 800;
+          color: #221711;
+        }
+
+        .pet-card-meta {
+          font-size: 11.5px;
+          color: #7A6E63;
+        }
+
+        .empty-saved-pets {
+          background: #FAF7F2;
+          border: 1px dashed #E0D5C5;
+          border-radius: 12px;
+          padding: 12px 14px;
+          font-size: 12.5px;
+          color: #7A6E63;
+        }
+
+        /* Form Controls */
+        .form-group {
+          margin-bottom: 14px;
+        }
+
+        .field-label {
+          display: block;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.6px;
+          text-transform: uppercase;
+          color: #7A6E63;
+          margin-bottom: 5px;
+        }
+
+        .boarding-input,
+        .boarding-select,
+        .boarding-textarea {
+          width: 100%;
+          background: #FFFFFF;
+          border: 1.2px solid #E0D5C5;
+          border-radius: 10px;
+          padding: 0 12px;
+          font-size: 13.5px;
+          color: #221711;
+          font-family: inherit;
+          outline: none;
+          transition: border-color 0.15s;
+        }
+
+        .boarding-input,
+        .boarding-select {
+          height: 42px;
+        }
+
+        .boarding-textarea {
+          padding: 10px 12px;
+          resize: vertical;
+        }
+
+        .boarding-input:focus,
+        .boarding-select:focus,
+        .boarding-textarea:focus {
+          border-color: #C08820;
+          box-shadow: 0 0 0 2px rgba(192, 136, 32, 0.15);
+        }
+
+        .field-grid-2 {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+
+        .field-grid-3 {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 8px;
+        }
+
+        /* Subcard containers */
+        .sub-group-card {
+          background: #FAF7F2;
+          border: 1.2px solid #EFE8DC;
+          border-radius: 14px;
+          padding: 14px;
+          margin-bottom: 18px;
+        }
+
+        .sub-group-header {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          font-size: 13px;
+          font-weight: 800;
+          color: #221711;
+          margin-bottom: 12px;
+        }
+
+        /* Primary and Back Buttons */
+        .boarding-primary-btn {
+          width: 100%;
+          height: 46px;
+          background: linear-gradient(135deg, #C58B24 0%, #B27B1B 100%);
+          border: none;
+          border-radius: 12px;
+          color: #FFFFFF;
+          font-size: 13.5px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          cursor: pointer;
+          box-shadow: 0 3px 12px rgba(184, 134, 11, 0.28);
+          transition: transform 0.15s, opacity 0.15s;
+        }
+
+        .boarding-primary-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+        }
+
+        .boarding-primary-btn:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+
+        .boarding-secondary-btn {
+          width: 100%;
+          height: 44px;
+          background: #FAF5EB;
+          border: 1.2px solid #C08820;
+          border-radius: 12px;
+          color: #B8860B;
+          font-size: 13.5px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .boarding-back-btn {
+          width: 100%;
+          background: none;
+          border: none;
+          color: #7A6E63;
+          font-size: 12.5px;
+          font-weight: 700;
+          padding: 10px 0 0;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: color 0.15s;
+        }
+
+        .boarding-back-btn:hover {
+          color: #221711;
+        }
+
+        /* SCREEN 2: Rate Card & Schedules */
+        .rate-highlight-card {
+          background: #FAF3E3;
+          border: 1.5px solid #E6D2AB;
+          border-radius: 14px;
+          padding: 12px 14px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .rate-icon-badge {
+          width: 38px;
+          height: 38px;
+          border-radius: 10px;
+          background: #FFFFFF;
+          border: 1px solid #E6D2AB;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .rate-main-text {
+          font-size: 14px;
+          font-weight: 800;
+          color: #7A4F0B;
+        }
+
+        .rate-sub-text {
+          font-size: 11.5px;
+          color: #8C7355;
+          margin-top: 1px;
+        }
+
+        .schedule-box {
+          margin-bottom: 14px;
+        }
+
+        .schedule-header-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.6px;
+          color: #7A6E63;
+          margin-bottom: 8px;
+        }
+
+        .stay-summary-card {
+          background: #FAF7F2;
+          border: 1.2px solid #EFE8DC;
+          border-radius: 14px;
+          padding: 14px 16px;
+          margin-bottom: 18px;
+        }
+
+        .summary-line {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 13px;
+          margin-bottom: 7px;
+        }
+
+        .summary-label {
+          color: #7A6E63;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .summary-value {
+          color: #221711;
+          font-weight: 700;
+        }
+
+        .summary-line.total-line {
+          margin-top: 10px;
+          padding-top: 9px;
+          border-top: 1px solid #E5DDD0;
+          margin-bottom: 0;
+        }
+
+        .summary-total-label {
+          font-size: 14px;
+          color: #221711;
+          font-weight: 800;
+        }
+
+        .summary-total-value {
+          font-size: 18px;
+          color: #C08820;
+          font-weight: 800;
+        }
+
+        /* SCREEN 3: Food 2x2 Grid & Radio options */
+        .food-type-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+
+        .food-type-card {
+          background: #FFFFFF;
+          border: 1.2px solid #E0D5C5;
+          border-radius: 12px;
+          padding: 12px 10px;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 8px;
+          text-align: left;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .food-type-card.selected {
+          border-color: #C08820;
+          background: #FAF5EB;
+        }
+
+        .food-card-icon {
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          background: #FAF7F2;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .food-type-card.selected .food-card-icon {
+          background: #FAF3E3;
+        }
+
+        .food-card-label {
+          font-size: 12px;
+          font-weight: 700;
+          color: #221711;
+          line-height: 1.35;
+        }
+
+        .food-type-card.selected .food-card-label {
+          color: #7A4F0B;
+        }
+
+        .radio-options-stack {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .provider-option-card {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 11px 12px;
+          border-radius: 12px;
+          border: 1.2px solid #E0D5C5;
+          background: #FFFFFF;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .provider-option-card.selected {
+          border-color: #C08820;
+          background: #FAF5EB;
+        }
+
+        .provider-option-text {
+          font-size: 13px;
+          font-weight: 700;
+          color: #221711;
+        }
+
+        .provider-option-card.selected .provider-option-text {
+          color: #7A4F0B;
+        }
+
+        /* SCREEN 5: Review Cards */
+        .review-pet-header-pill {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          background: #FFFFFF;
+          border: 1.2px solid #EFE8DC;
+          border-radius: 14px;
+          padding: 12px 14px;
+          margin-bottom: 16px;
+        }
+
+        .review-pet-avatar {
+          width: 44px;
+          height: 44px;
+          border-radius: 10px;
+          object-fit: cover;
+          flex-shrink: 0;
+          border: 1px solid #EFE8DC;
+        }
+
+        .review-pet-avatar.placeholder {
+          background: #FAF3E3;
+          border: 1px solid #E6D2AB;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .review-pet-title {
+          font-size: 14.5px;
+          font-weight: 800;
+          color: #221711;
+          margin: 0 0 2px 0;
+        }
+
+        .review-pet-breed {
+          color: #C08820;
+          font-weight: 700;
+          font-size: 13px;
+        }
+
+        .review-owner-line {
+          font-size: 12px;
+          color: #7A6E63;
+        }
+
+        .review-owner-phone {
+          font-size: 12px;
+          font-weight: 700;
+          color: #221711;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          margin-top: 1px;
+        }
+
+        .review-section-card {
+          background: #FFFFFF;
+          border: 1.2px solid #EFE8DC;
+          border-radius: 14px;
+          padding: 14px;
+          margin-bottom: 12px;
+        }
+
+        .review-card-head {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          margin-bottom: 10px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid #F3EDE3;
+        }
+
+        .review-card-head h4 {
+          margin: 0;
+          font-size: 13.5px;
+          font-weight: 800;
+          color: #221711;
+        }
+
+        .review-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+        }
+
+        .review-spec-row {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          font-size: 12.5px;
+          gap: 12px;
+        }
+
+        .spec-label {
+          color: #7A6E63;
+          flex-shrink: 0;
+        }
+
+        .spec-val {
+          color: #221711;
+          font-weight: 600;
+          text-align: right;
+          word-break: break-word;
+        }
+
+        .spec-val.highlight {
+          color: #C08820;
+          font-weight: 800;
+        }
+
+        .spec-val.gold {
+          color: #C08820;
+          font-size: 16px;
+        }
+
+        .review-spec-row.total-highlight {
+          margin-top: 6px;
+          padding-top: 8px;
+          border-top: 1px solid #F3EDE3;
+        }
+
+        /* Payment Notice (Screen 5 Match) */
+        .payment-notice-card {
+          background: #F0FDF4;
+          border: 1.2px solid #BBF7D0;
+          border-radius: 12px;
+          padding: 12px 14px;
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          margin-bottom: 18px;
+        }
+
+        .notice-icon-box {
+          margin-top: 1px;
+          flex-shrink: 0;
+        }
+
+        .notice-text strong {
+          display: block;
+          font-size: 12.5px;
+          color: #166534;
+          margin-bottom: 2px;
+        }
+
+        .notice-text p {
+          margin: 0;
+          font-size: 11.5px;
+          color: #15803D;
+          line-height: 1.4;
+        }
+
+        .boarding-success-icon-wrap {
+          width: 80px;
+          height: 80px;
+          border-radius: 50%;
+          background: #DCFCE7;
+          border: 2px solid #86EFAC;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 20px;
+        }
+
+        /* Responsive Breakpoints */
+        @media (max-width: 360px) {
+          .boarding-flow-page {
+            padding: 118px 10px 20px;
+          }
+          .boarding-card {
+            padding: 16px 12px;
+          }
+          .field-grid-3 {
+            grid-template-columns: 1fr;
+          }
+          .food-type-grid {
+            grid-template-columns: 1fr;
+          }
+          .stepper-label {
+            font-size: 8.5px;
+          }
+          .stepper-circle {
+            width: 25px;
+            height: 25px;
+            font-size: 11px;
+          }
+        }
+
+        @media (min-width: 641px) {
+          .boarding-flow-page {
+            padding: 132px 16px 32px;
+          }
+        }
+      `}</style>
     </div>
   )
 }

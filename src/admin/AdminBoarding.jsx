@@ -13,26 +13,43 @@ import {
 } from 'firebase/firestore'
 import {
   AlertCircle,
+  ArrowRight,
+  ArrowUpDown,
   Building2,
   Calendar,
   Check,
   CheckCircle2,
   Clock,
+  Droplets,
+  Edit3,
   Eye,
+  FileText,
+  Footprints,
   Heart,
   IndianRupee,
   LogIn,
   LogOut,
+  Mail,
   MessageCircle,
+  Moon,
   PawPrint,
   Phone,
+  PlusSquare,
+  Receipt,
   RefreshCw,
+  Scale,
   Search,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
+  Syringe,
+  Tag,
   User,
+  Users,
   Utensils,
+  Wallet,
   X,
+  Bed,
 } from 'lucide-react'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -44,6 +61,7 @@ import {
   buildBoardingWhatsAppMessage,
   fetchBoardingSettings,
   normalizeBoardingSettings,
+  calculateBoardingStay,
 } from '../utils/boardingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 
@@ -66,6 +84,44 @@ const statusLabel = (st = 'pending') => {
 const money = (val) => Number(val || 0).toLocaleString('en-IN')
 const shortId = (id = '') => `#${id.slice(0, 8).toUpperCase()}`
 
+function formatBoardingDate(dateStr) {
+  if (!dateStr) return 'N/A'
+  try {
+    const parts = String(dateStr).split('-')
+    if (parts.length === 3) {
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+      if (!Number.isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      }
+    }
+    const d = new Date(dateStr)
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    }
+  } catch {}
+  return dateStr
+}
+
+function formatPetAge(dob) {
+  if (!dob) return ''
+  try {
+    const birth = new Date(dob)
+    if (!Number.isNaN(birth.getTime())) {
+      const now = new Date()
+      let years = now.getFullYear() - birth.getFullYear()
+      let months = now.getMonth() - birth.getMonth()
+      if (months < 0) {
+        years--
+        months += 12
+      }
+      if (years > 0) return `${years} Year${years > 1 ? 's' : ''}`
+      if (months > 0) return `${months} Month${months > 1 ? 's' : ''}`
+      return 'Puppy / Kitten'
+    }
+  } catch {}
+  return dob
+}
+
 export default function AdminBoarding() {
   const { user } = useAuth()
   const { sendNotification } = useNotifications()
@@ -73,25 +129,66 @@ export default function AdminBoarding() {
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(null)
+
+  // Filters & Search state
   const [search, setSearch] = useState('')
   const [statusF, setStatusF] = useState('all')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateRangeF, setDateRangeF] = useState('all')
+  const [customDateFrom, setCustomDateFrom] = useState('')
+  const [customDateTo, setCustomDateTo] = useState('')
+  const [petTypeF, setPetTypeF] = useState('all')
+  const [customerF, setCustomerF] = useState('')
+  const [amountRangeF, setAmountRangeF] = useState('all')
+  const [sortBy, setSortBy] = useState('latest')
+  const [showFilterDrawer, setShowFilterDrawer] = useState(false)
 
+  // Modals state
   const [selectedBooking, setSelectedBooking] = useState(null)
-  const [cancelTarget, setCancelTarget] = useState(null)
-  const [cancelReason, setCancelReason] = useState('')
+  const [isEditing, setIsEditing] = useState(false)
+  const [editForm, setEditForm] = useState(null)
+
+  // Check-In Advance Payment Modal state
+  const [checkInModal, setCheckInModal] = useState(null)
+  const [hasAdvancePayment, setHasAdvancePayment] = useState(null) // null | 'yes' | 'no'
+  const [advanceAmountInput, setAdvanceAmountInput] = useState('')
+
+  // Checkout modal
   const [checkoutModal, setCheckoutModal] = useState(null)
   const [checkoutAmount, setCheckoutAmount] = useState('')
 
+  // Cancel modal
+  const [cancelTarget, setCancelTarget] = useState(null)
+  const [cancelReason, setCancelReason] = useState('')
+
+  // Settings modal
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [settingsForm, setSettingsForm] = useState(null)
   const [savingSettings, setSavingSettings] = useState(false)
 
+  // UI state
   const [toastMessage, setToastMessage] = useState('')
   const [toastType, setToastType] = useState('success')
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
+
+  // Prevent background scrolling while any modal/drawer is open
+  useEffect(() => {
+    const isAnyModalOpen = Boolean(
+      selectedBooking ||
+      showFilterDrawer ||
+      checkInModal ||
+      checkoutModal ||
+      cancelTarget ||
+      showSettingsModal
+    )
+    if (isAnyModalOpen) {
+      const prev = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = prev
+      }
+    }
+  }, [selectedBooking, showFilterDrawer, checkInModal, checkoutModal, cancelTarget, showSettingsModal])
 
   const fetchBoardings = async () => {
     setLoading(true)
@@ -116,7 +213,7 @@ export default function AdminBoarding() {
     fetchBoardings()
     fetchBusinessInfo(db).then(biz => {
       setAdminWhatsappNumber(biz.whatsappNumber || '')
-      setShopName(biz.contact.shopName || 'Paw Paw Pet Grooming')
+      setShopName(biz.contact?.shopName || 'Paw Paw Pet Grooming')
     })
     fetchBoardingSettings(db).then(s => setSettingsForm(s))
   }, [])
@@ -127,22 +224,129 @@ export default function AdminBoarding() {
     return () => window.clearTimeout(t)
   }, [toastMessage])
 
+  const patchLocal = (id, patch) => {
+    setBookings(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b))
+    setSelectedBooking(prev => prev?.id === id ? { ...prev, ...patch } : prev)
+  }
+
+  const hasActiveFilters = useMemo(() => {
+    return (
+      statusF !== 'all' ||
+      dateRangeF !== 'all' ||
+      petTypeF !== 'all' ||
+      customerF.trim() !== '' ||
+      amountRangeF !== 'all' ||
+      sortBy !== 'latest'
+    )
+  }, [statusF, dateRangeF, petTypeF, customerF, amountRangeF, sortBy])
+
+  const clearAllFilters = () => {
+    setStatusF('all')
+    setDateRangeF('all')
+    setCustomDateFrom('')
+    setCustomDateTo('')
+    setPetTypeF('all')
+    setCustomerF('')
+    setAmountRangeF('all')
+    setSortBy('latest')
+    setSearch('')
+  }
+
   const filtered = useMemo(() => {
     let r = [...bookings]
-    if (statusF !== 'all') r = r.filter(b => b.status === statusF)
-    if (dateFrom) r = r.filter(b => b.checkInDate && b.checkInDate >= dateFrom)
-    if (dateTo) r = r.filter(b => b.checkInDate && b.checkInDate <= dateTo)
+
+    // Status filter
+    if (statusF !== 'all') {
+      r = r.filter(b => String(b.status || '').toLowerCase() === statusF.toLowerCase())
+    }
+
+    // Pet Type
+    if (petTypeF !== 'all') {
+      r = r.filter(b => String(b.petType || '').toLowerCase() === petTypeF.toLowerCase())
+    }
+
+    // Customer name / email / phone
+    if (customerF.trim()) {
+      const s = customerF.toLowerCase()
+      r = r.filter(b =>
+        b.ownerName?.toLowerCase().includes(s) ||
+        b.userEmail?.toLowerCase().includes(s) ||
+        b.phone?.includes(s)
+      )
+    }
+
+    // Search query
     if (search.trim()) {
       const s = search.toLowerCase()
       r = r.filter(b =>
         b.ownerName?.toLowerCase().includes(s) ||
         b.petName?.toLowerCase().includes(s) ||
+        b.petBreed?.toLowerCase().includes(s) ||
         b.phone?.includes(s) ||
         b.id?.toLowerCase().includes(s)
       )
     }
+
+    // Date Range
+    if (dateRangeF !== 'all') {
+      const now = new Date()
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      if (dateRangeF === 'today') {
+        r = r.filter(b => b.checkInDate === todayStr || (b.checkInDate <= todayStr && b.checkOutDate >= todayStr))
+      } else if (dateRangeF === 'week') {
+        const nextWeek = new Date(now.getTime() + 7 * 86400000)
+        const nextWeekStr = `${nextWeek.getFullYear()}-${String(nextWeek.getMonth() + 1).padStart(2, '0')}-${String(nextWeek.getDate()).padStart(2, '0')}`
+        r = r.filter(b => b.checkInDate >= todayStr && b.checkInDate <= nextWeekStr)
+      } else if (dateRangeF === 'month') {
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+        r = r.filter(b => b.checkInDate?.startsWith(currentMonth))
+      } else if (dateRangeF === 'custom') {
+        if (customDateFrom) r = r.filter(b => b.checkInDate >= customDateFrom)
+        if (customDateTo) r = r.filter(b => b.checkInDate <= customDateTo)
+      }
+    }
+
+    // Amount Range
+    if (amountRangeF !== 'all') {
+      r = r.filter(b => {
+        const amt = Number(b.estimatedTotal || 0)
+        if (amountRangeF === 'under_2000') return amt < 2000
+        if (amountRangeF === '2000_5000') return amt >= 2000 && amt <= 5000
+        if (amountRangeF === '5000_10000') return amt >= 5000 && amt <= 10000
+        if (amountRangeF === 'above_10000') return amt > 10000
+        return true
+      })
+    }
+
+    // Sorting
+    r.sort((a, b) => {
+      if (sortBy === 'latest') {
+        const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (new Date(a.createdAt || 0).getTime() || 0)
+        const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (new Date(b.createdAt || 0).getTime() || 0)
+        return tB - tA
+      }
+      if (sortBy === 'oldest') {
+        const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (new Date(a.createdAt || 0).getTime() || 0)
+        const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (new Date(b.createdAt || 0).getTime() || 0)
+        return tA - tB
+      }
+      if (sortBy === 'checkin_asc') {
+        return String(a.checkInDate || '').localeCompare(String(b.checkInDate || ''))
+      }
+      if (sortBy === 'checkin_desc') {
+        return String(b.checkInDate || '').localeCompare(String(a.checkInDate || ''))
+      }
+      if (sortBy === 'amount_desc') {
+        return (Number(b.estimatedTotal) || 0) - (Number(a.estimatedTotal) || 0)
+      }
+      if (sortBy === 'amount_asc') {
+        return (Number(a.estimatedTotal) || 0) - (Number(b.estimatedTotal) || 0)
+      }
+      return 0
+    })
+
     return r
-  }, [bookings, statusF, dateFrom, dateTo, search])
+  }, [bookings, statusF, petTypeF, customerF, search, dateRangeF, customDateFrom, customDateTo, amountRangeF, sortBy])
 
   const stats = useMemo(() => {
     const total = bookings.length
@@ -155,12 +359,7 @@ export default function AdminBoarding() {
     return { total, checkedIn, upcoming, pending, revenue }
   }, [bookings])
 
-  const patchLocal = (id, patch) => {
-    setBookings(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b))
-    setSelectedBooking(prev => prev?.id === id ? { ...prev, ...patch } : prev)
-  }
-
-  // Confirm / Approve request
+  // Confirm / Approve
   const handleConfirm = async (b) => {
     setUpdating(b.id)
     try {
@@ -186,28 +385,47 @@ export default function AdminBoarding() {
     setUpdating(null)
   }
 
-  // Check In
-  const handleCheckIn = async (b) => {
-    setUpdating(b.id)
-    try {
-      const patch = { status: BOARDING_STATUS.CHECKED_IN, updatedAt: serverTimestamp(), checkedInAt: serverTimestamp() }
-      await updateDoc(doc(db, 'boardingBookings', b.id), patch)
-      patchLocal(b.id, { ...patch, updatedAt: new Date(), checkedInAt: new Date() })
+  // Open Check-In Dialog
+  const openCheckInDialog = (b) => {
+    setCheckInModal(b)
+    setHasAdvancePayment(null)
+    setAdvanceAmountInput('')
+  }
 
-      if (b.userId) {
-        await sendNotification(b.userId, {
-          title: `${b.petName} has Checked In!`,
-          message: `${b.petName} is safely settled into their cozy suite. We will keep you updated!`,
+  // Confirm Check In (with advance payment logic)
+  const confirmCheckIn = async () => {
+    if (!checkInModal) return
+    setUpdating(checkInModal.id)
+    try {
+      const existingCollected = Number(checkInModal.amountCollected || 0)
+      const advanceNow = hasAdvancePayment === 'yes' ? (Number(advanceAmountInput) || 0) : 0
+      const newTotalCollected = existingCollected + advanceNow
+
+      const patch = {
+        status: BOARDING_STATUS.CHECKED_IN,
+        amountCollected: newTotalCollected,
+        advanceAmount: (Number(checkInModal.advanceAmount || 0)) + advanceNow,
+        updatedAt: serverTimestamp(),
+        checkedInAt: serverTimestamp(),
+      }
+      await updateDoc(doc(db, 'boardingBookings', checkInModal.id), patch)
+      patchLocal(checkInModal.id, { ...patch, updatedAt: new Date(), checkedInAt: new Date() })
+
+      if (checkInModal.userId) {
+        await sendNotification(checkInModal.userId, {
+          title: `${checkInModal.petName} has Checked In!`,
+          message: `${checkInModal.petName} is safely settled into their cozy suite. ${advanceNow > 0 ? `Advance payment of ₹${money(advanceNow)} recorded.` : 'We will keep you updated!'}`,
           type: 'boarding_checked_in',
-          bookingId: b.id,
+          bookingId: checkInModal.id,
           actionUrl: '/my-bookings',
         })
       }
       setToastType('success')
-      setToastMessage(`${b.petName} marked as checked in.`)
+      setToastMessage(`${checkInModal.petName} marked as checked in.${advanceNow > 0 ? ` Advance of ₹${money(advanceNow)} recorded.` : ''}`)
+      setCheckInModal(null)
     } catch {
       setToastType('error')
-      setToastMessage('Could not update check-in.')
+      setToastMessage('Could not complete check-in.')
     }
     setUpdating(null)
   }
@@ -215,17 +433,22 @@ export default function AdminBoarding() {
   // Check Out
   const openCheckOutModal = (b) => {
     setCheckoutModal(b)
-    setCheckoutAmount(String(b.estimatedTotal || ''))
+    const previousCollected = Number(b.amountCollected || 0)
+    const remaining = Math.max(0, Number(b.estimatedTotal || 0) - previousCollected)
+    setCheckoutAmount(String(remaining))
   }
 
   const confirmCheckOut = async () => {
     if (!checkoutModal) return
-    const amt = Number(checkoutAmount) || Number(checkoutModal.estimatedTotal) || 0
+    const additionalAmt = Number(checkoutAmount) || 0
+    const previousCollected = Number(checkoutModal.amountCollected || 0)
+    const finalTotalCollected = previousCollected + additionalAmt
+
     setUpdating(checkoutModal.id)
     try {
       const patch = {
         status: BOARDING_STATUS.CHECKED_OUT,
-        amountCollected: amt,
+        amountCollected: finalTotalCollected,
         updatedAt: serverTimestamp(),
         checkedOutAt: serverTimestamp(),
       }
@@ -286,7 +509,26 @@ export default function AdminBoarding() {
     setUpdating(null)
   }
 
-  // Save Settings
+  // Toggle bookings open/closed quickly from header pill
+  const toggleBookingsOpen = async () => {
+    if (!settingsForm) return
+    const nextVal = !(settingsForm.acceptBookings !== false)
+    try {
+      await setDoc(doc(db, 'settings', 'boardingSettings'), {
+        ...settingsForm,
+        acceptBookings: nextVal,
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
+      setSettingsForm(p => ({ ...p, acceptBookings: nextVal }))
+      setToastType('success')
+      setToastMessage(`Boarding bookings are now ${nextVal ? 'OPEN' : 'CLOSED'}.`)
+    } catch {
+      setToastType('error')
+      setToastMessage('Could not update booking status.')
+    }
+  }
+
+  // Save Settings Modal
   const saveBoardingSettings = async () => {
     setSavingSettings(true)
     try {
@@ -304,239 +546,378 @@ export default function AdminBoarding() {
     setSavingSettings(false)
   }
 
+  // Single Edit workflow in details modal
+  const openEditMode = (b) => {
+    setEditForm({ ...b })
+    setIsEditing(true)
+  }
+
+  const saveReservationEdit = async () => {
+    if (!editForm || !selectedBooking) return
+    setUpdating(selectedBooking.id)
+    try {
+      const stayCalc = calculateBoardingStay(
+        editForm.checkInDate,
+        editForm.checkInTime,
+        editForm.checkOutDate,
+        editForm.checkOutTime,
+        editForm.petType,
+        {
+          dogDailyRate: editForm.dailyRate || 800,
+          catDailyRate: editForm.dailyRate || 600,
+          otherDailyRate: editForm.dailyRate || 500,
+        }
+      )
+
+      const patch = {
+        ...editForm,
+        stayDays: stayCalc.days || editForm.stayDays || 1,
+        stayNights: stayCalc.nights || editForm.stayNights || 0,
+        dailyRate: Number(editForm.dailyRate) || stayCalc.dailyRate || 800,
+        estimatedTotal: stayCalc.estimatedTotal || editForm.estimatedTotal || 0,
+        updatedAt: serverTimestamp(),
+      }
+      delete patch.id
+
+      await updateDoc(doc(db, 'boardingBookings', selectedBooking.id), patch)
+      const updated = { ...selectedBooking, ...patch, updatedAt: new Date() }
+      patchLocal(selectedBooking.id, updated)
+      setSelectedBooking(updated)
+      setIsEditing(false)
+      setToastType('success')
+      setToastMessage('Reservation snapshot updated successfully.')
+    } catch (err) {
+      setToastType('error')
+      setToastMessage('Could not save reservation changes.')
+    }
+    setUpdating(null)
+  }
+
   return (
     <div className="admin-page">
       {toastMessage && (
-        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1400 }}>
           <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
         </div>
       )}
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '14px' }}>
-        <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text)', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Building2 size={26} style={{ color: 'var(--accent)' }} /> Pet Boarding Reservations
-          </h1>
-          <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '4px 0 0' }}>
-            Manage overnight pet stays, check-ins, check-outs, and customer care instructions.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{
-            fontSize: '12px',
-            fontWeight: 700,
-            padding: '6px 12px',
-            borderRadius: '999px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: (settingsForm?.acceptBookings !== false) ? 'rgba(52,211,153,0.1)' : 'rgba(239,68,68,0.1)',
-            color: (settingsForm?.acceptBookings !== false) ? '#34d399' : '#ef4444',
-            border: `1px solid ${(settingsForm?.acceptBookings !== false) ? 'rgba(52,211,153,0.3)' : 'rgba(239,68,68,0.3)'}`,
-          }}>
-            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: (settingsForm?.acceptBookings !== false) ? '#34d399' : '#ef4444' }} />
-            {(settingsForm?.acceptBookings !== false) ? 'Bookings Open' : 'Bookings Closed'}
+      <div className="boarding-admin-header">
+        <div className="header-title-group">
+          <div className="header-icon-badge">
+            <Building2 size={26} />
           </div>
+          <div>
+            <h1 className="header-title">Pet Boarding Reservations</h1>
+            <p className="header-subtitle">
+              Manage overnight pet stays, check-ins, check-outs, and customer care instructions.
+            </p>
+          </div>
+        </div>
 
-          <button onClick={() => setShowSettingsModal(true)} className="btn btn-secondary" style={{ fontSize: '13px', padding: '8px 14px' }}>
-            <Settings size={15} /> Rates & Settings
+        <div className="header-actions">
+          <button
+            type="button"
+            onClick={toggleBookingsOpen}
+            className={`pill-status-btn ${(settingsForm?.acceptBookings !== false) ? 'open' : 'closed'}`}
+            title="Click to toggle booking availability"
+          >
+            <span className="dot" />
+            <span>{(settingsForm?.acceptBookings !== false) ? 'Bookings Open' : 'Bookings Closed'}</span>
           </button>
-          <button onClick={fetchBoardings} className="btn btn-secondary" style={{ fontSize: '13px', padding: '8px 14px' }}>
-            <RefreshCw size={15} /> Refresh
+
+          <button onClick={() => setShowSettingsModal(true)} className="btn btn-secondary action-btn">
+            <Settings size={14} />
+            <span>Rates & Settings</span>
+          </button>
+
+          <button onClick={fetchBoardings} className="btn btn-secondary action-btn">
+            <RefreshCw size={14} />
+            <span>Refresh</span>
           </button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-        <div style={{ padding: '16px', borderRadius: '16px', background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>Total Stays</span>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text)', marginTop: '4px' }}>{stats.total}</div>
+      {/* Summary Cards: 4 in 1 single row */}
+      <div className="boarding-stats-grid">
+        <div className="boarding-stat-card stays">
+          <div className="stat-card-head">
+            <div className="stat-icon-box">
+              <Calendar size={14} className="stat-icon" />
+            </div>
+            <span className="stat-label">Total Stays</span>
+          </div>
+          <div className="stat-val">{stats.total}</div>
         </div>
-        <div style={{ padding: '16px', borderRadius: '16px', background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <span style={{ fontSize: '11px', color: '#60a5fa', fontWeight: 700, textTransform: 'uppercase' }}>Currently Checked In</span>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#60a5fa', marginTop: '4px' }}>{stats.checkedIn}</div>
+
+        <div className="boarding-stat-card checked-in">
+          <div className="stat-card-head">
+            <div className="stat-icon-box">
+              <LogIn size={14} className="stat-icon" />
+            </div>
+            <span className="stat-label">Checked In</span>
+          </div>
+          <div className="stat-val">{stats.checkedIn}</div>
         </div>
-        <div style={{ padding: '16px', borderRadius: '16px', background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700, textTransform: 'uppercase' }}>Pending Requests</span>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#f59e0b', marginTop: '4px' }}>{stats.pending}</div>
+
+        <div className="boarding-stat-card pending">
+          <div className="stat-card-head">
+            <div className="stat-icon-box">
+              <Clock size={14} className="stat-icon" />
+            </div>
+            <span className="stat-label">Pending</span>
+          </div>
+          <div className="stat-val">{stats.pending}</div>
         </div>
-        <div style={{ padding: '16px', borderRadius: '16px', background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 700, textTransform: 'uppercase' }}>Boarding Revenue</span>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#34d399', marginTop: '4px' }}>₹{money(stats.revenue)}</div>
+
+        <div className="boarding-stat-card revenue">
+          <div className="stat-card-head">
+            <div className="stat-icon-box">
+              <IndianRupee size={14} className="stat-icon" />
+            </div>
+            <span className="stat-label">Revenue</span>
+          </div>
+          <div className="stat-val revenue-val">₹{money(stats.revenue)}</div>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div style={{ padding: '16px', borderRadius: '16px', background: 'var(--card)', border: '1px solid var(--border)', marginBottom: '20px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
-        <div style={{ flex: '1 1 220px', position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+      {/* Search & Filter Bar: Single row with Search, Filters, and Latest First */}
+      <div className="boarding-filter-bar">
+        <div className="boarding-search-wrap">
+          <Search size={15} className="search-icon" />
           <input
-            className="input"
+            className="input search-input"
             placeholder="Search by customer, pet, phone..."
-            style={{ paddingLeft: '36px' }}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          {search && (
+            <button type="button" className="search-clear-btn" onClick={() => setSearch('')}>
+              <X size={13} />
+            </button>
+          )}
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {STATUS_OPTS.map(st => (
-            <button
-              key={st}
-              onClick={() => setStatusF(st)}
-              className={`filter-btn${statusF === st ? ' active' : ''}`}
-              style={{
-                padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-                border: `1px solid ${statusF === st ? 'var(--accent)' : 'var(--border)'}`,
-                background: statusF === st ? 'var(--accent-bg)' : 'transparent',
-                color: statusF === st ? 'var(--accent)' : 'var(--muted)',
-              }}
-            >
-              {statusLabel(st)}
-            </button>
-          ))}
-        </div>
+        <button
+          type="button"
+          className={`boarding-filter-btn ${hasActiveFilters ? 'active' : ''}`}
+          onClick={() => setShowFilterDrawer(true)}
+        >
+          <SlidersHorizontal size={14} />
+          <span>Filters</span>
+          {hasActiveFilters && <span className="active-filter-dot" />}
+        </button>
       </div>
 
-      {/* Bookings Table / List */}
+      {/* Booking count row */}
+      <div className="boarding-count-row">
+        <span className="boarding-results-count">
+          <strong>{filtered.length}</strong> {filtered.length === 1 ? 'Booking' : 'Bookings'}
+        </span>
+      </div>
+
+      {/* Bookings List */}
       {loading ? (
-        <Spinner text="Loading boarding requests..." />
+        <Spinner text="Loading boarding reservations..." />
       ) : filtered.length === 0 ? (
-        <div style={{ padding: '48px 20px', textAlign: 'center', background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)' }}>
-          <Building2 size={36} style={{ color: 'var(--muted)', margin: '0 auto 12px' }} />
-          <h3 style={{ color: 'var(--text)', fontSize: '16px', fontWeight: 700, margin: '0 0 6px' }}>No boarding requests found</h3>
-          <p style={{ color: 'var(--muted)', fontSize: '13px', margin: 0 }}>Reservations made by customers will appear here.</p>
+        <div className="boarding-empty-state">
+          <Building2 size={40} className="empty-icon" />
+          <h3>No boarding requests found</h3>
+          <p>
+            {hasActiveFilters || search
+              ? 'No reservations match your current filters. Try resetting filters.'
+              : 'Reservations made by customers will appear here.'}
+          </p>
+          {(hasActiveFilters || search) && (
+            <button type="button" className="btn btn-secondary" onClick={clearAllFilters} style={{ marginTop: '12px' }}>
+              Clear Filters
+            </button>
+          )}
         </div>
       ) : (
-        <div style={{ display: 'grid', gap: '12px' }}>
+        <div className="boarding-cards-grid">
           {filtered.map(b => {
             const isPending = b.status === BOARDING_STATUS.PENDING
             const isConfirmed = b.status === BOARDING_STATUS.CONFIRMED
             const isCheckedIn = b.status === BOARDING_STATUS.CHECKED_IN
+            const isCheckedOut = b.status === BOARDING_STATUS.CHECKED_OUT
+            const isCancelled = b.status === BOARDING_STATUS.CANCELLED
 
             return (
-              <div
-                key={b.id}
-                style={{
-                  background: 'var(--card)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '16px',
-                  padding: '18px 20px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: '14px',
-                }}
-              >
-                {/* Left: Pet & Customer Details */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '240px' }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'var(--accent-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', flexShrink: 0 }}>
+              <div key={b.id} className="boarding-admin-card">
+                <div className="boarding-card-top">
+                  <div
+                    className="boarding-card-pet-avatar"
+                    onClick={() => { setSelectedBooking(b); setIsEditing(false) }}
+                    style={{ cursor: 'pointer' }}
+                  >
                     {b.petPhotoUrl ? (
-                      <img src={b.petPhotoUrl} alt={b.petName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }} />
-                    ) : (
+                      <img
+                        src={b.petPhotoUrl}
+                        alt={b.petName}
+                        onError={e => {
+                          e.currentTarget.style.display = 'none'
+                          if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex'
+                        }}
+                      />
+                    ) : null}
+                    <div className="avatar-fallback" style={{ display: b.petPhotoUrl ? 'none' : 'flex' }}>
                       <PawPrint size={22} />
-                    )}
+                    </div>
                   </div>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <strong style={{ fontSize: '15px', color: 'var(--text)' }}>{b.petName}</strong>
-                      <span className={`badge ${STATUS_BADGE[b.status] || 'badge-pending'}`}>
+
+                  <div
+                    className="boarding-card-header-info"
+                    onClick={() => { setSelectedBooking(b); setIsEditing(false) }}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <div className="boarding-card-title-row">
+                      <strong className="boarding-card-pet-name">{b.petName}</strong>
+                      <span className={`boarding-status-pill ${b.status || 'pending'}`}>
                         {statusLabel(b.status)}
                       </span>
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-                      {b.petType} {b.petBreed ? `· ${b.petBreed}` : ''}
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text)', marginTop: '2px' }}>
-                      Owner: {b.ownerName} ({b.phone})
-                    </div>
-                  </div>
-                </div>
 
-                {/* Middle: Stay dates */}
-                <div style={{ minWidth: '180px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>Stay Schedule</div>
-                  <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 600, marginTop: '2px' }}>
-                    {b.checkInDate} → {b.checkOutDate}
-                  </div>
-                  <div style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 700, marginTop: '2px' }}>
-                    {b.stayDays || 1} Day(s) · ₹{b.estimatedTotal || 0}
-                  </div>
-                </div>
+                    <div className="boarding-card-breed">
+                      {b.petType || 'Pet'} · {b.petBreed || 'Breed Not Specified'}
+                    </div>
 
-                {/* Right: Actions */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div className="boarding-card-owner">
+                      <span><User size={12} /> Owner: <strong>{b.ownerName}</strong></span>
+                      {b.phone && <span><Phone size={12} /> {b.phone}</span>}
+                    </div>
+                  </div>
+
+                  {/* Top-Right Edit Icon Button */}
                   <button
-                    onClick={() => setSelectedBooking(b)}
-                    className="btn btn-secondary"
-                    style={{ fontSize: '12px', padding: '7px 12px' }}
+                    type="button"
+                    className="boarding-card-edit-btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedBooking(b)
+                      openEditMode(b)
+                    }}
+                    aria-label={`Edit ${b.petName}'s reservation`}
+                    title="Edit Reservation"
                   >
-                    <Eye size={14} /> View Details
+                    <Edit3 size={15} />
                   </button>
+                </div>
 
-                  {/* WhatsApp */}
-                  {adminWhatsappNumber && (
-                    <a
-                      href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(b, shopName)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-secondary"
-                      style={{ fontSize: '12px', padding: '7px 10px', color: '#25D366' }}
-                      title="WhatsApp customer"
-                    >
-                      <MessageCircle size={15} />
-                    </a>
-                  )}
+                {/* Middle details strip: 2 columns, clean and uncrowded */}
+                <div className="boarding-card-strip">
+                  <div className="boarding-strip-item">
+                    <div className="strip-icon-box">
+                      <Calendar size={14} />
+                    </div>
+                    <div className="boarding-strip-text">
+                      <span className="strip-label">Stay Schedule</span>
+                      <strong className="strip-val">
+                        {formatBoardingDate(b.checkInDate)} → {formatBoardingDate(b.checkOutDate)}
+                      </strong>
+                      <span className="strip-sub">{b.stayDays || 1} Day(s)</span>
+                    </div>
+                  </div>
 
-                  {/* Approve */}
+                  <div className="boarding-strip-item">
+                    <div className="strip-icon-box">
+                      <IndianRupee size={14} />
+                    </div>
+                    <div className="boarding-strip-text">
+                      <span className="strip-label">Total Amount</span>
+                      <strong className="strip-val amount">₹{money(b.estimatedTotal)}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Status-Specific Action Buttons */}
+                <div className="boarding-card-actions">
                   {isPending && (
-                    <button
-                      onClick={() => handleConfirm(b)}
-                      disabled={updating === b.id}
-                      className="btn btn-primary"
-                      style={{ fontSize: '12px', padding: '7px 14px' }}
-                    >
-                      <Check size={14} /> Approve
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="card-action-btn confirm"
+                        onClick={() => handleConfirm(b)}
+                        disabled={updating === b.id}
+                      >
+                        <CheckCircle2 size={16} />
+                        <span>{updating === b.id ? 'Confirming...' : 'Confirm Booking'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="card-action-btn cancel"
+                        onClick={() => setCancelTarget(b)}
+                      >
+                        <X size={16} />
+                        <span>Cancel Request</span>
+                      </button>
+                    </>
                   )}
 
-                  {/* Check In */}
                   {isConfirmed && (
-                    <button
-                      onClick={() => handleCheckIn(b)}
-                      disabled={updating === b.id}
-                      className="btn btn-primary"
-                      style={{ fontSize: '12px', padding: '7px 14px', background: '#3b82f6' }}
-                    >
-                      <LogIn size={14} /> Check In
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="card-action-btn checkin"
+                        onClick={() => openCheckInDialog(b)}
+                      >
+                        <LogIn size={16} />
+                        <span>Check In</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="card-action-btn cancel"
+                        onClick={() => setCancelTarget(b)}
+                      >
+                        <X size={16} />
+                        <span>Cancel Request</span>
+                      </button>
+                    </>
                   )}
 
-                  {/* Check Out */}
                   {isCheckedIn && (
-                    <button
-                      onClick={() => openCheckOutModal(b)}
-                      disabled={updating === b.id}
-                      className="btn btn-primary"
-                      style={{ fontSize: '12px', padding: '7px 14px', background: '#10b981' }}
-                    >
-                      <LogOut size={14} /> Check Out
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="card-action-btn checkout"
+                        onClick={() => openCheckOutModal(b)}
+                      >
+                        <LogOut size={16} />
+                        <span>Check Out</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="card-action-btn details"
+                        onClick={() => { setSelectedBooking(b); setIsEditing(false) }}
+                      >
+                        <Eye size={15} />
+                        <span>View Details</span>
+                      </button>
+                    </>
                   )}
 
-                  {/* Cancel / Reject */}
-                  {(isPending || isConfirmed) && (
-                    <button
-                      onClick={() => setCancelTarget(b)}
-                      className="btn btn-secondary"
-                      style={{ fontSize: '12px', padding: '7px 10px', color: '#ef4444' }}
-                      title="Cancel or reject request"
-                    >
-                      <X size={15} />
-                    </button>
+                  {(isCheckedOut || isCancelled) && (
+                    <>
+                      <button
+                        type="button"
+                        className="card-action-btn details"
+                        onClick={() => { setSelectedBooking(b); setIsEditing(false) }}
+                      >
+                        <Eye size={15} />
+                        <span>View Details</span>
+                      </button>
+                      {adminWhatsappNumber && (
+                        <a
+                          href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(b, shopName)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="card-action-btn whatsapp"
+                        >
+                          <MessageCircle size={15} />
+                          <span>WhatsApp</span>
+                        </a>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -545,83 +926,764 @@ export default function AdminBoarding() {
         </div>
       )}
 
-      {/* FULL DETAILS MODAL */}
-      {selectedBooking && (
-        <div className="modal-overlay" onClick={() => setSelectedBooking(null)}>
-          <div className="reschedule-modal-card" style={{ maxWidth: '640px', width: '100%' }} onClick={e => e.stopPropagation()}>
-            <div className="reschedule-modal-header">
-              <div>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Boarding Reservation #{selectedBooking.id.slice(0, 8).toUpperCase()}</h3>
-                <span className={`badge ${STATUS_BADGE[selectedBooking.status]}`} style={{ marginTop: '4px', display: 'inline-block' }}>
-                  {statusLabel(selectedBooking.status)}
-                </span>
+      {/* ============================================================
+          FILTERS & SORTING BOTTOM SHEET / MODAL
+          ============================================================ */}
+      {showFilterDrawer && (
+        <div className="modal-overlay filter-drawer-overlay" onClick={() => setShowFilterDrawer(false)}>
+          <div className="filters-bottom-sheet" onClick={e => e.stopPropagation()}>
+            <div className="bottom-sheet-handle" />
+
+            <div className="bottom-sheet-head">
+              <div className="head-title">
+                <SlidersHorizontal size={18} color="var(--accent)" />
+                <h3>Filters & Sorting</h3>
               </div>
-              <button type="button" className="icon-btn" onClick={() => setSelectedBooking(null)}><X size={18} /></button>
+              <button type="button" className="icon-btn" onClick={() => setShowFilterDrawer(false)}>
+                <X size={18} />
+              </button>
             </div>
 
-            <div style={{ display: 'grid', gap: '14px', maxHeight: '68vh', overflowY: 'auto', paddingRight: '4px' }}>
-              {/* Pet & Owner Section */}
-              <div style={{ padding: '14px', borderRadius: '12px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Pet & Owner Details</span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '8px', fontSize: '13px' }}>
-                  <div><strong>Pet:</strong> {selectedBooking.petName} ({selectedBooking.petType} - {selectedBooking.petBreed || 'N/A'})</div>
-                  <div><strong>Gender / Weight:</strong> {selectedBooking.petGender || 'N/A'} · {selectedBooking.petWeight ? `${selectedBooking.petWeight} kg` : 'N/A'}</div>
-                  <div><strong>Owner:</strong> {selectedBooking.ownerName}</div>
-                  <div><strong>Phone:</strong> {selectedBooking.phone}</div>
-                  <div><strong>Email:</strong> {selectedBooking.userEmail || 'N/A'}</div>
-                  <div><strong>Emergency:</strong> {selectedBooking.emergencyContactName ? `${selectedBooking.emergencyContactName} (${selectedBooking.emergencyContactPhone})` : 'None'}</div>
+            <div className="bottom-sheet-body">
+              {/* Status pills */}
+              <div className="filter-group">
+                <label className="filter-label">Booking Status</label>
+                <div className="filter-pills-row">
+                  {STATUS_OPTS.map(st => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setStatusF(st)}
+                      className={`filter-pill-opt ${statusF === st ? 'active' : ''}`}
+                    >
+                      {statusLabel(st)}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Health & Vaccine */}
-              <div style={{ padding: '14px', borderRadius: '12px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Health & Vaccinations</span>
-                <div style={{ display: 'grid', gap: '6px', marginTop: '8px', fontSize: '13px' }}>
-                  <div><strong>Vaccination Status:</strong> {selectedBooking.vaccinationStatus}</div>
-                  {selectedBooking.vaccinationNotes && <div><strong>Vaccine Notes:</strong> {selectedBooking.vaccinationNotes}</div>}
-                  {selectedBooking.medicalConditions && <div><strong>Medical Conditions / Meds:</strong> {selectedBooking.medicalConditions}</div>}
+              {/* 2-col: Date range & Sort by */}
+              <div className="filter-two-col">
+                <div className="filter-group">
+                  <label className="filter-label"><Calendar size={13} /> Date Range</label>
+                  <select
+                    className="input"
+                    value={dateRangeF}
+                    onChange={e => setDateRangeF(e.target.value)}
+                  >
+                    <option value="all">All Dates</option>
+                    <option value="today">Today / Active Today</option>
+                    <option value="week">Next 7 Days</option>
+                    <option value="month">This Month</option>
+                    <option value="custom">Custom Date Range</option>
+                  </select>
+                </div>
+
+                <div className="filter-group">
+                  <label className="filter-label"><ArrowUpDown size={13} /> Sort By</label>
+                  <select
+                    className="input"
+                    value={sortBy}
+                    onChange={e => setSortBy(e.target.value)}
+                  >
+                    <option value="latest">Latest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="checkin_asc">Stay Date (Earliest)</option>
+                    <option value="checkin_desc">Stay Date (Latest)</option>
+                    <option value="amount_desc">Amount (High to Low)</option>
+                    <option value="amount_asc">Amount (Low to High)</option>
+                  </select>
                 </div>
               </div>
 
-              {/* Stay Schedule & Pricing */}
-              <div style={{ padding: '14px', borderRadius: '12px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Stay & Billing</span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '8px', fontSize: '13px' }}>
-                  <div><strong>Check-In:</strong> {selectedBooking.checkInDate} at {selectedBooking.checkInTime}</div>
-                  <div><strong>Check-Out:</strong> {selectedBooking.checkOutDate} at {selectedBooking.checkOutTime}</div>
-                  <div><strong>Duration:</strong> {selectedBooking.stayDays} Day(s) ({selectedBooking.stayNights || 0} Nights)</div>
-                  <div><strong>Daily Rate:</strong> ₹{selectedBooking.dailyRate}</div>
-                  <div><strong>Estimated Total:</strong> <span style={{ color: 'var(--accent)', fontWeight: 800 }}>₹{selectedBooking.estimatedTotal}</span></div>
-                  <div><strong>Amount Collected:</strong> {selectedBooking.amountCollected ? `₹${selectedBooking.amountCollected}` : 'Pending collection'}</div>
+              {dateRangeF === 'custom' && (
+                <div className="filter-two-col" style={{ marginTop: '-6px' }}>
+                  <div className="filter-group">
+                    <label className="filter-label">From Date</label>
+                    <input
+                      type="date"
+                      className="input"
+                      value={customDateFrom}
+                      onChange={e => setCustomDateFrom(e.target.value)}
+                    />
+                  </div>
+                  <div className="filter-group">
+                    <label className="filter-label">To Date</label>
+                    <input
+                      type="date"
+                      className="input"
+                      value={customDateTo}
+                      onChange={e => setCustomDateTo(e.target.value)}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Food & Care Preferences */}
-              <div style={{ padding: '14px', borderRadius: '12px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Food & Care Instructions</span>
-                <div style={{ display: 'grid', gap: '6px', marginTop: '8px', fontSize: '13px' }}>
-                  <div><strong>Food Type:</strong> {selectedBooking.foodType}</div>
-                  <div><strong>Food Provider:</strong> {selectedBooking.foodProvider}</div>
-                  <div><strong>Feeding Schedule:</strong> {selectedBooking.feedingSchedule}</div>
-                  {selectedBooking.specialDietInstructions && <div><strong>Diet/Water Notes:</strong> {selectedBooking.specialDietInstructions}</div>}
-                  {selectedBooking.walkingFrequency !== 'N/A' && <div><strong>Walking Routine:</strong> {selectedBooking.walkingFrequency}</div>}
-                  {selectedBooking.sleepingHabits && <div><strong>Sleeping Habits:</strong> {selectedBooking.sleepingHabits}</div>}
-                  {selectedBooking.toiletHabits && <div><strong>Toilet Habits:</strong> {selectedBooking.toiletHabits}</div>}
-                  {selectedBooking.behaviorNotes && <div><strong>Behavior around pets:</strong> {selectedBooking.behaviorNotes}</div>}
-                  <div><strong>Separation Anxiety:</strong> {selectedBooking.separationAnxiety}</div>
-                  {selectedBooking.additionalInstructions && <div><strong>Special Requests:</strong> {selectedBooking.additionalInstructions}</div>}
+              {/* 3-col: Pet type, Customer, Amount Range */}
+              <div className="filter-three-col">
+                <div className="filter-group">
+                  <label className="filter-label"><PawPrint size={13} /> Pet Type</label>
+                  <select
+                    className="input"
+                    value={petTypeF}
+                    onChange={e => setPetTypeF(e.target.value)}
+                  >
+                    <option value="all">All (Dog & Cat)</option>
+                    <option value="Dog">Dogs Only</option>
+                    <option value="Cat">Cats Only</option>
+                  </select>
+                </div>
+
+                <div className="filter-group">
+                  <label className="filter-label"><User size={13} /> Customer</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Search customer..."
+                    value={customerF}
+                    onChange={e => setCustomerF(e.target.value)}
+                  />
+                </div>
+
+                <div className="filter-group">
+                  <label className="filter-label"><IndianRupee size={13} /> Amount Range</label>
+                  <select
+                    className="input"
+                    value={amountRangeF}
+                    onChange={e => setAmountRangeF(e.target.value)}
+                  >
+                    <option value="all">All Amounts</option>
+                    <option value="under_2000">Under ₹2,000</option>
+                    <option value="2000_5000">₹2,000 – ₹5,000</option>
+                    <option value="5000_10000">₹5,000 – ₹10,000</option>
+                    <option value="above_10000">Above ₹10,000</option>
+                  </select>
                 </div>
               </div>
             </div>
 
-            <div className="reschedule-modal-footer" style={{ marginTop: '16px' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setSelectedBooking(null)}>Close</button>
+            <div className="bottom-sheet-footer">
+              <button type="button" className="btn btn-secondary" onClick={clearAllFilters}>
+                <RefreshCw size={14} /> Clear All
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => setShowFilterDrawer(false)}>
+                <Check size={15} /> Apply Filters
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* CHECK OUT MODAL */}
+      {/* ============================================================
+          BOARDING RESERVATION DETAILS MODAL (Matches Screenshot 1)
+          ============================================================ */}
+      {selectedBooking && (
+        <div className="modal-overlay" onClick={() => { setSelectedBooking(null); setIsEditing(false) }}>
+          <div className="boarding-details-modal" onClick={e => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="details-modal-header">
+              <div className="header-meta">
+                <div className="title-row">
+                  <h2 className="details-title">
+                    {isEditing ? 'Edit Boarding Reservation' : 'Boarding Reservation'}
+                  </h2>
+                  <span className={`boarding-status-pill ${selectedBooking.status || 'pending'}`}>
+                    {selectedBooking.status === 'checked_out' && <CheckCircle2 size={13} />}
+                    {selectedBooking.status === 'checked_in' && <LogIn size={13} />}
+                    {selectedBooking.status === 'confirmed' && <Check size={13} />}
+                    {statusLabel(selectedBooking.status)}
+                  </span>
+                </div>
+                <span className="details-ref-id">{shortId(selectedBooking.id)}</span>
+              </div>
+
+              <div className="header-actions-row">
+                {!isEditing && adminWhatsappNumber && (
+                  <a
+                    href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(selectedBooking, shopName)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="details-header-btn whatsapp"
+                  >
+                    <MessageCircle size={14} /> WhatsApp
+                  </a>
+                )}
+
+                {/* EXACTLY ONE EDIT BUTTON FOR THE WHOLE RESERVATION */}
+                {!isEditing ? (
+                  <button
+                    type="button"
+                    className="details-header-btn edit"
+                    onClick={() => openEditMode(selectedBooking)}
+                  >
+                    <Edit3 size={14} /> Edit
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="details-header-btn cancel-edit"
+                    onClick={() => setIsEditing(false)}
+                  >
+                    Cancel
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="details-close-btn"
+                  onClick={() => { setSelectedBooking(null); setIsEditing(false) }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="details-modal-body">
+              {!isEditing ? (
+                <>
+                  {/* CARD A: Pet & Owner Details */}
+                  <div className="boarding-section-card">
+                    <div className="section-card-header">
+                      <div className="section-icon-wrap paw">
+                        <PawPrint size={16} />
+                      </div>
+                      <h3>Pet & Owner Details</h3>
+                    </div>
+
+                    <div className="pet-hero-row">
+                      <div className="pet-avatar-large">
+                        {selectedBooking.petPhotoUrl ? (
+                          <img
+                            src={selectedBooking.petPhotoUrl}
+                            alt={selectedBooking.petName}
+                            onError={e => {
+                              e.currentTarget.style.display = 'none'
+                              if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex'
+                            }}
+                          />
+                        ) : null}
+                        <div className="avatar-fallback" style={{ display: selectedBooking.petPhotoUrl ? 'none' : 'flex' }}>
+                          <PawPrint size={24} />
+                        </div>
+                      </div>
+
+                      <div className="pet-hero-info">
+                        <strong className="pet-hero-name">{selectedBooking.petName || 'Pet'}</strong>
+                        <div className="pet-hero-subtitle">
+                          {selectedBooking.petType || 'Pet'} • {selectedBooking.petBreed || 'Breed Not Specified'}
+                        </div>
+
+                        <div className="pet-pills-row">
+                          {selectedBooking.petGender && (
+                            <span className="pet-pill">
+                              <Users size={12} /> {selectedBooking.petGender}
+                            </span>
+                          )}
+                          {selectedBooking.petDob && (
+                            <span className="pet-pill">
+                              <Calendar size={12} /> {formatPetAge(selectedBooking.petDob)}
+                            </span>
+                          )}
+                          {selectedBooking.petWeight && (
+                            <span className="pet-pill">
+                              <Scale size={12} /> {selectedBooking.petWeight} kg
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="detail-two-col-grid">
+                      <div className="detail-item">
+                        <span className="detail-label"><User size={14} /> Owner Name</span>
+                        <strong className="detail-val">{selectedBooking.ownerName || 'N/A'}</strong>
+                      </div>
+
+                      <div className="detail-item">
+                        <span className="detail-label"><ShieldCheck size={14} /> Emergency Contact</span>
+                        <strong className="detail-val">
+                          {selectedBooking.emergencyContactPhone
+                            ? `${selectedBooking.emergencyContactName ? selectedBooking.emergencyContactName + ' ' : ''}(${selectedBooking.emergencyContactPhone})`
+                            : 'None'}
+                        </strong>
+                      </div>
+
+                      <div className="detail-item">
+                        <span className="detail-label"><Phone size={14} /> Phone Number</span>
+                        <strong className="detail-val">{selectedBooking.phone || 'N/A'}</strong>
+                      </div>
+
+                      <div className="detail-item">
+                        <span className="detail-label"><Mail size={14} /> Email</span>
+                        <strong className="detail-val email">{selectedBooking.userEmail || 'N/A'}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CARD B: Health & Vaccinations */}
+                  <div className="boarding-section-card">
+                    <div className="section-card-header">
+                      <div className="section-icon-wrap shield">
+                        <ShieldCheck size={16} />
+                      </div>
+                      <h3>Health & Vaccinations</h3>
+                    </div>
+
+                    <div className="detail-two-col-grid">
+                      <div className="detail-item">
+                        <span className="detail-label"><Syringe size={14} /> Vaccination Status</span>
+                        <span className="badge-vaccine">
+                          {selectedBooking.vaccinationStatus || 'Fully Vaccinated'}
+                        </span>
+                      </div>
+
+                      <div className="detail-item">
+                        <span className="detail-label"><Calendar size={14} /> Last Vaccination / Notes</span>
+                        <strong className="detail-val">{selectedBooking.vaccinationNotes || 'None'}</strong>
+                      </div>
+                    </div>
+
+                    <div className="detail-item full" style={{ marginTop: '12px' }}>
+                      <span className="detail-label"><PlusSquare size={14} /> Medical Conditions / Medicines</span>
+                      <strong className="detail-val">
+                        {selectedBooking.medicalConditions || selectedBooking.medicines || selectedBooking.allergies || 'No'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* CARD C: Stay & Billing Details */}
+                  <div className="boarding-section-card">
+                    <div className="section-card-header">
+                      <div className="section-icon-wrap calendar">
+                        <Calendar size={16} />
+                      </div>
+                      <h3>Stay & Billing Details</h3>
+                    </div>
+
+                    <div className="stay-banner-strip">
+                      <div className="stay-banner-item">
+                        <span className="stay-label"><Calendar size={13} /> Check-In</span>
+                        <strong className="stay-val">{formatBoardingDate(selectedBooking.checkInDate)}</strong>
+                        <span className="stay-sub">{selectedBooking.checkInTime || '10:00 AM'}</span>
+                      </div>
+
+                      <div className="stay-arrow">
+                        <ArrowRight size={18} />
+                      </div>
+
+                      <div className="stay-banner-item">
+                        <span className="stay-label"><Calendar size={13} /> Check-Out</span>
+                        <strong className="stay-val">{formatBoardingDate(selectedBooking.checkOutDate)}</strong>
+                        <span className="stay-sub">{selectedBooking.checkOutTime || '12:00 PM'}</span>
+                      </div>
+
+                      <div className="stay-banner-item total">
+                        <span className="stay-label"><Moon size={13} /> Total Stay</span>
+                        <strong className="stay-val duration">
+                          {selectedBooking.stayDays || 1} Days
+                        </strong>
+                        <span className="stay-sub">({selectedBooking.stayNights || 0} Nights)</span>
+                      </div>
+                    </div>
+
+                    <div className="billing-three-col-row">
+                      <div className="billing-item">
+                        <span className="billing-label"><Tag size={14} /> Daily Rate</span>
+                        <strong className="billing-val">₹{money(selectedBooking.dailyRate || 800)}</strong>
+                      </div>
+
+                      <div className="billing-item">
+                        <span className="billing-label"><Receipt size={14} /> Estimated Total</span>
+                        <strong className="billing-val estimated">₹{money(selectedBooking.estimatedTotal)}</strong>
+                      </div>
+
+                      <div className="billing-item">
+                        <span className="billing-label"><Wallet size={14} /> Amount Collected</span>
+                        <strong className="billing-val collected">₹{money(selectedBooking.amountCollected || 0)}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CARD D: Food & Care Instructions */}
+                  <div className="boarding-section-card">
+                    <div className="section-card-header">
+                      <div className="section-icon-wrap food">
+                        <Utensils size={16} />
+                      </div>
+                      <h3>Food & Care Instructions</h3>
+                    </div>
+
+                    <div className="detail-two-col-grid care">
+                      <div className="detail-item">
+                        <span className="detail-label"><Utensils size={14} /> Food Type</span>
+                        <strong className="detail-val">{selectedBooking.foodType || 'Packaged Pet Food'}</strong>
+                      </div>
+
+                      <div className="detail-item">
+                        <span className="detail-label"><Utensils size={14} /> Food Provider</span>
+                        <strong className="detail-val">{selectedBooking.foodProvider || 'Owner will provide'}</strong>
+                      </div>
+
+                      <div className="detail-item">
+                        <span className="detail-label"><Clock size={14} /> Feeding Schedule</span>
+                        <strong className="detail-val">{selectedBooking.feedingSchedule || 'Twice a day'}</strong>
+                      </div>
+
+                      <div className="detail-item">
+                        <span className="detail-label"><Droplets size={14} /> Diet / Water Notes</span>
+                        <strong className="detail-val">
+                          {selectedBooking.specialDietInstructions || selectedBooking.waterInstructions || 'None'}
+                        </strong>
+                      </div>
+
+                      <div className="detail-item">
+                        <span className="detail-label"><PawPrint size={14} /> Walking Routine</span>
+                        <strong className="detail-val">{selectedBooking.walkingFrequency || '2 walks per day (Standard)'}</strong>
+                      </div>
+
+                      <div className="detail-item">
+                        <span className="detail-label"><Bed size={14} /> Sleeping Habits</span>
+                        <strong className="detail-val">{selectedBooking.sleepingHabits || 'None'}</strong>
+                      </div>
+
+                      <div className="detail-item">
+                        <span className="detail-label"><Footprints size={14} /> Toilet Habits</span>
+                        <strong className="detail-val">{selectedBooking.toiletHabits || 'Outdoor breaks'}</strong>
+                      </div>
+
+                      <div className="detail-item">
+                        <span className="detail-label"><Users size={14} /> Behaviour around pets</span>
+                        <strong className="detail-val">{selectedBooking.behaviorNotes || 'Friendly'}</strong>
+                      </div>
+
+                      <div className="detail-item full">
+                        <span className="detail-label"><FileText size={14} /> Special Requests</span>
+                        <strong className="detail-val">{selectedBooking.additionalInstructions || 'None'}</strong>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* EDIT FORM (Controlled by the single Edit button) */
+                <div className="boarding-edit-form">
+                  <div className="boarding-section-card">
+                    <h4 className="edit-sec-title">Pet Details</h4>
+                    <div className="filter-two-col">
+                      <div>
+                        <label className="edit-input-label">Pet Name</label>
+                        <input
+                          className="input"
+                          value={editForm.petName || ''}
+                          onChange={e => setEditForm(p => ({ ...p, petName: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Pet Type</label>
+                        <select
+                          className="input"
+                          value={editForm.petType || 'Dog'}
+                          onChange={e => setEditForm(p => ({ ...p, petType: e.target.value }))}
+                        >
+                          <option value="Dog">Dog</option>
+                          <option value="Cat">Cat</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Breed</label>
+                        <input
+                          className="input"
+                          value={editForm.petBreed || ''}
+                          onChange={e => setEditForm(p => ({ ...p, petBreed: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Weight (kg)</label>
+                        <input
+                          className="input"
+                          value={editForm.petWeight || ''}
+                          onChange={e => setEditForm(p => ({ ...p, petWeight: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="boarding-section-card">
+                    <h4 className="edit-sec-title">Owner & Emergency Contact</h4>
+                    <div className="filter-two-col">
+                      <div>
+                        <label className="edit-input-label">Owner Name</label>
+                        <input
+                          className="input"
+                          value={editForm.ownerName || ''}
+                          onChange={e => setEditForm(p => ({ ...p, ownerName: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Phone Number</label>
+                        <input
+                          className="input"
+                          value={editForm.phone || ''}
+                          onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Email</label>
+                        <input
+                          className="input"
+                          value={editForm.userEmail || ''}
+                          onChange={e => setEditForm(p => ({ ...p, userEmail: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Emergency Phone</label>
+                        <input
+                          className="input"
+                          value={editForm.emergencyContactPhone || ''}
+                          onChange={e => setEditForm(p => ({ ...p, emergencyContactPhone: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="boarding-section-card">
+                    <h4 className="edit-sec-title">Stay Dates & Daily Rate</h4>
+                    <div className="filter-two-col">
+                      <div>
+                        <label className="edit-input-label">Check-In Date</label>
+                        <input
+                          type="date"
+                          className="input"
+                          value={editForm.checkInDate || ''}
+                          onChange={e => setEditForm(p => ({ ...p, checkInDate: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Check-Out Date</label>
+                        <input
+                          type="date"
+                          className="input"
+                          value={editForm.checkOutDate || ''}
+                          onChange={e => setEditForm(p => ({ ...p, checkOutDate: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Check-In Time</label>
+                        <input
+                          className="input"
+                          value={editForm.checkInTime || '10:00 AM'}
+                          onChange={e => setEditForm(p => ({ ...p, checkInTime: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Check-Out Time</label>
+                        <input
+                          className="input"
+                          value={editForm.checkOutTime || '12:00 PM'}
+                          onChange={e => setEditForm(p => ({ ...p, checkOutTime: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Daily Rate (₹)</label>
+                        <input
+                          type="number"
+                          className="input"
+                          value={editForm.dailyRate || 800}
+                          onChange={e => setEditForm(p => ({ ...p, dailyRate: Number(e.target.value) }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="boarding-section-card">
+                    <h4 className="edit-sec-title">Health & Instructions</h4>
+                    <div style={{ display: 'grid', gap: '10px' }}>
+                      <div>
+                        <label className="edit-input-label">Vaccination Status</label>
+                        <input
+                          className="input"
+                          value={editForm.vaccinationStatus || ''}
+                          onChange={e => setEditForm(p => ({ ...p, vaccinationStatus: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Vaccine / Medical Notes</label>
+                        <input
+                          className="input"
+                          value={editForm.vaccinationNotes || ''}
+                          onChange={e => setEditForm(p => ({ ...p, vaccinationNotes: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Special Requests / Care Notes</label>
+                        <textarea
+                          className="input"
+                          rows={2}
+                          value={editForm.additionalInstructions || ''}
+                          onChange={e => setEditForm(p => ({ ...p, additionalInstructions: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="details-modal-footer">
+              {isEditing ? (
+                <>
+                  <button type="button" className="btn btn-secondary" onClick={() => setIsEditing(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={updating === selectedBooking.id}
+                    onClick={saveReservationEdit}
+                  >
+                    {updating === selectedBooking.id ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-details-close-wide"
+                  onClick={() => setSelectedBooking(null)}
+                >
+                  <X size={16} /> Close
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          CHECK-IN MODAL: ADVANCE PAYMENT WORKFLOW
+          ============================================================ */}
+      {checkInModal && (
+        <div className="modal-overlay" onClick={() => setCheckInModal(null)}>
+          <div className="reschedule-modal-card" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
+            <div className="reschedule-modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <LogIn size={20} color="#0284c7" />
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800 }}>Check In Pet — {checkInModal.petName}</h3>
+              </div>
+              <button type="button" className="icon-btn" onClick={() => setCheckInModal(null)}><X size={18} /></button>
+            </div>
+
+            <div style={{ padding: '6px 0 16px' }}>
+              <p style={{ fontSize: '14px', color: 'var(--text)', fontWeight: 600, margin: '0 0 14px' }}>
+                Have you collected any advance payment?
+              </p>
+
+              {/* Yes / No Choices */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+                <button
+                  type="button"
+                  className={`btn ${hasAdvancePayment === 'yes' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setHasAdvancePayment('yes')}
+                  style={{ justifyContent: 'center', padding: '11px 14px', fontWeight: 700 }}
+                >
+                  Yes
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${hasAdvancePayment === 'no' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => { setHasAdvancePayment('no'); setAdvanceAmountInput('') }}
+                  style={{ justifyContent: 'center', padding: '11px 14px', fontWeight: 700 }}
+                >
+                  No
+                </button>
+              </div>
+
+              {hasAdvancePayment === 'yes' && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                    Advance Amount Collected (₹)
+                  </label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={advanceAmountInput}
+                    onChange={e => setAdvanceAmountInput(e.target.value)}
+                    placeholder="Enter advance amount, e.g. 2000"
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              {/* Concise Summary Before Saving */}
+              {hasAdvancePayment !== null && (
+                <div style={{
+                  background: 'var(--surface)',
+                  border: '1.5px solid var(--border)',
+                  borderRadius: '14px',
+                  padding: '14px 16px',
+                  fontSize: '12.5px',
+                  display: 'grid',
+                  gap: '8px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
+                    <span>Estimated Total Stay:</span>
+                    <strong style={{ color: 'var(--text)' }}>₹{money(checkInModal.estimatedTotal)}</strong>
+                  </div>
+
+                  {Number(checkInModal.amountCollected || 0) > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
+                      <span>Existing Recorded Payment:</span>
+                      <strong style={{ color: '#16a34a' }}>₹{money(checkInModal.amountCollected)}</strong>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
+                    <span>Amount Collected Now:</span>
+                    <strong style={{ color: hasAdvancePayment === 'yes' ? '#16a34a' : 'var(--text)' }}>
+                      ₹{hasAdvancePayment === 'yes' ? money(advanceAmountInput || 0) : '0'}
+                    </strong>
+                  </div>
+
+                  <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 800 }}>
+                    <span style={{ color: 'var(--text)' }}>Resulting Total Collected:</span>
+                    <span style={{ color: '#16a34a', fontSize: '14px' }}>
+                      ₹{money(Number(checkInModal.amountCollected || 0) + (hasAdvancePayment === 'yes' ? (Number(advanceAmountInput) || 0) : 0))}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--muted)' }}>
+                    <span>Remaining Balance:</span>
+                    <span style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                      ₹{money(Math.max(0, Number(checkInModal.estimatedTotal || 0) - (Number(checkInModal.amountCollected || 0) + (hasAdvancePayment === 'yes' ? (Number(advanceAmountInput) || 0) : 0))))}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="reschedule-modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setCheckInModal(null)}>Cancel</button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ background: '#0284c7' }}
+                disabled={
+                  hasAdvancePayment === null ||
+                  (hasAdvancePayment === 'yes' && (!advanceAmountInput || Number(advanceAmountInput) <= 0)) ||
+                  updating === checkInModal.id
+                }
+                onClick={confirmCheckIn}
+              >
+                {updating === checkInModal.id ? 'Processing...' : 'Confirm Check-In'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          CHECKOUT MODAL
+          ============================================================ */}
       {checkoutModal && (
         <div className="modal-overlay" onClick={() => setCheckoutModal(null)}>
           <div className="reschedule-modal-card" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
@@ -630,23 +1692,39 @@ export default function AdminBoarding() {
               <button type="button" className="icon-btn" onClick={() => setCheckoutModal(null)}><X size={18} /></button>
             </div>
             <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '14px' }}>
-              Confirm check-out for <strong>{checkoutModal.petName}</strong> and record payment collected.
+              Confirm check-out for <strong>{checkoutModal.petName}</strong> and record final payment collected.
             </p>
+
+            <div style={{ background: 'var(--surface)', padding: '12px 14px', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '14px', fontSize: '12.5px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: 'var(--muted)' }}>Stay Total:</span>
+                <strong>₹{money(checkoutModal.estimatedTotal)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: 'var(--muted)' }}>Already Collected (Advance):</span>
+                <strong style={{ color: '#16a34a' }}>₹{money(checkoutModal.amountCollected || 0)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '6px' }}>
+                <span style={{ fontWeight: 700 }}>Remaining Balance Due:</span>
+                <strong style={{ color: 'var(--accent)' }}>
+                  ₹{money(Math.max(0, Number(checkoutModal.estimatedTotal || 0) - Number(checkoutModal.amountCollected || 0)))}
+                </strong>
+              </div>
+            </div>
+
             <div style={{ marginBottom: '16px' }}>
               <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
-                Total Amount Collected (₹)
+                Amount Collecting Now at Check-Out (₹)
               </label>
               <input
                 className="input"
                 type="number"
                 value={checkoutAmount}
                 onChange={e => setCheckoutAmount(e.target.value)}
-                placeholder="Enter final collected amount"
+                placeholder="Enter amount collected at checkout"
               />
-              <span style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px', display: 'block' }}>
-                Original estimate: ₹{checkoutModal.estimatedTotal} ({checkoutModal.stayDays} days)
-              </span>
             </div>
+
             <div className="reschedule-modal-footer">
               <button type="button" className="btn btn-secondary" onClick={() => setCheckoutModal(null)}>Cancel</button>
               <button type="button" className="btn btn-primary" onClick={confirmCheckOut}>
@@ -657,7 +1735,9 @@ export default function AdminBoarding() {
         </div>
       )}
 
-      {/* CANCEL MODAL */}
+      {/* ============================================================
+          CANCEL REQUEST MODAL
+          ============================================================ */}
       {cancelTarget && (
         <div className="modal-overlay" onClick={() => setCancelTarget(null)}>
           <div className="reschedule-modal-card" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
@@ -689,7 +1769,9 @@ export default function AdminBoarding() {
         </div>
       )}
 
-      {/* SETTINGS MODAL */}
+      {/* ============================================================
+          RATES & SETTINGS MODAL
+          ============================================================ */}
       {showSettingsModal && settingsForm && (
         <div className="modal-overlay" onClick={() => setShowSettingsModal(false)}>
           <div className="reschedule-modal-card" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
@@ -698,7 +1780,7 @@ export default function AdminBoarding() {
               <button type="button" className="icon-btn" onClick={() => setShowSettingsModal(false)}><X size={18} /></button>
             </div>
             <div style={{ display: 'grid', gap: '16px', marginTop: '12px' }}>
-              {/* Setting B: Accept Boarding Bookings */}
+              {/* Accept Bookings */}
               <div style={{
                 padding: '14px 16px',
                 borderRadius: '14px',
@@ -726,7 +1808,7 @@ export default function AdminBoarding() {
                 />
               </div>
 
-              {/* Setting A: Show NEW Badge */}
+              {/* Show NEW Badge */}
               <div style={{
                 padding: '14px 16px',
                 borderRadius: '14px',
@@ -808,6 +1890,7 @@ export default function AdminBoarding() {
                 </div>
               </div>
             </div>
+
             <div className="reschedule-modal-footer" style={{ marginTop: '20px' }}>
               <button type="button" className="btn btn-secondary" onClick={() => setShowSettingsModal(false)}>Cancel</button>
               <button type="button" className="btn btn-primary" disabled={savingSettings} onClick={saveBoardingSettings}>
@@ -817,6 +1900,1391 @@ export default function AdminBoarding() {
           </div>
         </div>
       )}
+
+      {/* ============================================================
+          SCOPED STYLES FOR ADMIN BOARDING & MODALS
+          ============================================================ */}
+      <style>{`
+        .boarding-admin-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 22px;
+          flex-wrap: wrap;
+          gap: 14px;
+        }
+
+        .header-title-group {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .header-icon-badge {
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
+          background: #FAF3E3;
+          border: 1px solid #EADBBE;
+          color: #B8860B;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .header-title {
+          font-size: 24px;
+          font-weight: 800;
+          color: var(--text);
+          margin: 0;
+          letter-spacing: -0.3px;
+        }
+
+        .header-subtitle {
+          color: var(--muted);
+          font-size: 13px;
+          margin: 4px 0 0;
+        }
+
+        .header-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: nowrap;
+        }
+
+        .pill-status-btn {
+          font-size: 12.5px;
+          font-weight: 700;
+          padding: 8px 12px;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.15s;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .pill-status-btn.open {
+          background: #ECFDF3;
+          color: #027A48;
+          border: 1.5px solid #A6F4C5;
+        }
+
+        .pill-status-btn.closed {
+          background: #FEF3F2;
+          color: #B42318;
+          border: 1.5px solid #FECDCA;
+        }
+
+        .pill-status-btn .dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        .pill-status-btn.open .dot {
+          background: #12B76A;
+        }
+
+        .pill-status-btn.closed .dot {
+          background: #F04438;
+        }
+
+        .action-btn {
+          font-size: 12.5px;
+          padding: 8px 12px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        /* Stats Grid: Always 4 columns in 1 row */
+        .boarding-stats-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 20px;
+        }
+
+        .boarding-stat-card {
+          padding: 12px 14px;
+          border-radius: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          min-width: 0;
+        }
+
+        .boarding-stat-card.stays {
+          background: #FFF9F3;
+          border: 1.5px solid #FDE8D3;
+        }
+        .boarding-stat-card.stays .stat-icon { color: #E07A5F; }
+        .boarding-stat-card.stays .stat-icon-box { background: #FEECE0; }
+
+        .boarding-stat-card.checked-in {
+          background: #F0F9FF;
+          border: 1.5px solid #D0ECFD;
+        }
+        .boarding-stat-card.checked-in .stat-icon { color: #0284C7; }
+        .boarding-stat-card.checked-in .stat-icon-box { background: #E0F2FE; }
+
+        .boarding-stat-card.pending {
+          background: #FEFCE8;
+          border: 1.5px solid #FEF08A;
+        }
+        .boarding-stat-card.pending .stat-icon { color: #D97706; }
+        .boarding-stat-card.pending .stat-icon-box { background: #FEF9C3; }
+
+        .boarding-stat-card.revenue {
+          background: #F0FDF4;
+          border: 1.5px solid #DCFCE7;
+        }
+        .boarding-stat-card.revenue .stat-icon { color: #16A34A; }
+        .boarding-stat-card.revenue .stat-icon-box { background: #DCFCE7; }
+
+        .stat-card-head {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          min-width: 0;
+        }
+
+        .stat-icon-box {
+          width: 24px;
+          height: 24px;
+          border-radius: 7px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .stat-label {
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          color: var(--muted);
+          letter-spacing: 0.4px;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .stat-val {
+          font-size: 22px;
+          font-weight: 800;
+          color: var(--text);
+          line-height: 1.1;
+        }
+        .boarding-stat-card.checked-in .stat-val { color: #0284C7; }
+        .boarding-stat-card.pending .stat-val { color: #D97706; }
+        .boarding-stat-card.revenue .stat-val { color: #16A34A; }
+        .stat-val.revenue-val {
+          font-size: 18px;
+        }
+
+        /* Search & Filter Bar: Single row with Search, Filters, and Latest First */
+        .boarding-filter-bar {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 10px;
+        }
+
+        .boarding-search-wrap {
+          flex: 1;
+          min-width: 0;
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .boarding-search-wrap .search-icon {
+          position: absolute;
+          left: 12px;
+          color: var(--muted);
+          pointer-events: none;
+        }
+
+        .boarding-search-wrap .search-input {
+          padding-left: 34px;
+          padding-right: 28px;
+          width: 100%;
+          border-radius: 12px;
+          height: 40px;
+          font-size: 13px;
+          background: var(--card);
+          border: 1.2px solid var(--border);
+        }
+
+        .search-clear-btn {
+          position: absolute;
+          right: 8px;
+          background: none;
+          border: none;
+          color: var(--muted);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 4px;
+        }
+
+        .boarding-filter-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          height: 40px;
+          padding: 0 12px;
+          border-radius: 12px;
+          background: var(--card);
+          border: 1.2px solid var(--border);
+          color: var(--text);
+          font-size: 12.5px;
+          font-weight: 700;
+          cursor: pointer;
+          flex-shrink: 0;
+          position: relative;
+          transition: all 0.15s;
+          white-space: nowrap;
+        }
+
+        .boarding-filter-btn.active {
+          border-color: var(--accent);
+          background: #FAF3E3;
+          color: #B8860B;
+        }
+
+        .active-filter-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #B8860B;
+        }
+
+        /* Results count row */
+        .boarding-count-row {
+          margin-bottom: 12px;
+          font-size: 13.5px;
+          color: var(--text);
+          font-weight: 600;
+        }
+
+        .boarding-results-count {
+          color: var(--muted);
+        }
+
+        .boarding-results-count strong {
+          color: var(--text);
+          font-weight: 800;
+        }
+
+        /* Booking Cards Grid */
+        .boarding-cards-grid {
+          display: grid;
+          gap: 14px;
+        }
+
+        .boarding-admin-card {
+          background: var(--card);
+          border: 1.2px solid var(--border);
+          border-radius: 18px;
+          padding: 16px 18px;
+          box-shadow: 0 3px 12px rgba(60, 40, 20, 0.03);
+          transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .boarding-admin-card:hover {
+          border-color: #E2D7C5;
+          box-shadow: 0 6px 18px rgba(60, 40, 20, 0.05);
+        }
+
+        .boarding-card-top {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          position: relative;
+        }
+
+        .boarding-card-pet-avatar {
+          width: 50px;
+          height: 50px;
+          border-radius: 14px;
+          background: #FAF3E3;
+          color: #B8860B;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          flex-shrink: 0;
+          border: 1px solid #EFE6D8;
+        }
+        .boarding-card-pet-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .boarding-card-header-info {
+          flex: 1;
+          min-width: 0;
+          padding-right: 36px;
+        }
+
+        .boarding-card-title-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .boarding-card-pet-name {
+          font-size: 16px;
+          font-weight: 800;
+          color: var(--text);
+        }
+
+        .boarding-status-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 3px 9px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: capitalize;
+        }
+
+        .boarding-status-pill.pending {
+          background: #FEFCE8;
+          color: #B45309;
+          border: 1px solid #FEF08A;
+        }
+        .boarding-status-pill.confirmed {
+          background: #EFF8FF;
+          color: #0284C7;
+          border: 1px solid #B2DDFF;
+        }
+        .boarding-status-pill.checked_in {
+          background: #F0F9FF;
+          color: #0369A1;
+          border: 1.2px solid #BAE6FD;
+        }
+        .boarding-status-pill.checked_out {
+          background: #ECFDF3;
+          color: #027A48;
+          border: 1px solid #A6F4C5;
+        }
+        .boarding-status-pill.cancelled {
+          background: #FEF3F2;
+          color: #B42318;
+          border: 1px solid #FECDCA;
+        }
+
+        .boarding-card-breed {
+          font-size: 12.5px;
+          color: var(--muted);
+          margin-top: 2px;
+        }
+
+        .boarding-card-owner {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          font-size: 12px;
+          color: var(--text);
+          margin-top: 4px;
+          flex-wrap: wrap;
+        }
+        .boarding-card-owner span {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        /* Top-Right Edit Button */
+        .boarding-card-edit-btn {
+          position: absolute;
+          top: 0;
+          right: 0;
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          background: #FFFFFF;
+          border: 1.2px solid #E4DACB;
+          color: #B8860B;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s;
+          flex-shrink: 0;
+        }
+        .boarding-card-edit-btn:hover {
+          background: #FAF3E3;
+          border-color: #C08820;
+        }
+
+        /* Middle details strip: 2 columns, clean and uncrowded */
+        .boarding-card-strip {
+          background: #FDFBF7;
+          border: 1.2px solid #F2ECE1;
+          border-radius: 14px;
+          padding: 12px 14px;
+          margin: 12px 0 14px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .boarding-strip-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .strip-icon-box {
+          width: 32px;
+          height: 32px;
+          border-radius: 9px;
+          background: #FAF3E3;
+          color: #B8860B;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .boarding-strip-text {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+
+        .strip-label {
+          font-size: 10.5px;
+          font-weight: 800;
+          text-transform: capitalize;
+          color: var(--muted);
+        }
+
+        .strip-val {
+          font-size: 13.5px;
+          font-weight: 700;
+          color: var(--text);
+          white-space: nowrap;
+        }
+
+        .strip-val.amount {
+          color: #C08820;
+          font-size: 16px;
+          font-weight: 800;
+        }
+
+        .strip-sub {
+          font-size: 11px;
+          color: var(--muted);
+          font-weight: 600;
+        }
+
+        /* Card Bottom Actions: Status-specific direct action buttons */
+        .boarding-card-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+        }
+
+        .card-action-btn {
+          flex: 1 1 0;
+          min-width: 0;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          height: 38px;
+          padding: 0 12px;
+          border-radius: 10px;
+          font-size: 12.5px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s;
+          text-decoration: none;
+          white-space: nowrap;
+        }
+
+        .card-action-btn.confirm {
+          background: #FFFFFF;
+          border: 1.5px solid #16A34A;
+          color: #15803D;
+        }
+        .card-action-btn.confirm:hover {
+          background: #F0FDF4;
+        }
+
+        .card-action-btn.checkin {
+          background: #FFFFFF;
+          border: 1.5px solid #0284C7;
+          color: #0369A1;
+        }
+        .card-action-btn.checkin:hover {
+          background: #F0F9FF;
+        }
+
+        .card-action-btn.checkout {
+          background: #FFFFFF;
+          border: 1.5px solid #16A34A;
+          color: #15803D;
+        }
+        .card-action-btn.checkout:hover {
+          background: #F0FDF4;
+        }
+
+        .card-action-btn.cancel {
+          background: #FFFFFF;
+          border: 1.5px solid #EF4444;
+          color: #DC2626;
+        }
+        .card-action-btn.cancel:hover {
+          background: #FEF2F2;
+        }
+
+        .card-action-btn.details {
+          background: #FFFFFF;
+          border: 1.3px solid #E0D7C9;
+          color: #3B2E25;
+        }
+        .card-action-btn.details:hover {
+          background: #FAF6EE;
+          border-color: #C08820;
+          color: #B8860B;
+        }
+
+        .card-action-btn.whatsapp {
+          background: #FFFFFF;
+          border: 1.3px solid #25D366;
+          color: #128C7E;
+        }
+        .card-action-btn.whatsapp:hover {
+          background: #F0FDF4;
+        }
+
+        /* Bottom Sheet Modal */
+        .filter-drawer-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.65);
+          backdrop-filter: blur(4px);
+          z-index: 1200 !important;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          padding: 0 !important;
+        }
+
+        .filters-bottom-sheet {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 24px 24px 0 0;
+          width: 100%;
+          max-width: 600px;
+          max-height: 85vh;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          margin: 0;
+          box-shadow: 0 -8px 32px rgba(0,0,0,0.25);
+          animation: slideUp 0.25s ease-out;
+        }
+
+        @media (min-width: 641px) {
+          .filter-drawer-overlay {
+            align-items: center !important;
+            padding: 20px !important;
+          }
+          .filters-bottom-sheet {
+            border-radius: 24px;
+            margin: auto;
+            max-height: 80vh;
+          }
+        }
+
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+
+        .bottom-sheet-handle {
+          width: 44px;
+          height: 4px;
+          border-radius: 999px;
+          background: #D5CBBF;
+          margin: 12px auto 6px;
+        }
+
+        .bottom-sheet-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 20px 14px;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .bottom-sheet-head .head-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .bottom-sheet-head h3 {
+          margin: 0;
+          font-size: 17px;
+          font-weight: 800;
+          color: var(--text);
+        }
+
+        .bottom-sheet-body {
+          padding: 16px 20px;
+          display: grid;
+          gap: 16px;
+          overflow-y: auto;
+        }
+
+        .filter-group {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .filter-label {
+          font-size: 11.5px;
+          font-weight: 800;
+          text-transform: uppercase;
+          color: var(--muted);
+          letter-spacing: 0.6px;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+
+        .filter-pills-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .filter-pill-opt {
+          padding: 7px 14px;
+          border-radius: 10px;
+          font-size: 12.5px;
+          font-weight: 700;
+          cursor: pointer;
+          background: var(--surface);
+          border: 1.2px solid var(--border);
+          color: var(--muted);
+          transition: all 0.15s;
+        }
+
+        .filter-pill-opt.active {
+          background: #FAF3E3;
+          border-color: #C08820;
+          color: #B8860B;
+        }
+
+        .filter-two-col {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+
+        .filter-three-col {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 10px;
+        }
+
+        .bottom-sheet-footer {
+          padding: 14px 20px;
+          border-top: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        .bottom-sheet-footer .btn {
+          flex: 1;
+          justify-content: center;
+          padding: 11px;
+          font-size: 13px;
+        }
+
+        /* Details Modal (Screenshot 1 match) */
+        .boarding-details-modal {
+          background: #FFFDF9;
+          border: 1.5px solid #EFE6D8;
+          border-radius: 24px;
+          width: 100%;
+          max-width: 620px;
+          max-height: 90vh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          box-shadow: 0 14px 44px rgba(60, 40, 20, 0.16);
+          margin: auto;
+        }
+
+        .details-modal-header {
+          padding: 18px 22px 14px;
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          border-bottom: 1.2px solid #EFE6D8;
+          gap: 12px;
+          background: #FFFDF9;
+        }
+
+        .header-meta .title-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .details-title {
+          font-size: 20px;
+          font-weight: 800;
+          color: #221711;
+          margin: 0;
+        }
+
+        .details-ref-id {
+          font-size: 13px;
+          font-weight: 700;
+          color: var(--muted);
+          margin-top: 3px;
+          display: block;
+        }
+
+        .header-actions-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .details-header-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 7px 13px;
+          border-radius: 10px;
+          font-size: 12.5px;
+          font-weight: 700;
+          cursor: pointer;
+          text-decoration: none;
+          transition: all 0.15s;
+        }
+
+        .details-header-btn.whatsapp {
+          background: #FFFFFF;
+          border: 1.3px solid #25D366;
+          color: #128C7E;
+        }
+        .details-header-btn.whatsapp:hover {
+          background: #F0FDF4;
+        }
+
+        .details-header-btn.edit {
+          background: #FFFFFF;
+          border: 1.3px solid #C08820;
+          color: #B8860B;
+        }
+        .details-header-btn.edit:hover {
+          background: #FAF3E3;
+        }
+
+        .details-header-btn.cancel-edit {
+          background: var(--surface);
+          border: 1.2px solid var(--border);
+          color: var(--muted);
+        }
+
+        .details-close-btn {
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          border: none;
+          background: transparent;
+          color: var(--muted);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .details-close-btn:hover {
+          background: #F2ECE1;
+          color: var(--text);
+        }
+
+        .details-modal-body {
+          padding: 18px 20px;
+          overflow-y: auto;
+          display: grid;
+          gap: 14px;
+        }
+
+        /* Section Cards */
+        .boarding-section-card {
+          background: #FFFFFF;
+          border: 1.2px solid #EFE6D8;
+          border-radius: 16px;
+          padding: 16px 18px;
+          box-shadow: 0 2px 8px rgba(60, 40, 20, 0.02);
+        }
+
+        .section-card-header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 14px;
+        }
+
+        .section-icon-wrap {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #FAF3E3;
+          color: #B8860B;
+          flex-shrink: 0;
+        }
+
+        .section-card-header h3 {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 800;
+          color: #2B1D15;
+        }
+
+        /* Pet Hero Row */
+        .pet-hero-row {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding-bottom: 14px;
+          border-bottom: 1px solid #F5EFE6;
+          margin-bottom: 12px;
+        }
+
+        .pet-avatar-large {
+          width: 60px;
+          height: 60px;
+          border-radius: 14px;
+          background: #FAF3E3;
+          color: #B8860B;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          flex-shrink: 0;
+          border: 1px solid #EFE6D8;
+        }
+        .pet-avatar-large img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .pet-hero-name {
+          font-size: 18px;
+          font-weight: 800;
+          color: #221711;
+          display: block;
+        }
+
+        .pet-hero-subtitle {
+          font-size: 13px;
+          color: #7D6B60;
+          margin: 2px 0 6px;
+        }
+
+        .pet-pills-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
+        .pet-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 3px 9px;
+          border-radius: 999px;
+          background: #F8F5EE;
+          border: 1px solid #EADBCE;
+          color: #55443A;
+          font-size: 11.5px;
+          font-weight: 700;
+        }
+
+        /* 2-col detail grid */
+        .detail-two-col-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px 14px;
+        }
+
+        .detail-two-col-grid.care {
+          gap: 10px 14px;
+        }
+
+        .detail-item {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          min-width: 0;
+        }
+
+        .detail-item.full {
+          grid-column: 1 / -1;
+        }
+
+        .detail-label {
+          font-size: 11px;
+          font-weight: 800;
+          color: #8C786E;
+          text-transform: capitalize;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .detail-label svg {
+          color: #C08820;
+        }
+
+        .detail-val {
+          font-size: 13.5px;
+          font-weight: 700;
+          color: #2B1D15;
+          word-break: break-word;
+        }
+        .detail-val.email {
+          font-size: 12.5px;
+          font-weight: 600;
+        }
+
+        .badge-vaccine {
+          display: inline-block;
+          width: fit-content;
+          background: #ECFDF3;
+          color: #027A48;
+          border: 1px solid #A6F4C5;
+          padding: 3px 9px;
+          border-radius: 8px;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        /* Stay Banner Strip inside Card C */
+        .stay-banner-strip {
+          background: #FDFBF7;
+          border: 1px solid #EFE6D8;
+          border-radius: 14px;
+          padding: 12px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 14px;
+          gap: 8px;
+        }
+
+        .stay-banner-item {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .stay-banner-item.total {
+          text-align: right;
+        }
+
+        .stay-arrow {
+          color: #C08820;
+          opacity: 0.7;
+          flex-shrink: 0;
+        }
+
+        .stay-label {
+          font-size: 11px;
+          font-weight: 800;
+          color: #8C786E;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          text-transform: uppercase;
+        }
+
+        .stay-val {
+          font-size: 14px;
+          font-weight: 800;
+          color: #221711;
+        }
+
+        .stay-val.duration {
+          color: #D97706;
+          font-size: 15px;
+        }
+
+        .stay-sub {
+          font-size: 11px;
+          color: #8C786E;
+          font-weight: 600;
+        }
+
+        /* Billing 3-col */
+        .billing-three-col-row {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+          padding-top: 4px;
+        }
+
+        .billing-item {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .billing-label {
+          font-size: 11px;
+          font-weight: 800;
+          color: #8C786E;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .billing-val {
+          font-size: 15px;
+          font-weight: 800;
+          color: #2B1D15;
+        }
+        .billing-val.estimated {
+          color: #C08820;
+          font-size: 16.5px;
+        }
+        .billing-val.collected {
+          color: #16A34A;
+          font-size: 16.5px;
+        }
+
+        /* Edit Form inside Modal */
+        .boarding-edit-form {
+          display: grid;
+          gap: 14px;
+        }
+
+        .edit-sec-title {
+          font-size: 13px;
+          font-weight: 800;
+          text-transform: uppercase;
+          color: #B8860B;
+          margin: 0 0 10px;
+          letter-spacing: 0.5px;
+        }
+
+        .edit-input-label {
+          font-size: 11.5px;
+          font-weight: 700;
+          color: var(--muted);
+          display: block;
+          margin-bottom: 4px;
+        }
+
+        /* Details Modal Footer */
+        .details-modal-footer {
+          padding: 14px 20px;
+          border-top: 1.2px solid #EFE6D8;
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          background: #FFFDF9;
+        }
+
+        .btn-details-close-wide {
+          width: 100%;
+          justify-content: center;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 11px;
+          border-radius: 12px;
+          background: #FFFFFF;
+          border: 1.5px solid #C08820;
+          color: #9A6C16;
+          font-size: 13.5px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .btn-details-close-wide:hover {
+          background: #FAF3E3;
+        }
+
+        /* Empty state */
+        .boarding-empty-state {
+          padding: 48px 20px;
+          text-align: center;
+          background: var(--card);
+          border-radius: 18px;
+          border: 1.2px solid var(--border);
+        }
+        .boarding-empty-state .empty-icon {
+          color: var(--muted);
+          margin-bottom: 12px;
+        }
+        .boarding-empty-state h3 {
+          margin: 0 0 6px;
+          font-size: 16px;
+          font-weight: 800;
+          color: var(--text);
+        }
+        .boarding-empty-state p {
+          color: var(--muted);
+          font-size: 13px;
+          margin: 0;
+        }
+
+        /* Mobile Adjustments (<= 640px) */
+        @media (max-width: 640px) {
+          .boarding-admin-header {
+            margin-bottom: 14px;
+          }
+
+          .header-title {
+            font-size: 20px;
+          }
+
+          .header-subtitle {
+            font-size: 12px;
+          }
+
+          /* Requirement 1: All three management actions in a single horizontal row on mobile */
+          .header-actions {
+            width: 100%;
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 6px;
+            justify-content: space-between;
+          }
+
+          .pill-status-btn,
+          .header-actions .action-btn {
+            flex: 1 1 0;
+            min-width: 0;
+            padding: 7px 4px;
+            font-size: 11px;
+            gap: 4px;
+            justify-content: center;
+            text-align: center;
+          }
+
+          /* Requirement 2: All four summary statistics in a single horizontal row on mobile */
+          .boarding-stats-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 5px;
+            margin-bottom: 14px;
+          }
+
+          .boarding-stat-card {
+            padding: 8px 5px;
+            border-radius: 12px;
+            gap: 4px;
+          }
+
+          .stat-icon-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+          }
+
+          .stat-icon-box svg {
+            width: 12px;
+            height: 12px;
+          }
+
+          .stat-label {
+            font-size: 9.5px;
+            letter-spacing: 0.2px;
+          }
+
+          .stat-val {
+            font-size: 17px;
+          }
+
+          .stat-val.revenue-val {
+            font-size: 13px;
+          }
+
+          /* Requirement 3: Search, Filters, and Latest First on single row */
+          .boarding-filter-bar {
+            gap: 6px;
+            margin-bottom: 10px;
+          }
+
+          .boarding-search-wrap .search-input {
+            height: 38px;
+            font-size: 12px;
+            padding-left: 30px;
+            padding-right: 24px;
+          }
+
+          .boarding-search-wrap .search-icon {
+            left: 10px;
+            width: 14px;
+            height: 14px;
+          }
+
+          .boarding-filter-btn {
+            height: 38px;
+            padding: 0 8px;
+            font-size: 11.5px;
+            gap: 4px;
+          }
+
+          /* Requirement 4: Strip layout with 2 columns */
+          .boarding-admin-card {
+            padding: 14px;
+            border-radius: 16px;
+          }
+
+          .boarding-card-strip {
+            padding: 10px 12px;
+            margin: 10px 0 12px;
+            gap: 8px;
+          }
+
+          .strip-icon-box {
+            width: 28px;
+            height: 28px;
+          }
+
+          .strip-icon-box svg {
+            width: 13px;
+            height: 13px;
+          }
+
+          .strip-label {
+            font-size: 10px;
+          }
+
+          .strip-val {
+            font-size: 12.5px;
+          }
+
+          .strip-val.amount {
+            font-size: 14.5px;
+          }
+
+          .strip-sub {
+            font-size: 10.5px;
+          }
+
+          /* Requirement 5 & 6: Action buttons side-by-side */
+          .boarding-card-actions {
+            gap: 6px;
+          }
+
+          .card-action-btn {
+            height: 36px;
+            font-size: 11.5px;
+            padding: 0 8px;
+            gap: 4px;
+          }
+
+          .card-action-btn svg {
+            width: 14px;
+            height: 14px;
+          }
+
+          .detail-two-col-grid {
+            grid-template-columns: 1fr;
+            gap: 10px;
+          }
+
+          .filter-three-col {
+            grid-template-columns: 1fr;
+          }
+
+          .stay-banner-strip {
+            flex-wrap: wrap;
+            gap: 10px;
+          }
+
+          .billing-three-col-row {
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+          }
+
+          .boarding-details-modal {
+            max-height: 94vh;
+            border-radius: 20px 20px 0 0;
+            margin-top: auto;
+          }
+
+          .details-modal-header {
+            padding: 14px 16px;
+          }
+
+          .details-title {
+            font-size: 17px;
+          }
+
+          .details-modal-body {
+            padding: 14px 16px;
+          }
+        }
+
+        @media (max-width: 360px) {
+          .pill-status-btn,
+          .header-actions .action-btn {
+            font-size: 10px;
+            padding: 6px 2px;
+          }
+
+          .stat-label {
+            font-size: 8.5px;
+          }
+
+          .stat-val {
+            font-size: 15px;
+          }
+
+          .stat-val.revenue-val {
+            font-size: 11.5px;
+          }
+
+          .card-action-btn {
+            font-size: 10.5px;
+            padding: 0 4px;
+          }
+        }
+      `}</style>
     </div>
   )
 }

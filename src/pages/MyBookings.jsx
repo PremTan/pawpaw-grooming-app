@@ -2,7 +2,41 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
-import { Building2, Calendar, ChevronRight, ChevronDown, Clock, Home, PawPrint, Plus, Scissors, Store, UserRound, X } from 'lucide-react'
+import {
+  ArrowRight,
+  Bed,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  ChevronRight,
+  ChevronDown,
+  Clock,
+  Droplets,
+  Footprints,
+  Home,
+  IndianRupee,
+  LogIn,
+  Mail,
+  MessageCircle,
+  Moon,
+  PawPrint,
+  Phone,
+  Plus,
+  PlusSquare,
+  Receipt,
+  Scale,
+  Scissors,
+  ShieldCheck,
+  Store,
+  Syringe,
+  Tag,
+  User,
+  UserRound,
+  Users,
+  Utensils,
+  Wallet,
+  X,
+} from 'lucide-react'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
@@ -12,20 +46,67 @@ import Toast from '../components/Toast'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel, getPaymentOptionLabel } from '../utils/bookingSettings'
 import { SERVICES } from '../utils/services'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
+import { fetchBusinessInfo } from '../utils/businessInfo'
+import { buildBoardingWhatsAppMessage } from '../utils/boardingSettings'
 
 const STATUS_BADGE = {
   pending: 'badge-pending',
   confirmed: 'badge-confirmed',
+  checked_in: 'badge-confirmed',
+  checked_out: 'badge-completed',
   completed: 'badge-completed',
   cancelled: 'badge-cancelled',
 }
 
 const STATUS_FILTERS = ['all', 'pending', 'confirmed', 'completed', 'cancelled']
 
-const statusLabel = status => status === 'all' ? 'All' : (status || 'pending').charAt(0).toUpperCase() + (status || 'pending').slice(1)
+const statusLabel = status => {
+  if (status === 'all') return 'All'
+  if (status === 'checked_in') return 'Checked In'
+  if (status === 'checked_out') return 'Checked Out'
+  return (status || 'pending').charAt(0).toUpperCase() + (status || 'pending').slice(1)
+}
 const money = value => Number(value || 0).toLocaleString('en-IN')
 const shortId = id => id ? `#${id.slice(0, 8).toUpperCase()}` : '-'
 const assignedWorker = booking => booking.assignedTeamMemberName || (booking.status === 'confirmed' || booking.status === 'completed' ? 'Owner' : '')
+
+function formatBoardingDate(dateStr) {
+  if (!dateStr) return 'N/A'
+  try {
+    const parts = String(dateStr).split('-')
+    if (parts.length === 3) {
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+      if (!Number.isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      }
+    }
+    const d = new Date(dateStr)
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    }
+  } catch {}
+  return dateStr
+}
+
+function formatPetAge(dob) {
+  if (!dob) return ''
+  try {
+    const birth = new Date(dob)
+    if (!Number.isNaN(birth.getTime())) {
+      const now = new Date()
+      let years = now.getFullYear() - birth.getFullYear()
+      let months = now.getMonth() - birth.getMonth()
+      if (months < 0) {
+        years--
+        months += 12
+      }
+      if (years > 0) return `${years} Year${years > 1 ? 's' : ''}`
+      if (months > 0) return `${months} Month${months > 1 ? 's' : ''}`
+      return 'Puppy / Kitten'
+    }
+  } catch {}
+  return dob
+}
 
 function parseAppointmentStart(booking) {
   if (booking.bookingStartAt?.toDate) return booking.bookingStartAt.toDate()
@@ -202,6 +283,26 @@ export default function MyBookings() {
   const [boardingCancelTarget, setBoardingCancelTarget] = useState(null)
   const [boardingCancelReason, setBoardingCancelReason] = useState('')
   const [cancellingBoardingId, setCancellingBoardingId] = useState('')
+  const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
+  const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
+
+  // Lock background scroll when boarding modal is open
+  useEffect(() => {
+    if (selectedBoarding) {
+      const prev = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = prev
+      }
+    }
+  }, [selectedBoarding])
+
+  useEffect(() => {
+    fetchBusinessInfo(db).then(biz => {
+      setAdminWhatsappNumber(biz.whatsappNumber || '')
+      setShopName(biz.contact?.shopName || 'Paw Paw Pet Grooming')
+    })
+  }, [])
 
   const fetchBoardings = async () => {
     if (!user?.uid) return
@@ -1333,46 +1434,279 @@ export default function MyBookings() {
         reasonRequired
       />
 
-      {/* Boarding Details Modal */}
+      {/* Boarding Details Modal (Screenshot 1 Match) */}
       {selectedBoarding && (
         <div className="my-booking-modal-overlay" onClick={() => setSelectedBoarding(null)}>
-          <div className="my-booking-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '580px', width: '100%' }}>
-            <div className="my-booking-modal-hero">
-              <div>
-                <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 4px', color: 'var(--text)' }}>
-                  {selectedBoarding.petName}'s Boarding Stay
-                </h2>
-                <span className={`badge ${STATUS_BADGE[selectedBoarding.status] || 'badge-pending'}`}>
-                  {statusLabel(selectedBoarding.status)}
-                </span>
+          <div className="boarding-details-modal" onClick={e => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="details-modal-header">
+              <div className="header-meta">
+                <div className="title-row">
+                  <h2 className="details-title">Boarding Reservation</h2>
+                  <span className={`boarding-status-pill ${selectedBoarding.status || 'pending'}`}>
+                    {selectedBoarding.status === 'checked_out' && <CheckCircle2 size={13} />}
+                    {selectedBoarding.status === 'checked_in' && <LogIn size={13} />}
+                    {statusLabel(selectedBoarding.status)}
+                  </span>
+                </div>
+                <span className="details-ref-id">{shortId(selectedBoarding.id)}</span>
               </div>
-              <button type="button" className="my-booking-modal-close" onClick={() => setSelectedBoarding(null)}>
-                <X size={18} />
-              </button>
+
+              <div className="header-actions-row">
+                {adminWhatsappNumber && (
+                  <a
+                    href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(selectedBoarding, shopName)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="details-header-btn whatsapp"
+                  >
+                    <MessageCircle size={14} /> WhatsApp
+                  </a>
+                )}
+
+                <button
+                  type="button"
+                  className="details-close-btn"
+                  onClick={() => setSelectedBoarding(null)}
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
-            <div style={{ display: 'grid', gap: '12px', marginTop: '16px', maxHeight: '60vh', overflowY: 'auto' }}>
-              <div style={{ padding: '12px', background: 'var(--surface)', borderRadius: '12px', fontSize: '13px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div><strong>Check-In:</strong> {selectedBoarding.checkInDate} at {selectedBoarding.checkInTime}</div>
-                <div><strong>Check-Out:</strong> {selectedBoarding.checkOutDate} at {selectedBoarding.checkOutTime}</div>
-                <div><strong>Duration:</strong> {selectedBoarding.stayDays} Day(s) ({selectedBoarding.stayNights || 0} Nights)</div>
-                <div><strong>Estimated Total:</strong> ₹{selectedBoarding.estimatedTotal}</div>
+            {/* Modal Scrollable Body */}
+            <div className="details-modal-body">
+              {/* CARD A: Pet & Owner Details */}
+              <div className="boarding-section-card">
+                <div className="section-card-header">
+                  <div className="section-icon-wrap paw">
+                    <PawPrint size={16} />
+                  </div>
+                  <h3>Pet & Owner Details</h3>
+                </div>
+
+                <div className="pet-hero-row">
+                  <div className="pet-avatar-large">
+                    {selectedBoarding.petPhotoUrl ? (
+                      <img
+                        src={selectedBoarding.petPhotoUrl}
+                        alt={selectedBoarding.petName}
+                        onError={e => {
+                          e.currentTarget.style.display = 'none'
+                          if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex'
+                        }}
+                      />
+                    ) : null}
+                    <div className="avatar-fallback" style={{ display: selectedBoarding.petPhotoUrl ? 'none' : 'flex' }}>
+                      <PawPrint size={24} />
+                    </div>
+                  </div>
+
+                  <div className="pet-hero-info">
+                    <strong className="pet-hero-name">{selectedBoarding.petName || 'Pet'}</strong>
+                    <div className="pet-hero-subtitle">
+                      {selectedBoarding.petType || 'Pet'} • {selectedBoarding.petBreed || 'Breed Not Specified'}
+                    </div>
+
+                    <div className="pet-pills-row">
+                      {selectedBoarding.petGender && (
+                        <span className="pet-pill">
+                          <Users size={12} /> {selectedBoarding.petGender}
+                        </span>
+                      )}
+                      {selectedBoarding.petDob && (
+                        <span className="pet-pill">
+                          <Calendar size={12} /> {formatPetAge(selectedBoarding.petDob)}
+                        </span>
+                      )}
+                      {selectedBoarding.petWeight && (
+                        <span className="pet-pill">
+                          <Scale size={12} /> {selectedBoarding.petWeight} kg
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="detail-two-col-grid">
+                  <div className="detail-item">
+                    <span className="detail-label"><User size={14} /> Owner Name</span>
+                    <strong className="detail-val">{selectedBoarding.ownerName || 'N/A'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><ShieldCheck size={14} /> Emergency Contact</span>
+                    <strong className="detail-val">
+                      {selectedBoarding.emergencyContactPhone
+                        ? `${selectedBoarding.emergencyContactName ? selectedBoarding.emergencyContactName + ' ' : ''}(${selectedBoarding.emergencyContactPhone})`
+                        : 'None'}
+                    </strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Phone size={14} /> Phone Number</span>
+                    <strong className="detail-val">{selectedBoarding.phone || 'N/A'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Mail size={14} /> Email</span>
+                    <strong className="detail-val email">{selectedBoarding.userEmail || 'N/A'}</strong>
+                  </div>
+                </div>
               </div>
 
-              <div style={{ padding: '12px', background: 'var(--surface)', borderRadius: '12px', fontSize: '13px', display: 'grid', gap: '6px' }}>
-                <div><strong>Food Plan:</strong> {selectedBoarding.foodType} ({selectedBoarding.foodProvider})</div>
-                <div><strong>Feeding Schedule:</strong> {selectedBoarding.feedingSchedule}</div>
-                {selectedBoarding.specialDietInstructions && <div><strong>Diet/Water Notes:</strong> {selectedBoarding.specialDietInstructions}</div>}
-                {selectedBoarding.walkingFrequency !== 'N/A' && <div><strong>Walking Routine:</strong> {selectedBoarding.walkingFrequency}</div>}
-                {selectedBoarding.sleepingHabits && <div><strong>Sleeping:</strong> {selectedBoarding.sleepingHabits}</div>}
-                {selectedBoarding.toiletHabits && <div><strong>Toilet Habits:</strong> {selectedBoarding.toiletHabits}</div>}
-                {selectedBoarding.emergencyContactPhone && <div><strong>Emergency Contact:</strong> {selectedBoarding.emergencyContactName} ({selectedBoarding.emergencyContactPhone})</div>}
+              {/* CARD B: Health & Vaccinations */}
+              <div className="boarding-section-card">
+                <div className="section-card-header">
+                  <div className="section-icon-wrap shield">
+                    <ShieldCheck size={16} />
+                  </div>
+                  <h3>Health & Vaccinations</h3>
+                </div>
+
+                <div className="detail-two-col-grid">
+                  <div className="detail-item">
+                    <span className="detail-label"><Syringe size={14} /> Vaccination Status</span>
+                    <span className="badge-vaccine">
+                      {selectedBoarding.vaccinationStatus || 'Fully Vaccinated'}
+                    </span>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Calendar size={14} /> Last Vaccination / Notes</span>
+                    <strong className="detail-val">{selectedBoarding.vaccinationNotes || 'None'}</strong>
+                  </div>
+                </div>
+
+                <div className="detail-item full" style={{ marginTop: '12px' }}>
+                  <span className="detail-label"><PlusSquare size={14} /> Medical Conditions / Medicines</span>
+                  <strong className="detail-val">
+                    {selectedBoarding.medicalConditions || selectedBoarding.medicines || selectedBoarding.allergies || 'No'}
+                  </strong>
+                </div>
+              </div>
+
+              {/* CARD C: Stay & Billing Details */}
+              <div className="boarding-section-card">
+                <div className="section-card-header">
+                  <div className="section-icon-wrap calendar">
+                    <Calendar size={16} />
+                  </div>
+                  <h3>Stay & Billing Details</h3>
+                </div>
+
+                <div className="stay-banner-strip">
+                  <div className="stay-banner-item">
+                    <span className="stay-label"><Calendar size={13} /> Check-In</span>
+                    <strong className="stay-val">{formatBoardingDate(selectedBoarding.checkInDate)}</strong>
+                    <span className="stay-sub">{selectedBoarding.checkInTime || '10:00 AM'}</span>
+                  </div>
+
+                  <div className="stay-arrow">
+                    <ArrowRight size={18} />
+                  </div>
+
+                  <div className="stay-banner-item">
+                    <span className="stay-label"><Calendar size={13} /> Check-Out</span>
+                    <strong className="stay-val">{formatBoardingDate(selectedBoarding.checkOutDate)}</strong>
+                    <span className="stay-sub">{selectedBoarding.checkOutTime || '12:00 PM'}</span>
+                  </div>
+
+                  <div className="stay-banner-item total">
+                    <span className="stay-label"><Moon size={13} /> Total Stay</span>
+                    <strong className="stay-val duration">
+                      {selectedBoarding.stayDays || 1} Days
+                    </strong>
+                    <span className="stay-sub">({selectedBoarding.stayNights || 0} Nights)</span>
+                  </div>
+                </div>
+
+                <div className="billing-three-col-row">
+                  <div className="billing-item">
+                    <span className="billing-label"><Tag size={14} /> Daily Rate</span>
+                    <strong className="billing-val">₹{money(selectedBoarding.dailyRate || 800)}</strong>
+                  </div>
+
+                  <div className="billing-item">
+                    <span className="billing-label"><Receipt size={14} /> Estimated Total</span>
+                    <strong className="billing-val estimated">₹{money(selectedBoarding.estimatedTotal)}</strong>
+                  </div>
+
+                  <div className="billing-item">
+                    <span className="billing-label"><Wallet size={14} /> Amount Collected</span>
+                    <strong className="billing-val collected">₹{money(selectedBoarding.amountCollected || 0)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD D: Food & Care Instructions */}
+              <div className="boarding-section-card">
+                <div className="section-card-header">
+                  <div className="section-icon-wrap food">
+                    <Utensils size={16} />
+                  </div>
+                  <h3>Food & Care Instructions</h3>
+                </div>
+
+                <div className="detail-two-col-grid care">
+                  <div className="detail-item">
+                    <span className="detail-label"><Utensils size={14} /> Food Type</span>
+                    <strong className="detail-val">{selectedBoarding.foodType || 'Packaged Pet Food'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Utensils size={14} /> Food Provider</span>
+                    <strong className="detail-val">{selectedBoarding.foodProvider || 'Owner will provide'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Clock size={14} /> Feeding Schedule</span>
+                    <strong className="detail-val">{selectedBoarding.feedingSchedule || 'Twice a day'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Droplets size={14} /> Diet / Water Notes</span>
+                    <strong className="detail-val">
+                      {selectedBoarding.specialDietInstructions || selectedBoarding.waterInstructions || 'None'}
+                    </strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><PawPrint size={14} /> Walking Routine</span>
+                    <strong className="detail-val">{selectedBoarding.walkingFrequency || '2 walks per day (Standard)'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Bed size={14} /> Sleeping Habits</span>
+                    <strong className="detail-val">{selectedBoarding.sleepingHabits || 'None'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Footprints size={14} /> Toilet Habits</span>
+                    <strong className="detail-val">{selectedBoarding.toiletHabits || 'Outdoor breaks'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Users size={14} /> Behaviour around pets</span>
+                    <strong className="detail-val">{selectedBoarding.behaviorNotes || 'Friendly'}</strong>
+                  </div>
+
+                  <div className="detail-item full">
+                    <span className="detail-label"><User size={14} /> Special Requests</span>
+                    <strong className="detail-val">{selectedBoarding.additionalInstructions || 'None'}</strong>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setSelectedBoarding(null)}>
-                Close
+            {/* Modal Footer */}
+            <div className="details-modal-footer">
+              <button
+                type="button"
+                className="btn-details-close-wide"
+                onClick={() => setSelectedBoarding(null)}
+              >
+                <X size={16} /> Close
               </button>
             </div>
           </div>
@@ -2353,6 +2687,397 @@ export default function MyBookings() {
           .my-booking-image-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px;
+          }
+        }
+
+        /* Boarding Details Modal Styles (Customer Portal) */
+        .boarding-details-modal {
+          background: #FFFDF9;
+          border: 1.5px solid #EFE6D8;
+          border-radius: 24px;
+          width: 100%;
+          max-width: 620px;
+          max-height: 90vh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          box-shadow: 0 14px 44px rgba(60, 40, 20, 0.16);
+          margin: auto;
+        }
+
+        .details-modal-header {
+          padding: 18px 22px 14px;
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          border-bottom: 1.2px solid #EFE6D8;
+          gap: 12px;
+          background: #FFFDF9;
+        }
+
+        .header-meta .title-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .details-title {
+          font-size: 20px;
+          font-weight: 800;
+          color: #221711;
+          margin: 0;
+        }
+
+        .details-ref-id {
+          font-size: 13px;
+          font-weight: 700;
+          color: var(--muted);
+          margin-top: 3px;
+          display: block;
+        }
+
+        .header-actions-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .details-header-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 7px 13px;
+          border-radius: 10px;
+          font-size: 12.5px;
+          font-weight: 700;
+          cursor: pointer;
+          text-decoration: none;
+          transition: all 0.15s;
+        }
+
+        .details-header-btn.whatsapp {
+          background: #FFFFFF;
+          border: 1.3px solid #25D366;
+          color: #128C7E;
+        }
+        .details-header-btn.whatsapp:hover {
+          background: #F0FDF4;
+        }
+
+        .details-close-btn {
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          border: none;
+          background: transparent;
+          color: var(--muted);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .details-close-btn:hover {
+          background: #F2ECE1;
+          color: var(--text);
+        }
+
+        .details-modal-body {
+          padding: 18px 20px;
+          overflow-y: auto;
+          display: grid;
+          gap: 14px;
+        }
+
+        .boarding-section-card {
+          background: #FFFFFF;
+          border: 1.2px solid #EFE6D8;
+          border-radius: 16px;
+          padding: 16px 18px;
+          box-shadow: 0 2px 8px rgba(60, 40, 20, 0.02);
+        }
+
+        .section-card-header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 14px;
+        }
+
+        .section-icon-wrap {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #FAF3E3;
+          color: #B8860B;
+          flex-shrink: 0;
+        }
+
+        .section-card-header h3 {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 800;
+          color: #2B1D15;
+        }
+
+        .pet-hero-row {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding-bottom: 14px;
+          border-bottom: 1px solid #F5EFE6;
+          margin-bottom: 12px;
+        }
+
+        .pet-avatar-large {
+          width: 60px;
+          height: 60px;
+          border-radius: 14px;
+          background: #FAF3E3;
+          color: #B8860B;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          flex-shrink: 0;
+          border: 1px solid #EFE6D8;
+        }
+        .pet-avatar-large img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .pet-hero-name {
+          font-size: 18px;
+          font-weight: 800;
+          color: #221711;
+          display: block;
+        }
+
+        .pet-hero-subtitle {
+          font-size: 13px;
+          color: #7D6B60;
+          margin: 2px 0 6px;
+        }
+
+        .pet-pills-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
+        .pet-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 3px 9px;
+          border-radius: 999px;
+          background: #F8F5EE;
+          border: 1px solid #EADBCE;
+          color: #55443A;
+          font-size: 11.5px;
+          font-weight: 700;
+        }
+
+        .detail-two-col-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px 14px;
+        }
+
+        .detail-two-col-grid.care {
+          gap: 10px 14px;
+        }
+
+        .detail-item {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          min-width: 0;
+        }
+
+        .detail-item.full {
+          grid-column: 1 / -1;
+        }
+
+        .detail-label {
+          font-size: 11px;
+          font-weight: 800;
+          color: #8C786E;
+          text-transform: capitalize;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .detail-label svg {
+          color: #C08820;
+        }
+
+        .detail-val {
+          font-size: 13.5px;
+          font-weight: 700;
+          color: #2B1D15;
+          word-break: break-word;
+        }
+        .detail-val.email {
+          font-size: 12.5px;
+          font-weight: 600;
+        }
+
+        .badge-vaccine {
+          display: inline-block;
+          width: fit-content;
+          background: #ECFDF3;
+          color: #027A48;
+          border: 1px solid #A6F4C5;
+          padding: 3px 9px;
+          border-radius: 8px;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .stay-banner-strip {
+          background: #FDFBF7;
+          border: 1px solid #EFE6D8;
+          border-radius: 14px;
+          padding: 12px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 14px;
+          gap: 8px;
+        }
+
+        .stay-banner-item {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .stay-banner-item.total {
+          text-align: right;
+        }
+
+        .stay-arrow {
+          color: #C08820;
+          opacity: 0.7;
+          flex-shrink: 0;
+        }
+
+        .stay-label {
+          font-size: 11px;
+          font-weight: 800;
+          color: #8C786E;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          text-transform: uppercase;
+        }
+
+        .stay-val {
+          font-size: 14px;
+          font-weight: 800;
+          color: #221711;
+        }
+
+        .stay-val.duration {
+          color: #D97706;
+          font-size: 15px;
+        }
+
+        .stay-sub {
+          font-size: 11px;
+          color: #8C786E;
+          font-weight: 600;
+        }
+
+        .billing-three-col-row {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+          padding-top: 4px;
+        }
+
+        .billing-item {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .billing-label {
+          font-size: 11px;
+          font-weight: 800;
+          color: #8C786E;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .billing-val {
+          font-size: 15px;
+          font-weight: 800;
+          color: #2B1D15;
+        }
+        .billing-val.estimated {
+          color: #C08820;
+          font-size: 16.5px;
+        }
+        .billing-val.collected {
+          color: #16A34A;
+          font-size: 16.5px;
+        }
+
+        .btn-details-close-wide {
+          width: 100%;
+          justify-content: center;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 11px;
+          border-radius: 12px;
+          background: #FFFFFF;
+          border: 1.5px solid #C08820;
+          color: #9A6C16;
+          font-size: 13.5px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .btn-details-close-wide:hover {
+          background: #FAF3E3;
+        }
+
+        @media (max-width: 640px) {
+          .boarding-details-modal {
+            max-height: 94vh;
+            border-radius: 20px 20px 0 0;
+            margin-top: auto;
+          }
+          .details-modal-header {
+            padding: 14px 16px;
+          }
+          .details-title {
+            font-size: 17px;
+          }
+          .details-modal-body {
+            padding: 14px 16px;
+          }
+          .detail-two-col-grid {
+            grid-template-columns: 1fr;
+            gap: 10px;
+          }
+          .stay-banner-strip {
+            flex-wrap: wrap;
+            gap: 10px;
+          }
+          .billing-three-col-row {
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
           }
         }
       `}</style>
