@@ -50,7 +50,7 @@ function formatReviewDate(dateStr, timeStr) {
       const formatted = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
       return timeStr ? `${formatted} at ${timeStr}` : formatted
     }
-  } catch {}
+  } catch { }
   return timeStr ? `${dateStr} at ${timeStr}` : dateStr
 }
 
@@ -140,7 +140,7 @@ export default function BookBoarding() {
         const petList = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         petList.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
         setPets(petList)
-      } catch {}
+      } catch { }
     }
     loadPets()
   }, [user])
@@ -157,7 +157,7 @@ export default function BookBoarding() {
           ownerName: prev.ownerName || data.name || '',
           phone: prev.phone || data.phone || '',
         }))
-      } catch {}
+      } catch { }
     }
     loadProfile()
   }, [user])
@@ -293,7 +293,7 @@ export default function BookBoarding() {
           read: false,
           createdAt: serverTimestamp(),
         })
-      } catch {}
+      } catch { }
 
       setToastMessage('Boarding request sent successfully!')
       setDone(true)
@@ -642,7 +642,7 @@ export default function BookBoarding() {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="field-label">LAST VACCINATION DATE / NOTES</label>
+                    <label className="field-label">LAST VACCINATION</label>
                     <input
                       className="boarding-input"
                       placeholder="e.g. Rabies 2025"
@@ -981,7 +981,7 @@ export default function BookBoarding() {
               </div>
 
               {/* Behaviour & Anxiety */}
-              <div className="field-grid-2">
+              <div className="field-grid-2 behaviour-separation-row">
                 <div className="form-group">
                   <label className="field-label">BEHAVIOUR AROUND OTHER PETS</label>
                   <input
@@ -1817,11 +1817,15 @@ export default function BookBoarding() {
         /* SCREEN 3: Food 2x2 Grid & Radio options */
         .food-type-grid {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
           gap: 10px;
+          width: 100%;
         }
 
         .food-type-card {
+          width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
           background: #FFFFFF;
           border: 1.2px solid #E0D5C5;
           border-radius: 12px;
@@ -1833,6 +1837,7 @@ export default function BookBoarding() {
           text-align: left;
           cursor: pointer;
           transition: all 0.15s ease;
+          min-height: 98px;
         }
 
         .food-type-card.selected {
@@ -1848,6 +1853,7 @@ export default function BookBoarding() {
           display: flex;
           align-items: center;
           justify-content: center;
+          flex-shrink: 0;
         }
 
         .food-type-card.selected .food-card-icon {
@@ -1859,10 +1865,45 @@ export default function BookBoarding() {
           font-weight: 700;
           color: #221711;
           line-height: 1.35;
+          word-break: normal;
+          overflow-wrap: break-word;
+          white-space: normal;
         }
 
         .food-type-card.selected .food-card-label {
           color: #7A4F0B;
+        }
+
+        /* SCREEN 4: Behaviour & Separation row alignment */
+        .behaviour-separation-row {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+          align-items: stretch;
+        }
+
+        .behaviour-separation-row .form-group {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          margin-bottom: 18px;
+        }
+
+        .behaviour-separation-row .field-label {
+          min-height: 28px;
+          display: flex;
+          align-items: flex-start;
+          flex-grow: 1;
+          line-height: 1.25;
+        }
+
+        .behaviour-separation-row .boarding-input,
+        .behaviour-separation-row .boarding-select {
+          width: 100%;
+          height: 42px;
+          box-sizing: border-box;
+          margin-top: auto;
         }
 
         .radio-options-stack {
@@ -2079,7 +2120,25 @@ export default function BookBoarding() {
             grid-template-columns: 1fr;
           }
           .food-type-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px;
+          }
+          .food-type-card {
+            padding: 10px 8px;
+            gap: 6px;
+            min-height: 92px;
+          }
+          .food-card-label {
+            font-size: 11px;
+            line-height: 1.25;
+          }
+          .behaviour-separation-row {
+            gap: 8px;
+          }
+          .behaviour-separation-row .field-label {
+            font-size: 10px;
+            letter-spacing: 0.4px;
+            min-height: 26px;
           }
           .stepper-label {
             font-size: 8.5px;
@@ -2088,6 +2147,12 @@ export default function BookBoarding() {
             width: 25px;
             height: 25px;
             font-size: 11px;
+          }
+        }
+
+        @media (max-width: 290px) {
+          .behaviour-separation-row {
+            grid-template-columns: 1fr;
           }
         }
 
