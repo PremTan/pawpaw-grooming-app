@@ -1229,25 +1229,6 @@ export default function Home() {
       {/* Hero slider */}
       <HeroSlider />
 
-      {/* Features */}
-      <section className="home-why-section">
-        <div className="home-why-head">
-          <p className="section-label"><PawPrint size={14} /> Why Choose Us <PawPrint size={14} /></p>
-          <h2>Trusted by Pet Parents</h2>
-        </div>
-        <div className="why-choose-grid">
-          {features.map((f, i) => (
-            <div key={`${f.title}-${i}`} className="why-choose-card fade-up" style={{ animationDelay: `${i * 0.1}s` }}>
-              <div className="why-choose-icon">
-                {FEATURE_ICONS[f.icon] || FEATURE_ICONS.star}
-              </div>
-              <span className="why-choose-number">0{i + 1}</span>
-              <h3>{f.title}</h3>
-              <p>{f.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
       {/* Services preview */}
       <section className="home-services-mobile-section">
         <div className="home-section-card home-services-panel">
@@ -1447,6 +1428,26 @@ export default function Home() {
           </div>
         </section>
       )}
+
+      {/* Why Choose Us */}
+      <section className="home-why-section">
+        <div className="home-why-head">
+          <p className="section-label"><PawPrint size={14} /> Why Choose Us <PawPrint size={14} /></p>
+          <h2>Trusted by Pet Parents</h2>
+        </div>
+        <div className="why-choose-grid">
+          {features.map((f, i) => (
+            <div key={`${f.title}-${i}`} className="why-choose-card fade-up" style={{ animationDelay: `${i * 0.1}s` }}>
+              <div className="why-choose-icon">
+                {FEATURE_ICONS[f.icon] || FEATURE_ICONS.star}
+              </div>
+              <span className="why-choose-number">0{i + 1}</span>
+              <h3>{f.title}</h3>
+              <p>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* Call CTA Section */}
       <section className="home-help-cta">

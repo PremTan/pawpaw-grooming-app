@@ -83,7 +83,6 @@ export default function Navbar() {
 
   const userLinks = [
     { path: '/book', label: 'Book Grooming', icon: <Calendar size={14} /> },
-    { path: '/boarding', label: 'Book Boarding', icon: <Building2 size={14} /> },
     { path: '/my-bookings', label: 'My Bookings', icon: <Calendar size={14} /> },
     { path: '/my-pets', label: 'My Pets', icon: <PawPrint size={14} /> },
     { path: '/profile', label: 'Profile', icon: <User size={14} /> },

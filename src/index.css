@@ -6421,6 +6421,13 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   }
 }
 
+/* Hide Trust Benefits Strip on mobile screens only */
+@media (max-width: 767px) {
+  .home-trust-strip {
+    display: none !important;
+  }
+}
+
 /* Redesigned home sections after Why Choose Us */
 .home-section-head {
   margin-bottom: 22px;
@@ -12156,9 +12163,9 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
    ============================================================ */
 .home-boarding-section {
   width: 100%;
-  padding: 0 16px;
-  display: flex;
-  justify-content: center;
+  box-sizing: border-box;
+  padding: 24px 0 0;
+  margin: 0;
 }
 
 .home-boarding-card {
@@ -12169,8 +12176,8 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   padding: 24px 22px 24px;
   box-shadow: 0 8px 30px rgba(184, 134, 11, 0.05);
   width: 100%;
-  max-width: 580px;
-  margin: 28px auto 32px;
+  box-sizing: border-box;
+  margin: 0;
   overflow: hidden;
   text-align: left;
 }
@@ -12249,6 +12256,7 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 .home-boarding-hero-wrap .home-boarding-pets-img {
   width: 100%;
   height: auto;
+  max-height: 540px;
   display: block;
   aspect-ratio: 508 / 368;
   object-fit: cover;
@@ -12391,11 +12399,17 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 }
 
 /* Responsive adjustments */
+@media (max-width: 640px) {
+  .home-boarding-hero-wrap .home-boarding-pets-img {
+    max-height: none;
+  }
+}
+
 @media (max-width: 480px) {
   .home-boarding-card {
     padding: 18px 14px 20px;
-    border-radius: 24px;
-    margin: 20px auto;
+    border-radius: 22px;
+    margin: 0;
   }
   .home-boarding-title {
     font-size: 26px;
@@ -12451,6 +12465,7 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 @media (max-width: 360px) {
   .home-boarding-card {
     padding: 14px 10px 16px;
+    margin: 0;
   }
   .home-boarding-title {
     font-size: 22px;

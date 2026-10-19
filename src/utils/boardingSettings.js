@@ -39,7 +39,7 @@ export const FOOD_TYPES = [
 
 export const FOOD_PROVIDERS = [
   { id: 'owner', label: 'Owner will provide pet food' },
-  { id: 'pawpaw', label: 'Paw Paw should provide pet food' },
+  { id: 'pawpaw', label: 'Hostel will provide pet food' },
 ]
 
 export const FEEDING_FREQUENCIES = [

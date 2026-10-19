@@ -551,41 +551,41 @@ export default function BookBoarding() {
                 </div>
               </div>
 
-              {/* Breed */}
-              <div className="form-group">
-                <label className="field-label">BREED</label>
-                {breedOptions.length > 0 ? (
-                  <div className={form.petBreed === 'other' ? 'field-grid-2' : ''}>
-                    <select
-                      className="boarding-select"
-                      value={form.petBreed}
-                      onChange={e => { setSelectedPetId(''); update('petBreed', e.target.value) }}
-                    >
-                      <option value="">Select breed</option>
-                      {breedOptions.map(b => <option key={b} value={b}>{b}</option>)}
-                      <option value="other">Other / Mixed</option>
-                    </select>
-                    {form.petBreed === 'other' && (
-                      <input
-                        className="boarding-input"
-                        placeholder="Type breed name..."
-                        value={form.customBreed}
-                        onChange={e => update('customBreed', e.target.value)}
-                      />
-                    )}
-                  </div>
-                ) : (
-                  <input
-                    className="boarding-input"
-                    placeholder="German Shepherd"
-                    value={form.customBreed}
-                    onChange={e => update('customBreed', e.target.value)}
-                  />
-                )}
-              </div>
+              {/* Pet Breed & Date of Birth in single line */}
+              <div className="field-grid-2">
+                <div className="form-group">
+                  <label className="field-label">BREED</label>
+                  {breedOptions.length > 0 ? (
+                    <div>
+                      <select
+                        className="boarding-select"
+                        value={form.petBreed}
+                        onChange={e => { setSelectedPetId(''); update('petBreed', e.target.value) }}
+                      >
+                        <option value="">Select breed</option>
+                        {breedOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                        <option value="other">Other / Mixed</option>
+                      </select>
+                      {form.petBreed === 'other' && (
+                        <input
+                          className="boarding-input"
+                          placeholder="Type breed name..."
+                          value={form.customBreed}
+                          onChange={e => update('customBreed', e.target.value)}
+                          style={{ marginTop: '6px' }}
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <input
+                      className="boarding-input"
+                      placeholder="German Shepherd"
+                      value={form.customBreed}
+                      onChange={e => update('customBreed', e.target.value)}
+                    />
+                  )}
+                </div>
 
-              {/* Age, Weight, Gender */}
-              <div className="field-grid-3">
                 <div className="form-group">
                   <label className="field-label">DATE OF BIRTH / AGE</label>
                   <input
@@ -595,6 +595,10 @@ export default function BookBoarding() {
                     onChange={e => update('petDob', e.target.value)}
                   />
                 </div>
+              </div>
+
+              {/* Weight & Gender in single line */}
+              <div className="field-grid-2">
                 <div className="form-group">
                   <label className="field-label">WEIGHT (KG)</label>
                   <input
@@ -1623,6 +1627,9 @@ export default function BookBoarding() {
           grid-template-columns: 1fr 1fr;
           gap: 10px;
         }
+        .field-grid-2 > * {
+          min-width: 0;
+        }
 
         .field-grid-3 {
           display: grid;
@@ -2064,6 +2071,9 @@ export default function BookBoarding() {
           }
           .boarding-card {
             padding: 16px 12px;
+          }
+          .field-grid-2 {
+            gap: 8px;
           }
           .field-grid-3 {
             grid-template-columns: 1fr;
