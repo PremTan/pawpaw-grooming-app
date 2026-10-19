@@ -162,7 +162,8 @@ export default function AdminBoarding() {
 
   // Settings modal
   const [showSettingsModal, setShowSettingsModal] = useState(false)
-  const [settingsForm, setSettingsForm] = useState(null)
+  const [savedSettings, setSavedSettings] = useState(null)
+  const [settingsDraft, setSettingsDraft] = useState(null)
   const [savingSettings, setSavingSettings] = useState(false)
 
   // UI state
@@ -215,7 +216,7 @@ export default function AdminBoarding() {
       setAdminWhatsappNumber(biz.whatsappNumber || '')
       setShopName(biz.contact?.shopName || 'Paw Paw Pet Grooming')
     })
-    fetchBoardingSettings(db).then(s => setSettingsForm(s))
+    fetchBoardingSettings(db).then(s => setSavedSettings(s))
   }, [])
 
   useEffect(() => {
@@ -509,17 +510,18 @@ export default function AdminBoarding() {
     setUpdating(null)
   }
 
-  // Toggle bookings open/closed quickly from header pill
+  // Toggle bookings open/closed quickly from header pill (operates strictly on savedSettings)
   const toggleBookingsOpen = async () => {
-    if (!settingsForm) return
-    const nextVal = !(settingsForm.acceptBookings !== false)
+    if (!savedSettings) return
+    const nextVal = !(savedSettings.acceptBookings !== false)
     try {
-      await setDoc(doc(db, 'settings', 'boardingSettings'), {
-        ...settingsForm,
+      const updated = {
+        ...savedSettings,
         acceptBookings: nextVal,
         updatedAt: serverTimestamp(),
-      }, { merge: true })
-      setSettingsForm(p => ({ ...p, acceptBookings: nextVal }))
+      }
+      await setDoc(doc(db, 'settings', 'boardingSettings'), updated, { merge: true })
+      setSavedSettings(prev => ({ ...prev, acceptBookings: nextVal }))
       setToastType('success')
       setToastMessage(`Boarding bookings are now ${nextVal ? 'OPEN' : 'CLOSED'}.`)
     } catch {
@@ -528,22 +530,84 @@ export default function AdminBoarding() {
     }
   }
 
-  // Save Settings Modal
+  // Open Settings Modal: loads fresh saved settings and initializes a local draft state
+  const openSettingsModal = async () => {
+    try {
+      const current = await fetchBoardingSettings(db)
+      setSavedSettings(current)
+      setSettingsDraft({ ...current })
+      setShowSettingsModal(true)
+    } catch {
+      const fallback = savedSettings ? { ...savedSettings } : normalizeBoardingSettings({})
+      setSettingsDraft(fallback)
+      setShowSettingsModal(true)
+    }
+  }
+
+  // Cancel / Close Settings Modal: discards uncommitted draft changes
+  const closeSettingsModal = () => {
+    setShowSettingsModal(false)
+    setSettingsDraft(null)
+  }
+
+  // Save Settings Modal: validates all fields and explicitly persists all 6 settings at once
   const saveBoardingSettings = async () => {
+    if (!settingsDraft) return
+
+    const dogRate = Number(settingsDraft.dogDailyRate)
+    const catRate = Number(settingsDraft.catDailyRate)
+    const maxDog = Number(settingsDraft.maxDogCapacity)
+    const maxCat = Number(settingsDraft.maxCatCapacity)
+
+    if (isNaN(dogRate) || dogRate <= 0) {
+      setToastType('error')
+      setToastMessage('Please enter a valid Dog Daily Rate (greater than 0).')
+      return
+    }
+    if (isNaN(catRate) || catRate <= 0) {
+      setToastType('error')
+      setToastMessage('Please enter a valid Cat Daily Rate (greater than 0).')
+      return
+    }
+    if (isNaN(maxDog) || maxDog <= 0) {
+      setToastType('error')
+      setToastMessage('Please enter a valid Max Dog Capacity (at least 1).')
+      return
+    }
+    if (isNaN(maxCat) || maxCat <= 0) {
+      setToastType('error')
+      setToastMessage('Please enter a valid Max Cat Capacity (at least 1).')
+      return
+    }
+
     setSavingSettings(true)
     try {
-      await setDoc(doc(db, 'settings', 'boardingSettings'), {
-        ...settingsForm,
+      const payload = {
+        ...settingsDraft,
+        dogDailyRate: Math.round(dogRate),
+        catDailyRate: Math.round(catRate),
+        maxDogCapacity: Math.round(maxDog),
+        maxCatCapacity: Math.round(maxCat),
+        acceptBookings: settingsDraft.acceptBookings !== false,
+        showNewBadge: settingsDraft.showNewBadge !== false,
         updatedAt: serverTimestamp(),
-      }, { merge: true })
+      }
+
+      await setDoc(doc(db, 'settings', 'boardingSettings'), payload, { merge: true })
+
+      const normalized = normalizeBoardingSettings(payload)
+      setSavedSettings(normalized)
       setToastType('success')
       setToastMessage('Boarding settings updated successfully.')
       setShowSettingsModal(false)
-    } catch {
+      setSettingsDraft(null)
+    } catch (err) {
+      console.error('Failed to save boarding settings:', err)
       setToastType('error')
-      setToastMessage('Failed to save boarding settings.')
+      setToastMessage('Failed to save boarding settings. Please try again.')
+    } finally {
+      setSavingSettings(false)
     }
-    setSavingSettings(false)
   }
 
   // Single Edit workflow in details modal
@@ -619,14 +683,14 @@ export default function AdminBoarding() {
           <button
             type="button"
             onClick={toggleBookingsOpen}
-            className={`pill-status-btn ${(settingsForm?.acceptBookings !== false) ? 'open' : 'closed'}`}
+            className={`pill-status-btn ${(savedSettings?.acceptBookings !== false) ? 'open' : 'closed'}`}
             title="Click to toggle booking availability"
           >
             <span className="dot" />
-            <span>{(settingsForm?.acceptBookings !== false) ? 'Bookings Open' : 'Bookings Closed'}</span>
+            <span>{(savedSettings?.acceptBookings !== false) ? 'Bookings Open' : 'Bookings Closed'}</span>
           </button>
 
-          <button onClick={() => setShowSettingsModal(true)} className="btn btn-secondary action-btn">
+          <button onClick={openSettingsModal} className="btn btn-secondary action-btn">
             <Settings size={14} />
             <span>Rates & Settings</span>
           </button>
@@ -1772,128 +1836,150 @@ export default function AdminBoarding() {
       {/* ============================================================
           RATES & SETTINGS MODAL
           ============================================================ */}
-      {showSettingsModal && settingsForm && (
-        <div className="modal-overlay" onClick={() => setShowSettingsModal(false)}>
-          <div className="reschedule-modal-card" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
-            <div className="reschedule-modal-header">
-              <h3>Boarding Rates & Settings</h3>
-              <button type="button" className="icon-btn" onClick={() => setShowSettingsModal(false)}><X size={18} /></button>
+      {showSettingsModal && settingsDraft && (
+        <div className="modal-overlay" onClick={closeSettingsModal}>
+          <div
+            className="boarding-settings-modal-card"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="boarding-settings-title"
+          >
+            {/* Modal Header */}
+            <div className="boarding-settings-modal-header">
+              <h3 id="boarding-settings-title">Boarding Rates & Settings</h3>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={closeSettingsModal}
+                aria-label="Close modal"
+              >
+                <X size={18} />
+              </button>
             </div>
-            <div style={{ display: 'grid', gap: '16px', marginTop: '12px' }}>
+
+            {/* Modal Body (Vertically Scrollable) */}
+            <div className="boarding-settings-modal-body">
               {/* Accept Bookings */}
-              <div style={{
-                padding: '14px 16px',
-                borderRadius: '14px',
-                background: 'var(--surface)',
-                border: '1.5px solid var(--border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '14px',
-              }}>
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text)' }}>
+              <div className="boarding-settings-toggle-card">
+                <div className="boarding-settings-toggle-info">
+                  <div className="boarding-settings-toggle-title">
                     Accept Boarding Bookings
                   </div>
-                  <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px', lineHeight: 1.4 }}>
-                    Allow customers to submit new pet boarding requests. When OFF, shows "Boarding Bookings Temporarily Closed".
+                  <div className="boarding-settings-toggle-desc">
+                    Allow customers to submit new pet boarding requests. When OFF, shows &ldquo;Boarding Bookings Temporarily Closed&rdquo;.
                   </div>
                 </div>
                 <input
                   type="checkbox"
                   id="acceptBookingsToggle"
-                  checked={settingsForm.acceptBookings !== false}
-                  onChange={e => setSettingsForm(p => ({ ...p, acceptBookings: e.target.checked }))}
-                  style={{ width: '20px', height: '20px', accentColor: 'var(--accent)', cursor: 'pointer', flexShrink: 0 }}
+                  checked={settingsDraft.acceptBookings !== false}
+                  onChange={e => setSettingsDraft(p => ({ ...p, acceptBookings: e.target.checked }))}
+                  className="boarding-settings-checkbox"
+                  aria-label="Accept Boarding Bookings"
                 />
               </div>
 
               {/* Show NEW Badge */}
-              <div style={{
-                padding: '14px 16px',
-                borderRadius: '14px',
-                background: 'var(--surface)',
-                border: '1.5px solid var(--border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '14px',
-              }}>
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    Show NEW Badge <span style={{ background: 'var(--accent-bg)', color: 'var(--accent)', fontSize: '10px', padding: '2px 6px', borderRadius: '6px', fontWeight: 800 }}>NEW</span>
+              <div className="boarding-settings-toggle-card">
+                <div className="boarding-settings-toggle-info">
+                  <div className="boarding-settings-toggle-title">
+                    <span>Show NEW Badge</span>
+                    <span className="boarding-settings-new-badge">NEW</span>
                   </div>
-                  <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px', lineHeight: 1.4 }}>
-                    Display the golden "NEW" feature announcement badge at the top-right of the homepage boarding card.
+                  <div className="boarding-settings-toggle-desc">
+                    Display the golden &ldquo;NEW&rdquo; feature announcement badge at the top-right of the homepage boarding card.
                   </div>
                 </div>
                 <input
                   type="checkbox"
                   id="showNewBadgeToggle"
-                  checked={settingsForm.showNewBadge !== false}
-                  onChange={e => setSettingsForm(p => ({ ...p, showNewBadge: e.target.checked }))}
-                  style={{ width: '20px', height: '20px', accentColor: 'var(--accent)', cursor: 'pointer', flexShrink: 0 }}
+                  checked={settingsDraft.showNewBadge !== false}
+                  onChange={e => setSettingsDraft(p => ({ ...p, showNewBadge: e.target.checked }))}
+                  className="boarding-settings-checkbox"
+                  aria-label="Show NEW Badge"
                 />
               </div>
 
-              {/* Rates */}
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '0.8px', display: 'block', marginBottom: '10px' }}>
+              {/* Daily Rates */}
+              <div className="boarding-settings-section">
+                <span className="boarding-settings-section-heading">
                   Daily Rates
                 </span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>Dog Rate (₹/day)</label>
+                <div className="boarding-settings-field-grid">
+                  <div className="boarding-settings-field">
+                    <label htmlFor="dogDailyRateInput">Dog Rate (₹/day)</label>
                     <input
+                      id="dogDailyRateInput"
                       type="number"
+                      min="1"
                       className="input"
-                      value={settingsForm.dogDailyRate}
-                      onChange={e => setSettingsForm(p => ({ ...p, dogDailyRate: Number(e.target.value) }))}
+                      value={settingsDraft.dogDailyRate ?? ''}
+                      onChange={e => setSettingsDraft(p => ({ ...p, dogDailyRate: e.target.value === '' ? '' : Number(e.target.value) }))}
                     />
                   </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>Cat Rate (₹/day)</label>
+                  <div className="boarding-settings-field">
+                    <label htmlFor="catDailyRateInput">Cat Rate (₹/day)</label>
                     <input
+                      id="catDailyRateInput"
                       type="number"
+                      min="1"
                       className="input"
-                      value={settingsForm.catDailyRate}
-                      onChange={e => setSettingsForm(p => ({ ...p, catDailyRate: Number(e.target.value) }))}
+                      value={settingsDraft.catDailyRate ?? ''}
+                      onChange={e => setSettingsDraft(p => ({ ...p, catDailyRate: e.target.value === '' ? '' : Number(e.target.value) }))}
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Capacity */}
-              <div>
-                <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '0.8px', display: 'block', marginBottom: '10px' }}>
+              {/* Room Capacity */}
+              <div className="boarding-settings-section">
+                <span className="boarding-settings-section-heading">
                   Room Capacity
                 </span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>Max Dog Capacity</label>
+                <div className="boarding-settings-field-grid">
+                  <div className="boarding-settings-field">
+                    <label htmlFor="maxDogCapacityInput">Max Dog Capacity</label>
                     <input
+                      id="maxDogCapacityInput"
                       type="number"
+                      min="1"
                       className="input"
-                      value={settingsForm.maxDogCapacity}
-                      onChange={e => setSettingsForm(p => ({ ...p, maxDogCapacity: Number(e.target.value) }))}
+                      value={settingsDraft.maxDogCapacity ?? ''}
+                      onChange={e => setSettingsDraft(p => ({ ...p, maxDogCapacity: e.target.value === '' ? '' : Number(e.target.value) }))}
                     />
                   </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>Max Cat Capacity</label>
+                  <div className="boarding-settings-field">
+                    <label htmlFor="maxCatCapacityInput">Max Cat Capacity</label>
                     <input
+                      id="maxCatCapacityInput"
                       type="number"
+                      min="1"
                       className="input"
-                      value={settingsForm.maxCatCapacity}
-                      onChange={e => setSettingsForm(p => ({ ...p, maxCatCapacity: Number(e.target.value) }))}
+                      value={settingsDraft.maxCatCapacity ?? ''}
+                      onChange={e => setSettingsDraft(p => ({ ...p, maxCatCapacity: e.target.value === '' ? '' : Number(e.target.value) }))}
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="reschedule-modal-footer" style={{ marginTop: '20px' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setShowSettingsModal(false)}>Cancel</button>
-              <button type="button" className="btn btn-primary" disabled={savingSettings} onClick={saveBoardingSettings}>
+            {/* Modal Footer (Pinned at Bottom, Never Overlaps Content) */}
+            <div className="boarding-settings-modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={closeSettingsModal}
+                disabled={savingSettings}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={savingSettings}
+                onClick={saveBoardingSettings}
+              >
                 {savingSettings ? 'Saving...' : 'Save Settings'}
               </button>
             </div>
@@ -1905,6 +1991,227 @@ export default function AdminBoarding() {
           SCOPED STYLES FOR ADMIN BOARDING & MODALS
           ============================================================ */}
       <style>{`
+        /* ============================================================
+           BOARDING RATES & SETTINGS MODAL (Responsive Mobile Layout)
+           ============================================================ */
+        .boarding-settings-modal-card {
+          width: min(calc(100vw - 28px), 480px);
+          max-height: min(90vh, 720px);
+          background: var(--card);
+          border: 1.5px solid var(--border);
+          border-radius: 18px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          margin: auto;
+          box-sizing: border-box;
+        }
+
+        .boarding-settings-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 16px 18px;
+          border-bottom: 1px solid var(--border);
+          background: var(--card);
+          flex-shrink: 0;
+          gap: 12px;
+          box-sizing: border-box;
+        }
+
+        .boarding-settings-modal-header h3 {
+          margin: 0;
+          color: var(--text);
+          font-size: 17px;
+          font-weight: 800;
+          line-height: 1.25;
+        }
+
+        .boarding-settings-modal-header .icon-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--muted);
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.15s ease;
+        }
+
+        .boarding-settings-modal-header .icon-btn:hover {
+          color: var(--text);
+          border-color: var(--accent);
+        }
+
+        .boarding-settings-modal-body {
+          flex: 1 1 auto;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          box-sizing: border-box;
+        }
+
+        .boarding-settings-toggle-card {
+          padding: 14px 16px;
+          border-radius: 14px;
+          background: var(--surface);
+          border: 1.5px solid var(--border);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+          box-sizing: border-box;
+        }
+
+        .boarding-settings-toggle-info {
+          min-width: 0;
+          flex: 1;
+        }
+
+        .boarding-settings-toggle-title {
+          font-weight: 800;
+          font-size: 13.5px;
+          color: var(--text);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
+        .boarding-settings-new-badge {
+          background: var(--accent-bg);
+          color: var(--accent);
+          font-size: 10px;
+          padding: 2px 6px;
+          border-radius: 6px;
+          font-weight: 800;
+          display: inline-block;
+        }
+
+        .boarding-settings-toggle-desc {
+          font-size: 12px;
+          color: var(--muted);
+          margin-top: 4px;
+          line-height: 1.45;
+          word-break: normal;
+          overflow-wrap: break-word;
+        }
+
+        .boarding-settings-checkbox {
+          width: 20px;
+          height: 20px;
+          accent-color: var(--accent);
+          cursor: pointer;
+          flex-shrink: 0;
+          margin: 0;
+        }
+
+        .boarding-settings-section {
+          border-top: 1px solid var(--border);
+          padding-top: 14px;
+        }
+
+        .boarding-settings-section-heading {
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          color: var(--muted);
+          letter-spacing: 0.8px;
+          display: block;
+          margin-bottom: 10px;
+        }
+
+        .boarding-settings-field-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+
+        .boarding-settings-field {
+          min-width: 0;
+        }
+
+        .boarding-settings-field label {
+          font-size: 12px;
+          font-weight: 700;
+          color: var(--muted);
+          display: block;
+          margin-bottom: 6px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .boarding-settings-field .input {
+          width: 100%;
+          box-sizing: border-box;
+        }
+
+        .boarding-settings-modal-footer {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          padding: 14px 18px;
+          border-top: 1px solid var(--border);
+          background: var(--card);
+          flex-shrink: 0;
+          box-sizing: border-box;
+        }
+
+        @media (max-width: 480px) {
+          .boarding-settings-modal-card {
+            width: min(calc(100vw - 20px), 480px);
+            max-height: min(92vh, 680px);
+            border-radius: 16px;
+          }
+
+          .boarding-settings-modal-header {
+            padding: 14px 14px;
+          }
+
+          .boarding-settings-modal-body {
+            padding: 14px 14px;
+            gap: 14px;
+          }
+
+          .boarding-settings-toggle-card {
+            padding: 12px 14px;
+            gap: 12px;
+          }
+
+          .boarding-settings-field-grid {
+            grid-template-columns: 1fr;
+            gap: 10px;
+          }
+
+          .boarding-settings-field label {
+            white-space: normal;
+          }
+
+          .boarding-settings-modal-footer {
+            flex-direction: column-reverse;
+            gap: 8px;
+            padding: 12px 14px;
+          }
+
+          .boarding-settings-modal-footer button {
+            width: 100%;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+        }
+
         .boarding-admin-header {
           display: flex;
           align-items: center;

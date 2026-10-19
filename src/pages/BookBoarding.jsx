@@ -7,12 +7,17 @@ import {
   AlertCircle,
   ArrowRight,
   Calendar,
+  CalendarCheck,
   Check,
   CheckCircle,
   ChevronLeft,
   Clock,
+  Coins,
+  FileText,
   Heart,
   Home,
+  Hourglass,
+  IndianRupee,
   Info,
   MessageCircle,
   PawPrint,
@@ -310,66 +315,230 @@ export default function BookBoarding() {
     ? (adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(bookingRef, shopName)}` : '#')
     : '#'
 
-  // Success view
-  if (done && bookingRef) {
-    return (
-      <div className="boarding-flow-page">
-        {toastMessage && (
-          <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
-            <Toast message={toastMessage} type="success" onClose={() => setToastMessage('')} />
-          </div>
-        )}
-        <div ref={bookingTopRef} className="boarding-flow-container text-center">
-          <div className="boarding-success-icon-wrap">
-            <CheckCircle size={44} color="#15803D" />
-          </div>
-          <h1 className="boarding-heading" style={{ fontSize: '26px', marginBottom: '8px' }}>
-            Boarding Request Submitted!
-          </h1>
-          <p className="boarding-subheading" style={{ maxWidth: '480px', margin: '0 auto 24px' }}>
-            Thank you! Your pet boarding request has been received. Our team will review your stay requirements and confirm your pet's suite shortly.
-          </p>
+  return (
+    <div className="boarding-flow-page">
+      {toastMessage && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
+          <Toast message={toastMessage} type="success" onClose={() => setToastMessage('')} />
+        </div>
+      )}
 
-          <div className="boarding-review-card" style={{ textAlign: 'left', marginBottom: '22px' }}>
-            {[
-              { label: 'Boarding ID', value: `#${bookingRef.id.slice(0, 8).toUpperCase()}`, highlight: true },
-              { label: 'Pet Name', value: `${form.petName} (${form.petType}${displayBreed ? ` · ${displayBreed}` : ''})` },
-              { label: 'Check-In', value: `${formatReviewDate(form.checkInDate, form.checkInTime)}` },
-              { label: 'Check-Out', value: `${formatReviewDate(form.checkOutDate, form.checkOutTime)}` },
-              { label: 'Stay Duration', value: `${stayCalculation.days} Day(s) · ${stayCalculation.nights} Night(s)` },
-              { label: 'Daily Rate', value: `₹${stayCalculation.dailyRate} / day` },
-              { label: 'Estimated Total', value: `₹${stayCalculation.estimatedTotal}`, highlight: true },
-              { label: 'Food Plan', value: `${form.foodType} (${form.foodProvider})` },
-              { label: 'Status', value: 'Pending Admin Review' },
-            ].map(row => (
-              <div key={row.label} className="review-spec-row">
-                <span className="spec-label">{row.label}</span>
-                <span className={row.highlight ? 'spec-val highlight' : 'spec-val'}>{row.value}</span>
+      {/* Success view */}
+      {done && bookingRef ? (
+        <div ref={bookingTopRef} className="boarding-flow-container boarding-success-page">
+          {/* Success Hero Header */}
+          <div className="boarding-success-hero">
+            {/* Soft decorative background paws */}
+            <div className="boarding-success-bg-paw paw-tl" aria-hidden="true">
+              <PawPrint size={32} />
+            </div>
+            <div className="boarding-success-bg-paw paw-tr" aria-hidden="true">
+              <PawPrint size={32} />
+            </div>
+            <div className="boarding-success-bg-paw paw-far-l" aria-hidden="true">
+              <PawPrint size={24} />
+            </div>
+            <div className="boarding-success-bg-paw paw-far-r" aria-hidden="true">
+              <PawPrint size={24} />
+            </div>
+
+            {/* Green Success Badge with Gold Sunburst Radiance */}
+            <div className="boarding-success-badge-wrap">
+              <svg className="boarding-sunburst-rays" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <line x1="50" y1="4" x2="50" y2="13" stroke="#E2B768" strokeWidth="3" strokeLinecap="round" />
+                <line x1="75" y1="14" x2="69" y2="22" stroke="#E2B768" strokeWidth="3" strokeLinecap="round" />
+                <line x1="88" y1="36" x2="79" y2="40" stroke="#E2B768" strokeWidth="3" strokeLinecap="round" />
+                <line x1="25" y1="14" x2="31" y2="22" stroke="#E2B768" strokeWidth="3" strokeLinecap="round" />
+                <line x1="12" y1="36" x2="21" y2="40" stroke="#E2B768" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+
+              <div className="boarding-badge-paw badge-paw-left" aria-hidden="true">
+                <PawPrint size={22} color="#DEC49C" />
               </div>
-            ))}
+              <div className="boarding-badge-paw badge-paw-right" aria-hidden="true">
+                <PawPrint size={22} color="#DEC49C" />
+              </div>
+
+              <div className="boarding-success-circle-outer">
+                <div className="boarding-success-circle-inner">
+                  <Check size={26} strokeWidth={3.4} color="#16A34A" />
+                </div>
+              </div>
+            </div>
+
+            <h1 className="boarding-success-title">
+              Boarding Request Submitted!
+            </h1>
+            <p className="boarding-success-subtitle">
+              Thank you! Your pet boarding request has been received. Our team will review your stay requirements and confirm your pet’s stay shortly.
+            </p>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="boarding-primary-btn" style={{ background: '#25D366', textDecoration: 'none' }}>
-              <MessageCircle size={16} /> Send Details to WhatsApp
+          {/* Booking Summary Card */}
+          <div className="boarding-summary-card">
+            {/* Card Header */}
+            <div className="boarding-summary-card-header">
+              <div className="boarding-summary-header-left">
+                <div className="boarding-summary-header-icon">
+                  <Calendar size={17} color="#B8860B" />
+                </div>
+                <span className="boarding-summary-header-title">BOOKING SUMMARY</span>
+              </div>
+              <span className="boarding-summary-badge-id">
+                #{bookingRef?.id ? bookingRef.id.slice(0, 8).toUpperCase() : 'DZGSFWKF'}
+              </span>
+            </div>
+
+            {/* 1. Pet Name */}
+            <div className="boarding-summary-row">
+              <div className="boarding-row-left">
+                <div className="boarding-row-icon-wrap">
+                  <PawPrint size={15} color="#A6731B" />
+                </div>
+                <span className="boarding-row-label">Pet Name</span>
+              </div>
+              <span className="boarding-row-value">
+                {form.petName ? form.petName.toUpperCase() : 'PET'} ({form.petType || 'Pet'}{displayBreed ? ` · ${displayBreed}` : ''})
+              </span>
+            </div>
+
+            {/* 2. Check-In */}
+            <div className="boarding-summary-row">
+              <div className="boarding-row-left">
+                <div className="boarding-row-icon-wrap">
+                  <Calendar size={15} color="#A6731B" />
+                </div>
+                <span className="boarding-row-label">Check-In</span>
+              </div>
+              <span className="boarding-row-value">
+                {formatReviewDate(form.checkInDate, form.checkInTime)}
+              </span>
+            </div>
+
+            {/* 3. Check-Out */}
+            <div className="boarding-summary-row">
+              <div className="boarding-row-left">
+                <div className="boarding-row-icon-wrap">
+                  <CalendarCheck size={15} color="#A6731B" />
+                </div>
+                <span className="boarding-row-label">Check-Out</span>
+              </div>
+              <span className="boarding-row-value">
+                {formatReviewDate(form.checkOutDate, form.checkOutTime)}
+              </span>
+            </div>
+
+            {/* 4. Stay Duration */}
+            <div className="boarding-summary-row">
+              <div className="boarding-row-left">
+                <div className="boarding-row-icon-wrap">
+                  <Clock size={15} color="#A6731B" />
+                </div>
+                <span className="boarding-row-label">Stay Duration</span>
+              </div>
+              <span className="boarding-row-value">
+                {stayCalculation.days} Day(s) · {stayCalculation.nights} Night(s)
+              </span>
+            </div>
+
+            {/* 5. Daily Rate */}
+            <div className="boarding-summary-row">
+              <div className="boarding-row-left">
+                <div className="boarding-row-icon-wrap">
+                  <Coins size={15} color="#A6731B" />
+                </div>
+                <span className="boarding-row-label">Daily Rate</span>
+              </div>
+              <span className="boarding-row-value">
+                ₹{stayCalculation.dailyRate} / day
+              </span>
+            </div>
+
+            {/* 6. Estimated Total */}
+            <div className="boarding-summary-row">
+              <div className="boarding-row-left">
+                <div className="boarding-row-icon-wrap">
+                  <IndianRupee size={15} color="#A6731B" strokeWidth={2.4} />
+                </div>
+                <span className="boarding-row-label">Estimated Total</span>
+              </div>
+              <span className="boarding-row-value estimated-total">
+                ₹{stayCalculation.estimatedTotal}
+              </span>
+            </div>
+
+            {/* 7. Food Plan */}
+            <div className="boarding-summary-row align-top">
+              <div className="boarding-row-left">
+                <div className="boarding-row-icon-wrap">
+                  <Utensils size={15} color="#A6731B" />
+                </div>
+                <span className="boarding-row-label">Food Plan</span>
+              </div>
+              <div className="boarding-food-plan-wrap">
+                <div className="boarding-food-plan-title">
+                  {form.foodType || 'Packaged Pet Food (Kibble/Wet)'}
+                </div>
+                {form.foodProvider && (
+                  <div className="boarding-food-plan-sub">
+                    ({form.foodProvider})
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 8. Status */}
+            <div className="boarding-summary-row">
+              <div className="boarding-row-left">
+                <div className="boarding-row-icon-wrap">
+                  <FileText size={15} color="#A6731B" />
+                </div>
+                <span className="boarding-row-label">Status</span>
+              </div>
+              <div className="boarding-status-pill">
+                <Hourglass size={13} color="#B07616" strokeWidth={2.4} />
+                <span>Pending Admin Review</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="boarding-success-action-group">
+            <a
+              href={whatsappLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="boarding-btn-primary-whatsapp"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.888 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L0 24l6.335-1.662c1.746.953 3.71 1.456 5.711 1.457h.004c6.554 0 11.89-5.335 11.893-11.893a11.82 11.82 0 00-3.483-8.413z" />
+              </svg>
+              <span>Send Details to WhatsApp</span>
+              <ArrowRight size={18} strokeWidth={2.4} style={{ marginLeft: 2 }} />
             </a>
-            <button onClick={() => navigate('/my-bookings')} className="boarding-secondary-btn">
-              View My Bookings
+
+            <button
+              type="button"
+              onClick={() => navigate('/my-bookings')}
+              className="boarding-btn-secondary-bookings"
+            >
+              <span>View My Bookings</span>
+              <ArrowRight size={18} strokeWidth={2.4} style={{ marginLeft: 2 }} />
             </button>
-            <button onClick={() => { setDone(false); setStep(1) }} className="boarding-back-btn">
+
+            <button
+              type="button"
+              onClick={() => { setDone(false); setStep(1) }}
+              className="boarding-btn-tertiary-link"
+            >
               Book Another Stay
             </button>
           </div>
         </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="boarding-flow-page">
-      <div ref={bookingTopRef} className="boarding-flow-container">
-        {/* Top Suite Badge */}
-        <div className="suite-tag-row">
+      ) : (
+        <div ref={bookingTopRef} className="boarding-flow-container">
+          {/* Top Suite Badge */}
+          <div className="suite-tag-row">
           <span className="suite-gold-tag">PAW PAW SUITES</span>
         </div>
 
@@ -1238,6 +1407,7 @@ export default function BookBoarding() {
           )}
         </div>
       </div>
+      )}
 
       {/* Scoped CSS Styles strictly for the 5 Booking Screens */}
       <style>{`
@@ -1249,10 +1419,421 @@ export default function BookBoarding() {
           font-family: 'DM Sans', sans-serif;
         }
 
+        .text-center {
+          text-align: center;
+        }
+
         .boarding-flow-container {
           max-width: 540px;
           margin: 0 auto;
           scroll-margin-top: 130px;
+        }
+
+        /* ==========================================================================
+           Redesigned Pet Boarding Booking Success Confirmation Screen
+           ========================================================================== */
+        .boarding-success-page {
+          position: relative;
+          max-width: 520px;
+          margin: 0 auto;
+          padding: 8px 6px 24px;
+          text-align: center;
+        }
+
+        .boarding-success-hero {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          margin-bottom: 22px;
+          padding-top: 6px;
+        }
+
+        /* Subtle decorative background paws */
+        .boarding-success-bg-paw {
+          position: absolute;
+          color: #D6BA8F;
+          opacity: 0.32;
+          pointer-events: none;
+          z-index: 1;
+        }
+        .boarding-success-bg-paw.paw-tl {
+          top: -2px;
+          left: 20%;
+          transform: rotate(-15deg);
+        }
+        .boarding-success-bg-paw.paw-tr {
+          top: -2px;
+          right: 20%;
+          transform: rotate(15deg);
+        }
+        .boarding-success-bg-paw.paw-far-l {
+          top: 55px;
+          left: 4%;
+          opacity: 0.22;
+          transform: rotate(-25deg);
+        }
+        .boarding-success-bg-paw.paw-far-r {
+          top: 60px;
+          right: 4%;
+          opacity: 0.22;
+          transform: rotate(25deg);
+        }
+
+        /* Success circular badge with radiating accents */
+        .boarding-success-badge-wrap {
+          position: relative;
+          width: 88px;
+          height: 88px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 16px;
+          z-index: 2;
+        }
+
+        .boarding-sunburst-rays {
+          position: absolute;
+          width: 104px;
+          height: 104px;
+          top: -8px;
+          left: -8px;
+          pointer-events: none;
+        }
+
+        .boarding-badge-paw {
+          position: absolute;
+          pointer-events: none;
+          opacity: 0.45;
+        }
+        .boarding-badge-paw.badge-paw-left {
+          left: -14px;
+          top: 24px;
+          transform: rotate(-20deg);
+        }
+        .boarding-badge-paw.badge-paw-right {
+          right: -14px;
+          top: 24px;
+          transform: rotate(20deg);
+        }
+
+        .boarding-success-circle-outer {
+          width: 72px;
+          height: 72px;
+          border-radius: 50%;
+          background: #DCFCE7;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 16px rgba(22, 163, 74, 0.16);
+        }
+
+        .boarding-success-circle-inner {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          border: 2.8px solid #16A34A;
+          background: #DCFCE7;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .boarding-success-title {
+          font-family: 'Playfair Display', Georgia, serif;
+          font-size: 27px;
+          font-weight: 800;
+          color: #241711;
+          margin: 0 0 10px 0;
+          line-height: 1.25;
+          letter-spacing: -0.2px;
+          text-align: center;
+        }
+
+        .boarding-success-subtitle {
+          font-size: 14px;
+          line-height: 1.55;
+          color: #6B5E52;
+          max-width: 450px;
+          margin: 0 auto;
+          font-weight: 400;
+          text-align: center;
+        }
+
+        /* Booking Summary Card */
+        .boarding-summary-card {
+          background: #FFFFFF;
+          border: 1.5px solid #EFE8DD;
+          border-radius: 20px;
+          padding: 22px 22px 16px;
+          margin: 0 auto 24px;
+          box-shadow: 0 8px 30px rgba(60, 42, 20, 0.05);
+          text-align: left;
+        }
+
+        .boarding-summary-card-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding-bottom: 14px;
+          margin-bottom: 2px;
+          border-bottom: 1px solid #F3EDE4;
+        }
+
+        .boarding-summary-header-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .boarding-summary-header-icon {
+          width: 30px;
+          height: 30px;
+          border-radius: 8px;
+          background: #FAF3E5;
+          border: 1.2px solid #F0DEC0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #B8860B;
+        }
+
+        .boarding-summary-header-title {
+          font-size: 13.5px;
+          font-weight: 800;
+          color: #B07C24;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+        }
+
+        .boarding-summary-badge-id {
+          background: #FAF3E5;
+          border: 1.2px solid #EEDBC2;
+          color: #9E6B18;
+          font-weight: 800;
+          font-size: 12.5px;
+          letter-spacing: 0.6px;
+          padding: 4px 12px;
+          border-radius: 999px;
+          white-space: nowrap;
+        }
+
+        /* Rows */
+        .boarding-summary-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 13px 0;
+          border-bottom: 1px solid #F6F0E7;
+          gap: 14px;
+        }
+
+        .boarding-summary-row:last-child {
+          border-bottom: none;
+          padding-bottom: 4px;
+        }
+
+        .boarding-summary-row.align-top {
+          align-items: flex-start;
+        }
+
+        .boarding-row-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-shrink: 0;
+        }
+
+        .boarding-row-icon-wrap {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          background: #FAF4EB;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #B37D20;
+          flex-shrink: 0;
+        }
+
+        .boarding-row-label {
+          font-size: 13.5px;
+          font-weight: 500;
+          color: #786C62;
+          white-space: nowrap;
+        }
+
+        .boarding-row-value {
+          font-size: 13.5px;
+          font-weight: 700;
+          color: #1E140E;
+          text-align: right;
+          word-break: break-word;
+        }
+
+        .boarding-row-value.estimated-total {
+          font-size: 21px;
+          font-weight: 800;
+          color: #B07C24;
+          letter-spacing: -0.3px;
+        }
+
+        .boarding-food-plan-wrap {
+          text-align: right;
+        }
+
+        .boarding-food-plan-title {
+          font-size: 13.5px;
+          font-weight: 700;
+          color: #1E140E;
+          line-height: 1.35;
+        }
+
+        .boarding-food-plan-sub {
+          font-size: 12px;
+          font-weight: 500;
+          color: #6E6259;
+          margin-top: 2px;
+          line-height: 1.3;
+        }
+
+        .boarding-status-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #FEF7EA;
+          border: 1.2px solid #F6DFB6;
+          color: #B07616;
+          padding: 6px 14px;
+          border-radius: 10px;
+          font-size: 13px;
+          font-weight: 700;
+          white-space: nowrap;
+        }
+
+        /* Action Buttons */
+        .boarding-success-action-group {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          width: 100%;
+          max-width: 480px;
+          margin: 0 auto;
+        }
+
+        .boarding-btn-primary-whatsapp {
+          background: #00A859;
+          color: #FFFFFF !important;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          width: 100%;
+          height: 52px;
+          border-radius: 14px;
+          font-size: 15.5px;
+          font-weight: 700;
+          text-decoration: none !important;
+          box-shadow: 0 4px 14px rgba(0, 168, 89, 0.28);
+          transition: all 0.2s ease;
+          border: none;
+          cursor: pointer;
+        }
+
+        .boarding-btn-primary-whatsapp:hover {
+          background: #00964F;
+          transform: translateY(-1px);
+          box-shadow: 0 6px 18px rgba(0, 168, 89, 0.35);
+          color: #FFFFFF !important;
+        }
+
+        .boarding-btn-secondary-bookings {
+          background: #FFFFFF;
+          border: 1.5px solid #C08820;
+          color: #9C6810;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: 100%;
+          height: 52px;
+          border-radius: 14px;
+          font-size: 15.5px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .boarding-btn-secondary-bookings:hover {
+          background: #FFFDF9;
+          border-color: #9C6810;
+          transform: translateY(-1px);
+        }
+
+        .boarding-btn-tertiary-link {
+          background: transparent;
+          border: none;
+          color: #9C6810;
+          font-size: 14.5px;
+          font-weight: 700;
+          text-decoration: underline;
+          text-underline-offset: 4px;
+          cursor: pointer;
+          padding: 8px 0;
+          margin-top: 2px;
+          transition: color 0.15s ease;
+        }
+
+        .boarding-btn-tertiary-link:hover {
+          color: #744A06;
+        }
+
+        @media (max-width: 600px) {
+          .boarding-success-page {
+            padding: 4px 0 20px;
+          }
+          .boarding-summary-card {
+            padding: 18px 16px 14px;
+            border-radius: 18px;
+          }
+          .boarding-success-title {
+            font-size: 23px;
+          }
+          .boarding-success-subtitle {
+            font-size: 13px;
+            padding: 0 4px;
+          }
+          .boarding-summary-header-title {
+            font-size: 12.5px;
+          }
+          .boarding-summary-badge-id {
+            font-size: 11.5px;
+            padding: 3px 10px;
+          }
+          .boarding-row-label {
+            font-size: 13px;
+          }
+          .boarding-row-value {
+            font-size: 13px;
+          }
+          .boarding-row-value.estimated-total {
+            font-size: 18px;
+          }
+          .boarding-food-plan-title {
+            font-size: 13px;
+          }
+          .boarding-food-plan-sub {
+            font-size: 11.5px;
+          }
+          .boarding-status-pill {
+            font-size: 12px;
+            padding: 5px 11px;
+          }
+          .boarding-btn-primary-whatsapp,
+          .boarding-btn-secondary-bookings {
+            height: 48px;
+            font-size: 14.5px;
+          }
         }
 
         .suite-tag-row {
