@@ -15,7 +15,10 @@ import { useAuth } from '../context/AuthContext'
 import { BOOKING_STATUS } from '../utils/services'
 import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils } from 'lucide-react'
 
-const DEFAULT_HERO_IMAGES = []
+const HERO_FALLBACK_IMAGE = '/hero-fallback.webp'
+const DEFAULT_HERO_IMAGES = [
+  { src: HERO_FALLBACK_IMAGE, alt: 'Paw Paw Pet Grooming Salon & Spa' }
+]
 const DEFAULT_VISIT_IMAGES = [
   { key: 'homeVisit', url: '', alt: 'Home visit grooming' },
   { key: 'centreVisit', url: '', alt: 'Visit our grooming centre' },
@@ -220,6 +223,8 @@ function HeroSlider() {
   const { user } = useAuth()
   const [current, setCurrent] = useState(0)
   const [heroImages, setHeroImages] = useState(null)
+  const [loadedMap, setLoadedMap] = useState({})
+  const [errorMap, setErrorMap] = useState({})
   const [visitImages, setVisitImages] = useState(DEFAULT_VISIT_IMAGES)
   const [paused, setPaused] = useState(false)
   const [upcomingAppointment, setUpcomingAppointment] = useState(null)
@@ -554,20 +559,36 @@ function HeroSlider() {
       <div className="home-redesign-inner">
         <div className="mobile-hero-card">
           <div className="mobile-hero-media" aria-label="Pet grooming hero images">
-            {images.length ? (
-              images.map((image, i) => (
+            {/* Fallback hero image displayed immediately while loading or when image fails */}
+            <img
+              src={HERO_FALLBACK_IMAGE}
+              alt="Paw Paw Pet Grooming"
+              className="mobile-hero-fallback-img"
+              onError={e => {
+                if (!e.currentTarget.dataset.retried) {
+                  e.currentTarget.dataset.retried = 'true'
+                  e.currentTarget.src = '/hero-fallback.png'
+                }
+              }}
+            />
+            {images.map((image, i) => {
+              const isLoaded = Boolean(loadedMap[image.src])
+              const isError = Boolean(errorMap[image.src])
+              const isActive = i === current
+
+              if (isError) return null
+
+              return (
                 <img
                   key={image.src}
                   src={image.src}
                   alt={image.alt}
-                  className={i === current ? 'active' : ''}
+                  onLoad={() => setLoadedMap(prev => prev[image.src] ? prev : ({ ...prev, [image.src]: true }))}
+                  onError={() => setErrorMap(prev => prev[image.src] ? prev : ({ ...prev, [image.src]: true }))}
+                  className={`mobile-hero-slide-img ${isActive ? 'active' : ''} ${isLoaded ? 'is-loaded' : ''}`}
                 />
-              ))
-            ) : isHeroImagesLoading ? (
-              <div className="mobile-hero-empty"><Scissors size={34} /><span>Loading images…</span></div>
-            ) : (
-              <div className="mobile-hero-empty"><Scissors size={34} /><span>Welcome to Paw Paw</span></div>
-            )}
+              )
+            })}
           </div>
           {images.length > 1 && (
             <>
@@ -596,28 +617,84 @@ function HeroSlider() {
         {/* Pet Boarding — Your Pet's Home Away From Home (Matches Reference Mockup) */}
         <section className="home-boarding-section" aria-label="Pet Boarding Suites">
           <div className="home-boarding-card">
-            {/* Top Bar with PET BOARDING pill and NEW badge */}
-            <div className="home-boarding-top-bar">
-              <div className="home-boarding-pill">
-                <PawPrint size={13} /> PET BOARDING
-              </div>
-              {(boardingSettings?.showNewBadge !== false) && (
-                <div className="home-boarding-new-badge" aria-label="New feature announcement">
-                  <Sparkles size={11} /> NEW
+            <div className="home-boarding-content">
+              {/* Top Bar with PET BOARDING pill and NEW badge */}
+              <div className="home-boarding-top-bar">
+                <div className="home-boarding-pill">
+                  <PawPrint size={13} /> PET BOARDING
                 </div>
-              )}
+                {(boardingSettings?.showNewBadge !== false) && (
+                  <div className="home-boarding-new-badge" aria-label="New feature announcement">
+                    <Sparkles size={11} /> NEW
+                  </div>
+                )}
+              </div>
+
+              <h2 className="home-boarding-title">
+                Your Pet's Home <br />
+                <span className="gold-accent">Away From Home</span>
+              </h2>
+
+              <p className="home-boarding-desc">
+                Safe, clean and comfortable stay for your furry family with loving care while you are away.
+              </p>
+
+              {/* Pricing Cards */}
+              <div className="home-boarding-prices">
+                <div className="home-boarding-price-card">
+                  <img
+                    src="/boarding-dog-avatar.png"
+                    alt="Dog Boarding"
+                    className="home-boarding-avatar"
+                    onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+                  />
+                  <div className="home-boarding-price-info">
+                    <div className="home-boarding-price-label">Dog Boarding</div>
+                    <div className="home-boarding-price-amount">
+                      ₹{boardingSettings?.dogDailyRate || 800} <span className="home-boarding-price-unit">/ day</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="home-boarding-price-card">
+                  <img
+                    src="/boarding-cat-avatar.png"
+                    alt="Cat Boarding"
+                    className="home-boarding-avatar"
+                    onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+                  />
+                  <div className="home-boarding-price-info">
+                    <div className="home-boarding-price-label">Cat Boarding</div>
+                    <div className="home-boarding-price-amount">
+                      ₹{boardingSettings?.catDailyRate || 600} <span className="home-boarding-price-unit">/ day</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="home-boarding-actions">
+                {(boardingSettings?.acceptBookings !== false) ? (
+                  <Link to="/boarding" className="home-boarding-btn-primary">
+                    <Calendar size={16} /> Book Pet Boarding <ArrowRight size={15} />
+                  </Link>
+                ) : (
+                  <div className="home-boarding-closed-pill" title="Boarding reservations are temporarily closed">
+                    <Clock size={15} /> Boarding Bookings Temporarily Closed
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowBoardingLearnMore(true)}
+                  className="home-boarding-btn-secondary"
+                >
+                  Learn More <ArrowRight size={15} />
+                </button>
+              </div>
             </div>
 
-            <h2 className="home-boarding-title">
-              Your Pet's Home <br />
-              <span className="gold-accent">Away From Home</span>
-            </h2>
-
-            <p className="home-boarding-desc">
-              Safe, clean and comfortable stay for your furry family with loving care while you are away.
-            </p>
-
-            {/* Large Hero Image (Full available width, rounded) */}
+            {/* Large Hero Image */}
             <div className="home-boarding-hero-wrap">
               <img
                 src="/boarding-hero-pets.png"
@@ -625,60 +702,6 @@ function HeroSlider() {
                 className="home-boarding-pets-img"
                 onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
               />
-            </div>
-
-            {/* Pricing Cards (Attached directly below hero image) */}
-            <div className="home-boarding-prices">
-              <div className="home-boarding-price-card">
-                <img
-                  src="/boarding-dog-avatar.png"
-                  alt="Dog Boarding"
-                  className="home-boarding-avatar"
-                  onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
-                />
-                <div className="home-boarding-price-info">
-                  <div className="home-boarding-price-label">Dog Boarding</div>
-                  <div className="home-boarding-price-amount">
-                    ₹{boardingSettings?.dogDailyRate || 800} <span className="home-boarding-price-unit">/ day</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="home-boarding-price-card">
-                <img
-                  src="/boarding-cat-avatar.png"
-                  alt="Cat Boarding"
-                  className="home-boarding-avatar"
-                  onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
-                />
-                <div className="home-boarding-price-info">
-                  <div className="home-boarding-price-label">Cat Boarding</div>
-                  <div className="home-boarding-price-amount">
-                    ₹{boardingSettings?.catDailyRate || 600} <span className="home-boarding-price-unit">/ day</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Actions (Attached directly below rate cards) */}
-            <div className="home-boarding-actions">
-              {(boardingSettings?.acceptBookings !== false) ? (
-                <Link to="/boarding" className="home-boarding-btn-primary">
-                  <Calendar size={16} /> Book Pet Boarding <ArrowRight size={15} />
-                </Link>
-              ) : (
-                <div className="home-boarding-closed-pill" title="Boarding reservations are temporarily closed">
-                  <Clock size={15} /> Boarding Bookings Temporarily Closed
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setShowBoardingLearnMore(true)}
-                className="home-boarding-btn-secondary"
-              >
-                Learn More <ArrowRight size={15} />
-              </button>
             </div>
           </div>
         </section>
