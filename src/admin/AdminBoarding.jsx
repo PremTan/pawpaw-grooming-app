@@ -104,7 +104,7 @@ function formatBoardingDate(dateStr) {
     if (!Number.isNaN(d.getTime())) {
       return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
     }
-  } catch {}
+  } catch { }
   return dateStr
 }
 
@@ -124,7 +124,7 @@ function formatPetAge(dob) {
       if (months > 0) return `${months} Month${months > 1 ? 's' : ''}`
       return 'Puppy / Kitten'
     }
-  } catch {}
+  } catch { }
   return dob
 }
 
@@ -412,7 +412,7 @@ export default function AdminBoarding() {
     try {
       const existingCollected = Number(checkInModal.amountCollected || 0)
       const advanceNow = hasAdvancePayment === 'yes' ? (Number(advanceAmountInput) || 0) : 0
-      
+
       const isPawPawSpecialFood = Boolean(
         checkInModal.specialFoodRequired && checkInModal.specialFoodProvider === 'pawpaw'
       )
@@ -3070,8 +3070,6 @@ export default function AdminBoarding() {
           color: var(--muted);
           letter-spacing: 0.4px;
           min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
           white-space: nowrap;
         }
 
@@ -4127,41 +4125,63 @@ export default function AdminBoarding() {
             text-align: center;
           }
 
-          /* Requirement 2: All four summary statistics in a single horizontal row on mobile */
+          /* Requirement: All four summary statistics in a single horizontal row on mobile */
           .boarding-stats-grid {
             grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 5px;
+            gap: 4px;
             margin-bottom: 14px;
           }
 
           .boarding-stat-card {
-            padding: 8px 5px;
+            padding: 7px 4px;
             border-radius: 12px;
             gap: 4px;
+            min-width: 0;
+            box-sizing: border-box;
+          }
+
+          .stat-card-head {
+            gap: 3px;
+            min-width: 0;
           }
 
           .stat-icon-box {
-            width: 20px;
-            height: 20px;
-            border-radius: 6px;
+            width: 17px;
+            height: 17px;
+            border-radius: 5px;
+            flex-shrink: 0;
           }
 
           .stat-icon-box svg {
-            width: 12px;
-            height: 12px;
+            width: 10px;
+            height: 10px;
           }
 
           .stat-label {
-            font-size: 9.5px;
-            letter-spacing: 0.2px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: none;
+            letter-spacing: -0.15px;
+            white-space: nowrap;
+            overflow: visible;
+            text-overflow: clip;
+            line-height: 1.1;
           }
 
           .stat-val {
-            font-size: 17px;
+            font-size: 16px;
+            font-weight: 800;
+            line-height: 1.1;
+            white-space: nowrap;
+            overflow: visible;
           }
 
           .stat-val.revenue-val {
-            font-size: 13px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+            white-space: nowrap;
+            overflow: visible;
           }
 
           /* Requirement 3: Search, Filters, and Latest First on single row */
@@ -4307,21 +4327,87 @@ export default function AdminBoarding() {
             padding: 6px 2px;
           }
 
+          .boarding-stats-grid {
+            gap: 3px;
+          }
+
+          .boarding-stat-card {
+            padding: 6px 3px;
+          }
+
+          .stat-card-head {
+            gap: 2.5px;
+          }
+
+          .stat-icon-box {
+            width: 15px;
+            height: 15px;
+            border-radius: 4px;
+          }
+
+          .stat-icon-box svg {
+            width: 9px;
+            height: 9px;
+          }
+
           .stat-label {
-            font-size: 8.5px;
+            font-size: 8px;
+            letter-spacing: -0.25px;
+            white-space: nowrap;
+            overflow: visible;
+            text-overflow: clip;
           }
 
           .stat-val {
-            font-size: 15px;
+            font-size: 14px;
           }
 
           .stat-val.revenue-val {
-            font-size: 11.5px;
+            font-size: 10.5px;
+            letter-spacing: -0.4px;
           }
 
           .card-action-btn {
             font-size: 10.5px;
             padding: 0 4px;
+          }
+        }
+
+        @media (max-width: 320px) {
+          .boarding-stats-grid {
+            gap: 2px;
+          }
+
+          .boarding-stat-card {
+            padding: 6px 2px;
+          }
+
+          .stat-card-head {
+            gap: 2px;
+          }
+
+          .stat-icon-box {
+            width: 13px;
+            height: 13px;
+          }
+
+          .stat-icon-box svg {
+            width: 8px;
+            height: 8px;
+          }
+
+          .stat-label {
+            font-size: 7.5px;
+            letter-spacing: -0.3px;
+          }
+
+          .stat-val {
+            font-size: 12.5px;
+          }
+
+          .stat-val.revenue-val {
+            font-size: 9.5px;
+            letter-spacing: -0.4px;
           }
         }
       `}</style>
