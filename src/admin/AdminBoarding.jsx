@@ -4016,6 +4016,39 @@ export default function AdminBoarding() {
         .boarding-edit-form {
           display: grid;
           gap: 14px;
+          width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
+        }
+
+        .boarding-edit-form .boarding-section-card {
+          width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
+        }
+
+        .boarding-edit-form .filter-two-col {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
+        }
+
+        .boarding-edit-form .filter-two-col > div {
+          min-width: 0;
+          box-sizing: border-box;
+        }
+
+        .boarding-edit-form input,
+        .boarding-edit-form select,
+        .boarding-edit-form textarea,
+        .boarding-edit-form .input {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
         }
 
         .edit-sec-title {
@@ -4044,6 +4077,8 @@ export default function AdminBoarding() {
           justify-content: flex-end;
           gap: 10px;
           background: #FFFDF9;
+          flex-shrink: 0;
+          box-sizing: border-box;
         }
 
         .btn-details-close-wide {
@@ -4270,8 +4305,10 @@ export default function AdminBoarding() {
             gap: 10px;
           }
 
-          .filter-three-col {
+          .filter-three-col,
+          .filter-two-col {
             grid-template-columns: 1fr;
+            gap: 10px;
           }
 
           .stay-banner-strip {
@@ -4286,22 +4323,45 @@ export default function AdminBoarding() {
 
           .modal-overlay {
             padding: 10px !important;
+            box-sizing: border-box;
           }
 
           .boarding-details-modal {
             width: min(calc(100vw - 20px), 620px);
-            max-height: calc(100dvh - 24px);
-            border-radius: 20px;
+            max-width: calc(100vw - 20px);
+            max-height: calc(100dvh - 20px);
+            border-radius: 18px;
             margin: auto;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-sizing: border-box;
           }
 
           .details-modal-header {
             padding: 12px 14px 10px;
             gap: 6px;
+            flex-shrink: 0;
+            width: 100%;
+            box-sizing: border-box;
+          }
+
+          .details-header-top-row {
+            gap: 8px;
+            width: 100%;
+            box-sizing: border-box;
           }
 
           .details-title {
-            font-size: 16px;
+            font-size: 15px;
+            line-height: 1.25;
+            min-width: 0;
+            word-break: break-word;
+          }
+
+          .header-actions-row {
+            gap: 5px;
+            flex-shrink: 0;
           }
 
           .details-header-btn {
@@ -4317,6 +4377,69 @@ export default function AdminBoarding() {
           .details-modal-body {
             padding: 12px 14px;
             gap: 12px;
+            overflow-x: hidden;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            box-sizing: border-box;
+            width: 100%;
+            min-width: 0;
+          }
+
+          .boarding-edit-form {
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            gap: 12px;
+          }
+
+          .boarding-edit-form .boarding-section-card {
+            padding: 12px 12px;
+            border-radius: 14px;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+          }
+
+          .boarding-edit-form .filter-two-col {
+            grid-template-columns: 1fr;
+            gap: 10px;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+          }
+
+          .boarding-edit-form .filter-two-col > div {
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+          }
+
+          .boarding-edit-form input,
+          .boarding-edit-form select,
+          .boarding-edit-form textarea,
+          .boarding-edit-form .input {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+          }
+
+          .details-modal-footer {
+            padding: 12px 14px;
+            gap: 8px;
+            flex-shrink: 0;
+            width: 100%;
+            box-sizing: border-box;
+          }
+
+          .details-modal-footer .btn {
+            flex: 1;
+            min-width: 0;
+            justify-content: center;
+            text-align: center;
+            padding: 10px 12px;
+            font-size: 13px;
+            box-sizing: border-box;
           }
         }
 
@@ -4371,6 +4494,32 @@ export default function AdminBoarding() {
             font-size: 10.5px;
             padding: 0 4px;
           }
+
+          .details-modal-header {
+            padding: 10px 12px 8px;
+          }
+
+          .details-title {
+            font-size: 14px;
+          }
+
+          .details-modal-body {
+            padding: 10px 10px;
+            gap: 10px;
+          }
+
+          .boarding-edit-form .boarding-section-card {
+            padding: 10px 10px;
+          }
+
+          .details-modal-footer {
+            padding: 10px 10px;
+          }
+
+          .details-modal-footer .btn {
+            padding: 9px 8px;
+            font-size: 12px;
+          }
         }
 
         @media (max-width: 320px) {
@@ -4408,6 +4557,22 @@ export default function AdminBoarding() {
           .stat-val.revenue-val {
             font-size: 9.5px;
             letter-spacing: -0.4px;
+          }
+
+          .details-modal-header {
+            padding: 8px 8px 6px;
+          }
+
+          .details-title {
+            font-size: 13px;
+          }
+
+          .details-modal-body {
+            padding: 8px 8px;
+          }
+
+          .boarding-edit-form .boarding-section-card {
+            padding: 8px 8px;
           }
         }
       `}</style>
