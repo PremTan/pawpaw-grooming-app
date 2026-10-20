@@ -19,6 +19,8 @@ import {
   Calendar,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Droplets,
   Edit3,
@@ -34,6 +36,7 @@ import {
   Moon,
   PawPrint,
   Phone,
+  Plus,
   PlusSquare,
   Receipt,
   RefreshCw,
@@ -44,6 +47,7 @@ import {
   SlidersHorizontal,
   Syringe,
   Tag,
+  Trash2,
   User,
   Users,
   Utensils,
@@ -62,6 +66,8 @@ import {
   fetchBoardingSettings,
   normalizeBoardingSettings,
   calculateBoardingStay,
+  DEFAULT_BOARDING_TERMS,
+  DEFAULT_BOARDING_TERMS_CLOSING,
 } from '../utils/boardingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 
@@ -168,6 +174,7 @@ export default function AdminBoarding() {
   const [savedSettings, setSavedSettings] = useState(null)
   const [settingsDraft, setSettingsDraft] = useState(null)
   const [savingSettings, setSavingSettings] = useState(false)
+  const [termsViewMode, setTermsViewMode] = useState('items') // 'items' | 'text'
 
   // UI state
   const [toastMessage, setToastMessage] = useState('')
@@ -594,11 +601,21 @@ export default function AdminBoarding() {
     try {
       const current = await fetchBoardingSettings(db)
       setSavedSettings(current)
-      setSettingsDraft({ ...current })
+      setSettingsDraft({
+        ...current,
+        terms: Array.isArray(current.terms) && current.terms.length > 0 ? [...current.terms] : [...DEFAULT_BOARDING_TERMS],
+        termsClosingMessage: current.termsClosingMessage || DEFAULT_BOARDING_TERMS_CLOSING,
+      })
+      setTermsViewMode('items')
       setShowSettingsModal(true)
     } catch {
       const fallback = savedSettings ? { ...savedSettings } : normalizeBoardingSettings({})
-      setSettingsDraft(fallback)
+      setSettingsDraft({
+        ...fallback,
+        terms: Array.isArray(fallback.terms) && fallback.terms.length > 0 ? [...fallback.terms] : [...DEFAULT_BOARDING_TERMS],
+        termsClosingMessage: fallback.termsClosingMessage || DEFAULT_BOARDING_TERMS_CLOSING,
+      })
+      setTermsViewMode('items')
       setShowSettingsModal(true)
     }
   }
@@ -609,7 +626,58 @@ export default function AdminBoarding() {
     setSettingsDraft(null)
   }
 
-  // Save Settings Modal: validates all fields and explicitly persists all 6 settings at once
+  // Helper functions for editing Pet Boarding Terms & Conditions in Settings Modal
+  const handleAddTerm = () => {
+    setSettingsDraft(p => ({
+      ...p,
+      terms: [...(p.terms || []), ''],
+    }))
+  }
+
+  const handleUpdateTerm = (idx, val) => {
+    setSettingsDraft(p => {
+      const list = [...(p.terms || [])]
+      list[idx] = val
+      return { ...p, terms: list }
+    })
+  }
+
+  const handleRemoveTerm = (idx) => {
+    setSettingsDraft(p => {
+      const list = (p.terms || []).filter((_, i) => i !== idx)
+      return { ...p, terms: list }
+    })
+  }
+
+  const handleMoveTerm = (idx, direction) => {
+    setSettingsDraft(p => {
+      const list = [...(p.terms || [])]
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+      if (targetIdx < 0 || targetIdx >= list.length) return p
+      const temp = list[idx]
+      list[idx] = list[targetIdx]
+      list[targetIdx] = temp
+      return { ...p, terms: list }
+    })
+  }
+
+  const handleResetTermsToDefault = () => {
+    setSettingsDraft(p => ({
+      ...p,
+      terms: [...DEFAULT_BOARDING_TERMS],
+      termsClosingMessage: DEFAULT_BOARDING_TERMS_CLOSING,
+    }))
+  }
+
+  const handleRawTextChange = (text) => {
+    const lines = text.split('\n')
+    setSettingsDraft(p => ({
+      ...p,
+      terms: lines,
+    }))
+  }
+
+  // Save Settings Modal: validates all fields and explicitly persists all settings at once
   const saveBoardingSettings = async () => {
     if (!settingsDraft) return
 
@@ -639,6 +707,17 @@ export default function AdminBoarding() {
       return
     }
 
+    // Validate Terms & Conditions are not empty
+    const cleanedTerms = (settingsDraft.terms || [])
+      .map(t => String(t || '').trim())
+      .filter(Boolean)
+
+    if (cleanedTerms.length === 0) {
+      setToastType('error')
+      setToastMessage('Terms & Conditions cannot be empty. Please include at least one term.')
+      return
+    }
+
     setSavingSettings(true)
     try {
       const payload = {
@@ -649,6 +728,8 @@ export default function AdminBoarding() {
         maxCatCapacity: Math.round(maxCat),
         acceptBookings: settingsDraft.acceptBookings !== false,
         showNewBadge: settingsDraft.showNewBadge !== false,
+        terms: cleanedTerms,
+        termsClosingMessage: String(settingsDraft.termsClosingMessage || '').trim(),
         updatedAt: serverTimestamp(),
       }
 
@@ -657,7 +738,7 @@ export default function AdminBoarding() {
       const normalized = normalizeBoardingSettings(payload)
       setSavedSettings(normalized)
       setToastType('success')
-      setToastMessage('Boarding settings updated successfully.')
+      setToastMessage('Boarding settings & terms updated successfully.')
       setShowSettingsModal(false)
       setSettingsDraft(null)
     } catch (err) {
@@ -1564,6 +1645,20 @@ export default function AdminBoarding() {
                         <span className="detail-label"><FileText size={14} /> Special Requests</span>
                         <strong className="detail-val">{selectedBooking.additionalInstructions || 'None'}</strong>
                       </div>
+
+                      <div className="detail-item full">
+                        <span className="detail-label"><ShieldCheck size={14} /> Terms & Conditions</span>
+                        <strong className="detail-val" style={{ color: selectedBooking.termsAccepted ? '#16a34a' : 'var(--text)' }}>
+                          {selectedBooking.termsAccepted ? (
+                            <>
+                              ✓ Accepted & Agreed by Customer at Booking
+                              {selectedBooking.termsSnapshot?.length ? ` (${selectedBooking.termsSnapshot.length} conditions snapshotted)` : ''}
+                            </>
+                          ) : (
+                            'Standard Paw Paw Boarding Terms'
+                          )}
+                        </strong>
+                      </div>
                     </div>
                   </div>
                 </>
@@ -2384,6 +2479,176 @@ export default function AdminBoarding() {
                       onChange={e => setSettingsDraft(p => ({ ...p, maxCatCapacity: e.target.value === '' ? '' : Number(e.target.value) }))}
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Pet Boarding Terms & Conditions */}
+              <div className="boarding-settings-section">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                  <span className="boarding-settings-section-heading" style={{ margin: 0 }}>
+                    Pet Boarding Terms & Conditions
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className={`btn ${termsViewMode === 'items' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '4px 10px', fontSize: '11.5px', height: '28px' }}
+                      onClick={() => setTermsViewMode('items')}
+                    >
+                      Bullet Items ({(settingsDraft.terms || []).length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${termsViewMode === 'text' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '4px 10px', fontSize: '11.5px', height: '28px' }}
+                      onClick={() => setTermsViewMode('text')}
+                    >
+                      Multiline Text
+                    </button>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.45 }}>
+                  These terms are presented to customers on Step 5 (Review & Confirm) for mandatory acceptance. You can edit, add, remove, and reorder bullet points.
+                </p>
+
+                {termsViewMode === 'items' ? (
+                  <div style={{ display: 'grid', gap: '10px' }}>
+                    {(settingsDraft.terms || []).map((term, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          gap: '8px',
+                          alignItems: 'flex-start',
+                          background: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '10px',
+                          padding: '10px 12px',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontWeight: 800,
+                            fontSize: '11.5px',
+                            color: '#C08820',
+                            marginTop: '6px',
+                            minWidth: '24px',
+                          }}
+                        >
+                          #{idx + 1}
+                        </span>
+
+                        <textarea
+                          rows={2}
+                          className="input"
+                          style={{
+                            flex: 1,
+                            fontSize: '12.5px',
+                            lineHeight: 1.4,
+                            padding: '8px 10px',
+                            minHeight: '48px',
+                            resize: 'vertical',
+                          }}
+                          value={term}
+                          onChange={e => handleUpdateTerm(idx, e.target.value)}
+                          placeholder={`Enter term #${idx + 1}...`}
+                        />
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            style={{ width: '26px', height: '26px', padding: 0 }}
+                            disabled={idx === 0}
+                            onClick={() => handleMoveTerm(idx, 'up')}
+                            title="Move up"
+                          >
+                            <ChevronUp size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            style={{ width: '26px', height: '26px', padding: 0 }}
+                            disabled={idx === (settingsDraft.terms || []).length - 1}
+                            onClick={() => handleMoveTerm(idx, 'down')}
+                            title="Move down"
+                          >
+                            <ChevronDown size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            style={{ width: '26px', height: '26px', padding: 0, color: '#ef4444' }}
+                            onClick={() => handleRemoveTerm(idx)}
+                            title="Delete term"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: '12px', padding: '7px 12px', gap: '5px' }}
+                        onClick={handleAddTerm}
+                      >
+                        <Plus size={14} /> Add Another Term
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: '11.5px', padding: '7px 12px', color: 'var(--muted)' }}
+                        onClick={handleResetTermsToDefault}
+                      >
+                        Reset to Official Defaults
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <textarea
+                      rows={12}
+                      className="input"
+                      style={{
+                        width: '100%',
+                        fontSize: '12.5px',
+                        lineHeight: 1.5,
+                        padding: '10px 12px',
+                        fontFamily: 'inherit',
+                      }}
+                      value={(settingsDraft.terms || []).join('\n')}
+                      onChange={e => handleRawTextChange(e.target.value)}
+                      placeholder="Enter one term per line..."
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '11px', color: 'var(--muted)' }}>
+                      <span>Each line represents an individual bullet point.</span>
+                      <button
+                        type="button"
+                        style={{ background: 'none', border: 'none', color: '#C08820', cursor: 'pointer', padding: 0, fontSize: '11px', fontWeight: 600 }}
+                        onClick={handleResetTermsToDefault}
+                      >
+                        Reset to Defaults
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Closing Message */}
+                <div style={{ marginTop: '14px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                    Closing Message / Note
+                  </label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={settingsDraft.termsClosingMessage ?? ''}
+                    onChange={e => setSettingsDraft(p => ({ ...p, termsClosingMessage: e.target.value }))}
+                    placeholder="e.g. Your pet's safety, comfort, and happiness are our priority! ❤️🐶🐱"
+                  />
                 </div>
               </div>
             </div>

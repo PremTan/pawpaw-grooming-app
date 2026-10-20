@@ -9,6 +9,21 @@ export const BOARDING_STATUS = {
   CANCELLED: 'cancelled',
 }
 
+export const DEFAULT_BOARDING_TERMS = [
+  'Advance booking is mandatory and subject to availability.',
+  'Dogs must be properly bathed and receive mandatory tick and flea treatment before boarding.',
+  'Cats must be clean and receive appropriate cat-safe parasite treatment before boarding.',
+  'Vaccination records must be shared before check-in.',
+  'Pet parents must inform us about medical conditions, allergies, medications, and behavioural issues.',
+  'Pet parents must provide any required medicines.',
+  'Regular food is included in the boarding price. Customers may bring special food, or Paw Paw may provide special food for an additional charge confirmed and collected by the Admin at checkout.',
+  'Check-in and check-out timings must be confirmed in advance.',
+  'Veterinary expenses during boarding are the pet parent\'s responsibility.',
+  'Boarding charges and applicable cancellation policies will be communicated at the time of booking.',
+]
+
+export const DEFAULT_BOARDING_TERMS_CLOSING = "Your pet's safety, comfort, and happiness are our priority! ❤️🐶🐱"
+
 export const DEFAULT_BOARDING_SETTINGS = {
   dogDailyRate: 800,
   catDailyRate: 600,
@@ -22,6 +37,8 @@ export const DEFAULT_BOARDING_SETTINGS = {
   showNewBadge: true,
   acceptBookings: true,
   active: true,
+  terms: DEFAULT_BOARDING_TERMS,
+  termsClosingMessage: DEFAULT_BOARDING_TERMS_CLOSING,
 }
 
 export const TIME_SLOT_OPTIONS = [
@@ -57,6 +74,22 @@ export const WALKING_FREQUENCIES = [
 ]
 
 export function normalizeBoardingSettings(data = {}) {
+  let terms = DEFAULT_BOARDING_TERMS
+  if (Array.isArray(data.terms) && data.terms.length > 0) {
+    const cleaned = data.terms.map(t => String(t || '').trim()).filter(Boolean)
+    if (cleaned.length > 0) terms = cleaned
+  } else if (typeof data.terms === 'string' && data.terms.trim()) {
+    const lines = data.terms
+      .split('\n')
+      .map(l => l.replace(/^\d+[\.\)]\s*/, '').trim())
+      .filter(Boolean)
+    if (lines.length > 0) terms = lines
+  }
+
+  const termsClosingMessage = typeof data.termsClosingMessage === 'string' && data.termsClosingMessage.trim()
+    ? data.termsClosingMessage.trim()
+    : DEFAULT_BOARDING_TERMS_CLOSING
+
   return {
     dogDailyRate: Math.max(100, Number(data.dogDailyRate || DEFAULT_BOARDING_SETTINGS.dogDailyRate)),
     catDailyRate: Math.max(100, Number(data.catDailyRate || DEFAULT_BOARDING_SETTINGS.catDailyRate)),
@@ -69,6 +102,8 @@ export function normalizeBoardingSettings(data = {}) {
     showNewBadge: data.showNewBadge !== false,
     acceptBookings: data.acceptBookings !== false,
     active: data.active !== false && data.acceptBookings !== false,
+    terms,
+    termsClosingMessage,
   }
 }
 

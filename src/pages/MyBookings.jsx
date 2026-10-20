@@ -1770,6 +1770,20 @@ export default function MyBookings() {
                     <span className="detail-label"><User size={14} /> Special Requests</span>
                     <strong className="detail-val">{selectedBoarding.additionalInstructions || 'None'}</strong>
                   </div>
+
+                  <div className="detail-item full">
+                    <span className="detail-label"><ShieldCheck size={14} /> Terms & Conditions</span>
+                    <strong className="detail-val" style={{ color: selectedBoarding.termsAccepted ? '#16a34a' : 'var(--text)' }}>
+                      {selectedBoarding.termsAccepted ? (
+                        <>
+                          ✓ Accepted & Agreed at Booking
+                          {selectedBoarding.termsSnapshot?.length ? ` (${selectedBoarding.termsSnapshot.length} conditions)` : ''}
+                        </>
+                      ) : (
+                        'Standard Paw Paw Boarding Terms'
+                      )}
+                    </strong>
+                  </div>
                 </div>
               </div>
             </div>

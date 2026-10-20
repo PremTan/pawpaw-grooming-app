@@ -11,7 +11,9 @@ import {
   CalendarCheck,
   Check,
   CheckCircle,
+  ChevronDown,
   ChevronLeft,
+  ChevronUp,
   Clock,
   Coins,
   FileText,
@@ -43,6 +45,8 @@ import {
   buildBoardingWhatsAppMessage,
   calculateBoardingStay,
   fetchBoardingSettings,
+  DEFAULT_BOARDING_TERMS,
+  DEFAULT_BOARDING_TERMS_CLOSING,
 } from '../utils/boardingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import Toast from '../components/Toast'
@@ -75,6 +79,10 @@ export default function BookBoarding() {
   const [done, setDone] = useState(false)
   const [bookingRef, setBookingRef] = useState(null)
   const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('success')
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [termsExpanded, setTermsExpanded] = useState(false)
+  const [showTermsModal, setShowTermsModal] = useState(false)
 
   const todayStr = format(startOfToday(), 'yyyy-MM-dd')
   const tomorrowStr = format(addDays(startOfToday(), 1), 'yyyy-MM-dd')
@@ -222,10 +230,21 @@ export default function BookBoarding() {
       return
     }
 
+    if (!termsAccepted) {
+      setToastType('error')
+      setToastMessage('Please read and agree to the Pet Boarding Terms & Conditions to submit your request.')
+      return
+    }
+
     setLoading(true)
     try {
       const selectedPet = pets.find(p => p.id === selectedPetId)
       const finalBreed = form.customBreed || form.petBreed || ''
+
+      const activeTerms = (boardingSettings?.terms && boardingSettings.terms.length > 0)
+        ? boardingSettings.terms
+        : DEFAULT_BOARDING_TERMS
+      const activeClosing = boardingSettings?.termsClosingMessage || DEFAULT_BOARDING_TERMS_CLOSING
 
       const boardingData = {
         userId: user.uid,
@@ -274,6 +293,12 @@ export default function BookBoarding() {
         foodAllergies: form.allergies.trim(),
         specialDietInstructions: form.specialDietInstructions.trim(),
         waterInstructions: form.waterInstructions.trim(),
+
+        // Terms & Conditions Acceptance Snapshot
+        termsAccepted: true,
+        termsAcceptedAt: serverTimestamp(),
+        termsSnapshot: activeTerms,
+        termsClosingMessage: activeClosing,
 
         // Daily Care & Behavior
         walkingFrequency: form.petType === 'Dog' ? form.walkingFrequency : 'N/A',
@@ -329,7 +354,7 @@ export default function BookBoarding() {
     <div className="boarding-flow-page">
       {toastMessage && (
         <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
-          <Toast message={toastMessage} type="success" onClose={() => setToastMessage('')} />
+          <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
         </div>
       )}
 
@@ -1495,19 +1520,124 @@ export default function BookBoarding() {
                 </div>
               </div>
 
+              {/* Pet Boarding Terms & Conditions (Collapsible Preview + Full Modal) */}
+              {(() => {
+                const activeTerms = (boardingSettings?.terms && boardingSettings.terms.length > 0)
+                  ? boardingSettings.terms
+                  : DEFAULT_BOARDING_TERMS
+                const activeClosingMessage = boardingSettings?.termsClosingMessage || DEFAULT_BOARDING_TERMS_CLOSING
+
+                return (
+                  <div className="review-terms-card">
+                    <div
+                      className="review-terms-header"
+                      onClick={() => setTermsExpanded(p => !p)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setTermsExpanded(p => !p) }}
+                    >
+                      <div className="terms-header-left">
+                        <div className="terms-icon-circle">
+                          <FileText size={16} color="#C08820" />
+                        </div>
+                        <div>
+                          <h4 className="terms-card-title">Pet Boarding Terms & Conditions</h4>
+                          <span className="terms-card-subtitle">
+                            {termsExpanded ? 'Click to collapse terms preview' : `${activeTerms.length} conditions · Click to preview`}
+                          </span>
+                        </div>
+                      </div>
+                      <div className={`terms-expand-btn ${termsExpanded ? 'expanded' : ''}`}>
+                        <ChevronDown size={18} />
+                      </div>
+                    </div>
+
+                    <div className="review-terms-content">
+                      <ul className="terms-preview-list">
+                        {(termsExpanded ? activeTerms : activeTerms.slice(0, 3)).map((term, idx) => (
+                          <li key={idx} className="terms-preview-item">
+                            <span className="terms-bullet-num">{idx + 1}.</span>
+                            <span className="terms-bullet-text">{term}</span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      {!termsExpanded && activeTerms.length > 3 && (
+                        <div className="terms-more-indicator">
+                          + {activeTerms.length - 3} more condition{activeTerms.length - 3 > 1 ? 's' : ''}...
+                        </div>
+                      )}
+
+                      {termsExpanded && activeClosingMessage && (
+                        <div className="terms-closing-banner">
+                          {activeClosingMessage}
+                        </div>
+                      )}
+
+                      <div style={{ marginTop: '10px' }}>
+                        <button
+                          type="button"
+                          className="view-all-terms-btn"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setShowTermsModal(true)
+                          }}
+                        >
+                          <span>View All Terms & Conditions</span>
+                          <ArrowRight size={13} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Mandatory Customer Acceptance Checkbox */}
+                    <div className="terms-acceptance-row">
+                      <label className="terms-accept-label" htmlFor="petBoardingAcceptTerms">
+                        <input
+                          type="checkbox"
+                          checked={termsAccepted}
+                          onChange={e => setTermsAccepted(e.target.checked)}
+                          className="terms-accept-checkbox"
+                          id="petBoardingAcceptTerms"
+                        />
+                        <span className="terms-accept-text">
+                          I have read and agree to the <strong>Pet Boarding Terms & Conditions</strong>.
+                        </span>
+                      </label>
+
+                      {!termsAccepted && (
+                        <div className="terms-validation-hint">
+                          <AlertCircle size={14} color="#B45309" />
+                          <span>Please accept the terms and conditions above to submit your booking.</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+
               {boardingSettings?.acceptBookings === false ? (
                 <div className="boarding-notice-warn text-center">
                   Boarding Bookings Temporarily Closed
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={loading || isBlocked}
-                  className="boarding-primary-btn"
+                <div
+                  className="submit-btn-wrap"
+                  onClick={() => {
+                    if (!termsAccepted && !loading && !isBlocked) {
+                      setToastType('error')
+                      setToastMessage('Please read and agree to the Pet Boarding Terms & Conditions to submit your request.')
+                    }
+                  }}
                 >
-                  {loading ? 'Submitting Boarding Request...' : 'Submit Boarding Request →'}
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={loading || isBlocked || !termsAccepted}
+                    className={`boarding-primary-btn ${!termsAccepted ? 'disabled-terms' : ''}`}
+                  >
+                    {loading ? 'Submitting Boarding Request...' : 'Submit Boarding Request →'}
+                  </button>
+                </div>
               )}
 
               <button type="button" onClick={() => setStep(4)} className="boarding-back-btn">
@@ -1518,6 +1648,75 @@ export default function BookBoarding() {
         </div>
       </div>
       )}
+
+      {/* Full Terms & Conditions Modal */}
+      {showTermsModal && (() => {
+        const activeTerms = (boardingSettings?.terms && boardingSettings.terms.length > 0)
+          ? boardingSettings.terms
+          : DEFAULT_BOARDING_TERMS
+        const activeClosingMessage = boardingSettings?.termsClosingMessage || DEFAULT_BOARDING_TERMS_CLOSING
+
+        return (
+          <div className="modal-overlay" onClick={() => setShowTermsModal(false)}>
+            <div
+              className="terms-full-modal-card"
+              onClick={e => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="terms-modal-heading"
+            >
+              <div className="terms-modal-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={18} color="#C08820" />
+                  <h3 id="terms-modal-heading" className="terms-modal-title">
+                    Pet Boarding Terms & Conditions
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => setShowTermsModal(false)}
+                  aria-label="Close modal"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="terms-modal-body">
+                <p style={{ fontSize: '13px', color: '#6B5E55', margin: '0 0 14px', lineHeight: 1.5 }}>
+                  Please review Paw Paw Pet Grooming&apos;s boarding policies and care guidelines before confirming your reservation.
+                </p>
+
+                <ol className="terms-modal-list">
+                  {activeTerms.map((term, idx) => (
+                    <li key={idx} className="terms-modal-item">
+                      <span className="terms-modal-index">{idx + 1}.</span>
+                      <span className="terms-modal-text">{term}</span>
+                    </li>
+                  ))}
+                </ol>
+
+                {activeClosingMessage && (
+                  <div className="terms-modal-closing">
+                    {activeClosingMessage}
+                  </div>
+                )}
+              </div>
+
+              <div className="terms-modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ width: '100%', justifyContent: 'center', padding: '12px 18px', fontWeight: 700 }}
+                  onClick={() => setShowTermsModal(false)}
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Scoped CSS Styles strictly for the 5 Booking Screens */}
       <style>{`
@@ -2961,6 +3160,325 @@ export default function BookBoarding() {
           align-items: center;
           justify-content: center;
           margin: 0 auto 20px;
+        }
+
+        /* ==========================================================================
+           Step 5: Pet Boarding Terms & Conditions Preview Card & Acceptance
+           ========================================================================== */
+        .review-terms-card {
+          background: #FCFAF6;
+          border: 1.2px solid #E6D8C3;
+          border-radius: 14px;
+          margin-bottom: 16px;
+          overflow: hidden;
+          box-shadow: 0 1px 3px rgba(43, 29, 20, 0.04);
+          transition: border-color 0.2s ease;
+        }
+
+        .review-terms-card:hover {
+          border-color: #DEC8A3;
+        }
+
+        .review-terms-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 14px;
+          cursor: pointer;
+          user-select: none;
+          background: #F7EFE2;
+          border-bottom: 1px solid #EBDBC5;
+          transition: background-color 0.15s ease;
+        }
+
+        .review-terms-header:hover {
+          background: #F3E7D3;
+        }
+
+        .terms-header-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .terms-icon-circle {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: #FAF5EB;
+          border: 1px solid #DEC8A3;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .terms-card-title {
+          margin: 0;
+          font-size: 13.5px;
+          font-weight: 800;
+          color: #2B1D14;
+          line-height: 1.25;
+        }
+
+        .terms-card-subtitle {
+          font-size: 11.5px;
+          color: #8C7866;
+          display: block;
+          margin-top: 2px;
+        }
+
+        .terms-expand-btn {
+          color: #8C7866;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: transform 0.2s ease, color 0.2s ease;
+        }
+
+        .terms-expand-btn.expanded {
+          transform: rotate(180deg);
+          color: #B07616;
+        }
+
+        .review-terms-content {
+          padding: 12px 14px;
+        }
+
+        .terms-preview-list {
+          margin: 0;
+          padding: 0;
+          list-style: none;
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+        }
+
+        .terms-preview-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          font-size: 12px;
+          color: #4B3C32;
+          line-height: 1.45;
+        }
+
+        .terms-bullet-num {
+          font-weight: 700;
+          color: #B07616;
+          flex-shrink: 0;
+          min-width: 16px;
+        }
+
+        .terms-bullet-text {
+          flex: 1;
+        }
+
+        .terms-more-indicator {
+          font-size: 11.5px;
+          color: #9A7B56;
+          font-style: italic;
+          margin-top: 6px;
+          padding-left: 24px;
+        }
+
+        .terms-closing-banner {
+          margin-top: 10px;
+          padding: 8px 12px;
+          background: #FAF5EB;
+          border: 1px dashed #DFCFB4;
+          border-radius: 8px;
+          font-size: 11.5px;
+          font-weight: 600;
+          color: #785215;
+          text-align: center;
+        }
+
+        .view-all-terms-btn {
+          background: transparent;
+          border: 1px solid #D8C3A0;
+          border-radius: 8px;
+          color: #8F5E11;
+          font-weight: 700;
+          font-size: 12px;
+          padding: 7px 12px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          font-family: inherit;
+        }
+
+        .view-all-terms-btn:hover {
+          background: #F3E7D3;
+          border-color: #B07616;
+          color: #704707;
+        }
+
+        .terms-acceptance-row {
+          padding: 12px 14px;
+          background: #FFFFFF;
+          border-top: 1px solid #EFE4D2;
+        }
+
+        .terms-accept-label {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          cursor: pointer;
+          user-select: none;
+        }
+
+        .terms-accept-checkbox {
+          width: 18px;
+          height: 18px;
+          accent-color: #C08820;
+          margin-top: 2px;
+          cursor: pointer;
+          flex-shrink: 0;
+        }
+
+        .terms-accept-text {
+          font-size: 12.5px;
+          color: #2B1D14;
+          line-height: 1.4;
+        }
+
+        .terms-accept-text strong {
+          color: #8F5E11;
+        }
+
+        .terms-validation-hint {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 8px;
+          padding: 6px 10px;
+          background: #FFFBEB;
+          border: 1px solid #FDE68A;
+          border-radius: 6px;
+          font-size: 11.5px;
+          font-weight: 600;
+          color: #92400E;
+          line-height: 1.35;
+        }
+
+        .submit-btn-wrap {
+          width: 100%;
+        }
+
+        .boarding-primary-btn.disabled-terms {
+          opacity: 0.55;
+          cursor: not-allowed;
+          background: #C5B69F !important;
+          box-shadow: none !important;
+        }
+
+        /* Full Terms Modal */
+        .terms-full-modal-card {
+          background: #FFFFFF;
+          border-radius: 18px;
+          border: 1.5px solid #DEC8A3;
+          width: 100%;
+          max-width: 580px;
+          max-height: calc(100dvh - 36px);
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 20px 45px rgba(43, 29, 20, 0.25);
+          overflow: hidden;
+          margin: 16px;
+          animation: termsModalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes termsModalPop {
+          from {
+            opacity: 0;
+            transform: scale(0.97) translateY(8px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+
+        .terms-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 16px 20px;
+          background: #FAF6EF;
+          border-bottom: 1.2px solid #EFE1CC;
+        }
+
+        .terms-modal-title {
+          margin: 0;
+          font-size: 15.5px;
+          font-weight: 800;
+          color: #2B1D14;
+        }
+
+        .terms-modal-body {
+          padding: 18px 20px;
+          overflow-y: auto;
+          flex: 1;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        .terms-modal-list {
+          margin: 0;
+          padding: 0;
+          list-style: none;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .terms-modal-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          font-size: 13px;
+          color: #382D24;
+          line-height: 1.5;
+        }
+
+        .terms-modal-index {
+          font-weight: 800;
+          color: #B07616;
+          background: #F8EFE1;
+          border: 1px solid #EADCC8;
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 11px;
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+
+        .terms-modal-text {
+          flex: 1;
+        }
+
+        .terms-modal-closing {
+          margin-top: 18px;
+          padding: 12px 14px;
+          background: #FAF5EB;
+          border: 1.5px dashed #DEC8A3;
+          border-radius: 10px;
+          font-size: 13px;
+          font-weight: 700;
+          color: #785215;
+          text-align: center;
+        }
+
+        .terms-modal-footer {
+          padding: 14px 20px;
+          background: #FAF6EF;
+          border-top: 1.2px solid #EFE1CC;
         }
 
         /* Responsive Breakpoints */
