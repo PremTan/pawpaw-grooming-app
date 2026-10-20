@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
 import {
+  AlertCircle,
   ArrowRight,
   Bed,
   Building2,
@@ -856,7 +857,7 @@ export default function MyBookings() {
                           {b.petType} {b.petBreed ? `· ${b.petBreed}` : ''}
                         </div>
                         <div style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 700, marginTop: '2px' }}>
-                          {b.stayDays || 1} Day(s) ({b.stayNights || 0} Nights) · ₹{b.estimatedTotal || 0}
+                          {b.stayDays || 1} Day(s) ({b.stayNights || 0} Nights) · ₹{money(b.totalAmount || (Number(b.estimatedTotal || 0) + Number(b.specialFoodCharge || 0)))}
                         </div>
                       </div>
                     </div>
@@ -1436,41 +1437,48 @@ export default function MyBookings() {
 
       {/* Boarding Details Modal (Screenshot 1 Match) */}
       {selectedBoarding && (
-        <div className="my-booking-modal-overlay" onClick={() => setSelectedBoarding(null)}>
+        <div className="my-booking-modal-overlay boarding-modal-overlay" onClick={() => setSelectedBoarding(null)}>
           <div className="boarding-details-modal" onClick={e => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="details-modal-header">
-              <div className="header-meta">
-                <div className="title-row">
-                  <h2 className="details-title">Boarding Reservation</h2>
-                  <span className={`boarding-status-pill ${selectedBoarding.status || 'pending'}`}>
-                    {selectedBoarding.status === 'checked_out' && <CheckCircle2 size={13} />}
-                    {selectedBoarding.status === 'checked_in' && <LogIn size={13} />}
-                    {statusLabel(selectedBoarding.status)}
-                  </span>
+              {/* Row 1: Title on left, actions on right */}
+              <div className="details-header-top-row">
+                <h2 className="details-title">Boarding Reservation</h2>
+
+                <div className="header-actions-row">
+                  {adminWhatsappNumber && (
+                    <a
+                      href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(selectedBoarding, shopName)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="details-header-btn whatsapp"
+                      aria-label="Send details to WhatsApp"
+                    >
+                      <MessageCircle size={14} /> <span>WhatsApp</span>
+                    </a>
+                  )}
+
+                  <button
+                    type="button"
+                    className="details-close-btn"
+                    onClick={() => setSelectedBoarding(null)}
+                    aria-label="Close modal"
+                  >
+                    <X size={18} />
+                  </button>
                 </div>
-                <span className="details-ref-id">{shortId(selectedBoarding.id)}</span>
               </div>
 
-              <div className="header-actions-row">
-                {adminWhatsappNumber && (
-                  <a
-                    href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(selectedBoarding, shopName)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="details-header-btn whatsapp"
-                  >
-                    <MessageCircle size={14} /> WhatsApp
-                  </a>
-                )}
-
-                <button
-                  type="button"
-                  className="details-close-btn"
-                  onClick={() => setSelectedBoarding(null)}
-                >
-                  <X size={18} />
-                </button>
+              {/* Row 2: Status badge and Reservation ID on the same line */}
+              <div className="details-header-sub-row">
+                <span className={`boarding-status-pill ${selectedBoarding.status || 'pending'}`}>
+                  {selectedBoarding.status === 'checked_out' && <CheckCircle2 size={13} />}
+                  {selectedBoarding.status === 'checked_in' && <LogIn size={13} />}
+                  {selectedBoarding.status === 'confirmed' && <Check size={13} />}
+                  {selectedBoarding.status === 'cancelled' && <X size={13} />}
+                  <span>{statusLabel(selectedBoarding.status)}</span>
+                </span>
+                <span className="details-ref-id">{shortId(selectedBoarding.id)}</span>
               </div>
             </div>
 
@@ -1628,13 +1636,41 @@ export default function MyBookings() {
                   </div>
 
                   <div className="billing-item">
-                    <span className="billing-label"><Receipt size={14} /> Estimated Total</span>
+                    <span className="billing-label"><Receipt size={14} /> Base Boarding Stay</span>
                     <strong className="billing-val estimated">₹{money(selectedBoarding.estimatedTotal)}</strong>
                   </div>
 
+                  {Number(selectedBoarding.specialFoodCharge || 0) > 0 && (
+                    <div className="billing-item">
+                      <span className="billing-label"><Utensils size={14} /> Special Food Charge</span>
+                      <strong className="billing-val" style={{ color: '#16a34a' }}>
+                        +₹{money(selectedBoarding.specialFoodCharge)}
+                      </strong>
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px' }}>
+                        {selectedBoarding.specialFoodChargeCollectedAt === 'check_in' ? 'Paid at Check-In' : 'Paid at Checkout'}
+                      </span>
+                    </div>
+                  )}
+
+                  {Number(selectedBoarding.specialFoodCharge || 0) > 0 && (
+                    <div className="billing-item">
+                      <span className="billing-label"><Receipt size={14} /> Total Stay Amount</span>
+                      <strong className="billing-val" style={{ color: 'var(--text)' }}>
+                        ₹{money(selectedBoarding.totalAmount || (Number(selectedBoarding.estimatedTotal || 0) + Number(selectedBoarding.specialFoodCharge || 0)))}
+                      </strong>
+                    </div>
+                  )}
+
                   <div className="billing-item">
-                    <span className="billing-label"><Wallet size={14} /> Amount Collected</span>
+                    <span className="billing-label"><Wallet size={14} /> Amount Paid</span>
                     <strong className="billing-val collected">₹{money(selectedBoarding.amountCollected || 0)}</strong>
+                  </div>
+
+                  <div className="billing-item">
+                    <span className="billing-label"><Receipt size={14} /> Remaining Balance</span>
+                    <strong className="billing-val" style={{ color: Math.max(0, (Number(selectedBoarding.totalAmount || selectedBoarding.estimatedTotal || 0) + (selectedBoarding.totalAmount ? 0 : Number(selectedBoarding.specialFoodCharge || 0))) - Number(selectedBoarding.amountCollected || 0)) > 0 ? 'var(--accent)' : '#16a34a' }}>
+                      ₹{money(Math.max(0, (Number(selectedBoarding.totalAmount || selectedBoarding.estimatedTotal || 0) + (selectedBoarding.totalAmount ? 0 : Number(selectedBoarding.specialFoodCharge || 0))) - Number(selectedBoarding.amountCollected || 0)))}
+                    </strong>
                   </div>
                 </div>
               </div>
@@ -1650,14 +1686,46 @@ export default function MyBookings() {
 
                 <div className="detail-two-col-grid care">
                   <div className="detail-item">
-                    <span className="detail-label"><Utensils size={14} /> Food Type</span>
-                    <strong className="detail-val">{selectedBoarding.foodType || 'Packaged Pet Food'}</strong>
+                    <span className="detail-label"><Utensils size={14} /> Regular Food</span>
+                    <strong className="detail-val" style={{ color: '#16a34a' }}>
+                      ✓ Included (Provided by Paw Paw)
+                    </strong>
                   </div>
 
                   <div className="detail-item">
-                    <span className="detail-label"><Utensils size={14} /> Food Provider</span>
-                    <strong className="detail-val">{selectedBoarding.foodProvider || 'Owner will provide'}</strong>
+                    <span className="detail-label"><Utensils size={14} /> Special Food Required</span>
+                    <strong className="detail-val">
+                      {selectedBoarding.specialFoodRequired
+                        ? 'Yes'
+                        : (selectedBoarding.specialFoodRequired === false ? 'No (Regular food fine)' : (selectedBoarding.foodType || 'No'))}
+                    </strong>
                   </div>
+
+                  {selectedBoarding.specialFoodRequired && (
+                    <div className="detail-item">
+                      <span className="detail-label"><Users size={14} /> Special Food Provider</span>
+                      <strong className="detail-val">
+                        {selectedBoarding.specialFoodProvider === 'pawpaw'
+                          ? 'Paw Paw will provide it'
+                          : selectedBoarding.specialFoodProvider === 'customer'
+                            ? 'Owner will provide (No extra charge)'
+                            : (selectedBoarding.foodProvider || 'Owner')}
+                      </strong>
+                    </div>
+                  )}
+
+                  {selectedBoarding.specialFoodRequired && (
+                    <div className="detail-item">
+                      <span className="detail-label"><Receipt size={14} /> Special Food Charge</span>
+                      <strong className="detail-val" style={{ color: Number(selectedBoarding.specialFoodCharge || 0) > 0 ? '#16a34a' : 'var(--text)' }}>
+                        {Number(selectedBoarding.specialFoodCharge || 0) > 0
+                          ? `₹${money(selectedBoarding.specialFoodCharge)} (${selectedBoarding.specialFoodChargeCollectedAt === 'check_in' ? 'Paid at Check-In' : selectedBoarding.specialFoodChargeCollectedAt === 'checkout' ? 'Paid at Checkout' : 'Confirmed by hostel'})`
+                          : selectedBoarding.specialFoodProvider === 'customer'
+                            ? '₹0 (Owner provides food)'
+                            : 'Confirmed at check-in or checkout'}
+                      </strong>
+                    </div>
+                  )}
 
                   <div className="detail-item">
                     <span className="detail-label"><Clock size={14} /> Feeding Schedule</span>
@@ -1665,9 +1733,16 @@ export default function MyBookings() {
                   </div>
 
                   <div className="detail-item">
+                    <span className="detail-label"><AlertCircle size={14} /> Food Allergies / Dislikes</span>
+                    <strong className="detail-val">
+                      {selectedBoarding.foodAllergies || selectedBoarding.allergies || 'None'}
+                    </strong>
+                  </div>
+
+                  <div className="detail-item">
                     <span className="detail-label"><Droplets size={14} /> Diet / Water Notes</span>
                     <strong className="detail-val">
-                      {selectedBoarding.specialDietInstructions || selectedBoarding.waterInstructions || 'None'}
+                      {selectedBoarding.specialDietInstructions || selectedBoarding.waterInstructions || selectedBoarding.dietInstructions || 'None'}
                     </strong>
                   </div>
 
@@ -1697,17 +1772,6 @@ export default function MyBookings() {
                   </div>
                 </div>
               </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="details-modal-footer">
-              <button
-                type="button"
-                className="btn-details-close-wide"
-                onClick={() => setSelectedBoarding(null)}
-              >
-                <X size={16} /> Close
-              </button>
             </div>
           </div>
         </div>
@@ -2691,69 +2755,136 @@ export default function MyBookings() {
         }
 
         /* Boarding Details Modal Styles (Customer Portal) */
+        .boarding-modal-overlay {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          padding: 16px !important;
+          box-sizing: border-box !important;
+        }
+
         .boarding-details-modal {
           background: #FFFDF9;
           border: 1.5px solid #EFE6D8;
-          border-radius: 24px;
-          width: 100%;
-          max-width: 620px;
-          max-height: 90vh;
+          border-radius: 22px;
+          width: min(calc(100vw - 24px), 620px);
+          max-height: calc(100dvh - 32px);
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          box-shadow: 0 14px 44px rgba(60, 40, 20, 0.16);
+          box-shadow: 0 16px 48px rgba(60, 40, 20, 0.18);
           margin: auto;
+          box-sizing: border-box;
         }
 
         .details-modal-header {
-          padding: 18px 22px 14px;
+          padding: 14px 18px 12px;
           display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
+          flex-direction: column;
+          gap: 6px;
           border-bottom: 1.2px solid #EFE6D8;
-          gap: 12px;
           background: #FFFDF9;
+          flex-shrink: 0;
+          box-sizing: border-box;
         }
 
-        .header-meta .title-row {
+        .details-header-top-row {
           display: flex;
           align-items: center;
+          justify-content: space-between;
           gap: 10px;
-          flex-wrap: wrap;
+          width: 100%;
         }
 
         .details-title {
-          font-size: 20px;
+          font-size: 18px;
           font-weight: 800;
           color: #221711;
           margin: 0;
-        }
-
-        .details-ref-id {
-          font-size: 13px;
-          font-weight: 700;
-          color: var(--muted);
-          margin-top: 3px;
-          display: block;
+          line-height: 1.25;
+          min-width: 0;
+          word-break: break-word;
+          flex: 1;
         }
 
         .header-actions-row {
           display: flex;
           align-items: center;
+          gap: 6px;
+          flex-shrink: 0;
+        }
+
+        .details-header-sub-row {
+          display: flex;
+          align-items: center;
           gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .boarding-status-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 3px 9px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: capitalize;
+        }
+
+        .boarding-status-pill.pending {
+          background: #FEFCE8;
+          color: #B45309;
+          border: 1px solid #FEF08A;
+        }
+        .boarding-status-pill.confirmed {
+          background: #EFF8FF;
+          color: #0284C7;
+          border: 1px solid #B2DDFF;
+        }
+        .boarding-status-pill.checked_in {
+          background: #F0F9FF;
+          color: #0369A1;
+          border: 1.2px solid #BAE6FD;
+        }
+        .boarding-status-pill.checked_out {
+          background: #ECFDF3;
+          color: #027A48;
+          border: 1px solid #A6F4C5;
+        }
+        .boarding-status-pill.cancelled {
+          background: #FEF3F2;
+          color: #B42318;
+          border: 1px solid #FECDCA;
+        }
+
+        .details-ref-id {
+          font-size: 12px;
+          font-weight: 800;
+          color: #9E6B18;
+          background: #FAF3E5;
+          border: 1px solid #EEDBC2;
+          padding: 3px 8px;
+          border-radius: 6px;
+          letter-spacing: 0.5px;
+          display: inline-flex;
+          align-items: center;
+          line-height: 1;
         }
 
         .details-header-btn {
           display: inline-flex;
           align-items: center;
-          gap: 6px;
-          padding: 7px 13px;
-          border-radius: 10px;
-          font-size: 12.5px;
+          gap: 5px;
+          padding: 6px 11px;
+          border-radius: 9px;
+          font-size: 12px;
           font-weight: 700;
           cursor: pointer;
           text-decoration: none;
           transition: all 0.15s;
+          white-space: nowrap;
+          flex-shrink: 0;
         }
 
         .details-header-btn.whatsapp {
@@ -2769,21 +2900,25 @@ export default function MyBookings() {
           width: 32px;
           height: 32px;
           border-radius: 8px;
-          border: none;
-          background: transparent;
+          border: 1px solid #EFE6D8;
+          background: #FFFDF9;
           color: var(--muted);
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
+          flex-shrink: 0;
+          transition: all 0.15s ease;
         }
         .details-close-btn:hover {
-          background: #F2ECE1;
+          background: #FAF3E5;
+          border-color: var(--accent);
           color: var(--text);
         }
 
         .details-modal-body {
-          padding: 18px 20px;
+          flex: 1 1 auto;
+          padding: 16px 18px;
           overflow-y: auto;
           display: grid;
           gap: 14px;
@@ -3032,49 +3167,54 @@ export default function MyBookings() {
           font-size: 16.5px;
         }
 
-        .btn-details-close-wide {
-          width: 100%;
-          justify-content: center;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 11px;
-          border-radius: 12px;
-          background: #FFFFFF;
-          border: 1.5px solid #C08820;
-          color: #9A6C16;
-          font-size: 13.5px;
-          font-weight: 700;
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-        .btn-details-close-wide:hover {
-          background: #FAF3E3;
-        }
-
         @media (max-width: 640px) {
+          .boarding-modal-overlay {
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 10px !important;
+          }
+
           .boarding-details-modal {
-            max-height: 94vh;
-            border-radius: 20px 20px 0 0;
-            margin-top: auto;
+            width: min(calc(100vw - 20px), 620px);
+            max-height: calc(100dvh - 24px);
+            border-radius: 20px;
+            margin: auto;
           }
+
           .details-modal-header {
-            padding: 14px 16px;
+            padding: 12px 14px 10px;
+            gap: 6px;
           }
+
           .details-title {
-            font-size: 17px;
+            font-size: 16px;
           }
+
+          .details-header-btn {
+            padding: 5px 9px;
+            font-size: 11.5px;
+          }
+
+          .details-close-btn {
+            width: 30px;
+            height: 30px;
+          }
+
           .details-modal-body {
-            padding: 14px 16px;
+            padding: 12px 14px;
+            gap: 12px;
           }
+
           .detail-two-col-grid {
             grid-template-columns: 1fr;
             gap: 10px;
           }
+
           .stay-banner-strip {
             flex-wrap: wrap;
             gap: 10px;
           }
+
           .billing-three-col-row {
             grid-template-columns: 1fr 1fr;
             gap: 10px;

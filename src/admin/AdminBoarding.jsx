@@ -147,14 +147,17 @@ export default function AdminBoarding() {
   const [isEditing, setIsEditing] = useState(false)
   const [editForm, setEditForm] = useState(null)
 
-  // Check-In Advance Payment Modal state
+  // Check-In Advance Payment & Special Food Modal state
   const [checkInModal, setCheckInModal] = useState(null)
   const [hasAdvancePayment, setHasAdvancePayment] = useState(null) // null | 'yes' | 'no'
   const [advanceAmountInput, setAdvanceAmountInput] = useState('')
+  const [checkInFoodChargeInput, setCheckInFoodChargeInput] = useState('')
+  const [checkInFoodTiming, setCheckInFoodTiming] = useState('check_in') // 'check_in' | 'checkout'
 
   // Checkout modal
   const [checkoutModal, setCheckoutModal] = useState(null)
   const [checkoutAmount, setCheckoutAmount] = useState('')
+  const [checkoutFoodChargeInput, setCheckoutFoodChargeInput] = useState('')
 
   // Cancel modal
   const [cancelTarget, setCancelTarget] = useState(null)
@@ -391,16 +394,28 @@ export default function AdminBoarding() {
     setCheckInModal(b)
     setHasAdvancePayment(null)
     setAdvanceAmountInput('')
+    setCheckInFoodChargeInput('')
+    setCheckInFoodTiming('check_in')
   }
 
-  // Confirm Check In (with advance payment logic)
+  // Confirm Check In (with advance payment & optional special food charge logic)
   const confirmCheckIn = async () => {
     if (!checkInModal) return
     setUpdating(checkInModal.id)
     try {
       const existingCollected = Number(checkInModal.amountCollected || 0)
       const advanceNow = hasAdvancePayment === 'yes' ? (Number(advanceAmountInput) || 0) : 0
-      const newTotalCollected = existingCollected + advanceNow
+      
+      const isPawPawSpecialFood = Boolean(
+        checkInModal.specialFoodRequired && checkInModal.specialFoodProvider === 'pawpaw'
+      )
+      const foodCharge = (isPawPawSpecialFood && Number(checkInFoodChargeInput) > 0)
+        ? Math.round(Number(checkInFoodChargeInput))
+        : 0
+      const foodCollectedNow = (foodCharge > 0 && checkInFoodTiming === 'check_in') ? foodCharge : 0
+
+      const newTotalCollected = existingCollected + advanceNow + foodCollectedNow
+      const totalStayWithFood = Number(checkInModal.estimatedTotal || 0) + foodCharge
 
       const patch = {
         status: BOARDING_STATUS.CHECKED_IN,
@@ -409,20 +424,37 @@ export default function AdminBoarding() {
         updatedAt: serverTimestamp(),
         checkedInAt: serverTimestamp(),
       }
+
+      if (foodCharge > 0) {
+        patch.specialFoodCharge = foodCharge
+        patch.specialFoodChargeRecordedAt = 'check_in'
+        patch.specialFoodChargeCollectedAt = checkInFoodTiming
+        patch.totalAmount = totalStayWithFood
+      }
+
       await updateDoc(doc(db, 'boardingBookings', checkInModal.id), patch)
       patchLocal(checkInModal.id, { ...patch, updatedAt: new Date(), checkedInAt: new Date() })
 
       if (checkInModal.userId) {
+        let msg = `${checkInModal.petName} is safely settled into their cozy suite.`
+        if (advanceNow > 0 || foodCollectedNow > 0) {
+          msg += ` Payment of ₹${money(advanceNow + foodCollectedNow)} recorded at check-in.`
+        }
         await sendNotification(checkInModal.userId, {
           title: `${checkInModal.petName} has Checked In!`,
-          message: `${checkInModal.petName} is safely settled into their cozy suite. ${advanceNow > 0 ? `Advance payment of ₹${money(advanceNow)} recorded.` : 'We will keep you updated!'}`,
+          message: msg,
           type: 'boarding_checked_in',
           bookingId: checkInModal.id,
           actionUrl: '/my-bookings',
         })
       }
       setToastType('success')
-      setToastMessage(`${checkInModal.petName} marked as checked in.${advanceNow > 0 ? ` Advance of ₹${money(advanceNow)} recorded.` : ''}`)
+      let toast = `${checkInModal.petName} marked as checked in.`
+      if (advanceNow > 0) toast += ` Advance: ₹${money(advanceNow)}.`
+      if (foodCharge > 0) {
+        toast += ` Special food charge: ₹${money(foodCharge)} (${checkInFoodTiming === 'check_in' ? 'Collected' : 'Due at checkout'}).`
+      }
+      setToastMessage(toast)
       setCheckInModal(null)
     } catch {
       setToastType('error')
@@ -434,8 +466,11 @@ export default function AdminBoarding() {
   // Check Out
   const openCheckOutModal = (b) => {
     setCheckoutModal(b)
+    setCheckoutFoodChargeInput('')
     const previousCollected = Number(b.amountCollected || 0)
-    const remaining = Math.max(0, Number(b.estimatedTotal || 0) - previousCollected)
+    const existingFoodCharge = Number(b.specialFoodCharge || 0)
+    const totalStay = (Number(b.estimatedTotal || 0) + existingFoodCharge)
+    const remaining = Math.max(0, totalStay - previousCollected)
     setCheckoutAmount(String(remaining))
   }
 
@@ -447,12 +482,36 @@ export default function AdminBoarding() {
 
     setUpdating(checkoutModal.id)
     try {
+      const isPawPawSpecialFood = Boolean(
+        checkoutModal.specialFoodRequired && checkoutModal.specialFoodProvider === 'pawpaw'
+      )
+      const alreadyRecordedFoodCharge = Number(checkoutModal.specialFoodCharge || 0)
+      const hasRecordedAtCheckIn = Boolean(
+        checkoutModal.specialFoodChargeRecordedAt === 'check_in' || alreadyRecordedFoodCharge > 0
+      )
+
+      const newlyAddedFoodCharge = (!hasRecordedAtCheckIn && isPawPawSpecialFood && Number(checkoutFoodChargeInput) > 0)
+        ? Math.round(Number(checkoutFoodChargeInput))
+        : 0
+
       const patch = {
         status: BOARDING_STATUS.CHECKED_OUT,
         amountCollected: finalTotalCollected,
         updatedAt: serverTimestamp(),
         checkedOutAt: serverTimestamp(),
       }
+
+      if (newlyAddedFoodCharge > 0) {
+        patch.specialFoodCharge = newlyAddedFoodCharge
+        patch.specialFoodChargeRecordedAt = 'checkout'
+        patch.specialFoodChargeCollectedAt = 'checkout'
+        patch.totalAmount = Number(checkoutModal.estimatedTotal || 0) + newlyAddedFoodCharge
+      } else if (hasRecordedAtCheckIn) {
+        if (checkoutModal.specialFoodChargeCollectedAt === 'checkout' || !checkoutModal.specialFoodChargeCollectedAt) {
+          patch.specialFoodChargeCollectedAt = 'checkout'
+        }
+      }
+
       await updateDoc(doc(db, 'boardingBookings', checkoutModal.id), patch)
       patchLocal(checkoutModal.id, { ...patch, updatedAt: new Date(), checkedOutAt: new Date() })
 
@@ -889,7 +948,14 @@ export default function AdminBoarding() {
                     </div>
                     <div className="boarding-strip-text">
                       <span className="strip-label">Total Amount</span>
-                      <strong className="strip-val amount">₹{money(b.estimatedTotal)}</strong>
+                      <strong className="strip-val amount">
+                        ₹{money(b.totalAmount || (Number(b.estimatedTotal || 0) + Number(b.specialFoodCharge || 0)))}
+                      </strong>
+                      {Number(b.specialFoodCharge || 0) > 0 && (
+                        <span className="strip-sub" style={{ color: '#16a34a' }}>
+                          inc. ₹{money(b.specialFoodCharge)} food
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1146,59 +1212,65 @@ export default function AdminBoarding() {
           <div className="boarding-details-modal" onClick={e => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="details-modal-header">
-              <div className="header-meta">
-                <div className="title-row">
-                  <h2 className="details-title">
-                    {isEditing ? 'Edit Boarding Reservation' : 'Boarding Reservation'}
-                  </h2>
-                  <span className={`boarding-status-pill ${selectedBooking.status || 'pending'}`}>
-                    {selectedBooking.status === 'checked_out' && <CheckCircle2 size={13} />}
-                    {selectedBooking.status === 'checked_in' && <LogIn size={13} />}
-                    {selectedBooking.status === 'confirmed' && <Check size={13} />}
-                    {statusLabel(selectedBooking.status)}
-                  </span>
+              {/* Row 1: Title on left, actions on right */}
+              <div className="details-header-top-row">
+                <h2 className="details-title">
+                  {isEditing ? 'Edit Boarding Reservation' : 'Boarding Reservation'}
+                </h2>
+
+                <div className="header-actions-row">
+                  {!isEditing && adminWhatsappNumber && (
+                    <a
+                      href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(selectedBooking, shopName)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="details-header-btn whatsapp"
+                      aria-label="Send details to WhatsApp"
+                    >
+                      <MessageCircle size={14} /> <span>WhatsApp</span>
+                    </a>
+                  )}
+
+                  {!isEditing ? (
+                    <button
+                      type="button"
+                      className="details-header-btn edit"
+                      onClick={() => openEditMode(selectedBooking)}
+                      aria-label="Edit Reservation"
+                    >
+                      <Edit3 size={14} /> <span>Edit</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="details-header-btn cancel-edit"
+                      onClick={() => setIsEditing(false)}
+                    >
+                      Cancel
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    className="details-close-btn"
+                    onClick={() => { setSelectedBooking(null); setIsEditing(false) }}
+                    aria-label="Close modal"
+                  >
+                    <X size={18} />
+                  </button>
                 </div>
-                <span className="details-ref-id">{shortId(selectedBooking.id)}</span>
               </div>
 
-              <div className="header-actions-row">
-                {!isEditing && adminWhatsappNumber && (
-                  <a
-                    href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(selectedBooking, shopName)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="details-header-btn whatsapp"
-                  >
-                    <MessageCircle size={14} /> WhatsApp
-                  </a>
-                )}
-
-                {/* EXACTLY ONE EDIT BUTTON FOR THE WHOLE RESERVATION */}
-                {!isEditing ? (
-                  <button
-                    type="button"
-                    className="details-header-btn edit"
-                    onClick={() => openEditMode(selectedBooking)}
-                  >
-                    <Edit3 size={14} /> Edit
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="details-header-btn cancel-edit"
-                    onClick={() => setIsEditing(false)}
-                  >
-                    Cancel
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  className="details-close-btn"
-                  onClick={() => { setSelectedBooking(null); setIsEditing(false) }}
-                >
-                  <X size={18} />
-                </button>
+              {/* Row 2: Status badge and Reservation ID on the same line */}
+              <div className="details-header-sub-row">
+                <span className={`boarding-status-pill ${selectedBooking.status || 'pending'}`}>
+                  {selectedBooking.status === 'checked_out' && <CheckCircle2 size={13} />}
+                  {selectedBooking.status === 'checked_in' && <LogIn size={13} />}
+                  {selectedBooking.status === 'confirmed' && <Check size={13} />}
+                  {selectedBooking.status === 'cancelled' && <X size={13} />}
+                  <span>{statusLabel(selectedBooking.status)}</span>
+                </span>
+                <span className="details-ref-id">{shortId(selectedBooking.id)}</span>
               </div>
             </div>
 
@@ -1358,13 +1430,41 @@ export default function AdminBoarding() {
                       </div>
 
                       <div className="billing-item">
-                        <span className="billing-label"><Receipt size={14} /> Estimated Total</span>
+                        <span className="billing-label"><Receipt size={14} /> Base Boarding Stay</span>
                         <strong className="billing-val estimated">₹{money(selectedBooking.estimatedTotal)}</strong>
                       </div>
+
+                      {Number(selectedBooking.specialFoodCharge || 0) > 0 && (
+                        <div className="billing-item">
+                          <span className="billing-label"><Utensils size={14} /> Special Food Charge</span>
+                          <strong className="billing-val" style={{ color: '#16a34a' }}>
+                            +₹{money(selectedBooking.specialFoodCharge)}
+                          </strong>
+                          <span style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px' }}>
+                            {selectedBooking.specialFoodChargeCollectedAt === 'check_in' ? 'Collected at Check-In' : 'Collected at Checkout'}
+                          </span>
+                        </div>
+                      )}
+
+                      {Number(selectedBooking.specialFoodCharge || 0) > 0 && (
+                        <div className="billing-item">
+                          <span className="billing-label"><Receipt size={14} /> Total Stay Amount</span>
+                          <strong className="billing-val" style={{ color: 'var(--text)' }}>
+                            ₹{money(selectedBooking.totalAmount || (Number(selectedBooking.estimatedTotal || 0) + Number(selectedBooking.specialFoodCharge || 0)))}
+                          </strong>
+                        </div>
+                      )}
 
                       <div className="billing-item">
                         <span className="billing-label"><Wallet size={14} /> Amount Collected</span>
                         <strong className="billing-val collected">₹{money(selectedBooking.amountCollected || 0)}</strong>
+                      </div>
+
+                      <div className="billing-item">
+                        <span className="billing-label"><Receipt size={14} /> Remaining Balance</span>
+                        <strong className="billing-val" style={{ color: Math.max(0, (Number(selectedBooking.totalAmount || selectedBooking.estimatedTotal || 0) + (selectedBooking.totalAmount ? 0 : Number(selectedBooking.specialFoodCharge || 0))) - Number(selectedBooking.amountCollected || 0)) > 0 ? 'var(--accent)' : '#16a34a' }}>
+                          ₹{money(Math.max(0, (Number(selectedBooking.totalAmount || selectedBooking.estimatedTotal || 0) + (selectedBooking.totalAmount ? 0 : Number(selectedBooking.specialFoodCharge || 0))) - Number(selectedBooking.amountCollected || 0)))}
+                        </strong>
                       </div>
                     </div>
                   </div>
@@ -1380,14 +1480,46 @@ export default function AdminBoarding() {
 
                     <div className="detail-two-col-grid care">
                       <div className="detail-item">
-                        <span className="detail-label"><Utensils size={14} /> Food Type</span>
-                        <strong className="detail-val">{selectedBooking.foodType || 'Packaged Pet Food'}</strong>
+                        <span className="detail-label"><Utensils size={14} /> Regular Food</span>
+                        <strong className="detail-val" style={{ color: '#16a34a' }}>
+                          ✓ Included (Provided by Paw Paw)
+                        </strong>
                       </div>
 
                       <div className="detail-item">
-                        <span className="detail-label"><Utensils size={14} /> Food Provider</span>
-                        <strong className="detail-val">{selectedBooking.foodProvider || 'Owner will provide'}</strong>
+                        <span className="detail-label"><Utensils size={14} /> Special Food Required</span>
+                        <strong className="detail-val">
+                          {selectedBooking.specialFoodRequired
+                            ? 'Yes'
+                            : (selectedBooking.specialFoodRequired === false ? 'No (Regular food fine)' : (selectedBooking.foodType || 'No'))}
+                        </strong>
                       </div>
+
+                      {selectedBooking.specialFoodRequired && (
+                        <div className="detail-item">
+                          <span className="detail-label"><Users size={14} /> Special Food Provider</span>
+                          <strong className="detail-val">
+                            {selectedBooking.specialFoodProvider === 'pawpaw'
+                              ? 'Paw Paw will provide it'
+                              : selectedBooking.specialFoodProvider === 'customer'
+                                ? 'Owner will provide (No extra charge)'
+                                : (selectedBooking.foodProvider || 'Owner')}
+                          </strong>
+                        </div>
+                      )}
+
+                      {selectedBooking.specialFoodRequired && (
+                        <div className="detail-item">
+                          <span className="detail-label"><Receipt size={14} /> Special Food Charge</span>
+                          <strong className="detail-val" style={{ color: Number(selectedBooking.specialFoodCharge || 0) > 0 ? '#16a34a' : 'var(--text)' }}>
+                            {Number(selectedBooking.specialFoodCharge || 0) > 0
+                              ? `₹${money(selectedBooking.specialFoodCharge)} (${selectedBooking.specialFoodChargeCollectedAt === 'check_in' ? 'Collected at Check-In' : selectedBooking.specialFoodChargeCollectedAt === 'checkout' ? 'Collected at Checkout' : 'Recorded'})`
+                              : selectedBooking.specialFoodProvider === 'customer'
+                                ? '₹0 (Owner provides food)'
+                                : 'Not recorded / To be confirmed by hostel'}
+                          </strong>
+                        </div>
+                      )}
 
                       <div className="detail-item">
                         <span className="detail-label"><Clock size={14} /> Feeding Schedule</span>
@@ -1395,9 +1527,16 @@ export default function AdminBoarding() {
                       </div>
 
                       <div className="detail-item">
+                        <span className="detail-label"><AlertCircle size={14} /> Food Allergies / Dislikes</span>
+                        <strong className="detail-val">
+                          {selectedBooking.foodAllergies || selectedBooking.allergies || 'None'}
+                        </strong>
+                      </div>
+
+                      <div className="detail-item">
                         <span className="detail-label"><Droplets size={14} /> Diet / Water Notes</span>
                         <strong className="detail-val">
-                          {selectedBooking.specialDietInstructions || selectedBooking.waterInstructions || 'None'}
+                          {selectedBooking.specialDietInstructions || selectedBooking.waterInstructions || selectedBooking.dietInstructions || 'None'}
                         </strong>
                       </div>
 
@@ -1593,211 +1732,496 @@ export default function AdminBoarding() {
               )}
             </div>
 
-            {/* Modal Footer */}
-            <div className="details-modal-footer">
-              {isEditing ? (
-                <>
-                  <button type="button" className="btn btn-secondary" onClick={() => setIsEditing(false)}>
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={updating === selectedBooking.id}
-                    onClick={saveReservationEdit}
-                  >
-                    {updating === selectedBooking.id ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </>
-              ) : (
+            {/* Modal Footer (Only shown when editing) */}
+            {isEditing && (
+              <div className="details-modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setIsEditing(false)}>
+                  Cancel
+                </button>
                 <button
                   type="button"
-                  className="btn-details-close-wide"
-                  onClick={() => setSelectedBooking(null)}
+                  className="btn btn-primary"
+                  disabled={updating === selectedBooking.id}
+                  onClick={saveReservationEdit}
                 >
-                  <X size={16} /> Close
+                  {updating === selectedBooking.id ? 'Saving...' : 'Save Changes'}
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {/* ============================================================
-          CHECK-IN MODAL: ADVANCE PAYMENT WORKFLOW
+          CHECK-IN MODAL: ADVANCE PAYMENT & SPECIAL FOOD WORKFLOW
           ============================================================ */}
-      {checkInModal && (
-        <div className="modal-overlay" onClick={() => setCheckInModal(null)}>
-          <div className="reschedule-modal-card" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
-            <div className="reschedule-modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <LogIn size={20} color="#0284c7" />
-                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800 }}>Check In Pet — {checkInModal.petName}</h3>
-              </div>
-              <button type="button" className="icon-btn" onClick={() => setCheckInModal(null)}><X size={18} /></button>
-            </div>
+      {checkInModal && (() => {
+        const estTotal = Number(checkInModal.estimatedTotal || 0)
+        const prevCollected = Number(checkInModal.amountCollected || 0)
+        const advanceNow = hasAdvancePayment === 'yes' ? (Number(advanceAmountInput) || 0) : 0
+        const isPawPawSpecialFood = Boolean(
+          checkInModal.specialFoodRequired && checkInModal.specialFoodProvider === 'pawpaw'
+        )
+        const isCustomerSpecialFood = Boolean(
+          checkInModal.specialFoodRequired && checkInModal.specialFoodProvider === 'customer'
+        )
+        const foodCharge = (isPawPawSpecialFood && Number(checkInFoodChargeInput) > 0)
+          ? Math.round(Number(checkInFoodChargeInput))
+          : 0
+        const foodCollectedNow = (foodCharge > 0 && checkInFoodTiming === 'check_in') ? foodCharge : 0
+        const totalStayWithFood = estTotal + foodCharge
+        const totalCollectingNow = advanceNow + foodCollectedNow
+        const newTotalCollected = prevCollected + totalCollectingNow
+        const remainingBalance = Math.max(0, totalStayWithFood - newTotalCollected)
 
-            <div style={{ padding: '6px 0 16px' }}>
-              <p style={{ fontSize: '14px', color: 'var(--text)', fontWeight: 600, margin: '0 0 14px' }}>
-                Have you collected any advance payment?
-              </p>
-
-              {/* Yes / No Choices */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
-                <button
-                  type="button"
-                  className={`btn ${hasAdvancePayment === 'yes' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setHasAdvancePayment('yes')}
-                  style={{ justifyContent: 'center', padding: '11px 14px', fontWeight: 700 }}
-                >
-                  Yes
-                </button>
-                <button
-                  type="button"
-                  className={`btn ${hasAdvancePayment === 'no' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => { setHasAdvancePayment('no'); setAdvanceAmountInput('') }}
-                  style={{ justifyContent: 'center', padding: '11px 14px', fontWeight: 700 }}
-                >
-                  No
-                </button>
-              </div>
-
-              {hasAdvancePayment === 'yes' && (
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
-                    Advance Amount Collected (₹)
-                  </label>
-                  <input
-                    type="number"
-                    className="input"
-                    value={advanceAmountInput}
-                    onChange={e => setAdvanceAmountInput(e.target.value)}
-                    placeholder="Enter advance amount, e.g. 2000"
-                    autoFocus
-                  />
+        return (
+          <div className="modal-overlay" onClick={() => setCheckInModal(null)}>
+            <div className="reschedule-modal-card" style={{ maxWidth: '480px', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <div className="reschedule-modal-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <LogIn size={20} color="#0284c7" />
+                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800 }}>Check In Pet — {checkInModal.petName}</h3>
                 </div>
-              )}
+                <button type="button" className="icon-btn" onClick={() => setCheckInModal(null)}><X size={18} /></button>
+              </div>
 
-              {/* Concise Summary Before Saving */}
-              {hasAdvancePayment !== null && (
+              <div style={{ padding: '6px 0 16px' }}>
+                {/* 1. Food Arrangement Snapshot Card */}
                 <div style={{
-                  background: 'var(--surface)',
-                  border: '1.5px solid var(--border)',
-                  borderRadius: '14px',
-                  padding: '14px 16px',
+                  background: '#fefce8',
+                  border: '1.5px solid #fef08a',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  marginBottom: '16px',
                   fontSize: '12.5px',
-                  display: 'grid',
-                  gap: '8px',
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
-                    <span>Estimated Total Stay:</span>
-                    <strong style={{ color: 'var(--text)' }}>₹{money(checkInModal.estimatedTotal)}</strong>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, color: '#854d0e', marginBottom: '8px' }}>
+                    <Utensils size={14} color="#854d0e" />
+                    <span>Food & Dietary Arrangement (Snapshot)</span>
                   </div>
 
-                  {Number(checkInModal.amountCollected || 0) > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
-                      <span>Existing Recorded Payment:</span>
-                      <strong style={{ color: '#16a34a' }}>₹{money(checkInModal.amountCollected)}</strong>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                    <div>
+                      <span style={{ fontSize: '11px', color: '#713f12', fontWeight: 700, display: 'block' }}>Regular Food:</span>
+                      <strong style={{ color: '#16a34a' }}>✓ Included (Paw Paw)</strong>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '11px', color: '#713f12', fontWeight: 700, display: 'block' }}>Special Food:</span>
+                      <strong style={{ color: checkInModal.specialFoodRequired ? '#b45309' : '#16a34a' }}>
+                        {checkInModal.specialFoodRequired
+                          ? (isPawPawSpecialFood ? 'Yes — Paw Paw will provide' : 'Yes — Owner will provide (₹0)')
+                          : 'No (Regular food fine)'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {checkInModal.feedingSchedule && (
+                    <div style={{ fontSize: '11.5px', color: '#713f12', marginBottom: '4px' }}>
+                      <strong>Schedule:</strong> {checkInModal.feedingSchedule}
                     </div>
                   )}
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
-                    <span>Amount Collected Now:</span>
-                    <strong style={{ color: hasAdvancePayment === 'yes' ? '#16a34a' : 'var(--text)' }}>
-                      ₹{hasAdvancePayment === 'yes' ? money(advanceAmountInput || 0) : '0'}
-                    </strong>
-                  </div>
+                  {(checkInModal.foodAllergies || checkInModal.allergies) && (
+                    <div style={{ fontSize: '11.5px', color: '#713f12', marginBottom: '4px' }}>
+                      <strong>Allergies / Dislikes:</strong> {checkInModal.foodAllergies || checkInModal.allergies}
+                    </div>
+                  )}
 
-                  <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 800 }}>
-                    <span style={{ color: 'var(--text)' }}>Resulting Total Collected:</span>
-                    <span style={{ color: '#16a34a', fontSize: '14px' }}>
-                      ₹{money(Number(checkInModal.amountCollected || 0) + (hasAdvancePayment === 'yes' ? (Number(advanceAmountInput) || 0) : 0))}
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--muted)' }}>
-                    <span>Remaining Balance:</span>
-                    <span style={{ fontWeight: 700, color: 'var(--accent)' }}>
-                      ₹{money(Math.max(0, Number(checkInModal.estimatedTotal || 0) - (Number(checkInModal.amountCollected || 0) + (hasAdvancePayment === 'yes' ? (Number(advanceAmountInput) || 0) : 0))))}
-                    </span>
-                  </div>
+                  {(checkInModal.specialDietInstructions || checkInModal.waterInstructions || checkInModal.dietInstructions) && (
+                    <div style={{ fontSize: '11.5px', color: '#713f12' }}>
+                      <strong>Diet / Water Notes:</strong> {checkInModal.specialDietInstructions || checkInModal.waterInstructions || checkInModal.dietInstructions}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            <div className="reschedule-modal-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setCheckInModal(null)}>Cancel</button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                style={{ background: '#0284c7' }}
-                disabled={
-                  hasAdvancePayment === null ||
-                  (hasAdvancePayment === 'yes' && (!advanceAmountInput || Number(advanceAmountInput) <= 0)) ||
-                  updating === checkInModal.id
-                }
-                onClick={confirmCheckIn}
-              >
-                {updating === checkInModal.id ? 'Processing...' : 'Confirm Check-In'}
-              </button>
+                {/* 2. Special Food Charge Recording (Only if Paw Paw provides special food) */}
+                {isPawPawSpecialFood && (
+                  <div style={{
+                    background: '#f0fdf4',
+                    border: '1.5px solid #bbf7d0',
+                    borderRadius: '12px',
+                    padding: '12px 14px',
+                    marginBottom: '16px',
+                  }}>
+                    <label style={{ fontSize: '12px', fontWeight: 800, color: '#166534', display: 'block', marginBottom: '4px' }}>
+                      Record Special Food Charge (Optional at Check-In)
+                    </label>
+                    <p style={{ fontSize: '11.5px', color: '#15803d', margin: '0 0 10px', lineHeight: 1.4 }}>
+                      Customer requested Paw Paw to provide special food. Enter confirmed charge now, or leave blank if collecting at checkout.
+                    </p>
+                    <input
+                      type="number"
+                      min="0"
+                      className="input"
+                      value={checkInFoodChargeInput}
+                      onChange={e => setCheckInFoodChargeInput(e.target.value)}
+                      placeholder="Enter special food charge in ₹ (Optional)"
+                    />
+
+                    {Number(checkInFoodChargeInput) > 0 && (
+                      <div style={{ marginTop: '10px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#166534', display: 'block', marginBottom: '6px' }}>
+                          When will you collect this food charge?
+                        </span>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                          <button
+                            type="button"
+                            className={`btn ${checkInFoodTiming === 'check_in' ? 'btn-primary' : 'btn-secondary'}`}
+                            onClick={() => setCheckInFoodTiming('check_in')}
+                            style={{ fontSize: '11.5px', padding: '7px 8px', justifyContent: 'center' }}
+                          >
+                            Collect Now
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn ${checkInFoodTiming === 'checkout' ? 'btn-primary' : 'btn-secondary'}`}
+                            onClick={() => setCheckInFoodTiming('checkout')}
+                            style={{ fontSize: '11.5px', padding: '7px 8px', justifyContent: 'center' }}
+                          >
+                            Collect at Checkout
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 3. Advance Payment Question */}
+                <p style={{ fontSize: '14px', color: 'var(--text)', fontWeight: 600, margin: '0 0 10px' }}>
+                  Have you collected any advance payment?
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+                  <button
+                    type="button"
+                    className={`btn ${hasAdvancePayment === 'yes' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setHasAdvancePayment('yes')}
+                    style={{ justifyContent: 'center', padding: '11px 14px', fontWeight: 700 }}
+                  >
+                    Yes
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${hasAdvancePayment === 'no' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => { setHasAdvancePayment('no'); setAdvanceAmountInput('') }}
+                    style={{ justifyContent: 'center', padding: '11px 14px', fontWeight: 700 }}
+                  >
+                    No
+                  </button>
+                </div>
+
+                {hasAdvancePayment === 'yes' && (
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                      Advance Amount Collected (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      className="input"
+                      value={advanceAmountInput}
+                      onChange={e => setAdvanceAmountInput(e.target.value)}
+                      placeholder="Enter advance amount, e.g. 2000"
+                      autoFocus
+                    />
+                  </div>
+                )}
+
+                {/* 4. Payment Summary Before Saving */}
+                {hasAdvancePayment !== null && (
+                  <div style={{
+                    background: 'var(--surface)',
+                    border: '1.5px solid var(--border)',
+                    borderRadius: '14px',
+                    padding: '14px 16px',
+                    fontSize: '12.5px',
+                    display: 'grid',
+                    gap: '8px',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
+                      <span>Original Boarding Stay:</span>
+                      <strong style={{ color: 'var(--text)' }}>₹{money(estTotal)}</strong>
+                    </div>
+
+                    {foodCharge > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#166534' }}>
+                        <span>Special Food Charge ({checkInFoodTiming === 'check_in' ? 'Collecting Now' : 'Due at Checkout'}):</span>
+                        <strong>+₹{money(foodCharge)}</strong>
+                      </div>
+                    )}
+
+                    {foodCharge > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)', fontSize: '12px' }}>
+                        <span>Total Stay (Boarding + Food):</span>
+                        <strong style={{ color: 'var(--text)' }}>₹{money(totalStayWithFood)}</strong>
+                      </div>
+                    )}
+
+                    {prevCollected > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
+                        <span>Existing Recorded Payment:</span>
+                        <strong style={{ color: '#16a34a' }}>₹{money(prevCollected)}</strong>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
+                      <span>Advance Collected Now:</span>
+                      <strong style={{ color: hasAdvancePayment === 'yes' ? '#16a34a' : 'var(--text)' }}>
+                        ₹{hasAdvancePayment === 'yes' ? money(advanceAmountInput || 0) : '0'}
+                      </strong>
+                    </div>
+
+                    {foodCollectedNow > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
+                        <span>Food Charge Collected Now:</span>
+                        <strong style={{ color: '#16a34a' }}>₹{money(foodCollectedNow)}</strong>
+                      </div>
+                    )}
+
+                    <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 800 }}>
+                      <span style={{ color: 'var(--text)' }}>Resulting Total Collected:</span>
+                      <span style={{ color: '#16a34a', fontSize: '14px' }}>
+                        ₹{money(newTotalCollected)}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--muted)' }}>
+                      <span>Remaining Balance:</span>
+                      <span style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                        ₹{money(remainingBalance)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="reschedule-modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setCheckInModal(null)}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ background: '#0284c7' }}
+                  disabled={
+                    hasAdvancePayment === null ||
+                    (hasAdvancePayment === 'yes' && (!advanceAmountInput || Number(advanceAmountInput) <= 0)) ||
+                    updating === checkInModal.id
+                  }
+                  onClick={confirmCheckIn}
+                >
+                  {updating === checkInModal.id ? 'Processing...' : 'Confirm Check-In'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ============================================================
           CHECKOUT MODAL
           ============================================================ */}
-      {checkoutModal && (
-        <div className="modal-overlay" onClick={() => setCheckoutModal(null)}>
-          <div className="reschedule-modal-card" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
-            <div className="reschedule-modal-header">
-              <h3>Check Out Pet</h3>
-              <button type="button" className="icon-btn" onClick={() => setCheckoutModal(null)}><X size={18} /></button>
-            </div>
-            <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '14px' }}>
-              Confirm check-out for <strong>{checkoutModal.petName}</strong> and record final payment collected.
-            </p>
+      {checkoutModal && (() => {
+        const isPawPawFood = Boolean(
+          checkoutModal.specialFoodRequired && checkoutModal.specialFoodProvider === 'pawpaw'
+        )
+        const isCustomerFood = Boolean(
+          checkoutModal.specialFoodRequired && checkoutModal.specialFoodProvider === 'customer'
+        )
+        const alreadyRecordedCharge = Number(checkoutModal.specialFoodCharge || 0)
+        const isRecordedAtCheckIn = Boolean(
+          checkoutModal.specialFoodChargeRecordedAt === 'check_in' || alreadyRecordedCharge > 0
+        )
 
-            <div style={{ background: 'var(--surface)', padding: '12px 14px', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '14px', fontSize: '12.5px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <span style={{ color: 'var(--muted)' }}>Stay Total:</span>
-                <strong>₹{money(checkoutModal.estimatedTotal)}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <span style={{ color: 'var(--muted)' }}>Already Collected (Advance):</span>
-                <strong style={{ color: '#16a34a' }}>₹{money(checkoutModal.amountCollected || 0)}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border)', paddingTop: '6px' }}>
-                <span style={{ fontWeight: 700 }}>Remaining Balance Due:</span>
-                <strong style={{ color: 'var(--accent)' }}>
-                  ₹{money(Math.max(0, Number(checkoutModal.estimatedTotal || 0) - Number(checkoutModal.amountCollected || 0)))}
-                </strong>
-              </div>
-            </div>
+        const newlyEnteredCharge = (!isRecordedAtCheckIn && isPawPawFood && Number(checkoutFoodChargeInput) > 0)
+          ? Math.round(Number(checkoutFoodChargeInput))
+          : 0
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
-                Amount Collecting Now at Check-Out (₹)
-              </label>
-              <input
-                className="input"
-                type="number"
-                value={checkoutAmount}
-                onChange={e => setCheckoutAmount(e.target.value)}
-                placeholder="Enter amount collected at checkout"
-              />
-            </div>
+        const effectiveFoodCharge = isRecordedAtCheckIn ? alreadyRecordedCharge : newlyEnteredCharge
+        const originalBoardingTotal = Number(checkoutModal.estimatedTotal || 0)
+        const totalStayAmount = originalBoardingTotal + effectiveFoodCharge
+        const previouslyCollected = Number(checkoutModal.amountCollected || 0)
+        const additionalAtCheckout = Number(checkoutAmount) || 0
+        const totalCollectedAfter = previouslyCollected + additionalAtCheckout
+        const remainingBalance = Math.max(0, totalStayAmount - totalCollectedAfter)
 
-            <div className="reschedule-modal-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setCheckoutModal(null)}>Cancel</button>
-              <button type="button" className="btn btn-primary" onClick={confirmCheckOut}>
-                Confirm Check-Out
-              </button>
+        return (
+          <div className="modal-overlay" onClick={() => setCheckoutModal(null)}>
+            <div className="reschedule-modal-card" style={{ maxWidth: '480px', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <div className="reschedule-modal-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <LogOut size={20} color="#16a34a" />
+                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800 }}>Check Out Pet — {checkoutModal.petName}</h3>
+                </div>
+                <button type="button" className="icon-btn" onClick={() => setCheckoutModal(null)}><X size={18} /></button>
+              </div>
+
+              <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '4px 0 14px' }}>
+                Confirm check-out for <strong>{checkoutModal.petName}</strong> and record final payment collected.
+              </p>
+
+              {/* Special Food Status / Input if Paw Paw provided and not yet recorded */}
+              {isRecordedAtCheckIn ? (
+                <div style={{
+                  background: '#f0fdf4',
+                  border: '1.5px solid #bbf7d0',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
+                  marginBottom: '14px',
+                  fontSize: '12px',
+                  color: '#166534',
+                }}>
+                  <strong>Special Food Charge (Recorded at Check-In):</strong> ₹{money(alreadyRecordedCharge)}
+                  <span style={{ display: 'block', fontSize: '11px', color: '#15803d', marginTop: '2px' }}>
+                    {checkoutModal.specialFoodChargeCollectedAt === 'check_in'
+                      ? 'Already collected at check-in.'
+                      : 'Included in balance due for checkout collection.'}
+                  </span>
+                </div>
+              ) : isPawPawFood ? (
+                <div style={{
+                  background: '#fefce8',
+                  border: '1.5px solid #fef08a',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  marginBottom: '14px',
+                }}>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: '#854d0e', display: 'block', marginBottom: '4px' }}>
+                    Record Special Food Charge (₹)
+                  </label>
+                  <p style={{ fontSize: '11.5px', color: '#713f12', margin: '0 0 8px', lineHeight: 1.4 }}>
+                    Paw Paw provided special food for {checkoutModal.petName}. Enter the confirmed food charge below (or leave 0 if included).
+                  </p>
+                  <input
+                    type="number"
+                    min="0"
+                    className="input"
+                    value={checkoutFoodChargeInput}
+                    onChange={e => {
+                      const val = e.target.value
+                      setCheckoutFoodChargeInput(val)
+                      const extra = Number(val) || 0
+                      const newRem = Math.max(0, (originalBoardingTotal + extra) - previouslyCollected)
+                      setCheckoutAmount(String(newRem))
+                    }}
+                    placeholder="Enter special food charge, e.g. 500"
+                  />
+                </div>
+              ) : isCustomerFood ? (
+                <div style={{
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '9px 12px',
+                  marginBottom: '14px',
+                  fontSize: '12px',
+                  color: 'var(--muted)',
+                }}>
+                  Special Food Provider: <strong>Customer provided food (₹0 extra charge)</strong>
+                </div>
+              ) : null}
+
+              {/* Complete Breakdown matching requirements */}
+              <div style={{
+                background: 'var(--surface)',
+                padding: '14px 16px',
+                borderRadius: '14px',
+                border: '1.5px solid var(--border)',
+                marginBottom: '16px',
+                fontSize: '12.5px',
+                display: 'grid',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
+                  <span>Original Boarding Total:</span>
+                  <strong style={{ color: 'var(--text)' }}>₹{money(originalBoardingTotal)}</strong>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: effectiveFoodCharge > 0 ? '#166534' : 'var(--muted)' }}>
+                  <span>
+                    Special-Food Charge:
+                    {effectiveFoodCharge > 0 && (
+                      <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: '4px' }}>
+                        ({isRecordedAtCheckIn ? 'Recorded at Check-In' : 'Adding at Checkout'})
+                      </span>
+                    )}
+                  </span>
+                  <strong>
+                    {effectiveFoodCharge > 0 ? `+₹${money(effectiveFoodCharge)}` : '₹0'}
+                  </strong>
+                </div>
+
+                {effectiveFoodCharge > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text)', fontWeight: 700, borderTop: '1px dotted var(--border)', paddingTop: '6px' }}>
+                    <span>Total Stay Amount (Stay + Food):</span>
+                    <span>₹{money(totalStayAmount)}</span>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
+                  <span>Previously Collected Payments (inc. Advance):</span>
+                  <strong style={{ color: '#16a34a' }}>₹{money(previouslyCollected)}</strong>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
+                  <span>Additional Amount Collecting Now:</span>
+                  <strong style={{ color: additionalAtCheckout > 0 ? '#16a34a' : 'var(--text)' }}>
+                    ₹{money(additionalAtCheckout)}
+                  </strong>
+                </div>
+
+                <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 800 }}>
+                  <span style={{ color: 'var(--text)' }}>Total Amount Collected After Checkout:</span>
+                  <span style={{ color: '#16a34a', fontSize: '14px' }}>
+                    ₹{money(totalCollectedAfter)}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--muted)' }}>
+                  <span>Remaining Balance:</span>
+                  <span style={{ fontWeight: 700, color: remainingBalance > 0 ? 'var(--accent)' : '#16a34a' }}>
+                    ₹{money(remainingBalance)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Amount collecting now input */}
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)' }}>
+                    Amount Collecting Now at Check-Out (₹)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutAmount(String(Math.max(0, totalStayAmount - previouslyCollected)))}
+                    style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                  >
+                    Set to Balance Due (₹{money(Math.max(0, totalStayAmount - previouslyCollected))})
+                  </button>
+                </div>
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  value={checkoutAmount}
+                  onChange={e => setCheckoutAmount(e.target.value)}
+                  placeholder="Enter amount collected at checkout"
+                />
+              </div>
+
+              <div className="reschedule-modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setCheckoutModal(null)}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={updating === checkoutModal.id}
+                  onClick={confirmCheckOut}
+                >
+                  {updating === checkoutModal.id ? 'Processing...' : 'Confirm Check-Out'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ============================================================
           CANCEL REQUEST MODAL
@@ -2940,66 +3364,88 @@ export default function AdminBoarding() {
         .boarding-details-modal {
           background: #FFFDF9;
           border: 1.5px solid #EFE6D8;
-          border-radius: 24px;
-          width: 100%;
-          max-width: 620px;
-          max-height: 90vh;
+          border-radius: 22px;
+          width: min(calc(100vw - 24px), 620px);
+          max-height: calc(100dvh - 32px);
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          box-shadow: 0 14px 44px rgba(60, 40, 20, 0.16);
+          box-shadow: 0 16px 48px rgba(60, 40, 20, 0.18);
           margin: auto;
+          box-sizing: border-box;
         }
 
         .details-modal-header {
-          padding: 18px 22px 14px;
+          padding: 14px 18px 12px;
           display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
+          flex-direction: column;
+          gap: 6px;
           border-bottom: 1.2px solid #EFE6D8;
-          gap: 12px;
           background: #FFFDF9;
+          flex-shrink: 0;
+          box-sizing: border-box;
         }
 
-        .header-meta .title-row {
+        .details-header-top-row {
           display: flex;
           align-items: center;
+          justify-content: space-between;
           gap: 10px;
-          flex-wrap: wrap;
+          width: 100%;
         }
 
         .details-title {
-          font-size: 20px;
+          font-size: 18px;
           font-weight: 800;
           color: #221711;
           margin: 0;
-        }
-
-        .details-ref-id {
-          font-size: 13px;
-          font-weight: 700;
-          color: var(--muted);
-          margin-top: 3px;
-          display: block;
+          line-height: 1.25;
+          min-width: 0;
+          word-break: break-word;
+          flex: 1;
         }
 
         .header-actions-row {
           display: flex;
           align-items: center;
+          gap: 6px;
+          flex-shrink: 0;
+        }
+
+        .details-header-sub-row {
+          display: flex;
+          align-items: center;
           gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .details-ref-id {
+          font-size: 12px;
+          font-weight: 800;
+          color: #9E6B18;
+          background: #FAF3E5;
+          border: 1px solid #EEDBC2;
+          padding: 3px 8px;
+          border-radius: 6px;
+          letter-spacing: 0.5px;
+          display: inline-flex;
+          align-items: center;
+          line-height: 1;
         }
 
         .details-header-btn {
           display: inline-flex;
           align-items: center;
-          gap: 6px;
-          padding: 7px 13px;
-          border-radius: 10px;
-          font-size: 12.5px;
+          gap: 5px;
+          padding: 6px 11px;
+          border-radius: 9px;
+          font-size: 12px;
           font-weight: 700;
           cursor: pointer;
           text-decoration: none;
           transition: all 0.15s;
+          white-space: nowrap;
+          flex-shrink: 0;
         }
 
         .details-header-btn.whatsapp {
@@ -3030,22 +3476,27 @@ export default function AdminBoarding() {
           width: 32px;
           height: 32px;
           border-radius: 8px;
-          border: none;
-          background: transparent;
+          border: 1px solid #EFE6D8;
+          background: #FFFDF9;
           color: var(--muted);
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
+          flex-shrink: 0;
+          transition: all 0.15s ease;
         }
         .details-close-btn:hover {
-          background: #F2ECE1;
+          background: #FAF3E5;
+          border-color: var(--accent);
           color: var(--text);
         }
 
         .details-modal-body {
-          padding: 18px 20px;
+          flex: 1 1 auto;
+          padding: 16px 18px;
           overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
           display: grid;
           gap: 14px;
         }
@@ -3548,22 +3999,39 @@ export default function AdminBoarding() {
             gap: 10px;
           }
 
+          .modal-overlay {
+            padding: 10px !important;
+          }
+
           .boarding-details-modal {
-            max-height: 94vh;
-            border-radius: 20px 20px 0 0;
-            margin-top: auto;
+            width: min(calc(100vw - 20px), 620px);
+            max-height: calc(100dvh - 24px);
+            border-radius: 20px;
+            margin: auto;
           }
 
           .details-modal-header {
-            padding: 14px 16px;
+            padding: 12px 14px 10px;
+            gap: 6px;
           }
 
           .details-title {
-            font-size: 17px;
+            font-size: 16px;
+          }
+
+          .details-header-btn {
+            padding: 5px 9px;
+            font-size: 11.5px;
+          }
+
+          .details-close-btn {
+            width: 30px;
+            height: 30px;
           }
 
           .details-modal-body {
-            padding: 14px 16px;
+            padding: 12px 14px;
+            gap: 12px;
           }
         }
 

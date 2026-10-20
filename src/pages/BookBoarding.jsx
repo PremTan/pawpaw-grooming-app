@@ -6,6 +6,7 @@ import { format, addDays, startOfToday } from 'date-fns'
 import {
   AlertCircle,
   ArrowRight,
+  Building2,
   Calendar,
   CalendarCheck,
   Check,
@@ -102,8 +103,11 @@ export default function BookBoarding() {
     checkOutTime: '12:00 PM',
 
     // Step 3: Food and Feeding
-    foodType: 'Packaged Pet Food (Kibble/Wet)',
-    foodProvider: 'Owner will provide pet food',
+    regularFoodIncluded: true,
+    specialFoodRequired: false,
+    specialFoodProvider: 'customer',
+    foodType: 'Regular Food (Included)',
+    foodProvider: 'Paw Paw (Regular Food Included)',
     feedingSchedule: 'Twice a day (Morning & Evening)',
     specialDietInstructions: '',
     waterInstructions: '',
@@ -259,9 +263,15 @@ export default function BookBoarding() {
         estimatedTotal: stayCalculation.estimatedTotal,
 
         // Food & Diet
-        foodType: form.foodType,
-        foodProvider: form.foodProvider,
+        regularFoodIncluded: true,
+        specialFoodRequired: Boolean(form.specialFoodRequired),
+        specialFoodProvider: form.specialFoodRequired ? (form.specialFoodProvider || 'customer') : 'none',
+        foodType: form.specialFoodRequired ? 'Regular Food + Special Food' : 'Regular Food (Included)',
+        foodProvider: form.specialFoodRequired
+          ? (form.specialFoodProvider === 'pawpaw' ? 'Paw Paw will provide it' : 'Customer will provide the food')
+          : 'Paw Paw (Regular Food Included)',
         feedingSchedule: form.feedingSchedule,
+        foodAllergies: form.allergies.trim(),
         specialDietInstructions: form.specialDietInstructions.trim(),
         waterInstructions: form.waterInstructions.trim(),
 
@@ -992,65 +1002,157 @@ export default function BookBoarding() {
                 </div>
                 <div>
                   <h2 className="card-title">Food & Dietary Preferences</h2>
-                  <p className="card-subtitle">Help us ensure your pet gets their favorite, familiar meals.</p>
+                  <p className="card-subtitle">Tell us about your pet's food needs.</p>
                 </div>
               </div>
 
-              {/* Type of Food 2x2 Grid */}
-              <div className="form-section">
-                <label className="field-label">TYPE OF FOOD *</label>
-                <div className="food-type-grid">
-                  {FOOD_TYPES.map(ft => {
-                    const sel = form.foodType === ft.label
-                    let IconComponent = Utensils
-                    if (ft.id === 'home') IconComponent = Home
-                    if (ft.id === 'mixed') IconComponent = Sparkles
-                    if (ft.id === 'special') IconComponent = ShieldCheck
-
-                    return (
-                      <button
-                        key={ft.id}
-                        type="button"
-                        onClick={() => update('foodType', ft.label)}
-                        className={`food-type-card ${sel ? 'selected' : ''}`}
-                      >
-                        <div className="food-card-icon">
-                          <IconComponent size={20} color={sel ? '#C08820' : '#8A7A68'} />
-                        </div>
-                        <span className="food-card-label">{ft.label}</span>
-                      </button>
-                    )
-                  })}
+              {/* A. Regular Food — Always Selected and Locked */}
+              <div className="regular-food-card">
+                <div className="food-bowl-icon-wrap">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C08820" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 11c0 5 4 9 9 9s9-4 9-9H3z" />
+                    <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                    <circle cx="12" cy="15" r="1.5" fill="#C08820" stroke="none" />
+                  </svg>
+                </div>
+                <div className="regular-food-text">
+                  <strong className="regular-food-title">Regular food (Included)</strong>
+                  <p className="regular-food-desc">Nutritious and balanced food is provided by Paw Paw and is included in the boarding price.</p>
+                </div>
+                <div className="regular-food-check">
+                  <Check size={14} color="#FFFFFF" strokeWidth={3} />
                 </div>
               </div>
 
-              {/* Who Provides Food (Radio Stack) */}
-              <div className="form-section">
-                <label className="field-label">WHO PROVIDES THE FOOD? *</label>
-                <div className="radio-options-stack">
-                  {FOOD_PROVIDERS.map(fp => {
-                    const sel = form.foodProvider === fp.label
-                    return (
-                      <div
-                        key={fp.id}
-                        onClick={() => update('foodProvider', fp.label)}
-                        className={`provider-option-card ${sel ? 'selected' : ''}`}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') update('foodProvider', fp.label) }}
-                      >
-                        <div className={`custom-radio ${sel ? 'checked' : ''}`}>
-                          {sel && <div className="radio-dot" />}
+              {/* B. Ask Whether Special Food Is Needed */}
+              <div className="special-food-section">
+                <label className="field-label-prominent">Does your pet need special food?</label>
+                <p className="field-subtext">e.g. prescription diet, specific brand, homemade diet, or any other special requirements.</p>
+
+                <div className="special-food-choice-grid">
+                  <div
+                    onClick={() => {
+                      update('specialFoodRequired', false)
+                      update('foodType', 'Regular Food (Included)')
+                      update('foodProvider', 'Paw Paw (Regular Food Included)')
+                    }}
+                    className={`special-choice-card ${!form.specialFoodRequired ? 'selected' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') {
+                      update('specialFoodRequired', false)
+                      update('foodType', 'Regular Food (Included)')
+                      update('foodProvider', 'Paw Paw (Regular Food Included)')
+                    } }}
+                  >
+                    <div className={`choice-radio ${!form.specialFoodRequired ? 'checked' : ''}`}>
+                      {!form.specialFoodRequired && <Check size={11} color="#FFF" strokeWidth={3.5} />}
+                    </div>
+                    <div className="choice-text">
+                      <strong className="choice-title">No</strong>
+                      <span className="choice-desc">Regular food is fine</span>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => {
+                      update('specialFoodRequired', true)
+                      const provider = form.specialFoodProvider || 'customer'
+                      update('specialFoodProvider', provider)
+                      update('foodType', 'Regular Food + Special Food')
+                      update('foodProvider', provider === 'pawpaw' ? 'Paw Paw will provide it' : 'Customer will provide the food')
+                    }}
+                    className={`special-choice-card ${form.specialFoodRequired ? 'selected' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') {
+                      update('specialFoodRequired', true)
+                      const provider = form.specialFoodProvider || 'customer'
+                      update('specialFoodProvider', provider)
+                      update('foodType', 'Regular Food + Special Food')
+                      update('foodProvider', provider === 'pawpaw' ? 'Paw Paw will provide it' : 'Customer will provide the food')
+                    } }}
+                  >
+                    <div className={`choice-radio ${form.specialFoodRequired ? 'checked' : ''}`}>
+                      {form.specialFoodRequired && <Check size={11} color="#FFF" strokeWidth={3.5} />}
+                    </div>
+                    <div className="choice-text">
+                      <strong className="choice-title">Yes</strong>
+                      <span className="choice-desc">My pet needs special food</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* C. Special-Food Provider Choices (Revealed when Yes) */}
+              {form.specialFoodRequired && (
+                <div className="special-provider-section">
+                  <label className="field-label-prominent">Who will provide the special food?</label>
+
+                  <div className="special-provider-grid">
+                    {/* Option 1: Customer provides */}
+                    <div
+                      onClick={() => {
+                        update('specialFoodProvider', 'customer')
+                        update('foodProvider', 'Customer will provide the food')
+                      }}
+                      className={`provider-card ${form.specialFoodProvider === 'customer' ? 'selected' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') {
+                        update('specialFoodProvider', 'customer')
+                        update('foodProvider', 'Customer will provide the food')
+                      } }}
+                    >
+                      <div className="provider-card-head">
+                        <div className="provider-icon-circle">
+                          <PawPrint size={14} color="#C08820" />
                         </div>
-                        <span className="provider-option-text">{fp.label}</span>
+                        <strong className="provider-title">I will provide the special food</strong>
                       </div>
-                    )
-                  })}
+                      <p className="provider-desc">
+                        I will bring my pet's food for the entire stay. <strong>No extra food charge.</strong>
+                      </p>
+                    </div>
+
+                    {/* Option 2: Paw Paw provides */}
+                    <div
+                      onClick={() => {
+                        update('specialFoodProvider', 'pawpaw')
+                        update('foodProvider', 'Paw Paw will provide it')
+                      }}
+                      className={`provider-card ${form.specialFoodProvider === 'pawpaw' ? 'selected' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') {
+                        update('specialFoodProvider', 'pawpaw')
+                        update('foodProvider', 'Paw Paw will provide it')
+                      } }}
+                    >
+                      <div className="provider-card-head">
+                        <div className="provider-icon-circle">
+                          <Building2 size={14} color="#C08820" />
+                        </div>
+                        <strong className="provider-title">Paw Paw will provide it</strong>
+                      </div>
+                      <p className="provider-desc">
+                        Any extra charge will be confirmed by the hostel and collected at check-in or checkout (as per hostel).
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Info alert banner */}
+                  <div className="food-policy-alert">
+                    <Info size={16} color="#0284C7" className="food-alert-icon" />
+                    <span>
+                      If Paw Paw provides the special food, the extra charge will be decided by the hostel and collected at check-in or checkout depending on their policy.
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Feeding Schedule & Times */}
-              <div className="form-group">
+              <div className="form-group" style={{ marginTop: '18px' }}>
                 <label className="field-label">FEEDING SCHEDULE & TIMES *</label>
                 <select
                   className="boarding-select"
@@ -1063,10 +1165,10 @@ export default function BookBoarding() {
 
               {/* Food allergies */}
               <div className="form-group">
-                <label className="field-label">FOOD ALLERGIES OR DISLIKES</label>
+                <label className="field-label">FOOD ALLERGIES OR DISLIKES (OPTIONAL)</label>
                 <input
                   className="boarding-input"
-                  placeholder="e.g. Allergic to chicken, loves boiled vegetables"
+                  placeholder="e.g. Allergic to chicken, avoids beef, loves vegetables..."
                   value={form.allergies}
                   onChange={e => update('allergies', e.target.value)}
                 />
@@ -1074,11 +1176,11 @@ export default function BookBoarding() {
 
               {/* Diet & drinking water */}
               <div className="form-group">
-                <label className="field-label">DIET & DRINKING WATER INSTRUCTIONS</label>
+                <label className="field-label">DIET & DRINKING WATER INSTRUCTIONS (OPTIONAL)</label>
                 <textarea
                   className="boarding-textarea"
                   rows={3}
-                  placeholder="e.g. 1 cup kibble with warm water at 8 AM, boiled chicken & rice at 7 PM. Please provide filtered water only."
+                  placeholder="Any meal portions, preparation, or water instructions..."
                   value={form.specialDietInstructions}
                   onChange={e => update('specialDietInstructions', e.target.value)}
                 />
@@ -1294,21 +1396,29 @@ export default function BookBoarding() {
                 </div>
                 <div className="review-grid">
                   <div className="review-spec-row">
-                    <span className="spec-label">Food Type:</span>
-                    <span className="spec-val">{form.foodType}</span>
+                    <span className="spec-label">Regular Food:</span>
+                    <span className="spec-val">Included (Paw Paw)</span>
                   </div>
                   <div className="review-spec-row">
-                    <span className="spec-label">Provider:</span>
-                    <span className="spec-val">{form.foodProvider}</span>
+                    <span className="spec-label">Special Food:</span>
+                    <span className="spec-val">
+                      {form.specialFoodRequired
+                        ? `Yes (${form.specialFoodProvider === 'pawpaw' ? 'Paw Paw provides' : 'Customer provides'})`
+                        : 'No (Regular food fine)'}
+                    </span>
                   </div>
                   <div className="review-spec-row">
                     <span className="spec-label">Feeding:</span>
                     <span className="spec-val">{form.feedingSchedule}</span>
                   </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Water / Diet Notes:</span>
-                    <span className="spec-val">{form.specialDietInstructions || '1 cup kibble with warm boiled chicken & rice at 7 PM.'}</span>
-                  </div>
+                  {(form.allergies || form.specialDietInstructions) && (
+                    <div className="review-spec-row">
+                      <span className="spec-label">Diet Notes:</span>
+                      <span className="spec-val">
+                        {[form.allergies ? `Allergies: ${form.allergies}` : null, form.specialDietInstructions].filter(Boolean).join(' • ')}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2395,64 +2505,233 @@ export default function BookBoarding() {
           font-weight: 800;
         }
 
-        /* SCREEN 3: Food 2x2 Grid & Radio options */
-        .food-type-grid {
+        /* SCREEN 3: New Food & Diet UI (Matching Approved Reference) */
+        .regular-food-card {
+          background: #FEF9EE;
+          border: 1.5px solid #EADBBE;
+          border-radius: 16px;
+          padding: 14px 16px;
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 20px;
+          user-select: none;
+        }
+
+        .food-bowl-icon-wrap {
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
+          background: #FAF3E3;
+          border: 1px solid #E6D2AB;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          color: #C08820;
+        }
+
+        .regular-food-text {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .regular-food-title {
+          font-size: 15px;
+          font-weight: 800;
+          color: #221711;
+          display: block;
+          margin-bottom: 3px;
+        }
+
+        .regular-food-desc {
+          font-size: 12.5px;
+          color: #7D6B60;
+          margin: 0;
+          line-height: 1.4;
+        }
+
+        .regular-food-check {
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          background: #C08820;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          color: #FFFFFF;
+        }
+
+        .special-food-section {
+          margin-bottom: 20px;
+        }
+
+        .field-label-prominent {
+          font-size: 14px;
+          font-weight: 800;
+          color: #221711;
+          display: block;
+          margin-bottom: 3px;
+        }
+
+        .field-subtext {
+          font-size: 12px;
+          color: #8C786E;
+          margin: 0 0 10px;
+          line-height: 1.4;
+        }
+
+        .special-food-choice-grid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
           width: 100%;
         }
 
-        .food-type-card {
-          width: 100%;
-          min-width: 0;
-          box-sizing: border-box;
+        .special-choice-card {
           background: #FFFFFF;
-          border: 1.2px solid #E0D5C5;
-          border-radius: 12px;
-          padding: 12px 10px;
+          border: 1.5px solid #E0D5C5;
+          border-radius: 14px;
+          padding: 12px 14px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          min-width: 0;
+        }
+
+        .special-choice-card.selected {
+          border-color: #C08820;
+          background: #FEF9EE;
+          box-shadow: 0 2px 8px rgba(192, 136, 32, 0.12);
+        }
+
+        .choice-radio {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          border: 1.5px solid #D5CBBF;
+          background: #FFFFFF;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: all 0.15s;
+        }
+
+        .choice-radio.checked {
+          border-color: #C08820;
+          background: #C08820;
+        }
+
+        .choice-text {
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+          text-align: left;
+        }
+
+        .choice-title {
+          font-size: 14px;
+          font-weight: 800;
+          color: #221711;
+          line-height: 1.25;
+        }
+
+        .choice-desc {
+          font-size: 11.5px;
+          color: #7D6B60;
+          line-height: 1.35;
+          margin-top: 1px;
+        }
+
+        .special-provider-section {
+          margin-top: 16px;
+          margin-bottom: 20px;
+          animation: fadeIn 0.2s ease;
+        }
+
+        .special-provider-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 10px;
+          margin-bottom: 12px;
+          width: 100%;
+        }
+
+        .provider-card {
+          background: #FFFFFF;
+          border: 1.5px solid #E0D5C5;
+          border-radius: 14px;
+          padding: 13px 12px;
           display: flex;
           flex-direction: column;
           align-items: flex-start;
-          gap: 8px;
           text-align: left;
           cursor: pointer;
           transition: all 0.15s ease;
-          min-height: 98px;
+          min-width: 0;
         }
 
-        .food-type-card.selected {
+        .provider-card.selected {
           border-color: #C08820;
-          background: #FAF5EB;
+          background: #FEF9EE;
+          box-shadow: 0 2px 8px rgba(192, 136, 32, 0.12);
         }
 
-        .food-card-icon {
-          width: 32px;
-          height: 32px;
-          border-radius: 8px;
-          background: #FAF7F2;
+        .provider-card-head {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 6px;
+          width: 100%;
+        }
+
+        .provider-icon-circle {
+          width: 26px;
+          height: 26px;
+          border-radius: 50%;
+          background: #FAF3E3;
+          border: 1px solid #E6D2AB;
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
         }
 
-        .food-type-card.selected .food-card-icon {
-          background: #FAF3E3;
-        }
-
-        .food-card-label {
-          font-size: 12px;
-          font-weight: 700;
+        .provider-title {
+          font-size: 13px;
+          font-weight: 800;
           color: #221711;
-          line-height: 1.35;
-          word-break: normal;
-          overflow-wrap: break-word;
-          white-space: normal;
+          line-height: 1.3;
         }
 
-        .food-type-card.selected .food-card-label {
-          color: #7A4F0B;
+        .provider-desc {
+          font-size: 11.5px;
+          color: #7D6B60;
+          line-height: 1.4;
+          margin: 0;
+        }
+
+        .food-policy-alert {
+          background: #F0F9FF;
+          border: 1px solid #BAE6FD;
+          border-radius: 12px;
+          padding: 10px 12px;
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          font-size: 12px;
+          color: #0369A1;
+          line-height: 1.45;
+        }
+
+        .food-alert-icon {
+          flex-shrink: 0;
+          margin-top: 2px;
         }
 
         /* SCREEN 4: Behaviour & Separation row alignment */

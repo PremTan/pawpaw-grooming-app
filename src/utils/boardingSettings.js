@@ -162,6 +162,10 @@ export function buildBoardingWhatsAppMessage(booking, shopName = 'Paw Paw Pet Gr
   const outStr = `${booking.checkOutDate || '-'} at ${booking.checkOutTime || '-'}`
   const idShort = (booking.id || '').slice(0, 8).toUpperCase()
 
+  const foodDetail = booking.specialFoodRequired
+    ? `Regular Food (Included) + Special Food (Provider: ${booking.specialFoodProvider === 'pawpaw' ? 'Paw Paw' : 'Owner'})`
+    : (booking.regularFoodIncluded ? 'Regular Food (Included - Paw Paw)' : (booking.foodType || 'Standard'))
+
   return encodeURIComponent(
     `*New Pet Boarding Request - ${shopName}*\n\n` +
     `*Owner:* ${booking.ownerName || '-'}\n` +
@@ -171,7 +175,10 @@ export function buildBoardingWhatsAppMessage(booking, shopName = 'Paw Paw Pet Gr
     `*Check-Out:* ${outStr}\n` +
     `*Duration:* ${booking.stayDays || 1} Day(s) (${booking.stayNights || 0} Night(s))\n` +
     `*Estimated Total:* Rs ${booking.estimatedTotal || 0}\n` +
-    `*Food:* ${booking.foodType || 'Standard'} (Provided by: ${booking.foodProvider || 'Owner'})\n` +
+    (Number(booking.specialFoodCharge || 0) > 0 ? `*Special Food Charge:* Rs ${booking.specialFoodCharge}\n` : '') +
+    `*Food:* ${foodDetail}\n` +
+    (booking.feedingSchedule ? `*Feeding Schedule:* ${booking.feedingSchedule}\n` : '') +
+    (booking.foodAllergies || booking.allergies ? `*Allergies:* ${booking.foodAllergies || booking.allergies}\n` : '') +
     (booking.emergencyContactPhone ? `*Emergency Contact:* ${booking.emergencyContactName || ''} - ${booking.emergencyContactPhone}\n` : '') +
     (booking.specialDietInstructions ? `*Diet Notes:* ${booking.specialDietInstructions}\n` : '') +
     (booking.additionalInstructions ? `*Instructions:* ${booking.additionalInstructions}\n` : '') +

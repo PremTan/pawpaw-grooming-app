@@ -673,7 +673,7 @@ function HeroSlider() {
               </div>
 
               {/* Actions */}
-              <div className="home-boarding-actions">
+              <div className={`home-boarding-actions ${boardingSettings?.acceptBookings === false ? 'is-closed' : ''}`}>
                 {(boardingSettings?.acceptBookings !== false) ? (
                   <Link to="/boarding" className="home-boarding-btn-primary">
                     <Calendar size={16} /> Book Pet Boarding <ArrowRight size={15} />
