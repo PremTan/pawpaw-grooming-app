@@ -21,12 +21,16 @@ const shortId = id => `#${String(id || '').slice(0, 8).toUpperCase()}`
 export default function AdminInvoices() {
   const [mode, setMode] = useState('appointment')
   const [bookings, setBookings] = useState([])
+  const [boardings, setBoardings] = useState([])
   const [businessInfo, setBusinessInfo] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState('')
+  const [selectedBoardingId, setSelectedBoardingId] = useState('')
   const [appointmentSearch, setAppointmentSearch] = useState('')
+  const [boardingSearch, setBoardingSearch] = useState('')
   const [customCustomerSearch, setCustomCustomerSearch] = useState('')
   const [showAppointmentDropdown, setShowAppointmentDropdown] = useState(false)
+  const [showBoardingDropdown, setShowBoardingDropdown] = useState(false)
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [custom, setCustom] = useState(blankCustom)
   const [generated, setGenerated] = useState(null)
@@ -39,15 +43,20 @@ export default function AdminInvoices() {
     async function load() {
       setLoading(true)
       try {
-        const [snap, info] = await Promise.all([
+        const [snap, boardingSnap, info] = await Promise.all([
           getDocs(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'))),
+          getDocs(query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'))),
           fetchBusinessInfo(db),
         ])
         const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        const bRows = boardingSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
         setBookings(rows)
+        setBoardings(bRows)
         setBusinessInfo(info)
         const firstCompleted = rows.find(row => row.status === 'completed')
         if (firstCompleted) setSelectedId(firstCompleted.id)
+        const firstCompletedBoarding = bRows.find(row => row.status === 'checked_out' || row.status === 'completed')
+        if (firstCompletedBoarding) setSelectedBoardingId(firstCompletedBoarding.id)
       } catch {
         setError('Could not load invoice data.')
       }
@@ -64,6 +73,13 @@ export default function AdminInvoices() {
 
   const completedBookings = useMemo(() => bookings.filter(booking => booking.status === 'completed'), [bookings])
   const selectedBooking = completedBookings.find(booking => booking.id === selectedId)
+
+  const completedBoardings = useMemo(
+    () => boardings.filter(b => b.status === 'checked_out' || b.status === 'completed'),
+    [boardings]
+  )
+  const selectedBoarding = completedBoardings.find(b => b.id === selectedBoardingId)
+
   const customers = useMemo(() => {
     const map = new Map()
     bookings.forEach(booking => {
@@ -71,11 +87,49 @@ export default function AdminInvoices() {
       if (!key || map.has(key)) return
       map.set(key, booking)
     })
+    boardings.forEach(booking => {
+      const key = booking.phone || booking.ownerName || booking.userEmail
+      if (!key || map.has(key)) return
+      map.set(key, booking)
+    })
     return Array.from(map.values())
-  }, [bookings])
+  }, [bookings, boardings])
 
   const appointmentLabel = booking => `${booking.ownerName || 'Customer'} - ${booking.petName || 'Pet'} - ${booking.date || '-'} - Rs ${money(booking.amountCollected || booking.estimatedTotal)}`
+  const boardingLabel = b => `${b.ownerName || 'Customer'} - ${b.petName || 'Pet'} (${b.checkInDate || '-'} to ${b.checkOutDate || '-'}) - Rs ${money(b.totalAmount || (Number(b.estimatedTotal || 0) + Number(b.specialFoodCharge || 0) + Number(b.lateCheckOutCharge || 0)))}`
   const customerLabel = customer => `${customer.ownerName || 'Customer'} - ${customer.phone || customer.userEmail || '-'}`
+
+  const filteredCompletedBoardings = useMemo(() => {
+    if (!boardingSearch.trim()) return completedBoardings
+    const search = boardingSearch.trim().toLowerCase()
+    return completedBoardings.filter(b =>
+      boardingLabel(b).toLowerCase().includes(search)
+    )
+  }, [boardingSearch, completedBoardings])
+
+  const boardingLabelToId = useMemo(
+    () => new Map(filteredCompletedBoardings.map(b => [boardingLabel(b), b.id])),
+    [filteredCompletedBoardings]
+  )
+
+  const handleBoardingSearchChange = value => {
+    setBoardingSearch(value)
+    const matchId = boardingLabelToId.get(value)
+    setSelectedBoardingId(matchId || '')
+    setShowBoardingDropdown(true)
+  }
+
+  const handleBoardingSelect = b => {
+    setBoardingSearch(boardingLabel(b))
+    setSelectedBoardingId(b.id)
+    setShowBoardingDropdown(false)
+  }
+
+  const clearBoardingSearch = () => {
+    setBoardingSearch('')
+    setSelectedBoardingId('')
+    setShowBoardingDropdown(false)
+  }
 
   const filteredCompletedBookings = useMemo(() => {
     if (!appointmentSearch.trim()) return completedBookings
@@ -200,6 +254,86 @@ export default function AdminInvoices() {
     setGenerated({ booking: selectedBooking, label: `${selectedBooking.ownerName || 'Customer'} - ${shortId(selectedBooking.id)}` })
   }
 
+  const generateFromBoarding = () => {
+    if (!selectedBoarding) {
+      const msg = 'Select a completed boarding stay first.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
+      return
+    }
+
+    const items = []
+    let itemIdx = 1
+
+    const days = selectedBoarding.stayDays || 1
+    const dailyRate = Number(selectedBoarding.dailyRate || 0)
+    const baseAmount = Number(selectedBoarding.estimatedTotal || (days * dailyRate))
+
+    items.push([
+      String(itemIdx++).padStart(2, '0'),
+      [
+        'Pet Boarding Stay',
+        `Pet: ${selectedBoarding.petName || 'Pet'}${selectedBoarding.petType ? ` (${selectedBoarding.petType}${selectedBoarding.petBreed ? `, ${selectedBoarding.petBreed}` : ''})` : ''}`,
+        `Stay: ${selectedBoarding.checkInDate || '-'} (${selectedBoarding.checkInTime || '10:00 AM'}) to ${selectedBoarding.checkOutDate || '-'} (${selectedBoarding.checkOutTime || '11:00 PM'})`,
+        `Duration: ${days} Day${days > 1 ? 's' : ''}${selectedBoarding.stayNights ? ` (${selectedBoarding.stayNights} Night${selectedBoarding.stayNights > 1 ? 's' : ''})` : ''}`,
+      ].join('\n'),
+      `${days} Day${days > 1 ? 's' : ''}`,
+      Number(dailyRate).toLocaleString('en-IN'),
+      Number(baseAmount).toLocaleString('en-IN'),
+    ])
+
+    const foodCharge = Number(selectedBoarding.specialFoodCharge || 0)
+    if (foodCharge > 0) {
+      items.push([
+        String(itemIdx++).padStart(2, '0'),
+        [
+          'Special Food Charge',
+          `Provider: ${selectedBoarding.specialFoodProvider === 'paw_paw' ? 'Paw Paw Kitchen' : (selectedBoarding.specialFoodProvider || 'Special Diet')}`,
+          selectedBoarding.specialDietInstructions ? `Diet: ${selectedBoarding.specialDietInstructions}` : '',
+        ].filter(Boolean).join('\n'),
+        '1',
+        Number(foodCharge).toLocaleString('en-IN'),
+        Number(foodCharge).toLocaleString('en-IN'),
+      ])
+    }
+
+    const lateFee = Number(selectedBoarding.lateCheckOutCharge || 0)
+    if (lateFee > 0) {
+      items.push([
+        String(itemIdx++).padStart(2, '0'),
+        [
+          'Late Check-out Charge',
+          `Late check-out after 11:00 PM on ${selectedBoarding.checkOutDate || 'final day'}`,
+        ].join('\n'),
+        '1',
+        Number(lateFee).toLocaleString('en-IN'),
+        Number(lateFee).toLocaleString('en-IN'),
+      ])
+    }
+
+    const finalTotal = Number(selectedBoarding.totalAmount || (baseAmount + foodCharge + lateFee))
+    const finalCollected = Number(selectedBoarding.amountCollected || finalTotal)
+
+    const invoiceObj = {
+      ...selectedBoarding,
+      isBoarding: true,
+      serviceName: 'Pet Boarding Stay',
+      date: selectedBoarding.checkInDate,
+      invoiceItems: items,
+      totalAmount: finalTotal,
+      amountCollected: finalCollected,
+    }
+
+    setError('')
+    setToastType('success')
+    setToastMessage('Boarding invoice generated successfully.')
+    setGenerated({
+      booking: invoiceObj,
+      label: `${selectedBoarding.ownerName || 'Customer'} - Pet Boarding (${shortId(selectedBoarding.id)})`,
+    })
+  }
+
   const generateCustom = () => {
     if (!custom.ownerName || !custom.phone || !custom.petName || !custom.serviceName || !custom.date || !custom.amountCollected) {
       const msg = 'Please fill customer, pet, service, date and amount.'
@@ -264,8 +398,20 @@ export default function AdminInvoices() {
       </div>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '18px', flexWrap: 'wrap' }}>
-        {[['appointment', 'From Appointment'], ['custom', 'Custom Invoice']].map(([value, label]) => (
-          <button key={value} type="button" onClick={() => { setMode(value); setGenerated(null); setError('') }} className={mode === value ? 'btn btn-primary' : 'btn btn-secondary'} style={{ fontSize: '13px' }}>{label}</button>
+        {[
+          ['appointment', 'Grooming Appointment'],
+          ['boarding', 'Pet Boarding Stay'],
+          ['custom', 'Custom Invoice'],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => { setMode(value); setGenerated(null); setError('') }}
+            className={mode === value ? 'btn btn-primary' : 'btn btn-secondary'}
+            style={{ fontSize: '13px' }}
+          >
+            {label}
+          </button>
         ))}
       </div>
 
@@ -330,6 +476,70 @@ export default function AdminInvoices() {
               ) : <p style={{ color: 'var(--muted)', marginTop: '14px', fontSize: '13px' }}>No completed appointment selected.</p>}
 
               <button type="button" onClick={generateFromAppointment} disabled={!selectedBooking} className="btn btn-primary" style={{ marginTop: '18px' }}>
+                <ReceiptText size={15} /> Generate Invoice
+              </button>
+            </div>
+          ) : mode === 'boarding' ? (
+            <div>
+              <h2 style={{ color: 'var(--text)', fontSize: '16px', fontWeight: 800, marginBottom: '6px' }}>Choose Completed Boarding Stay</h2>
+              <p style={{ color: 'var(--muted)', fontSize: '12px', marginBottom: '14px' }}>Only checked-out or completed boarding stays can be used for invoice generation. Details are locked in this mode.</p>
+              <div style={{ position: 'relative' }}>
+                <label className="invoice-label">Search or select boarding stay</label>
+                <div className={`select-with-icon${boardingSearch ? ' has-clear' : ''}`}>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Search or select by dropdown"
+                    value={boardingSearch}
+                    onChange={event => handleBoardingSearchChange(event.target.value)}
+                    onFocus={() => setShowBoardingDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowBoardingDropdown(false), 120)}
+                    autoComplete="off"
+                  />
+                  {boardingSearch && (
+                    <button type="button" className="select-clear-button" onClick={clearBoardingSearch} aria-label="Clear boarding search">
+                      <X size={14} />
+                    </button>
+                  )}
+                  <Search size={16} className="select-icon" />
+                </div>
+                {showBoardingDropdown && filteredCompletedBoardings.length > 0 && (
+                  <div className="dropdown-list">
+                    {filteredCompletedBoardings.map(b => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        className="dropdown-item"
+                        onMouseDown={event => event.preventDefault()}
+                        onClick={() => handleBoardingSelect(b)}
+                      >
+                        {boardingLabel(b)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {selectedBoarding ? (
+                <div className="admin-booking-detail-grid" style={{ marginTop: '16px' }}>
+                  {[
+                    ['Stay ID', shortId(selectedBoarding.id)],
+                    ['Customer', selectedBoarding.ownerName || '-'],
+                    ['Phone', selectedBoarding.phone || '-'],
+                    ['Pet', `${selectedBoarding.petName || '-'}${selectedBoarding.petType ? ` (${selectedBoarding.petType}${selectedBoarding.petBreed ? `, ${selectedBoarding.petBreed}` : ''})` : ''}`],
+                    ['Stay Dates', `${selectedBoarding.checkInDate || '-'} to ${selectedBoarding.checkOutDate || '-'}`],
+                    ['Check-in / Out Time', `${selectedBoarding.checkInTime || '10:00 AM'} / ${selectedBoarding.checkOutTime || '11:00 PM'}`],
+                    ['Duration', `${selectedBoarding.stayDays || 1} Days (${selectedBoarding.stayNights || 1} Nights)`],
+                    ['Daily Rate', `Rs ${money(selectedBoarding.dailyRate || 0)}`],
+                    ...(Number(selectedBoarding.specialFoodCharge || 0) > 0 ? [['Special Food Charge', `Rs ${money(selectedBoarding.specialFoodCharge)}`]] : []),
+                    ...(Number(selectedBoarding.lateCheckOutCharge || 0) > 0 ? [['Late Check-out Fee', `Rs ${money(selectedBoarding.lateCheckOutCharge)}`]] : []),
+                    ['Total Stay Amount', `Rs ${money(selectedBoarding.totalAmount || (Number(selectedBoarding.estimatedTotal || 0) + Number(selectedBoarding.specialFoodCharge || 0) + Number(selectedBoarding.lateCheckOutCharge || 0)))}`],
+                    ['Amount Collected', `Rs ${money(selectedBoarding.amountCollected || selectedBoarding.totalAmount || selectedBoarding.estimatedTotal || 0)}`],
+                  ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+                </div>
+              ) : <p style={{ color: 'var(--muted)', marginTop: '14px', fontSize: '13px' }}>No completed boarding stay selected.</p>}
+
+              <button type="button" onClick={generateFromBoarding} disabled={!selectedBoarding} className="btn btn-primary" style={{ marginTop: '18px' }}>
                 <ReceiptText size={15} /> Generate Invoice
               </button>
             </div>
