@@ -130,10 +130,26 @@ export function countOpenDays(settings) {
   const normalized = normalizeBookingSettings(settings)
   return DAYS.filter(day => normalized.weekly[day.key]?.open !== false).length
 }
-export async function fetchBookingSettings(db) {
+let cachedBookingSettings = null
+let cachedBookingSettingsTime = 0
+const CACHE_TTL_MS = 60 * 1000
+
+export function clearBookingSettingsCache() {
+  cachedBookingSettings = null
+  cachedBookingSettingsTime = 0
+}
+
+export async function fetchBookingSettings(db, forceRefresh = false) {
+  const now = Date.now()
+  if (!forceRefresh && cachedBookingSettings && (now - cachedBookingSettingsTime < CACHE_TTL_MS)) {
+    return cachedBookingSettings
+  }
   try {
     const snap = await getDoc(doc(db, 'settings', 'bookingSettings'))
-    return normalizeBookingSettings(snap.exists() ? snap.data() : {})
+    const normalized = normalizeBookingSettings(snap.exists() ? snap.data() : {})
+    cachedBookingSettings = normalized
+    cachedBookingSettingsTime = now
+    return normalized
   } catch {
     return normalizeBookingSettings({})
   }

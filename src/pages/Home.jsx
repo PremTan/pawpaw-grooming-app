@@ -1,7 +1,7 @@
 // src/pages/Home.jsx
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { collection, doc, getDoc, getDocs, query, orderBy, limit, where, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, query, orderBy, limit, where, updateDoc, serverTimestamp, Timestamp, getCountFromServer } from 'firebase/firestore'
 import { format } from 'date-fns'
 import { db } from '../firebase'
 import BrandLogo from '../components/BrandLogo'
@@ -1059,23 +1059,19 @@ export default function Home() {
   useEffect(() => {
     async function fetchStats() {
       const [
-        bookingsResult,
         reviewsResult,
         galleryResult,
         detailsResult,
         packagesResult,
         featuresResult,
-        allReviewsResult,
         homeStatsResult,
         businessInfoResult,
       ] = await Promise.allSettled([
-        getDocs(collection(db, 'bookings')),
         getDocs(query(collection(db, 'reviews'), orderBy('createdAt', 'desc'), limit(6))),
-        getDocs(collection(db, 'gallery')),
+        getDocs(query(collection(db, 'gallery'), limit(12))),
         getDocs(collection(db, 'serviceDetails')),
         getDocs(collection(db, 'packages')),
         getDoc(doc(db, 'settings', 'whyChooseUs')),
-        getDocs(collection(db, 'reviews')),
         getDoc(doc(db, 'settings', 'homeStats')),
         fetchBusinessInfo(db),
       ])
@@ -1099,32 +1095,36 @@ export default function Home() {
             petName: item.petName || '',
           }))
           : []
-        const allRevs = allReviewsResult.status === 'fulfilled'
-          ? allReviewsResult.value.docs.map(d => d.data()).filter(item => item.active !== false).map(item => ({
-            ...item,
-            source: item.source || 'website',
-            rating: Number(item.rating || item.stars || 5),
-            comment: item.comment || item.review || '',
-            customerName: item.customerName || item.userName || item.name || 'Pet Parent',
-            profileImage: item.profileImage || item.userPhoto || '',
-            reviewImages: Array.isArray(item.reviewImages) ? item.reviewImages : (Array.isArray(item.images) ? item.images : []),
-            reviewDate: item.reviewDate || '',
-            petName: item.petName || '',
-          }))
-          : revs
-        const avg = allRevs.length
-          ? (allRevs.reduce((s, r) => s + (r.rating || 5), 0) / allRevs.length).toFixed(1)
-          : 5.0
+
         const publicStats = homeStatsResult.status === 'fulfilled' && homeStatsResult.value.exists()
           ? homeStatsResult.value.data()
           : {}
+
+        let fallbackBookingsCount = publicStats.totalBookings
+        let fallbackReviewsCount = publicStats.totalReviews
+        if (fallbackBookingsCount === undefined || fallbackReviewsCount === undefined) {
+          try {
+            const [bCountSnap, rCountSnap] = await Promise.allSettled([
+              getCountFromServer(collection(db, 'bookings')),
+              getCountFromServer(collection(db, 'reviews')),
+            ])
+            if (bCountSnap.status === 'fulfilled') fallbackBookingsCount = bCountSnap.value.data().count
+            if (rCountSnap.status === 'fulfilled') fallbackReviewsCount = rCountSnap.value.data().count
+          } catch {}
+        }
+
+        const revAvg = revs.length
+          ? (revs.reduce((s, r) => s + (r.rating || 5), 0) / revs.length).toFixed(1)
+          : 5.0
+
         const scheduleDaysOpen = businessInfoResult.status === 'fulfilled'
           ? countOpenDays(businessInfoResult.value.bookingSettings)
           : null
+
         setStats({
-          totalBookings: Number(publicStats.totalBookings ?? (bookingsResult.status === 'fulfilled' ? bookingsResult.value.size : 0)),
-          totalReviews: Number(publicStats.totalReviews ?? allRevs.length),
-          avgRating: publicStats.avgRating ?? avg,
+          totalBookings: Number(publicStats.totalBookings ?? fallbackBookingsCount ?? 0),
+          totalReviews: Number(publicStats.totalReviews ?? fallbackReviewsCount ?? revs.length),
+          avgRating: Number(publicStats.avgRating ?? revAvg),
           daysOpen: scheduleDaysOpen ?? Number(publicStats.daysOpen ?? 7),
         })
         setReviews(revs)

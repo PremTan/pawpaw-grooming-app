@@ -127,7 +127,7 @@ export default function AdminDashboard() {
     setLoading(true)
     try {
       if (user?.uid) {
-        await setDoc(doc(db, 'settings', 'general'), { adminUid: user.uid }, { merge: true })
+        setDoc(doc(db, 'settings', 'general'), { adminUid: user.uid }, { merge: true }).catch(() => {})
       }
       const [bSnap, rSnap, settings, serviceSnap] = await Promise.all([getDocs(collection(db, 'bookings')), getDocs(collection(db, 'reviews')), fetchBookingSettings(db), getDocs(collection(db, 'serviceDetails'))])
       setBookingSettings(settings)
@@ -197,8 +197,10 @@ export default function AdminDashboard() {
         bookings,
       })
 
+      setLoading(false)
+
       const publicStats = calculatePublicStats(bookings, reviews, settings)
-      await Promise.all([
+      Promise.all([
         setDoc(doc(db, 'settings', 'homeStats'), { ...publicStats, updatedAt: serverTimestamp() }, { merge: true }),
         setDoc(doc(db, 'settings', 'general'), {
           publicStats,
@@ -208,9 +210,10 @@ export default function AdminDashboard() {
           daysOpen: publicStats.daysOpen,
           statsUpdatedAt: serverTimestamp(),
         }, { merge: true }),
-      ])
-    } catch {}
-    setLoading(false)
+      ]).catch(() => {})
+    } catch {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { fetchData() }, [])

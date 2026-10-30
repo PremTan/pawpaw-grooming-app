@@ -1,5 +1,5 @@
 // src/App.jsx
-import { useEffect } from 'react'
+import { useEffect, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
@@ -16,30 +16,31 @@ import MyPets      from './pages/MyPets'
 import Profile     from './pages/Profile'
 import Reviews     from './pages/Reviews'
 import Login       from './pages/Login'
-import Gallery     from './pages/Gallery'
-import ServiceDetail from './pages/ServiceDetail'
-import NotFound    from './pages/NotFound'
+// Lazy-loaded secondary pages
+const Gallery = lazy(() => import('./pages/Gallery'))
+const ServiceDetail = lazy(() => import('./pages/ServiceDetail'))
+const NotFound = lazy(() => import('./pages/NotFound'))
 
-// Admin
-import AdminLayout    from './admin/AdminLayout'
-import AdminDashboard from './admin/AdminDashboard'
-import AdminBookings  from './admin/AdminBookings'
-import AdminBoarding  from './admin/AdminBoarding'
-import AdminReviews   from './admin/AdminReviews'
-import AdminGoogleReviews from './admin/AdminGoogleReviews'
-import AdminCustomers from './admin/AdminCustomers'
-import AdminBlockedUsers from './admin/AdminBlockedUsers'
-import AdminGallery   from './admin/AdminGallery'
-import AdminPackages  from './admin/AdminPackages'
-import AdminHeroImages from './admin/AdminHeroImages'
-import AdminServices from './admin/AdminServices'
-import AdminWhyChooseUs from './admin/AdminWhyChooseUs'
-import AdminContactInfo from './admin/AdminContactInfo'
-import AdminFooter from './admin/AdminFooter'
-import AdminBookingSettings from './admin/AdminBookingSettings'
-import AdminInvoices from './admin/AdminInvoices'
-import AdminTeam from './admin/AdminTeam'
-import AdminShopPurchases from './admin/AdminShopPurchases'
+// Lazy-loaded Admin modules (prevents bundling heavy admin code into initial user load)
+const AdminLayout = lazy(() => import('./admin/AdminLayout'))
+const AdminDashboard = lazy(() => import('./admin/AdminDashboard'))
+const AdminBookings = lazy(() => import('./admin/AdminBookings'))
+const AdminBoarding = lazy(() => import('./admin/AdminBoarding'))
+const AdminReviews = lazy(() => import('./admin/AdminReviews'))
+const AdminGoogleReviews = lazy(() => import('./admin/AdminGoogleReviews'))
+const AdminCustomers = lazy(() => import('./admin/AdminCustomers'))
+const AdminBlockedUsers = lazy(() => import('./admin/AdminBlockedUsers'))
+const AdminGallery = lazy(() => import('./admin/AdminGallery'))
+const AdminPackages = lazy(() => import('./admin/AdminPackages'))
+const AdminHeroImages = lazy(() => import('./admin/AdminHeroImages'))
+const AdminServices = lazy(() => import('./admin/AdminServices'))
+const AdminWhyChooseUs = lazy(() => import('./admin/AdminWhyChooseUs'))
+const AdminContactInfo = lazy(() => import('./admin/AdminContactInfo'))
+const AdminFooter = lazy(() => import('./admin/AdminFooter'))
+const AdminBookingSettings = lazy(() => import('./admin/AdminBookingSettings'))
+const AdminInvoices = lazy(() => import('./admin/AdminInvoices'))
+const AdminTeam = lazy(() => import('./admin/AdminTeam'))
+const AdminShopPurchases = lazy(() => import('./admin/AdminShopPurchases'))
 
 function ScrollToTop() {
   const { pathname, search, hash } = useLocation()
@@ -95,9 +96,10 @@ export default function App() {
   return (
     <>
       <ScrollToTop />
-      <Routes>
-      {/* Admin — own layout */}
-      <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
+      <Suspense fallback={<div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spinner text="Loading..." /></div>}>
+        <Routes>
+        {/* Admin — own layout */}
+        <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
         <Route index            element={<AdminDashboard />} />
         <Route path="bookings"  element={<AdminBookings />} />
         <Route path="bookings/:bookingId" element={<AdminBookings />} />
@@ -134,7 +136,8 @@ export default function App() {
         <Route path="my-bookings" element={<ProtectedRoute><MyBookings /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Route>
-      </Routes>
+        </Routes>
+      </Suspense>
     </>
   )
 }

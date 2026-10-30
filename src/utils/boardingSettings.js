@@ -145,10 +145,26 @@ export function isPastStandardCheckOut(scheduledCheckOutDate, standardCheckOutTi
   return false
 }
 
-export async function fetchBoardingSettings(db) {
+let cachedBoardingSettings = null
+let cachedBoardingSettingsTime = 0
+const CACHE_TTL_MS = 60 * 1000
+
+export function clearBoardingSettingsCache() {
+  cachedBoardingSettings = null
+  cachedBoardingSettingsTime = 0
+}
+
+export async function fetchBoardingSettings(db, forceRefresh = false) {
+  const now = Date.now()
+  if (!forceRefresh && cachedBoardingSettings && (now - cachedBoardingSettingsTime < CACHE_TTL_MS)) {
+    return cachedBoardingSettings
+  }
   try {
     const snap = await getDoc(doc(db, 'settings', 'boardingSettings'))
-    return normalizeBoardingSettings(snap.exists() ? snap.data() : {})
+    const normalized = normalizeBoardingSettings(snap.exists() ? snap.data() : {})
+    cachedBoardingSettings = normalized
+    cachedBoardingSettingsTime = now
+    return normalized
   } catch {
     return normalizeBoardingSettings({})
   }
