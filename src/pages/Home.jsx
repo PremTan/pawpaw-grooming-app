@@ -13,6 +13,9 @@ import { fetchBoardingSettings } from '../utils/boardingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
 import { useAuth } from '../context/AuthContext'
 import { BOOKING_STATUS } from '../utils/services'
+import boardingHeroPets from '../assets/boarding-hero-pets.png'
+import boardingDogAvatar from '../assets/boarding-dog-avatar.png'
+import boardingCatAvatar from '../assets/boarding-cat-avatar.png'
 import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils } from 'lucide-react'
 
 const HERO_FALLBACK_IMAGE = '/hero-fallback.webp'
@@ -643,10 +646,13 @@ function HeroSlider() {
               <div className="home-boarding-prices">
                 <div className="home-boarding-price-card">
                   <img
-                    src="/boarding-dog-avatar.png"
+                    src={boardingDogAvatar}
                     alt="Dog Boarding"
                     className="home-boarding-avatar"
-                    onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+                    onError={e => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = boardingDogAvatar;
+                    }}
                   />
                   <div className="home-boarding-price-info">
                     <div className="home-boarding-price-label">Dog Boarding</div>
@@ -658,10 +664,13 @@ function HeroSlider() {
 
                 <div className="home-boarding-price-card">
                   <img
-                    src="/boarding-cat-avatar.png"
+                    src={boardingCatAvatar}
                     alt="Cat Boarding"
                     className="home-boarding-avatar"
-                    onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+                    onError={e => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = boardingCatAvatar;
+                    }}
                   />
                   <div className="home-boarding-price-info">
                     <div className="home-boarding-price-label">Cat Boarding</div>
@@ -694,13 +703,25 @@ function HeroSlider() {
               </div>
             </div>
 
-            {/* Large Hero Image */}
-            <div className="home-boarding-hero-wrap">
+            {/* Large Hero Image (Default illustration as background to prevent blank box while custom image loads) */}
+            <div
+              className="home-boarding-hero-wrap"
+              style={{
+                backgroundImage: `url(${boardingHeroPets})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center 25%',
+              }}
+            >
               <img
-                src="/boarding-hero-pets.png"
+                src={boardingSettings?.bannerImageUrl || boardingHeroPets}
                 alt="Dog and cat resting comfortably together in cozy pet boarding suite"
                 className="home-boarding-pets-img"
-                onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+                loading="eager"
+                decoding="async"
+                onError={e => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = boardingHeroPets;
+                }}
               />
             </div>
           </div>
@@ -914,10 +935,13 @@ function HeroSlider() {
                     <div className="upcoming-appointment-photo-stack">
                       <div className="upcoming-appointment-photo upcoming-appointment-photo-empty">
                         <img
-                          src="/boarding-hero-pets.png"
+                          src={boardingHeroPets}
                           alt="No upcoming appointments"
                           className="upcoming-appointment-empty-img"
-                          onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+                          onError={e => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = boardingHeroPets;
+                          }}
                         />
                       </div>
                     </div>

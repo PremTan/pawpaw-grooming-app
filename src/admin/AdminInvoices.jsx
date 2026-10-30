@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { collection, getDocs, orderBy, query } from 'firebase/firestore'
+import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore'
 import { Download, Eye, MessageCircle, ReceiptText, Search, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
@@ -17,6 +17,10 @@ const blankCustom = {
 
 const money = value => Number(value || 0).toLocaleString('en-IN')
 const shortId = id => `#${String(id || '').slice(0, 8).toUpperCase()}`
+
+let cachedInvoicesData = null
+let cachedInvoicesTimestamp = 0
+const INVOICES_CACHE_TTL = 60 * 1000
 
 export default function AdminInvoices() {
   const [mode, setMode] = useState('appointment')
@@ -40,12 +44,25 @@ export default function AdminInvoices() {
   const [toastType, setToastType] = useState('success')
 
   useEffect(() => {
+    const isFresh = cachedInvoicesData && (Date.now() - cachedInvoicesTimestamp < INVOICES_CACHE_TTL)
+    if (isFresh) {
+      setBookings(cachedInvoicesData.bookings)
+      setBoardings(cachedInvoicesData.boardings)
+      setBusinessInfo(cachedInvoicesData.businessInfo)
+      if (cachedInvoicesData.selectedId) setSelectedId(cachedInvoicesData.selectedId)
+      if (cachedInvoicesData.selectedBoardingId) setSelectedBoardingId(cachedInvoicesData.selectedBoardingId)
+      setLoading(false)
+      // Background revalidation so any newly completed booking is updated seamlessly
+      refreshInBackground()
+      return
+    }
+
     async function load() {
       setLoading(true)
       try {
         const [snap, boardingSnap, info] = await Promise.all([
-          getDocs(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'))),
-          getDocs(query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'))),
+          getDocs(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150))),
+          getDocs(query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'), limit(150))),
           fetchBusinessInfo(db),
         ])
         const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
@@ -57,11 +74,43 @@ export default function AdminInvoices() {
         if (firstCompleted) setSelectedId(firstCompleted.id)
         const firstCompletedBoarding = bRows.find(row => row.status === 'checked_out' || row.status === 'completed')
         if (firstCompletedBoarding) setSelectedBoardingId(firstCompletedBoarding.id)
+
+        cachedInvoicesData = {
+          bookings: rows,
+          boardings: bRows,
+          businessInfo: info,
+          selectedId: firstCompleted ? firstCompleted.id : '',
+          selectedBoardingId: firstCompletedBoarding ? firstCompletedBoarding.id : '',
+        }
+        cachedInvoicesTimestamp = Date.now()
       } catch {
         setError('Could not load invoice data.')
       }
       setLoading(false)
     }
+
+    async function refreshInBackground() {
+      try {
+        const [snap, boardingSnap, info] = await Promise.all([
+          getDocs(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150))),
+          getDocs(query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'), limit(150))),
+          fetchBusinessInfo(db),
+        ])
+        const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        const bRows = boardingSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        setBookings(rows)
+        setBoardings(bRows)
+        setBusinessInfo(info)
+        cachedInvoicesData = {
+          ...cachedInvoicesData,
+          bookings: rows,
+          boardings: bRows,
+          businessInfo: info,
+        }
+        cachedInvoicesTimestamp = Date.now()
+      } catch {}
+    }
+
     load()
   }, [])
 

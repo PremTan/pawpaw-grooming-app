@@ -54,12 +54,17 @@ import {
   Wallet,
   X,
   Bed,
+  ImagePlus,
+  Upload,
 } from 'lucide-react'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
+import { uploadToCloudinary } from '../utils/cloudinary'
+import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
+import defaultBoardingHeroImg from '../assets/boarding-hero-pets.png'
 import {
   BOARDING_STATUS,
   buildBoardingWhatsAppMessage,
@@ -179,6 +184,9 @@ export default function AdminBoarding() {
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [savedSettings, setSavedSettings] = useState(null)
   const [settingsDraft, setSettingsDraft] = useState(null)
+  const [uploadingBanner, setUploadingBanner] = useState(false)
+  const [optimizingBanner, setOptimizingBanner] = useState(false)
+  const [bannerUploadError, setBannerUploadError] = useState('')
   const [savingSettings, setSavingSettings] = useState(false)
   const [termsViewMode, setTermsViewMode] = useState('items') // 'items' | 'text'
 
@@ -703,6 +711,32 @@ export default function AdminBoarding() {
     }))
   }
 
+  const handleBannerUpload = async (file) => {
+    if (!file) return
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      setBannerUploadError(err.message)
+      return
+    }
+    setBannerUploadError('')
+    setUploadingBanner(true)
+    try {
+      const url = await uploadToCloudinary(file, {
+        onOptimizeStart: () => setOptimizingBanner(true),
+        onOptimizeEnd: () => setOptimizingBanner(false),
+      })
+      setSettingsDraft(p => ({ ...p, bannerImageUrl: url }))
+      setToastType('success')
+      setToastMessage('Boarding banner image uploaded. Click Save Settings to persist.')
+    } catch (err) {
+      setBannerUploadError(err.message || 'Image upload failed. Please try again.')
+    } finally {
+      setUploadingBanner(false)
+      setOptimizingBanner(false)
+    }
+  }
+
   // Save Settings Modal: validates all fields and explicitly persists all settings at once
   const saveBoardingSettings = async () => {
     if (!settingsDraft) return
@@ -759,6 +793,7 @@ export default function AdminBoarding() {
         checkInTimeDefault: String(settingsDraft.checkInTimeDefault || '10:00 AM').trim(),
         checkOutTimeDefault: String(settingsDraft.checkOutTimeDefault || '11:00 PM').trim(),
         lateCheckOutFee: lateFee,
+        bannerImageUrl: String(settingsDraft.bannerImageUrl || '').trim(),
         acceptBookings: settingsDraft.acceptBookings !== false,
         showNewBadge: settingsDraft.showNewBadge !== false,
         terms: cleanedTerms,
@@ -2724,6 +2759,73 @@ export default function AdminBoarding() {
                     <span style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px', display: 'block' }}>
                       Charged once per booking when pet is picked up after standard check-out time ({settingsDraft.checkOutTimeDefault || '11:00 PM'}).
                     </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pet Boarding Homepage Banner Image */}
+              <div className="boarding-settings-section">
+                <span className="boarding-settings-section-heading">
+                  Homepage Boarding Banner Image
+                </span>
+                <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '12px', lineHeight: 1.5 }}>
+                  Custom photo shown in the Pet Boarding card on the homepage. If left empty, or while your image is downloading on slow networks, the default cozy illustration is automatically displayed.
+                </p>
+
+                <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div style={{ position: 'relative', width: '180px', height: '120px', borderRadius: '12px', overflow: 'hidden', border: '1.5px solid var(--border)', background: '#FAF3E3', flexShrink: 0 }}>
+                    <img
+                      src={settingsDraft.bannerImageUrl || defaultBoardingHeroImg}
+                      alt="Banner Preview"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={e => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = defaultBoardingHeroImg;
+                      }}
+                    />
+                    <div style={{ position: 'absolute', bottom: '6px', left: '6px', right: '6px', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', textAlign: 'center', fontWeight: 600 }}>
+                      {settingsDraft.bannerImageUrl ? 'Custom Image Active' : 'Default Illustration'}
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: uploadingBanner ? 'not-allowed' : 'pointer', width: 'fit-content', fontSize: '12.5px', padding: '8px 14px' }}>
+                      <Upload size={14} />
+                      {uploadingBanner ? (optimizingBanner ? 'Optimizing...' : 'Uploading...') : 'Upload Custom Image'}
+                      <input
+                        type="file"
+                        accept={IMAGE_FILE_ACCEPT}
+                        disabled={uploadingBanner}
+                        style={{ display: 'none' }}
+                        onChange={e => {
+                          if (e.target.files?.[0]) {
+                            handleBannerUpload(e.target.files[0])
+                            e.target.value = ''
+                          }
+                        }}
+                      />
+                    </label>
+
+                    {settingsDraft.bannerImageUrl && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '6px', width: 'fit-content', fontSize: '12px', padding: '4px 8px' }}
+                        onClick={() => setSettingsDraft(p => ({ ...p, bannerImageUrl: '' }))}
+                      >
+                        <Trash2 size={13} /> Remove Custom Image (Use Default)
+                      </button>
+                    )}
+
+                    <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                      Supports JPG, PNG, WebP up to 10MB. Images are automatically compressed before upload.
+                    </span>
+
+                    {bannerUploadError && (
+                      <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 500 }}>
+                        {bannerUploadError}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

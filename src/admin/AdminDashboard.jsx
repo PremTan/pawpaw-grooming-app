@@ -83,6 +83,13 @@ function summarizePeriod(id, key, rows, label) {
   }
 }
 
+let cachedDashboardState = null
+let cachedDashboardTime = 0
+const DASHBOARD_CACHE_TTL = 45 * 1000
+
+let cachedTeamMembers = null
+let cachedPackages = null
+
 export default function AdminDashboard() {
   const { user } = useAuth()
   const [data, setData] = useState({
@@ -123,19 +130,39 @@ export default function AdminDashboard() {
   const [packageOptions, setPackageOptions] = useState([])
   const today = format(startOfToday(), 'yyyy-MM-dd')
 
-  const fetchData = async () => {
-    setLoading(true)
+  const fetchData = async (isBackground = false) => {
+    const isFresh = cachedDashboardState && (Date.now() - cachedDashboardTime < DASHBOARD_CACHE_TTL)
+    if (isFresh && !isBackground) {
+      setData(cachedDashboardState.data)
+      setBookingSettings(cachedDashboardState.settings)
+      setServiceDetails(cachedDashboardState.serviceDetails)
+      setLoading(false)
+      // Background revalidation
+      fetchData(true)
+      return
+    }
+
+    if (!isBackground && !cachedDashboardState) {
+      setLoading(true)
+    }
+
     try {
       if (user?.uid) {
         setDoc(doc(db, 'settings', 'general'), { adminUid: user.uid }, { merge: true }).catch(() => {})
       }
-      const [bSnap, rSnap, settings, serviceSnap] = await Promise.all([getDocs(collection(db, 'bookings')), getDocs(collection(db, 'reviews')), fetchBookingSettings(db), getDocs(collection(db, 'serviceDetails'))])
+      // Fetch only dashboard data; reviews is moved to background
+      const [bSnap, settings, serviceSnap] = await Promise.all([
+        getDocs(collection(db, 'bookings')),
+        fetchBookingSettings(db),
+        getDocs(collection(db, 'serviceDetails')),
+      ])
+
       setBookingSettings(settings)
       const nextServiceDetails = {}
       serviceSnap.docs.forEach(d => { nextServiceDetails[d.id] = { id: d.id, ...d.data() } })
       setServiceDetails(nextServiceDetails)
+
       const bookings = bSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-      const reviews = rSnap.docs.map(d => d.data())
       const byService = {}
       const earningsByService = {}
       const customerKeys = new Set()
@@ -175,7 +202,7 @@ export default function AdminDashboard() {
       })
 
       const sorted = [...bookings].sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0))
-      setData({
+      const computedData = {
         totalBookings: bookings.length,
         todayCount: bookings.filter(b => b.date === today).length,
         pending: bookings.filter(b => b.status === 'pending').length,
@@ -195,22 +222,34 @@ export default function AdminDashboard() {
         walkInCount,
         customerCount: customerKeys.size,
         bookings,
-      })
+      }
 
+      setData(computedData)
       setLoading(false)
 
-      const publicStats = calculatePublicStats(bookings, reviews, settings)
-      Promise.all([
-        setDoc(doc(db, 'settings', 'homeStats'), { ...publicStats, updatedAt: serverTimestamp() }, { merge: true }),
-        setDoc(doc(db, 'settings', 'general'), {
-          publicStats,
-          totalBookings: publicStats.totalBookings,
-          totalReviews: publicStats.totalReviews,
-          avgRating: publicStats.avgRating,
-          daysOpen: publicStats.daysOpen,
-          statsUpdatedAt: serverTimestamp(),
-        }, { merge: true }),
-      ]).catch(() => {})
+      cachedDashboardState = {
+        data: computedData,
+        settings,
+        serviceDetails: nextServiceDetails,
+      }
+      cachedDashboardTime = Date.now()
+
+      // Calculate publicStats asynchronously in background without delaying dashboard UI
+      getDocs(collection(db, 'reviews')).then(rSnap => {
+        const reviews = rSnap.docs.map(d => d.data())
+        const publicStats = calculatePublicStats(bookings, reviews, settings)
+        Promise.all([
+          setDoc(doc(db, 'settings', 'homeStats'), { ...publicStats, updatedAt: serverTimestamp() }, { merge: true }),
+          setDoc(doc(db, 'settings', 'general'), {
+            publicStats,
+            totalBookings: publicStats.totalBookings,
+            totalReviews: publicStats.totalReviews,
+            avgRating: publicStats.avgRating,
+            daysOpen: publicStats.daysOpen,
+            statsUpdatedAt: serverTimestamp(),
+          }, { merge: true }),
+        ]).catch(() => {})
+      }).catch(() => {})
     } catch {
       setLoading(false)
     }
@@ -225,14 +264,22 @@ export default function AdminDashboard() {
   }, [toastMessage])
 
   useEffect(() => {
+    if (cachedTeamMembers) {
+      setTeamMembers(cachedTeamMembers)
+      return
+    }
     async function fetchTeamMembers() {
       try {
         const snap = await getDocs(query(collection(db, 'teamMembers'), orderBy('createdAt', 'desc')))
-        setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+        const members = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        cachedTeamMembers = members
+        setTeamMembers(members)
       } catch {
         try {
           const snap = await getDocs(collection(db, 'teamMembers'))
-          setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+          const members = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+          cachedTeamMembers = members
+          setTeamMembers(members)
         } catch {}
       }
     }
@@ -240,14 +287,22 @@ export default function AdminDashboard() {
   }, [])
 
   useEffect(() => {
+    if (cachedPackages) {
+      setPackageOptions(cachedPackages)
+      return
+    }
     async function fetchPackages() {
       try {
         const snap = await getDocs(query(collection(db, 'packages'), orderBy('createdAt', 'desc')))
-        setPackageOptions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
+        const pkgs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false)
+        cachedPackages = pkgs
+        setPackageOptions(pkgs)
       } catch {
         try {
           const snap = await getDocs(collection(db, 'packages'))
-          setPackageOptions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
+          const pkgs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false)
+          cachedPackages = pkgs
+          setPackageOptions(pkgs)
         } catch {}
       }
     }
@@ -377,7 +432,8 @@ export default function AdminDashboard() {
       setToastMessage('Walk-in booking saved successfully.')
       setSuccess(true)
       setShowModal(false)
-      await fetchData()
+      cachedDashboardTime = 0
+      await fetchData(false)
     } catch {
       const msg = 'Failed to save offline appointment. Please try again.'
       setToastType('error')

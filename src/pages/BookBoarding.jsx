@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc } from 'firebase/firestore'
 import { format, addDays, startOfToday } from 'date-fns'
+import boardingHeroPets from '../assets/boarding-hero-pets.png'
 import {
   AlertCircle,
   ArrowRight,
@@ -651,10 +652,13 @@ export default function BookBoarding() {
               <div className="card-header-row">
                 <div className="card-header-icon-box">
                   <img
-                    src="/boarding-hero-pets.png"
+                    src={boardingHeroPets}
                     alt="Dog and Cat"
                     className="card-header-pet-img"
-                    onError={e => { e.currentTarget.src = '/booking-pets.svg' }}
+                    onError={e => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = boardingHeroPets;
+                    }}
                   />
                 </div>
                 <div>

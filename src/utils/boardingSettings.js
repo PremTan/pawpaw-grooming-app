@@ -31,6 +31,7 @@ export const DEFAULT_BOARDING_SETTINGS = {
   checkInTimeDefault: '10:00 AM',
   checkOutTimeDefault: '11:00 PM',
   lateCheckOutFee: 400,
+  bannerImageUrl: '',
   maxDogCapacity: 10,
   maxCatCapacity: 6,
   emergencyContactRequired: true,
@@ -101,6 +102,7 @@ export function normalizeBoardingSettings(data = {}) {
     lateCheckOutFee: data.lateCheckOutFee !== undefined && data.lateCheckOutFee !== null && !isNaN(Number(data.lateCheckOutFee))
       ? Math.max(0, Number(data.lateCheckOutFee))
       : DEFAULT_BOARDING_SETTINGS.lateCheckOutFee,
+    bannerImageUrl: String(data.bannerImageUrl || '').trim(),
     maxDogCapacity: Math.max(1, Number(data.maxDogCapacity || DEFAULT_BOARDING_SETTINGS.maxDogCapacity)),
     maxCatCapacity: Math.max(1, Number(data.maxCatCapacity || DEFAULT_BOARDING_SETTINGS.maxCatCapacity)),
     emergencyContactRequired: data.emergencyContactRequired !== false,
