@@ -1,6 +1,6 @@
 // src/pages/MyBookings.jsx
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
 import {
   AlertCircle,
@@ -277,7 +277,20 @@ export default function MyBookings() {
   const [savingEdit, setSavingEdit] = useState(false)
 
   // Pet Boarding state
-  const [domainTab, setDomainTab] = useState('grooming')
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+
+  const tabFromUrl = searchParams.get('tab') || location.state?.tab || location.state?.domainTab
+  const [domainTab, setDomainTab] = useState(tabFromUrl === 'boarding' ? 'boarding' : 'grooming')
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab') || location.state?.tab || location.state?.domainTab
+    if (tabParam === 'boarding') {
+      setDomainTab('boarding')
+    } else if (tabParam === 'grooming') {
+      setDomainTab('grooming')
+    }
+  }, [searchParams, location.state])
   const [boardings, setBoardings] = useState([])
   const [boardingLoading, setBoardingLoading] = useState(false)
   const [selectedBoarding, setSelectedBoarding] = useState(null)
@@ -857,7 +870,7 @@ export default function MyBookings() {
                           {b.petType} {b.petBreed ? `· ${b.petBreed}` : ''}
                         </div>
                         <div style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 700, marginTop: '2px' }}>
-                          {b.stayDays || 1} Day(s) ({b.stayNights || 0} Nights) · ₹{money(b.totalAmount || (Number(b.estimatedTotal || 0) + Number(b.specialFoodCharge || 0)))}
+                          {b.stayDays || 1} Day(s) ({b.stayNights || 0} Nights) · ₹{money(b.totalAmount || (Number(b.estimatedTotal || 0) + Number(b.specialFoodCharge || 0) + Number(b.lateCheckOutCharge || 0)))}
                         </div>
                       </div>
                     </div>
@@ -1652,11 +1665,23 @@ export default function MyBookings() {
                     </div>
                   )}
 
-                  {Number(selectedBoarding.specialFoodCharge || 0) > 0 && (
+                  {Number(selectedBoarding.lateCheckOutCharge || 0) > 0 && (
+                    <div className="billing-item">
+                      <span className="billing-label"><Clock size={14} /> Late Check-Out Fee</span>
+                      <strong className="billing-val" style={{ color: '#d97706' }}>
+                        +₹{money(selectedBoarding.lateCheckOutCharge)}
+                      </strong>
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px' }}>
+                        Paid at Checkout (Picked up after 11 PM)
+                      </span>
+                    </div>
+                  )}
+
+                  {(Number(selectedBoarding.specialFoodCharge || 0) > 0 || Number(selectedBoarding.lateCheckOutCharge || 0) > 0) && (
                     <div className="billing-item">
                       <span className="billing-label"><Receipt size={14} /> Total Stay Amount</span>
                       <strong className="billing-val" style={{ color: 'var(--text)' }}>
-                        ₹{money(selectedBoarding.totalAmount || (Number(selectedBoarding.estimatedTotal || 0) + Number(selectedBoarding.specialFoodCharge || 0)))}
+                        ₹{money(selectedBoarding.totalAmount || (Number(selectedBoarding.estimatedTotal || 0) + Number(selectedBoarding.specialFoodCharge || 0) + Number(selectedBoarding.lateCheckOutCharge || 0)))}
                       </strong>
                     </div>
                   )}
@@ -1668,8 +1693,8 @@ export default function MyBookings() {
 
                   <div className="billing-item">
                     <span className="billing-label"><Receipt size={14} /> Remaining Balance</span>
-                    <strong className="billing-val" style={{ color: Math.max(0, (Number(selectedBoarding.totalAmount || selectedBoarding.estimatedTotal || 0) + (selectedBoarding.totalAmount ? 0 : Number(selectedBoarding.specialFoodCharge || 0))) - Number(selectedBoarding.amountCollected || 0)) > 0 ? 'var(--accent)' : '#16a34a' }}>
-                      ₹{money(Math.max(0, (Number(selectedBoarding.totalAmount || selectedBoarding.estimatedTotal || 0) + (selectedBoarding.totalAmount ? 0 : Number(selectedBoarding.specialFoodCharge || 0))) - Number(selectedBoarding.amountCollected || 0)))}
+                    <strong className="billing-val" style={{ color: Math.max(0, (Number(selectedBoarding.totalAmount || (Number(selectedBoarding.estimatedTotal || 0) + Number(selectedBoarding.specialFoodCharge || 0) + Number(selectedBoarding.lateCheckOutCharge || 0)))) - Number(selectedBoarding.amountCollected || 0)) > 0 ? 'var(--accent)' : '#16a34a' }}>
+                      ₹{money(Math.max(0, (Number(selectedBoarding.totalAmount || (Number(selectedBoarding.estimatedTotal || 0) + Number(selectedBoarding.specialFoodCharge || 0) + Number(selectedBoarding.lateCheckOutCharge || 0)))) - Number(selectedBoarding.amountCollected || 0)))}
                     </strong>
                   </div>
                 </div>

@@ -29,7 +29,8 @@ export const DEFAULT_BOARDING_SETTINGS = {
   catDailyRate: 600,
   otherDailyRate: 500,
   checkInTimeDefault: '10:00 AM',
-  checkOutTimeDefault: '12:00 PM',
+  checkOutTimeDefault: '11:00 PM',
+  lateCheckOutFee: 400,
   maxDogCapacity: 10,
   maxCatCapacity: 6,
   emergencyContactRequired: true,
@@ -44,7 +45,8 @@ export const DEFAULT_BOARDING_SETTINGS = {
 export const TIME_SLOT_OPTIONS = [
   '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
   '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM',
-  '06:00 PM', '07:00 PM', '08:00 PM',
+  '06:00 PM', '07:00 PM', '08:00 PM', '09:00 PM', '10:00 PM',
+  '11:00 PM',
 ]
 
 export const FOOD_TYPES = [
@@ -96,6 +98,9 @@ export function normalizeBoardingSettings(data = {}) {
     otherDailyRate: Math.max(100, Number(data.otherDailyRate || DEFAULT_BOARDING_SETTINGS.otherDailyRate)),
     checkInTimeDefault: data.checkInTimeDefault || DEFAULT_BOARDING_SETTINGS.checkInTimeDefault,
     checkOutTimeDefault: data.checkOutTimeDefault || DEFAULT_BOARDING_SETTINGS.checkOutTimeDefault,
+    lateCheckOutFee: data.lateCheckOutFee !== undefined && data.lateCheckOutFee !== null && !isNaN(Number(data.lateCheckOutFee))
+      ? Math.max(0, Number(data.lateCheckOutFee))
+      : DEFAULT_BOARDING_SETTINGS.lateCheckOutFee,
     maxDogCapacity: Math.max(1, Number(data.maxDogCapacity || DEFAULT_BOARDING_SETTINGS.maxDogCapacity)),
     maxCatCapacity: Math.max(1, Number(data.maxCatCapacity || DEFAULT_BOARDING_SETTINGS.maxCatCapacity)),
     emergencyContactRequired: data.emergencyContactRequired !== false,
@@ -105,6 +110,39 @@ export function normalizeBoardingSettings(data = {}) {
     terms,
     termsClosingMessage,
   }
+}
+
+export function parseTimeStrToMinutes(timeStr) {
+  if (!timeStr) return 23 * 60 // 11:00 PM default (1380 mins)
+  const match = String(timeStr).trim().match(/(\d+)(?::(\d+))?\s*(AM|PM)?/i)
+  if (!match) return 23 * 60
+  let hours = parseInt(match[1], 10)
+  const minutes = parseInt(match[2] || '0', 10)
+  const meridian = match[3] ? match[3].toUpperCase() : null
+  if (meridian === 'PM' && hours < 12) hours += 12
+  if (meridian === 'AM' && hours === 12) hours = 0
+  return hours * 60 + minutes
+}
+
+export function isPastStandardCheckOut(scheduledCheckOutDate, standardCheckOutTime = '11:00 PM', actualCheckOutDate = new Date()) {
+  if (!scheduledCheckOutDate) return false
+  const actual = actualCheckOutDate instanceof Date ? actualCheckOutDate : new Date(actualCheckOutDate)
+  if (isNaN(actual.getTime())) return false
+
+  const year = actual.getFullYear()
+  const month = String(actual.getMonth() + 1).padStart(2, '0')
+  const day = String(actual.getDate()).padStart(2, '0')
+  const actualDateStr = `${year}-${month}-${day}`
+
+  if (actualDateStr > scheduledCheckOutDate) {
+    return true
+  }
+  if (actualDateStr === scheduledCheckOutDate) {
+    const cutoffMinutes = parseTimeStrToMinutes(standardCheckOutTime)
+    const actualMinutes = actual.getHours() * 60 + actual.getMinutes()
+    return actualMinutes > cutoffMinutes
+  }
+  return false
 }
 
 export async function fetchBoardingSettings(db) {
@@ -211,6 +249,7 @@ export function buildBoardingWhatsAppMessage(booking, shopName = 'Paw Paw Pet Gr
     `*Duration:* ${booking.stayDays || 1} Day(s) (${booking.stayNights || 0} Night(s))\n` +
     `*Estimated Total:* Rs ${booking.estimatedTotal || 0}\n` +
     (Number(booking.specialFoodCharge || 0) > 0 ? `*Special Food Charge:* Rs ${booking.specialFoodCharge}\n` : '') +
+    (Number(booking.lateCheckOutCharge || 0) > 0 ? `*Late Check-Out Fee:* Rs ${booking.lateCheckOutCharge}\n` : '') +
     `*Food:* ${foodDetail}\n` +
     (booking.feedingSchedule ? `*Feeding Schedule:* ${booking.feedingSchedule}\n` : '') +
     (booking.foodAllergies || booking.allergies ? `*Allergies:* ${booking.foodAllergies || booking.allergies}\n` : '') +

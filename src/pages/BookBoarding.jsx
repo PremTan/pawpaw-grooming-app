@@ -108,7 +108,7 @@ export default function BookBoarding() {
     checkInDate: todayStr,
     checkInTime: '10:00 AM',
     checkOutDate: tomorrowStr,
-    checkOutTime: '12:00 PM',
+    checkOutTime: '11:00 PM',
 
     // Step 3: Food and Feeding
     regularFoodIncluded: true,
@@ -142,6 +142,14 @@ export default function BookBoarding() {
         fetchBusinessInfo(db),
       ])
       setBoardingSettings(settings)
+      if (settings?.checkOutTimeDefault) {
+        setForm(prev => ({
+          ...prev,
+          checkOutTime: (prev.checkOutTime === '12:00 PM' || prev.checkOutTime === '11:00 PM')
+            ? settings.checkOutTimeDefault
+            : prev.checkOutTime,
+        }))
+      }
       setAdminWhatsappNumber(biz.whatsappNumber || '')
       setShopName(biz.contact.shopName || 'Paw Paw Pet Grooming')
     }
@@ -554,7 +562,7 @@ export default function BookBoarding() {
 
             <button
               type="button"
-              onClick={() => navigate('/my-bookings')}
+              onClick={() => navigate('/my-bookings?tab=boarding', { state: { tab: 'boarding', domainTab: 'boarding' } })}
               className="boarding-btn-secondary-bookings"
             >
               <span>View My Bookings</span>
@@ -971,6 +979,26 @@ export default function BookBoarding() {
                         <option key={`out-${slot}`} value={slot}>{slot}</option>
                       ))}
                     </select>
+                  </div>
+                </div>
+
+                {/* Late Check-out Policy Notice */}
+                <div style={{
+                  marginTop: '10px',
+                  background: '#FFFBEB',
+                  border: '1px solid #FDE68A',
+                  borderRadius: '9px',
+                  padding: '9px 12px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  fontSize: '11.5px',
+                  lineHeight: 1.45,
+                  color: '#92400E',
+                }}>
+                  <Info size={15} style={{ flexShrink: 0, marginTop: '2px', color: '#D97706' }} />
+                  <div>
+                    Standard check-out time: <strong>{boardingSettings?.checkOutTimeDefault || '11:00 PM'}</strong>. An additional late check-out fee of <strong>₹{boardingSettings?.lateCheckOutFee ?? 400}</strong> may apply if your pet is picked up after {boardingSettings?.checkOutTimeDefault || '11:00 PM'}.
                   </div>
                 </div>
               </div>

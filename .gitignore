@@ -22,3 +22,7 @@ npm-debug.log*
 
 # Generated from Firebase env vars
 public/firebase-messaging-sw.js
+
+# Firebase service account keys - NEVER commit
+serviceAccountKey.json
+*serviceAccountKey*.json

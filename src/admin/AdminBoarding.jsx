@@ -68,6 +68,10 @@ import {
   calculateBoardingStay,
   DEFAULT_BOARDING_TERMS,
   DEFAULT_BOARDING_TERMS_CLOSING,
+  DEFAULT_BOARDING_SETTINGS,
+  TIME_SLOT_OPTIONS,
+  parseTimeStrToMinutes,
+  isPastStandardCheckOut,
 } from '../utils/boardingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 
@@ -164,6 +168,8 @@ export default function AdminBoarding() {
   const [checkoutModal, setCheckoutModal] = useState(null)
   const [checkoutAmount, setCheckoutAmount] = useState('')
   const [checkoutFoodChargeInput, setCheckoutFoodChargeInput] = useState('')
+  const [checkoutLateFeeInput, setCheckoutLateFeeInput] = useState('')
+  const [isLateCheckOutDetected, setIsLateCheckOutDetected] = useState(false)
 
   // Cancel modal
   const [cancelTarget, setCancelTarget] = useState(null)
@@ -474,9 +480,17 @@ export default function AdminBoarding() {
   const openCheckOutModal = (b) => {
     setCheckoutModal(b)
     setCheckoutFoodChargeInput('')
+
+    const standardOutTime = savedSettings?.checkOutTimeDefault || '11:00 PM'
+    const isLate = isPastStandardCheckOut(b.checkOutDate, standardOutTime, new Date())
+    setIsLateCheckOutDetected(isLate)
+
+    const defaultLateFee = isLate ? (savedSettings?.lateCheckOutFee ?? 400) : 0
+    setCheckoutLateFeeInput(isLate ? String(defaultLateFee) : '0')
+
     const previousCollected = Number(b.amountCollected || 0)
     const existingFoodCharge = Number(b.specialFoodCharge || 0)
-    const totalStay = (Number(b.estimatedTotal || 0) + existingFoodCharge)
+    const totalStay = Number(b.estimatedTotal || 0) + existingFoodCharge + defaultLateFee
     const remaining = Math.max(0, totalStay - previousCollected)
     setCheckoutAmount(String(remaining))
   }
@@ -501,18 +515,30 @@ export default function AdminBoarding() {
         ? Math.round(Number(checkoutFoodChargeInput))
         : 0
 
+      const effectiveFoodCharge = hasRecordedAtCheckIn ? alreadyRecordedFoodCharge : newlyAddedFoodCharge
+      const effectiveLateFee = isLateCheckOutDetected ? Math.max(0, Math.round(Number(checkoutLateFeeInput) || 0)) : 0
+      const finalTotalAmount = Number(checkoutModal.estimatedTotal || 0) + effectiveFoodCharge + effectiveLateFee
+
       const patch = {
         status: BOARDING_STATUS.CHECKED_OUT,
         amountCollected: finalTotalCollected,
+        totalAmount: finalTotalAmount,
         updatedAt: serverTimestamp(),
         checkedOutAt: serverTimestamp(),
+      }
+
+      if (effectiveLateFee > 0) {
+        patch.lateCheckOutCharge = effectiveLateFee
+        patch.lateCheckOutApplied = true
+      } else {
+        patch.lateCheckOutCharge = 0
+        patch.lateCheckOutApplied = false
       }
 
       if (newlyAddedFoodCharge > 0) {
         patch.specialFoodCharge = newlyAddedFoodCharge
         patch.specialFoodChargeRecordedAt = 'checkout'
         patch.specialFoodChargeCollectedAt = 'checkout'
-        patch.totalAmount = Number(checkoutModal.estimatedTotal || 0) + newlyAddedFoodCharge
       } else if (hasRecordedAtCheckIn) {
         if (checkoutModal.specialFoodChargeCollectedAt === 'checkout' || !checkoutModal.specialFoodChargeCollectedAt) {
           patch.specialFoodChargeCollectedAt = 'checkout'
@@ -718,6 +744,10 @@ export default function AdminBoarding() {
       return
     }
 
+    const lateFee = settingsDraft.lateCheckOutFee !== undefined && settingsDraft.lateCheckOutFee !== ''
+      ? Math.max(0, Math.round(Number(settingsDraft.lateCheckOutFee)))
+      : 400
+
     setSavingSettings(true)
     try {
       const payload = {
@@ -726,6 +756,9 @@ export default function AdminBoarding() {
         catDailyRate: Math.round(catRate),
         maxDogCapacity: Math.round(maxDog),
         maxCatCapacity: Math.round(maxCat),
+        checkInTimeDefault: String(settingsDraft.checkInTimeDefault || '10:00 AM').trim(),
+        checkOutTimeDefault: String(settingsDraft.checkOutTimeDefault || '11:00 PM').trim(),
+        lateCheckOutFee: lateFee,
         acceptBookings: settingsDraft.acceptBookings !== false,
         showNewBadge: settingsDraft.showNewBadge !== false,
         terms: cleanedTerms,
@@ -1527,11 +1560,23 @@ export default function AdminBoarding() {
                         </div>
                       )}
 
-                      {Number(selectedBooking.specialFoodCharge || 0) > 0 && (
+                      {Number(selectedBooking.lateCheckOutCharge || 0) > 0 && (
+                        <div className="billing-item">
+                          <span className="billing-label"><Clock size={14} /> Late Check-Out Fee</span>
+                          <strong className="billing-val" style={{ color: '#d97706' }}>
+                            +₹{money(selectedBooking.lateCheckOutCharge)}
+                          </strong>
+                          <span style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px' }}>
+                            Collected at Checkout
+                          </span>
+                        </div>
+                      )}
+
+                      {(Number(selectedBooking.specialFoodCharge || 0) > 0 || Number(selectedBooking.lateCheckOutCharge || 0) > 0) && (
                         <div className="billing-item">
                           <span className="billing-label"><Receipt size={14} /> Total Stay Amount</span>
                           <strong className="billing-val" style={{ color: 'var(--text)' }}>
-                            ₹{money(selectedBooking.totalAmount || (Number(selectedBooking.estimatedTotal || 0) + Number(selectedBooking.specialFoodCharge || 0)))}
+                            ₹{money(selectedBooking.totalAmount || (Number(selectedBooking.estimatedTotal || 0) + Number(selectedBooking.specialFoodCharge || 0) + Number(selectedBooking.lateCheckOutCharge || 0)))}
                           </strong>
                         </div>
                       )}
@@ -1543,8 +1588,8 @@ export default function AdminBoarding() {
 
                       <div className="billing-item">
                         <span className="billing-label"><Receipt size={14} /> Remaining Balance</span>
-                        <strong className="billing-val" style={{ color: Math.max(0, (Number(selectedBooking.totalAmount || selectedBooking.estimatedTotal || 0) + (selectedBooking.totalAmount ? 0 : Number(selectedBooking.specialFoodCharge || 0))) - Number(selectedBooking.amountCollected || 0)) > 0 ? 'var(--accent)' : '#16a34a' }}>
-                          ₹{money(Math.max(0, (Number(selectedBooking.totalAmount || selectedBooking.estimatedTotal || 0) + (selectedBooking.totalAmount ? 0 : Number(selectedBooking.specialFoodCharge || 0))) - Number(selectedBooking.amountCollected || 0)))}
+                        <strong className="billing-val" style={{ color: Math.max(0, (Number(selectedBooking.totalAmount || (Number(selectedBooking.estimatedTotal || 0) + Number(selectedBooking.specialFoodCharge || 0) + Number(selectedBooking.lateCheckOutCharge || 0)))) - Number(selectedBooking.amountCollected || 0)) > 0 ? 'var(--accent)' : '#16a34a' }}>
+                          ₹{money(Math.max(0, (Number(selectedBooking.totalAmount || (Number(selectedBooking.estimatedTotal || 0) + Number(selectedBooking.specialFoodCharge || 0) + Number(selectedBooking.lateCheckOutCharge || 0)))) - Number(selectedBooking.amountCollected || 0)))}
                         </strong>
                       </div>
                     </div>
@@ -1777,7 +1822,7 @@ export default function AdminBoarding() {
                         <label className="edit-input-label">Check-Out Time</label>
                         <input
                           className="input"
-                          value={editForm.checkOutTime || '12:00 PM'}
+                          value={editForm.checkOutTime || '11:00 PM'}
                           onChange={e => setEditForm(p => ({ ...p, checkOutTime: e.target.value }))}
                         />
                       </div>
@@ -2131,8 +2176,10 @@ export default function AdminBoarding() {
           : 0
 
         const effectiveFoodCharge = isRecordedAtCheckIn ? alreadyRecordedCharge : newlyEnteredCharge
+        const effectiveLateFee = isLateCheckOutDetected ? Math.max(0, Math.round(Number(checkoutLateFeeInput) || 0)) : 0
+
         const originalBoardingTotal = Number(checkoutModal.estimatedTotal || 0)
-        const totalStayAmount = originalBoardingTotal + effectiveFoodCharge
+        const totalStayAmount = originalBoardingTotal + effectiveFoodCharge + effectiveLateFee
         const previouslyCollected = Number(checkoutModal.amountCollected || 0)
         const additionalAtCheckout = Number(checkoutAmount) || 0
         const totalCollectedAfter = previouslyCollected + additionalAtCheckout
@@ -2194,7 +2241,7 @@ export default function AdminBoarding() {
                       const val = e.target.value
                       setCheckoutFoodChargeInput(val)
                       const extra = Number(val) || 0
-                      const newRem = Math.max(0, (originalBoardingTotal + extra) - previouslyCollected)
+                      const newRem = Math.max(0, (originalBoardingTotal + extra + effectiveLateFee) - previouslyCollected)
                       setCheckoutAmount(String(newRem))
                     }}
                     placeholder="Enter special food charge, e.g. 500"
@@ -2213,6 +2260,143 @@ export default function AdminBoarding() {
                   Special Food Provider: <strong>Customer provided food (₹0 extra charge)</strong>
                 </div>
               ) : null}
+
+              {/* Late Check-out Section */}
+              {isLateCheckOutDetected ? (
+                <div style={{
+                  background: '#fef3c7',
+                  border: '1.5px solid #fde68a',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  marginBottom: '14px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '12.5px', fontWeight: 800, color: '#92400e', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Clock size={15} color="#b45309" /> Late Check-out Charge (₹)
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {Number(checkoutLateFeeInput) > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCheckoutLateFeeInput('0')
+                            const newTotal = originalBoardingTotal + effectiveFoodCharge
+                            setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
+                          }}
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid #d97706',
+                            color: '#b45309',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Waive Fee (₹0)
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const fee = savedSettings?.lateCheckOutFee ?? 400
+                            setCheckoutLateFeeInput(String(fee))
+                            const newTotal = originalBoardingTotal + effectiveFoodCharge + fee
+                            setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
+                          }}
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid #16a34a',
+                            color: '#15803d',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Reset to ₹{savedSettings?.lateCheckOutFee ?? 400}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsLateCheckOutDetected(false)
+                          setCheckoutLateFeeInput('0')
+                          const newTotal = originalBoardingTotal + effectiveFoodCharge
+                          setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#78350f',
+                          fontSize: '11px',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          padding: 0,
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: '11.5px', color: '#78350f', margin: '0 0 8px', lineHeight: 1.4 }}>
+                    Actual check-out is after {savedSettings?.checkOutTimeDefault || '11:00 PM'} on scheduled check-out date ({checkoutModal.checkOutDate}). Standard fee is shown below; you can edit or waive it.
+                  </p>
+                  <input
+                    type="number"
+                    min="0"
+                    className="input"
+                    value={checkoutLateFeeInput}
+                    onChange={e => {
+                      const val = e.target.value
+                      setCheckoutLateFeeInput(val)
+                      const lateFeeVal = Number(val) || 0
+                      const newTotal = originalBoardingTotal + effectiveFoodCharge + lateFeeVal
+                      setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
+                    }}
+                    placeholder="Enter late check-out fee, e.g. 400"
+                  />
+                </div>
+              ) : (
+                <div style={{
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  marginBottom: '14px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '12px',
+                  color: 'var(--muted)',
+                }}>
+                  <span>Check-out time: on schedule (at or before 11:00 PM). Late fee not applied.</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsLateCheckOutDetected(true)
+                      const fee = savedSettings?.lateCheckOutFee ?? 400
+                      setCheckoutLateFeeInput(String(fee))
+                      const newTotal = originalBoardingTotal + effectiveFoodCharge + fee
+                      setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--accent)',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      padding: 0,
+                    }}
+                  >
+                    Apply Late Fee
+                  </button>
+                </div>
+              )}
 
               {/* Complete Breakdown matching requirements */}
               <div style={{
@@ -2244,9 +2428,16 @@ export default function AdminBoarding() {
                   </strong>
                 </div>
 
-                {effectiveFoodCharge > 0 && (
+                {effectiveLateFee > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b45309' }}>
+                    <span>Late Check-out Charge:</span>
+                    <strong>+₹{money(effectiveLateFee)}</strong>
+                  </div>
+                )}
+
+                {(effectiveFoodCharge > 0 || effectiveLateFee > 0) && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text)', fontWeight: 700, borderTop: '1px dotted var(--border)', paddingTop: '6px' }}>
-                    <span>Total Stay Amount (Stay + Food):</span>
+                    <span>Total Final Stay Amount:</span>
                     <span>₹{money(totalStayAmount)}</span>
                   </div>
                 )}
@@ -2478,6 +2669,61 @@ export default function AdminBoarding() {
                       value={settingsDraft.maxCatCapacity ?? ''}
                       onChange={e => setSettingsDraft(p => ({ ...p, maxCatCapacity: e.target.value === '' ? '' : Number(e.target.value) }))}
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* Standard Timings & Late Check-out Fee */}
+              <div className="boarding-settings-section">
+                <span className="boarding-settings-section-heading">
+                  Standard Timings & Late Check-out Fee
+                </span>
+                <div className="boarding-settings-field-grid">
+                  <div className="boarding-settings-field">
+                    <label htmlFor="checkInTimeDefaultInput">Standard Check-in Time</label>
+                    <select
+                      id="checkInTimeDefaultInput"
+                      className="input"
+                      value={settingsDraft.checkInTimeDefault || '10:00 AM'}
+                      onChange={e => setSettingsDraft(p => ({ ...p, checkInTimeDefault: e.target.value }))}
+                    >
+                      {TIME_SLOT_OPTIONS.map(slot => (
+                        <option key={`in-${slot}`} value={slot}>{slot}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="boarding-settings-field">
+                    <label htmlFor="checkOutTimeDefaultInput">Standard Check-out Time</label>
+                    <select
+                      id="checkOutTimeDefaultInput"
+                      className="input"
+                      value={settingsDraft.checkOutTimeDefault || '11:00 PM'}
+                      onChange={e => setSettingsDraft(p => ({ ...p, checkOutTimeDefault: e.target.value }))}
+                    >
+                      {TIME_SLOT_OPTIONS.map(slot => (
+                        <option key={`out-${slot}`} value={slot}>{slot}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ marginTop: '12px' }}>
+                  <div className="boarding-settings-field">
+                    <label htmlFor="lateCheckOutFeeInput">Late Check-out Fee (₹)</label>
+                    <input
+                      id="lateCheckOutFeeInput"
+                      type="number"
+                      min="0"
+                      className="input"
+                      placeholder="400"
+                      value={settingsDraft.lateCheckOutFee ?? 400}
+                      onChange={e => setSettingsDraft(p => ({
+                        ...p,
+                        lateCheckOutFee: e.target.value === '' ? '' : Math.max(0, Number(e.target.value)),
+                      }))}
+                    />
+                    <span style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px', display: 'block' }}>
+                      Charged once per booking when pet is picked up after standard check-out time ({settingsDraft.checkOutTimeDefault || '11:00 PM'}).
+                    </span>
                   </div>
                 </div>
               </div>

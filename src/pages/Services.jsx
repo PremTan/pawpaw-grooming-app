@@ -41,7 +41,7 @@ export default function Services() {
         setServiceDetails(details)
         setPackages(pSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.active !== false))
         setAdminPhone(businessInfo.whatsappNumber || '')
-      } catch {}
+      } catch { }
       setLoading(false)
     }
     fetchData()
@@ -175,7 +175,7 @@ export default function Services() {
                   Looking for Pet Boarding?
                 </h3>
                 <p style={{ color: 'var(--muted)', fontSize: '13px', margin: 0, maxWidth: '520px', lineHeight: 1.5 }}>
-                  Spacious suites, 24/7 supervision, daily exercise, personalized feeding, and daily WhatsApp updates. Dogs ₹800/day · Cats ₹600/day.
+                  Spacious suites, 24/7 supervision, daily exercise, personalized feeding, and daily WhatsApp updates.
                 </p>
               </div>
               <Link to="/boarding" className="btn btn-primary" style={{ padding: '12px 24px', fontSize: '14px', textDecoration: 'none' }}>
