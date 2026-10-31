@@ -877,9 +877,27 @@ export default function MyBookings() {
 
                     <div>
                       <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>Stay Dates</div>
-                      <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 600 }}>
-                        {b.checkInDate} → {b.checkOutDate}
+                      <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 600, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                        <span>{formatBoardingDate(b.checkInDate)} → {formatBoardingDate(b.actualCheckOutDate || b.checkOutDate)}</span>
+                        {b.actualCheckOutDate && b.actualCheckOutDate !== b.checkOutDate && (
+                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(217, 119, 6, 0.15)', color: '#d97706', fontWeight: 700 }}>
+                            (Actual)
+                          </span>
+                        )}
                       </div>
+                      {(b.actualCheckOutTime || b.checkOutTime) && (
+                        <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '3px' }}>
+                          Check-out: <span style={{ color: b.actualCheckOutTime ? '#d97706' : 'var(--text)', fontWeight: 600 }}>{b.actualCheckOutTime || b.checkOutTime}</span>
+                          {b.actualCheckOutTime && (
+                            <span style={{ marginLeft: '4px', fontSize: '10px', color: '#d97706', fontWeight: 700 }}>(Actual)</span>
+                          )}
+                        </div>
+                      )}
+                      {Number(b.lateCheckOutCharge || 0) > 0 && (
+                        <div style={{ fontSize: '11px', color: '#d97706', fontWeight: 600, marginTop: '2px' }}>
+                          Late check-out: +₹{money(b.lateCheckOutCharge)}
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1628,9 +1646,25 @@ export default function MyBookings() {
                   </div>
 
                   <div className="stay-banner-item">
-                    <span className="stay-label"><Calendar size={13} /> Check-Out</span>
-                    <strong className="stay-val">{formatBoardingDate(selectedBoarding.checkOutDate)}</strong>
-                    <span className="stay-sub">{selectedBoarding.checkOutTime || '12:00 PM'}</span>
+                    <span className="stay-label">
+                      <Calendar size={13} /> {selectedBoarding.actualCheckOutDate || selectedBoarding.actualCheckOutTime ? 'Actual Check-Out' : 'Check-Out'}
+                    </span>
+                    <strong className="stay-val">
+                      {formatBoardingDate(selectedBoarding.actualCheckOutDate || selectedBoarding.checkOutDate)}
+                    </strong>
+                    <span className="stay-sub">
+                      {selectedBoarding.actualCheckOutTime || selectedBoarding.checkOutTime || '11:00 PM'}
+                      {selectedBoarding.actualCheckOutTime && (
+                        <span style={{ color: '#d97706', fontWeight: 700, marginLeft: '4px' }}>
+                          (Actual)
+                        </span>
+                      )}
+                      {selectedBoarding.actualCheckOutDate && selectedBoarding.actualCheckOutDate !== selectedBoarding.checkOutDate && (
+                        <span style={{ color: '#d97706', display: 'block', fontSize: '10px', fontWeight: 600 }}>
+                          (Sched: {formatBoardingDate(selectedBoarding.checkOutDate)})
+                        </span>
+                      )}
+                    </span>
                   </div>
 
                   <div className="stay-banner-item total">
@@ -1641,6 +1675,34 @@ export default function MyBookings() {
                     <span className="stay-sub">({selectedBoarding.stayNights || 0} Nights)</span>
                   </div>
                 </div>
+
+                {(selectedBoarding.actualCheckOutDate || selectedBoarding.actualCheckOutTime) && (
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    background: 'rgba(217, 119, 6, 0.08)',
+                    border: '1px solid rgba(217, 119, 6, 0.25)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                    fontSize: '12px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309' }}>
+                      <Clock size={15} />
+                      <span>
+                        <strong>Actual Check-Out Pick-up:</strong> {formatBoardingDate(selectedBoarding.actualCheckOutDate || selectedBoarding.checkOutDate)} at {selectedBoarding.actualCheckOutTime || selectedBoarding.checkOutTime || '11:00 PM'}
+                      </span>
+                    </div>
+                    {selectedBoarding.actualCheckOutDate && selectedBoarding.actualCheckOutDate !== selectedBoarding.checkOutDate && (
+                      <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                        (Scheduled: {formatBoardingDate(selectedBoarding.checkOutDate)})
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 <div className="billing-three-col-row">
                   <div className="billing-item">
@@ -1672,7 +1734,9 @@ export default function MyBookings() {
                         +₹{money(selectedBoarding.lateCheckOutCharge)}
                       </strong>
                       <span style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px' }}>
-                        Paid at Checkout (Picked up after 11 PM)
+                        {selectedBoarding.actualCheckOutTime
+                          ? `Picked up at ${selectedBoarding.actualCheckOutTime}${selectedBoarding.actualCheckOutDate && selectedBoarding.actualCheckOutDate !== selectedBoarding.checkOutDate ? ` on ${formatBoardingDate(selectedBoarding.actualCheckOutDate)}` : ''} (after 11:00 PM)`
+                          : 'Paid at Checkout (Picked up after 11 PM)'}
                       </span>
                     </div>
                   )}

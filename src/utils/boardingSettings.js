@@ -250,7 +250,9 @@ export function buildBoardingWhatsAppMessage(booking, shopName = 'Paw Paw Pet Gr
   const petType = booking.petType || 'Dog'
   const breed = booking.petBreed ? ` (${booking.petBreed})` : ''
   const inStr = `${booking.checkInDate || '-'} at ${booking.checkInTime || '-'}`
-  const outStr = `${booking.checkOutDate || '-'} at ${booking.checkOutTime || '-'}`
+  const effectiveOutDate = booking.actualCheckOutDate || booking.checkOutDate || '-'
+  const effectiveOutTime = booking.actualCheckOutTime || booking.checkOutTime || '-'
+  const outStr = `${effectiveOutDate} at ${effectiveOutTime}${booking.actualCheckOutDate && booking.actualCheckOutDate !== booking.checkOutDate ? ' (Actual)' : ''}`
   const idShort = (booking.id || '').slice(0, 8).toUpperCase()
 
   const foodDetail = booking.specialFoodRequired

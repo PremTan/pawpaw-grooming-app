@@ -9,7 +9,7 @@ const shortId = id => String(id || '').slice(0, 8).toUpperCase()
 
 export const getInvoiceNumber = booking => {
   if (booking?.isBoarding) {
-    const rawDate = booking?.checkOutDate || booking?.checkInDate || booking?.date
+    const rawDate = booking?.actualCheckOutDate || booking?.checkOutDate || booking?.checkInDate || booking?.date
     const date = clean(rawDate).replaceAll('-', '') || new Date().toISOString().slice(0, 10).replaceAll('-', '')
     return `BRD${date}${shortId(booking?.id) || 'STAY'}`
   }
@@ -33,7 +33,7 @@ export const getInvoiceSummary = (booking, businessInfo = {}) => {
       `Customer: ${booking?.ownerName || '-'}`,
       `Phone: ${booking?.phone || '-'}`,
       `Pet: ${buildPetLabel(booking)}`,
-      `Stay: ${booking?.checkInDate || '-'} to ${booking?.checkOutDate || '-'} (${booking?.stayDays || 1} Days)`,
+      `Stay: ${booking?.checkInDate || '-'} to ${booking?.actualCheckOutDate || booking?.checkOutDate || '-'} (${booking?.stayDays || 1} Days)`,
       `Amount Paid: ${money(amountPaid)}`,
       `GST: ${gstAmount > 0 ? money(gstAmount) : 'Not applicable'}`,
       `Total: ${money(total)}`,
