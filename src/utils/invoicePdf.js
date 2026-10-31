@@ -20,7 +20,7 @@ export const getInvoiceNumber = booking => {
 export const getInvoiceFileName = booking => `${getInvoiceNumber(booking)}.pdf`
 
 export const getInvoiceSummary = (booking, businessInfo = {}) => {
-  const shopName = businessInfo.contact?.shopName || 'Paw Paw'
+  const shopName = businessInfo.contact?.shopName || 'Paw Paw Pet Grooming'
   const invoiceNo = getInvoiceNumber(booking)
   const amountPaid = getAmountPaid(booking)
   const gstAmount = getGstAmount(booking)
@@ -75,7 +75,7 @@ export async function shareInvoicePdfFile(booking, businessInfo = {}, title = 'S
   if (navigator.canShare?.({ files: [file] })) {
     await navigator.share({
       title,
-      text: `${businessInfo.contact?.shopName || 'Paw Paw'} invoice ${getInvoiceNumber(booking)}`,
+      text: `${businessInfo.contact?.shopName || 'Paw Paw Pet Grooming'} invoice ${getInvoiceNumber(booking)}`,
       files: [file],
     })
     return true
@@ -216,7 +216,7 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4', compress: true })
   const contact = businessInfo.contact || {}
   const footer = businessInfo.footer || {}
-  const shopName = contact.shopName || 'Paw Paw'
+  const shopName = contact.shopName || 'Paw Paw Pet Grooming'
   const invoiceNo = getInvoiceNumber(booking)
   const invoiceDate = new Date()
   const amountPaid = getAmountPaid(booking)
@@ -239,7 +239,7 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   } else {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(20)
-    doc.text('Paw Paw', margin + 25, 118, { maxWidth: 60 })
+    doc.text('Paw Paw Pet Grooming', margin + 25, 118, { maxWidth: 60 })
   }
 
   doc.setFont('helvetica', 'bold')
@@ -297,12 +297,12 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   const tableBody = (Array.isArray(booking?.invoiceItems) && booking.invoiceItems.length > 0)
     ? booking.invoiceItems
     : [[
-        '01',
-        [booking?.serviceName || '-', `Pet: ${buildPetLabel(booking)}`, `Appointment: ${booking?.date || '-'} ${booking?.slot || '-'}`].join('\n'),
-        '1',
-        Number(amountPaid || 0).toLocaleString('en-IN'),
-        Number(amountPaid || 0).toLocaleString('en-IN'),
-      ]]
+      '01',
+      [booking?.serviceName || '-', `Pet: ${buildPetLabel(booking)}`, `Appointment: ${booking?.date || '-'} ${booking?.slot || '-'}`].join('\n'),
+      '1',
+      Number(amountPaid || 0).toLocaleString('en-IN'),
+      Number(amountPaid || 0).toLocaleString('en-IN'),
+    ]]
 
   autoTable(doc, {
     startY: 382,

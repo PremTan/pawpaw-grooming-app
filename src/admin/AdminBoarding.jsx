@@ -17,6 +17,7 @@ import {
   ArrowUpDown,
   Building2,
   Calendar,
+  CalendarCheck,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -99,6 +100,61 @@ const statusLabel = (st = 'pending') => {
 const money = (val) => Number(val || 0).toLocaleString('en-IN')
 const shortId = (id = '') => `#${id.slice(0, 8).toUpperCase()}`
 
+function formatTime12Hour(timeStr) {
+  if (!timeStr) return ''
+  if (/am|pm/i.test(timeStr)) return timeStr
+  const parts = String(timeStr).split(':')
+  let hour = parseInt(parts[0], 10)
+  const minute = parts[1] || '00'
+  if (isNaN(hour)) return timeStr
+  const meridian = hour >= 12 ? 'PM' : 'AM'
+  hour = hour % 12 || 12
+  return `${String(hour).padStart(2, '0')}:${minute} ${meridian}`
+}
+
+function getRecalculatedStay(booking, actualDate) {
+  if (!booking) return { days: 1, nights: 0, baseTotal: 0, isChanged: false }
+  const inDateStr = booking.checkInDate
+  const outDateStr = actualDate || booking.checkOutDate
+  const dailyRate = Number(booking.dailyRate || 800)
+
+  if (!inDateStr || !outDateStr) {
+    const days = Number(booking.stayDays || 1)
+    const nights = Number(booking.stayNights || 0)
+    return { days, nights, baseTotal: Number(booking.estimatedTotal || days * dailyRate), isChanged: false }
+  }
+
+  const inDate = new Date(`${inDateStr}T00:00:00`)
+  const outDate = new Date(`${outDateStr}T00:00:00`)
+
+  if (Number.isNaN(inDate.getTime()) || Number.isNaN(outDate.getTime())) {
+    const days = Number(booking.stayDays || 1)
+    const nights = Number(booking.stayNights || 0)
+    return { days, nights, baseTotal: Number(booking.estimatedTotal || days * dailyRate), isChanged: false }
+  }
+
+  const diffMs = outDate.getTime() - inDate.getTime()
+  const rawDiffDays = Math.round(diffMs / (1000 * 60 * 60 * 24))
+  const days = Math.max(1, rawDiffDays)
+  const nights = Math.max(0, rawDiffDays)
+  const baseTotal = days * dailyRate
+
+  return {
+    days,
+    nights,
+    baseTotal,
+    dailyRate,
+    isChanged: outDateStr !== booking.checkOutDate || days !== Number(booking.stayDays || 1),
+  }
+}
+
+function computeIsLateCheckOut(actualDate, actualTime, scheduledDate, standardDeadline = '11:00 PM') {
+  if (!actualDate || !actualTime) return false
+  const actualMinutes = parseTimeStrToMinutes(actualTime)
+  const deadlineMinutes = parseTimeStrToMinutes(standardDeadline)
+  return actualMinutes > deadlineMinutes
+}
+
 function formatBoardingDate(dateStr) {
   if (!dateStr) return 'N/A'
   try {
@@ -175,6 +231,8 @@ export default function AdminBoarding() {
   const [checkoutFoodChargeInput, setCheckoutFoodChargeInput] = useState('')
   const [checkoutLateFeeInput, setCheckoutLateFeeInput] = useState('')
   const [isLateCheckOutDetected, setIsLateCheckOutDetected] = useState(false)
+  const [actualCheckOutDate, setActualCheckOutDate] = useState('')
+  const [actualCheckOutTime, setActualCheckOutTime] = useState('')
 
   // Cancel modal
   const [cancelTarget, setCancelTarget] = useState(null)
@@ -489,22 +547,79 @@ export default function AdminBoarding() {
     setCheckoutModal(b)
     setCheckoutFoodChargeInput('')
 
+    const now = new Date()
+    const defaultDate = b.checkOutDate || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const defaultTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+
+    setActualCheckOutDate(defaultDate)
+    setActualCheckOutTime(defaultTime)
+
     const standardOutTime = savedSettings?.checkOutTimeDefault || '11:00 PM'
-    const isLate = isPastStandardCheckOut(b.checkOutDate, standardOutTime, new Date())
+    const isLate = computeIsLateCheckOut(defaultDate, defaultTime, b.checkOutDate, standardOutTime)
     setIsLateCheckOutDetected(isLate)
 
     const defaultLateFee = isLate ? (savedSettings?.lateCheckOutFee ?? 400) : 0
     setCheckoutLateFeeInput(isLate ? String(defaultLateFee) : '0')
 
+    const recalculated = getRecalculatedStay(b, defaultDate)
     const previousCollected = Number(b.amountCollected || 0)
     const existingFoodCharge = Number(b.specialFoodCharge || 0)
-    const totalStay = Number(b.estimatedTotal || 0) + existingFoodCharge + defaultLateFee
+    const totalStay = recalculated.baseTotal + existingFoodCharge + defaultLateFee
     const remaining = Math.max(0, totalStay - previousCollected)
     setCheckoutAmount(String(remaining))
   }
 
+  const handleActualCheckOutDateChange = (newDate) => {
+    setActualCheckOutDate(newDate)
+    recalcCheckoutCalculations(newDate, actualCheckOutTime)
+  }
+
+  const handleActualCheckOutTimeChange = (newTime) => {
+    setActualCheckOutTime(newTime)
+    recalcCheckoutCalculations(actualCheckOutDate, newTime)
+  }
+
+  const recalcCheckoutCalculations = (dateVal, timeVal) => {
+    if (!checkoutModal) return
+    const standardOutTime = savedSettings?.checkOutTimeDefault || '11:00 PM'
+    const isLate = computeIsLateCheckOut(dateVal, timeVal, checkoutModal.checkOutDate, standardOutTime)
+    setIsLateCheckOutDetected(isLate)
+
+    const fee = isLate ? (savedSettings?.lateCheckOutFee ?? 400) : 0
+    setCheckoutLateFeeInput(String(fee))
+
+    const recalculated = getRecalculatedStay(checkoutModal, dateVal)
+
+    const isPawPawFood = Boolean(
+      checkoutModal.specialFoodRequired && checkoutModal.specialFoodProvider === 'pawpaw'
+    )
+    const alreadyFood = Number(checkoutModal.specialFoodCharge || 0)
+    const isRecordedAtCheckIn = Boolean(
+      checkoutModal.specialFoodChargeRecordedAt === 'check_in' || alreadyFood > 0
+    )
+    const effectiveFood = isRecordedAtCheckIn
+      ? alreadyFood
+      : ((isPawPawFood && Number(checkoutFoodChargeInput) > 0) ? Math.round(Number(checkoutFoodChargeInput)) : 0)
+
+    const newTotalStay = recalculated.baseTotal + effectiveFood + fee
+    const prevCollected = Number(checkoutModal.amountCollected || 0)
+    setCheckoutAmount(String(Math.max(0, newTotalStay - prevCollected)))
+  }
+
   const confirmCheckOut = async () => {
     if (!checkoutModal) return
+
+    if (!actualCheckOutDate || !actualCheckOutTime) {
+      setToastType('error')
+      setToastMessage('Please enter both Actual Check-out Date and Time.')
+      return
+    }
+
+    const recalculated = getRecalculatedStay(checkoutModal, actualCheckOutDate)
+    const effectiveStayDays = recalculated.days
+    const effectiveStayNights = recalculated.nights
+    const effectiveBaseTotal = recalculated.baseTotal
+
     const additionalAmt = Number(checkoutAmount) || 0
     const previousCollected = Number(checkoutModal.amountCollected || 0)
     const finalTotalCollected = previousCollected + additionalAmt
@@ -525,12 +640,17 @@ export default function AdminBoarding() {
 
       const effectiveFoodCharge = hasRecordedAtCheckIn ? alreadyRecordedFoodCharge : newlyAddedFoodCharge
       const effectiveLateFee = isLateCheckOutDetected ? Math.max(0, Math.round(Number(checkoutLateFeeInput) || 0)) : 0
-      const finalTotalAmount = Number(checkoutModal.estimatedTotal || 0) + effectiveFoodCharge + effectiveLateFee
+      const finalTotalAmount = effectiveBaseTotal + effectiveFoodCharge + effectiveLateFee
 
       const patch = {
         status: BOARDING_STATUS.CHECKED_OUT,
+        stayDays: effectiveStayDays,
+        stayNights: effectiveStayNights,
+        estimatedTotal: effectiveBaseTotal,
         amountCollected: finalTotalCollected,
         totalAmount: finalTotalAmount,
+        actualCheckOutDate: String(actualCheckOutDate).trim(),
+        actualCheckOutTime: formatTime12Hour(actualCheckOutTime) || String(actualCheckOutTime).trim(),
         updatedAt: serverTimestamp(),
         checkedOutAt: serverTimestamp(),
       }
@@ -1085,9 +1205,16 @@ export default function AdminBoarding() {
                     <div className="boarding-strip-text">
                       <span className="strip-label">Stay Schedule</span>
                       <strong className="strip-val">
-                        {formatBoardingDate(b.checkInDate)} → {formatBoardingDate(b.checkOutDate)}
+                        {formatBoardingDate(b.checkInDate)} → {formatBoardingDate(b.actualCheckOutDate || b.checkOutDate)}
                       </strong>
-                      <span className="strip-sub">{b.stayDays || 1} Day(s)</span>
+                      <span className="strip-sub">
+                        {b.stayDays || 1} Day(s)
+                        {b.actualCheckOutDate && b.actualCheckOutDate !== b.checkOutDate && (
+                          <span style={{ color: '#d97706', marginLeft: '4px', fontWeight: 600 }} title={`Scheduled: ${formatBoardingDate(b.checkOutDate)}`}>
+                            (Actual)
+                          </span>
+                        )}
+                      </span>
                     </div>
                   </div>
 
@@ -1559,8 +1686,17 @@ export default function AdminBoarding() {
 
                       <div className="stay-banner-item">
                         <span className="stay-label"><Calendar size={13} /> Check-Out</span>
-                        <strong className="stay-val">{formatBoardingDate(selectedBooking.checkOutDate)}</strong>
-                        <span className="stay-sub">{selectedBooking.checkOutTime || '12:00 PM'}</span>
+                        <strong className="stay-val">
+                          {formatBoardingDate(selectedBooking.actualCheckOutDate || selectedBooking.checkOutDate)}
+                        </strong>
+                        <span className="stay-sub">
+                          {selectedBooking.actualCheckOutTime || selectedBooking.checkOutTime || '11:00 PM'}
+                          {selectedBooking.actualCheckOutDate && selectedBooking.actualCheckOutDate !== selectedBooking.checkOutDate && (
+                            <span style={{ color: '#d97706', display: 'block', fontSize: '10px', fontWeight: 600 }}>
+                              (Sched: {formatBoardingDate(selectedBooking.checkOutDate)})
+                            </span>
+                          )}
+                        </span>
                       </div>
 
                       <div className="stay-banner-item total">
@@ -2213,8 +2349,13 @@ export default function AdminBoarding() {
         const effectiveFoodCharge = isRecordedAtCheckIn ? alreadyRecordedCharge : newlyEnteredCharge
         const effectiveLateFee = isLateCheckOutDetected ? Math.max(0, Math.round(Number(checkoutLateFeeInput) || 0)) : 0
 
-        const originalBoardingTotal = Number(checkoutModal.estimatedTotal || 0)
-        const totalStayAmount = originalBoardingTotal + effectiveFoodCharge + effectiveLateFee
+        const recalculatedStay = getRecalculatedStay(checkoutModal, actualCheckOutDate)
+        const effectiveStayDays = recalculatedStay.days
+        const effectiveStayNights = recalculatedStay.nights
+        const effectiveBaseTotal = recalculatedStay.baseTotal
+        const isStayRecalculated = recalculatedStay.isChanged
+
+        const totalStayAmount = effectiveBaseTotal + effectiveFoodCharge + effectiveLateFee
         const previouslyCollected = Number(checkoutModal.amountCollected || 0)
         const additionalAtCheckout = Number(checkoutAmount) || 0
         const totalCollectedAfter = previouslyCollected + additionalAtCheckout
@@ -2276,7 +2417,7 @@ export default function AdminBoarding() {
                       const val = e.target.value
                       setCheckoutFoodChargeInput(val)
                       const extra = Number(val) || 0
-                      const newRem = Math.max(0, (originalBoardingTotal + extra + effectiveLateFee) - previouslyCollected)
+                      const newRem = Math.max(0, (effectiveBaseTotal + extra + effectiveLateFee) - previouslyCollected)
                       setCheckoutAmount(String(newRem))
                     }}
                     placeholder="Enter special food charge, e.g. 500"
@@ -2296,6 +2437,96 @@ export default function AdminBoarding() {
                 </div>
               ) : null}
 
+              {/* Actual Pet Check-out Section */}
+              <div style={{
+                background: 'var(--surface)',
+                border: '1.5px solid var(--border)',
+                borderRadius: '12px',
+                padding: '12px 14px',
+                marginBottom: '14px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                  <CalendarCheck size={16} color="var(--accent)" />
+                  <label style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)', margin: 0 }}>
+                    Actual Pet Check-out
+                  </label>
+                </div>
+                <p style={{ fontSize: '11.5px', color: 'var(--muted)', margin: '0 0 10px', lineHeight: 1.4 }}>
+                  Scheduled check-out: <strong>{checkoutModal.checkOutDate}</strong> ({checkoutModal.checkOutTime || savedSettings?.checkOutTimeDefault || '11:00 PM'}). Late deadline is <strong>{savedSettings?.checkOutTimeDefault || '11:00 PM'}</strong>.
+                </p>
+
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: '10px',
+                }}>
+                  <div>
+                    <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>
+                      Actual Check-out Date *
+                    </label>
+                    <input
+                      type="date"
+                      className="input"
+                      required
+                      min={checkoutModal.checkInDate || undefined}
+                      value={actualCheckOutDate}
+                      onChange={e => handleActualCheckOutDateChange(e.target.value)}
+                      style={{ fontSize: '13px', padding: '8px 10px' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>
+                      Actual Check-out Time *
+                    </label>
+                    <input
+                      type="time"
+                      className="input"
+                      required
+                      value={actualCheckOutTime}
+                      onChange={e => handleActualCheckOutTimeChange(e.target.value)}
+                      style={{ fontSize: '13px', padding: '8px 10px' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{
+                  marginTop: '10px',
+                  padding: '8px 12px',
+                  background: isStayRecalculated ? '#fefce8' : 'var(--card)',
+                  border: isStayRecalculated ? '1.5px solid #fef08a' : '1px solid var(--border)',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '12px',
+                  flexWrap: 'wrap',
+                  gap: '6px',
+                }}>
+                  <div>
+                    <span style={{ color: 'var(--muted)', display: 'block', fontSize: '11px' }}>
+                      {isStayRecalculated ? 'Stay Duration (Recalculated):' : 'Stay Duration:'}
+                    </span>
+                    <strong style={{ color: 'var(--text)' }}>
+                      {effectiveStayDays} Day(s) ({effectiveStayNights} Night(s))
+                    </strong>
+                    {isStayRecalculated && (
+                      <span style={{ color: '#854d0e', fontSize: '10.5px', display: 'block', fontWeight: 600 }}>
+                        Scheduled was {checkoutModal.stayDays || 1} day(s)
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ color: 'var(--muted)', display: 'block', fontSize: '11px' }}>
+                      Base Stay (@ ₹{money(recalculatedStay.dailyRate || checkoutModal.dailyRate || 800)}/day):
+                    </span>
+                    <strong style={{ color: isStayRecalculated ? '#854d0e' : 'var(--text)', fontSize: '13px' }}>
+                      ₹{money(effectiveBaseTotal)}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
               {/* Late Check-out Section */}
               {isLateCheckOutDetected ? (
                 <div style={{
@@ -2305,7 +2536,7 @@ export default function AdminBoarding() {
                   padding: '12px 14px',
                   marginBottom: '14px',
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '6px' }}>
                     <label style={{ fontSize: '12.5px', fontWeight: 800, color: '#92400e', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Clock size={15} color="#b45309" /> Late Check-out Charge (₹)
                     </label>
@@ -2315,7 +2546,7 @@ export default function AdminBoarding() {
                           type="button"
                           onClick={() => {
                             setCheckoutLateFeeInput('0')
-                            const newTotal = originalBoardingTotal + effectiveFoodCharge
+                            const newTotal = effectiveBaseTotal + effectiveFoodCharge
                             setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
                           }}
                           style={{
@@ -2337,7 +2568,7 @@ export default function AdminBoarding() {
                           onClick={() => {
                             const fee = savedSettings?.lateCheckOutFee ?? 400
                             setCheckoutLateFeeInput(String(fee))
-                            const newTotal = originalBoardingTotal + effectiveFoodCharge + fee
+                            const newTotal = effectiveBaseTotal + effectiveFoodCharge + fee
                             setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
                           }}
                           style={{
@@ -2359,7 +2590,7 @@ export default function AdminBoarding() {
                         onClick={() => {
                           setIsLateCheckOutDetected(false)
                           setCheckoutLateFeeInput('0')
-                          const newTotal = originalBoardingTotal + effectiveFoodCharge
+                          const newTotal = effectiveBaseTotal + effectiveFoodCharge
                           setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
                         }}
                         style={{
@@ -2377,7 +2608,7 @@ export default function AdminBoarding() {
                     </div>
                   </div>
                   <p style={{ fontSize: '11.5px', color: '#78350f', margin: '0 0 8px', lineHeight: 1.4 }}>
-                    Actual check-out is after {savedSettings?.checkOutTimeDefault || '11:00 PM'} on scheduled check-out date ({checkoutModal.checkOutDate}). Standard fee is shown below; you can edit or waive it.
+                    Actual pick-up ({actualCheckOutDate} at {formatTime12Hour(actualCheckOutTime) || actualCheckOutTime}) is after standard check-out deadline ({savedSettings?.checkOutTimeDefault || '11:00 PM'}) on scheduled date ({checkoutModal.checkOutDate}). Standard fee is shown below; you can edit or waive it.
                   </p>
                   <input
                     type="number"
@@ -2388,7 +2619,7 @@ export default function AdminBoarding() {
                       const val = e.target.value
                       setCheckoutLateFeeInput(val)
                       const lateFeeVal = Number(val) || 0
-                      const newTotal = originalBoardingTotal + effectiveFoodCharge + lateFeeVal
+                      const newTotal = effectiveBaseTotal + effectiveFoodCharge + lateFeeVal
                       setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
                     }}
                     placeholder="Enter late check-out fee, e.g. 400"
@@ -2406,15 +2637,17 @@ export default function AdminBoarding() {
                   alignItems: 'center',
                   fontSize: '12px',
                   color: 'var(--muted)',
+                  flexWrap: 'wrap',
+                  gap: '8px',
                 }}>
-                  <span>Check-out time: on schedule (at or before 11:00 PM). Late fee not applied.</span>
+                  <span>Check-out time: on schedule ({actualCheckOutDate} at {formatTime12Hour(actualCheckOutTime) || actualCheckOutTime}, at or before {savedSettings?.checkOutTimeDefault || '11:00 PM'}). Late fee not applied.</span>
                   <button
                     type="button"
                     onClick={() => {
                       setIsLateCheckOutDetected(true)
                       const fee = savedSettings?.lateCheckOutFee ?? 400
                       setCheckoutLateFeeInput(String(fee))
-                      const newTotal = originalBoardingTotal + effectiveFoodCharge + fee
+                      const newTotal = effectiveBaseTotal + effectiveFoodCharge + fee
                       setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
                     }}
                     style={{
@@ -2445,8 +2678,15 @@ export default function AdminBoarding() {
                 gap: '8px',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)' }}>
-                  <span>Original Boarding Total:</span>
-                  <strong style={{ color: 'var(--text)' }}>₹{money(originalBoardingTotal)}</strong>
+                  <span>
+                    Base Boarding Stay ({effectiveStayDays} Day{effectiveStayDays > 1 ? 's' : ''}):
+                    {isStayRecalculated && (
+                      <span style={{ fontSize: '10.5px', color: '#b45309', marginLeft: '4px', fontWeight: 600 }}>
+                        (Recalculated)
+                      </span>
+                    )}
+                  </span>
+                  <strong style={{ color: 'var(--text)' }}>₹{money(effectiveBaseTotal)}</strong>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: effectiveFoodCharge > 0 ? '#166534' : 'var(--muted)' }}>
