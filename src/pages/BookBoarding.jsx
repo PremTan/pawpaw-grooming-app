@@ -327,21 +327,37 @@ export default function BookBoarding() {
       const savedDoc = { id: ref.id, ...boardingData }
       setBookingRef(savedDoc)
 
-      // Notify Admin via notifications collection
+      // Notify Admin via notifications collection and push notification
       try {
         const settingsSnap = await getDoc(doc(db, 'settings', 'general'))
         const adminUid = settingsSnap.exists() ? settingsSnap.data().adminUid || '' : ''
+        const notifTitle = `New Pet Boarding Request: ${form.petName}`
+        const notifMsg = `${form.petName} (${form.petType}) - ${stayCalculation.days} day(s) from ${form.checkInDate} to ${form.checkOutDate} by ${form.ownerName}`
         await addDoc(collection(db, 'notifications'), {
           userId: adminUid,
           userEmail: ADMIN_EMAIL,
-          title: `New Pet Boarding Request: ${form.petName}`,
-          message: `${form.petName} (${form.petType}) - ${stayCalculation.days} day(s) from ${form.checkInDate} to ${form.checkOutDate} by ${form.ownerName}`,
+          title: notifTitle,
+          message: notifMsg,
           type: 'boarding_request',
           bookingId: ref.id,
           actionUrl: `/admin/boarding`,
           read: false,
           createdAt: serverTimestamp(),
         })
+
+        fetch('/api/send-push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: adminUid,
+            userEmail: ADMIN_EMAIL,
+            toAdmin: true,
+            title: notifTitle,
+            body: notifMsg,
+            bookingId: ref.id,
+            actionUrl: `/admin/boarding`,
+          }),
+        }).catch(() => {})
       } catch { }
 
       setToastMessage('Boarding request sent successfully!')

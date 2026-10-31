@@ -1,18 +1,65 @@
 // src/components/NotificationBell.jsx
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, CalendarClock, CheckCheck, CheckCircle2, Info, PartyPopper, Star, X, XCircle } from 'lucide-react'
+import { Bell, CalendarClock, CheckCheck, CheckCircle2, Info, PartyPopper, Star, X, XCircle, Scissors, Building2, Clock, LogIn } from 'lucide-react'
 import { useNotifications } from '../context/NotificationContext'
 import { useAuth } from '../context/AuthContext'
 import { formatDistanceToNow } from 'date-fns'
 
-const TYPE_ICON = {
-  booking: CalendarClock,
-  confirmed: CheckCircle2,
-  completed: PartyPopper,
-  cancelled: XCircle,
-  review: Star,
-  info: Info,
+function getNotificationVisual(n) {
+  const type = String(n?.type || '').toLowerCase()
+  const title = String(n?.title || '').toLowerCase()
+  const url = String(n?.actionUrl || '').toLowerCase()
+
+  // 1. Boarding Notifications
+  if (type === 'boarding_request' || title.includes('boarding request') || title.includes('pet boarding')) {
+    if (type === 'boarding_cancelled' || title.includes('cancelled')) {
+      return { Icon: XCircle, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)' }
+    }
+    return { Icon: Building2, color: 'var(--accent)', bg: 'rgba(212, 175, 55, 0.14)' }
+  }
+
+  if (type === 'boarding_checked_in' || title.includes('checked in')) {
+    return { Icon: LogIn, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.12)' }
+  }
+
+  if (type === 'boarding_confirmed' || type === 'confirmed' || title.includes('confirmed')) {
+    return { Icon: CheckCircle2, color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)' }
+  }
+
+  if (type === 'boarding_completed' || type === 'completed' || title.includes('completed')) {
+    return { Icon: PartyPopper, color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)' }
+  }
+
+  // 2. Cancellation Notifications
+  if (type === 'cancelled' || type === 'boarding_cancelled' || title.includes('cancelled')) {
+    return { Icon: XCircle, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)' }
+  }
+
+  // 3. Rescheduled Notifications
+  if (type === 'rescheduled' || title.includes('rescheduled')) {
+    return { Icon: Clock, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.12)' }
+  }
+
+  // 4. Grooming Appointment Requests
+  if (type === 'booking_request' || type === 'booking' || title.includes('appointment request') || title.includes('appointment')) {
+    return { Icon: Scissors, color: 'var(--accent)', bg: 'rgba(212, 175, 55, 0.14)' }
+  }
+
+  // 5. Reviews
+  if (type === 'review' || title.includes('review')) {
+    return { Icon: Star, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' }
+  }
+
+  // Fallbacks by URL
+  if (url.includes('boarding')) {
+    return { Icon: Building2, color: 'var(--accent)', bg: 'rgba(212, 175, 55, 0.14)' }
+  }
+  if (url.includes('booking')) {
+    return { Icon: Scissors, color: 'var(--accent)', bg: 'rgba(212, 175, 55, 0.14)' }
+  }
+
+  return { Icon: Info, color: 'var(--accent)', bg: 'var(--accent-bg)' }
 }
 
 export default function NotificationBell() {
@@ -100,7 +147,7 @@ export default function NotificationBell() {
               </div>
             ) : (
               notifications.slice(0, 20).map(n => {
-                const Icon = TYPE_ICON[n.type] || TYPE_ICON.info
+                const { Icon, color, bg } = getNotificationVisual(n)
                 return (
                   <button
                     key={n.id}
@@ -115,8 +162,8 @@ export default function NotificationBell() {
                       borderBottom: '1px solid var(--border)',
                     }}
                   >
-                    <span style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'var(--accent-bg)', color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }} aria-hidden="true">
-                      <Icon size={15} />
+                    <span style={{ width: '32px', height: '32px', borderRadius: '10px', background: bg, color: color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }} aria-hidden="true">
+                      <Icon size={16} />
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: '13px', fontWeight: n.read ? 400 : 600, color: 'var(--text)', marginBottom: '2px' }}>

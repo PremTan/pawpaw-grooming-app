@@ -51,27 +51,69 @@ firebase.initializeApp(${JSON.stringify(config, null, 2)});
 
 const messaging = firebase.messaging();
 
+const PUSH_ICON = 'https://res.cloudinary.com/doawldbnh/image/upload/w_192,h_192,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png';
+const PUSH_IMAGE = 'https://res.cloudinary.com/doawldbnh/image/upload/w_512,h_512,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png';
+
 messaging.onBackgroundMessage((payload) => {
-  const notification = payload.notification || {};
   const data = payload.data || {};
-  const title = notification.title || data.title || 'Paw Paw Pet Grooming';
+  if (!data.title && !data.body) return;
+
+  const title = data.title || 'Paw Paw Pet Grooming';
+  const tag = data.tag || data.bookingId || 'pawpaw-alert';
+  const targetUrl = data.actionUrl || data.link || '/';
+  const actionTitle = data.actionTitle || (targetUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking');
+
   const options = {
-    body: notification.body || data.body || '',
-    icon: data.icon || '/favicon.svg',
-    badge: data.badge || '/favicon.svg',
+    body: data.body || '',
+    icon: data.icon || PUSH_ICON,
+    image: data.image || PUSH_IMAGE,
+    badge: PUSH_ICON,
+    tag: tag,
+    renotify: true,
+    vibrate: [200, 100, 200],
+    requireInteraction: true,
     data: {
-      url: data.actionUrl || data.link || '/',
+      url: targetUrl,
     },
+    actions: [
+      { action: 'open_url', title: actionTitle },
+      { action: 'dismiss', title: 'Dismiss' },
+    ],
   };
 
   self.registration.showNotification(title, options);
 });
 
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  if (event.action === 'dismiss') return;
+
   const rawUrl = event.notification?.data?.url || '/';
   const url = rawUrl.startsWith('http') ? rawUrl : new URL(rawUrl, self.location.origin).href;
-  event.waitUntil(clients.openWindow(url));
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          if ('navigate' in client) {
+            client.navigate(url);
+          }
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(url);
+      }
+    })
+  );
 });
 `
 
