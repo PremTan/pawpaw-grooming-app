@@ -23,6 +23,7 @@ import {
   Hourglass,
   IndianRupee,
   Info,
+  MapPin,
   MessageCircle,
   PawPrint,
   Phone,
@@ -76,6 +77,7 @@ export default function BookBoarding() {
   const [boardingSettings, setBoardingSettings] = useState(null)
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
+  const [hostelAddress, setHostelAddress] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [bookingRef, setBookingRef] = useState(null)
@@ -153,6 +155,7 @@ export default function BookBoarding() {
       }
       setAdminWhatsappNumber(biz.whatsappNumber || '')
       setShopName(biz.contact.shopName || 'Paw Paw Pet Grooming')
+      setHostelAddress(biz.contact.address || 'Paw Paw Pet Boarding Facility, Pune')
     }
     init()
   }, [])
@@ -289,6 +292,7 @@ export default function BookBoarding() {
         stayNights: stayCalculation.nights,
         dailyRate: stayCalculation.dailyRate,
         estimatedTotal: stayCalculation.estimatedTotal,
+        hostelAddress: (hostelAddress || '').trim() || 'Paw Paw Pet Boarding Facility, Pune',
 
         // Food & Diet
         regularFoodIncluded: true,
@@ -1019,6 +1023,46 @@ export default function BookBoarding() {
                   <Info size={15} style={{ flexShrink: 0, marginTop: '2px', color: '#D97706' }} />
                   <div>
                     Standard check-out time: <strong>{boardingSettings?.checkOutTimeDefault || '11:00 PM'}</strong>. An additional late check-out fee of <strong>₹{boardingSettings?.lateCheckOutFee ?? 400}</strong> may apply if your pet is picked up after {boardingSettings?.checkOutTimeDefault || '11:00 PM'}.
+                  </div>
+                </div>
+
+                {/* Hostel Drop-off & Pick-up Location */}
+                <div style={{
+                  marginTop: '10px',
+                  background: '#F9FAFB',
+                  border: '1px solid #E5E7EB',
+                  borderRadius: '9px',
+                  padding: '11px 13px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '9px',
+                }}>
+                  <MapPin size={16} style={{ flexShrink: 0, marginTop: '2px', color: '#C08820' }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#1F2937', marginBottom: '2px' }}>
+                      Hostel Drop-off & Pick-up Location
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: '#4B5563', lineHeight: 1.45, marginBottom: '6px' }}>
+                      {hostelAddress || 'Paw Paw Pet Boarding Facility, Pune'}
+                    </div>
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(hostelAddress || 'Paw Paw Pet Boarding Facility, Pune')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontSize: '11.5px',
+                        color: '#C08820',
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                      onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                    >
+                      Get Directions / View on Google Maps →
+                    </a>
                   </div>
                 </div>
               </div>
