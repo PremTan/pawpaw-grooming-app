@@ -4791,7 +4791,19 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   transition: opacity 0.75s ease, transform 1s ease;
 }
 
-.mobile-hero-media img.active {
+.mobile-hero-media .mobile-hero-fallback-img {
+  opacity: 1 !important;
+  transform: none !important;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.mobile-hero-media .mobile-hero-slide-img {
+  z-index: 1;
+}
+
+.mobile-hero-media .mobile-hero-slide-img.active.is-loaded,
+.mobile-hero-media img.active:not(.mobile-hero-slide-img) {
   opacity: 1;
   transform: scale(1);
 }
@@ -5057,6 +5069,19 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   object-fit: cover;
 }
 
+.upcoming-appointment-photo.upcoming-appointment-photo-empty {
+  background: #FAF7F2;
+  border: 1px solid var(--accent-border);
+  padding: 4px;
+}
+
+.upcoming-appointment-empty-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain !important;
+  border-radius: 12px;
+}
+
 .upcoming-appointment-photo-fallback {
   display: grid;
   place-items: center;
@@ -5105,9 +5130,9 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   font-size: 16px;
   font-weight: 900;
   line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .upcoming-appointment-meta-column {
@@ -5318,16 +5343,32 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
     align-items: flex-start;
   }
 
+  .upcoming-appointment-main {
+    gap: 10px;
+  }
+
   .upcoming-appointment-photo-stack {
-    width: 92px;
+    width: 76px;
     flex-shrink: 0;
     align-items: flex-start;
   }
 
   .upcoming-appointment-photo {
-    width: 92px;
-    height: 92px;
+    width: 76px;
+    height: 76px;
     border-radius: 14px;
+  }
+
+  .upcoming-appointment-details h4 {
+    font-size: 15px;
+    line-height: 1.25;
+    white-space: normal;
+  }
+
+  .upcoming-appointment-info-item {
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: normal;
   }
 
   .upcoming-appointment-photo-caption {
@@ -6418,6 +6459,13 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
     right: -25px;
     width: 36px;
     height: 36px;
+  }
+}
+
+/* Hide Trust Benefits Strip on mobile screens only */
+@media (max-width: 767px) {
+  .home-trust-strip {
+    display: none !important;
   }
 }
 
@@ -12149,4 +12197,560 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   background: var(--accent);
   border-color: var(--accent);
   color: #000;
+}
+
+/* ============================================================
+   PET BOARDING HOMEPAGE SECTION (Matches Approved Design)
+   ============================================================ */
+.home-boarding-section {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 24px 0 0;
+  margin: 0;
+}
+
+.home-boarding-card {
+  position: relative;
+  background: linear-gradient(180deg, #FCFAF6 0%, #F7F2E7 100%);
+  border: 1.5px solid #EADBBE;
+  border-radius: 28px;
+  padding: 24px 22px 24px;
+  box-shadow: 0 8px 30px rgba(184, 134, 11, 0.05);
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  overflow: hidden;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+}
+
+/* On mobile/tablet below 900px, .home-boarding-content uses display: contents
+   so its children flow in exact mobile order around the hero image */
+.home-boarding-content {
+  display: contents;
+}
+
+.home-boarding-top-bar {
+  order: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 14px;
+}
+
+.home-boarding-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #FAF3E3;
+  border: 1.2px solid #EADBBE;
+  color: #9A6E1E;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.home-boarding-new-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: linear-gradient(135deg, #C58B24 0%, #B27B1B 100%);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  padding: 5px 13px;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(184, 134, 11, 0.28);
+  text-transform: uppercase;
+}
+
+.home-boarding-title {
+  order: 2;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: clamp(26px, 5.5vw, 36px);
+  line-height: 1.15;
+  font-weight: 800;
+  color: #221711;
+  margin: 0 0 8px;
+  text-align: left;
+}
+
+.home-boarding-title .gold-accent {
+  color: #B8860B;
+}
+
+.home-boarding-desc {
+  order: 3;
+  color: #736254;
+  font-size: 13.5px;
+  line-height: 1.45;
+  margin: 0 0 16px;
+  text-align: left;
+}
+
+/* Large Hero Image */
+.home-boarding-hero-wrap {
+  order: 4;
+  width: 100%;
+  border-radius: 20px;
+  overflow: hidden;
+  margin-bottom: 0;
+  box-shadow: 0 4px 18px rgba(60, 40, 20, 0.06);
+  background: #F7EFE1;
+}
+
+.home-boarding-hero-wrap .home-boarding-pets-img {
+  width: 100%;
+  height: auto;
+  max-height: 540px;
+  display: block;
+  aspect-ratio: 508 / 368;
+  object-fit: cover;
+  object-position: center 25%;
+}
+
+/* Rate cards attached directly below hero image */
+.home-boarding-prices {
+  order: 5;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  width: 100%;
+  margin-top: -22px;
+  position: relative;
+  z-index: 2;
+  margin-bottom: 12px;
+}
+
+.home-boarding-price-card {
+  background: #FFFFFF;
+  border: 1.2px solid #EFE6D8;
+  border-radius: 14px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 14px rgba(60, 40, 20, 0.07);
+}
+
+.home-boarding-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #FAF3E3;
+}
+
+.home-boarding-price-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.home-boarding-price-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #221711;
+  margin-bottom: 1px;
+  white-space: nowrap;
+}
+
+.home-boarding-price-amount {
+  font-size: 16.5px;
+  font-weight: 800;
+  color: #B8860B;
+  white-space: nowrap;
+}
+
+.home-boarding-price-unit {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #8A7A68;
+}
+
+/* Actions attached directly below rate cards */
+.home-boarding-actions {
+  order: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.home-boarding-btn-primary {
+  flex: 1.15 1 0;
+  min-width: 0;
+  height: 46px;
+  background: linear-gradient(135deg, #C58B24 0%, #B27B1B 100%);
+  color: #FFFFFF !important;
+  border: none;
+  border-radius: 12px;
+  padding: 0 12px;
+  font-size: 13.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 0 4px 14px rgba(184, 134, 11, 0.28);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.home-boarding-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(184, 134, 11, 0.35);
+}
+
+.home-boarding-btn-secondary {
+  flex: 0.95 1 0;
+  min-width: 0;
+  height: 46px;
+  background: #FFFFFF;
+  border: 1.5px solid #C08820;
+  color: #B8860B !important;
+  border-radius: 12px;
+  padding: 0 12px;
+  font-size: 13.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.home-boarding-btn-secondary:hover {
+  background: #FAF3E3;
+}
+
+.home-boarding-closed-pill {
+  width: 100%;
+  min-height: 46px;
+  height: auto;
+  background: #F4EFE6;
+  border: 1px solid #DFD5C5;
+  color: #7D6A5C;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 12.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  cursor: not-allowed;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+/* When boarding bookings are closed — default (mobile & tablet < 900px) stacked layout */
+.home-boarding-actions.is-closed,
+.home-boarding-actions:has(.home-boarding-closed-pill) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.home-boarding-actions.is-closed .home-boarding-closed-pill,
+.home-boarding-actions:has(.home-boarding-closed-pill) .home-boarding-closed-pill {
+  width: 100%;
+  flex: none;
+  min-height: 46px;
+  height: auto;
+  padding: 11px 16px;
+  box-sizing: border-box;
+  text-align: center;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.home-boarding-actions.is-closed .home-boarding-btn-secondary,
+.home-boarding-actions:has(.home-boarding-closed-pill) .home-boarding-btn-secondary {
+  width: 100%;
+  flex: none;
+  min-width: 0;
+  height: 46px;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+/* Desktop & Laptop Two-Column Layout (900px and up) */
+@media (min-width: 900px) {
+  .home-boarding-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    column-gap: 36px;
+    align-items: center;
+    padding: 32px 34px;
+    border-radius: 28px;
+  }
+
+  .home-boarding-content {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    height: 100%;
+  }
+
+  .home-boarding-top-bar {
+    order: 1;
+    justify-content: flex-start;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .home-boarding-title {
+    order: 2;
+    font-size: 32px;
+    line-height: 1.15;
+    margin: 0 0 10px;
+  }
+
+  .home-boarding-desc {
+    order: 3;
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0 0 20px;
+    max-width: 500px;
+  }
+
+  .home-boarding-prices {
+    order: 4;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 0 !important;
+    margin-bottom: 18px;
+    position: static;
+    z-index: 1;
+  }
+
+  .home-boarding-price-card {
+    padding: 10px 14px;
+    border-radius: 14px;
+  }
+
+  .home-boarding-actions {
+    order: 5;
+    gap: 12px;
+  }
+
+  /* Desktop layout: keep closed message and Learn More button on one line when space allows */
+  .home-boarding-actions.is-closed,
+  .home-boarding-actions:has(.home-boarding-closed-pill) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .home-boarding-actions.is-closed .home-boarding-closed-pill,
+  .home-boarding-actions:has(.home-boarding-closed-pill) .home-boarding-closed-pill {
+    width: auto;
+    flex: 1 1 auto;
+    min-width: fit-content;
+    height: 46px;
+    padding: 0 16px;
+    white-space: nowrap;
+  }
+
+  .home-boarding-actions.is-closed .home-boarding-btn-secondary,
+  .home-boarding-actions:has(.home-boarding-closed-pill) .home-boarding-btn-secondary {
+    width: auto;
+    flex: 0 0 auto;
+    min-width: fit-content;
+    height: 46px;
+    padding: 0 20px;
+    white-space: nowrap;
+  }
+
+  .home-boarding-hero-wrap {
+    order: 2;
+    width: 100%;
+    height: 100%;
+    min-height: 330px;
+    max-height: 400px;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 6px 22px rgba(60, 40, 20, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0;
+  }
+
+  .home-boarding-hero-wrap .home-boarding-pets-img {
+    width: 100%;
+    height: 100%;
+    max-height: 400px;
+    aspect-ratio: auto;
+    object-fit: cover;
+    object-position: center 25%;
+    border-radius: 20px;
+    display: block;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .home-boarding-hero-wrap .home-boarding-pets-img {
+    max-height: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .home-boarding-card {
+    padding: 18px 14px 20px;
+    border-radius: 22px;
+    margin: 0;
+  }
+  .home-boarding-title {
+    font-size: 26px;
+    margin-bottom: 6px;
+  }
+  .home-boarding-desc {
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+  .home-boarding-hero-wrap {
+    border-radius: 16px;
+  }
+  .home-boarding-prices {
+    gap: 8px;
+    margin-top: -16px;
+    margin-bottom: 10px;
+  }
+  .home-boarding-price-card {
+    padding: 8px 10px;
+    border-radius: 12px;
+    gap: 8px;
+  }
+  .home-boarding-avatar {
+    width: 38px;
+    height: 38px;
+  }
+  .home-boarding-price-label {
+    font-size: 11.5px;
+  }
+  .home-boarding-price-amount {
+    font-size: 15px;
+  }
+  .home-boarding-price-unit {
+    font-size: 11px;
+  }
+  .home-boarding-actions {
+    gap: 8px;
+  }
+  .home-boarding-btn-primary {
+    font-size: 12.2px;
+    padding: 0 8px;
+    height: 44px;
+    gap: 4px;
+  }
+  .home-boarding-btn-secondary {
+    font-size: 12.2px;
+    padding: 0 8px;
+    height: 44px;
+    gap: 4px;
+  }
+  .home-boarding-actions.is-closed .home-boarding-closed-pill,
+  .home-boarding-actions:has(.home-boarding-closed-pill) .home-boarding-closed-pill {
+    font-size: 12px;
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+  .home-boarding-actions.is-closed .home-boarding-btn-secondary,
+  .home-boarding-actions:has(.home-boarding-closed-pill) .home-boarding-btn-secondary {
+    font-size: 12.5px;
+    height: 44px;
+    width: 100%;
+    flex: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .home-boarding-card {
+    padding: 14px 10px 16px;
+    margin: 0;
+  }
+  .home-boarding-title {
+    font-size: 22px;
+  }
+  .home-boarding-prices {
+    margin-top: -12px;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .home-boarding-avatar {
+    width: 32px;
+    height: 32px;
+  }
+  .home-boarding-price-card {
+    padding: 6px 6px;
+    gap: 6px;
+  }
+  .home-boarding-price-label {
+    font-size: 10.5px;
+  }
+  .home-boarding-price-amount {
+    font-size: 13.5px;
+  }
+  .home-boarding-price-unit {
+    font-size: 10px;
+  }
+  .home-boarding-actions {
+    gap: 6px;
+  }
+  .home-boarding-btn-primary {
+    font-size: 11px;
+    padding: 0 4px;
+    gap: 3px;
+    height: 42px;
+  }
+  .home-boarding-btn-secondary {
+    font-size: 10.5px;
+    padding: 0 4px;
+    gap: 3px;
+    height: 42px;
+  }
+  .home-boarding-actions.is-closed .home-boarding-closed-pill,
+  .home-boarding-actions:has(.home-boarding-closed-pill) .home-boarding-closed-pill {
+    font-size: 11px;
+    padding: 8px 8px;
+    min-height: 40px;
+    gap: 6px;
+  }
+  .home-boarding-actions.is-closed .home-boarding-btn-secondary,
+  .home-boarding-actions:has(.home-boarding-closed-pill) .home-boarding-btn-secondary {
+    font-size: 11.5px;
+    height: 40px;
+    width: 100%;
+    flex: none;
+  }
+}
+
+@media (max-width: 310px) {
+  .home-boarding-actions {
+    flex-direction: column;
+  }
+  .home-boarding-btn-primary,
+  .home-boarding-btn-secondary {
+    width: 100%;
+    flex: none;
+  }
 }

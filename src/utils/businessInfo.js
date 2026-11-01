@@ -18,24 +18,42 @@ export const EMPTY_FOOTER_INFO = {
   socials: [],
 }
 
-export async function fetchBusinessInfo(db) {
+let cachedBusinessInfo = null
+let cachedBusinessInfoTime = 0
+const CACHE_TTL_MS = 60 * 1000
+
+export function clearBusinessInfoCache() {
+  cachedBusinessInfo = null
+  cachedBusinessInfoTime = 0
+}
+
+export async function fetchBusinessInfo(db, forceRefresh = false) {
+  const now = Date.now()
+  if (!forceRefresh && cachedBusinessInfo && (now - cachedBusinessInfoTime < CACHE_TTL_MS)) {
+    return cachedBusinessInfo
+  }
+
   const [contactSnap, footerSnap, bookingSettings] = await Promise.all([
     getDoc(doc(db, 'settings', 'contactInfo')),
     getDoc(doc(db, 'settings', 'footerInfo')),
-    fetchBookingSettings(db),
+    fetchBookingSettings(db, forceRefresh),
   ])
 
   const contact = contactSnap.exists() ? { ...EMPTY_CONTACT_INFO, ...contactSnap.data() } : EMPTY_CONTACT_INFO
   const footer = footerSnap.exists() ? { ...EMPTY_FOOTER_INFO, ...footerSnap.data() } : EMPTY_FOOTER_INFO
   const whatsappPhone = Array.isArray(footer.phones) ? footer.phones.find(phone => phone.isWhatsapp)?.number : ''
 
-  return {
+  const result = {
     contact,
     footer,
     bookingSettings,
     whatsappNumber: contact.whatsappNumber || whatsappPhone || '',
     hoursText: formatBusinessHours(bookingSettings),
   }
+
+  cachedBusinessInfo = result
+  cachedBusinessInfoTime = now
+  return result
 }
 
 export function formatBusinessHours(settings) {

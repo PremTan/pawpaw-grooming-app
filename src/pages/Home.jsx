@@ -1,7 +1,7 @@
 // src/pages/Home.jsx
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { collection, doc, getDoc, getDocs, query, orderBy, limit, where, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, query, orderBy, limit, where, updateDoc, serverTimestamp, Timestamp, getCountFromServer } from 'firebase/firestore'
 import { format } from 'date-fns'
 import { db } from '../firebase'
 import BrandLogo from '../components/BrandLogo'
@@ -9,12 +9,19 @@ import Toast from '../components/Toast'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
 import { countOpenDays, fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
+import { fetchBoardingSettings } from '../utils/boardingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
 import { useAuth } from '../context/AuthContext'
 import { BOOKING_STATUS } from '../utils/services'
-import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle } from 'lucide-react'
+import boardingHeroPets from '../assets/boarding-hero-pets.png'
+import boardingDogAvatar from '../assets/boarding-dog-avatar.png'
+import boardingCatAvatar from '../assets/boarding-cat-avatar.png'
+import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils } from 'lucide-react'
 
-const DEFAULT_HERO_IMAGES = []
+const HERO_FALLBACK_IMAGE = '/hero-fallback.webp'
+const DEFAULT_HERO_IMAGES = [
+  { src: HERO_FALLBACK_IMAGE, alt: 'Paw Paw Pet Grooming Salon & Spa' }
+]
 const DEFAULT_VISIT_IMAGES = [
   { key: 'homeVisit', url: '', alt: 'Home visit grooming' },
   { key: 'centreVisit', url: '', alt: 'Visit our grooming centre' },
@@ -219,6 +226,8 @@ function HeroSlider() {
   const { user } = useAuth()
   const [current, setCurrent] = useState(0)
   const [heroImages, setHeroImages] = useState(null)
+  const [loadedMap, setLoadedMap] = useState({})
+  const [errorMap, setErrorMap] = useState({})
   const [visitImages, setVisitImages] = useState(DEFAULT_VISIT_IMAGES)
   const [paused, setPaused] = useState(false)
   const [upcomingAppointment, setUpcomingAppointment] = useState(null)
@@ -226,6 +235,8 @@ function HeroSlider() {
   const [recommendedVisit, setRecommendedVisit] = useState(null)
   const [upcomingLoading, setUpcomingLoading] = useState(true)
   const [bookingSettings, setBookingSettings] = useState(null)
+  const [boardingSettings, setBoardingSettings] = useState(null)
+  const [showBoardingLearnMore, setShowBoardingLearnMore] = useState(false)
   const [rescheduleToast, setRescheduleToast] = useState('')
   const [rescheduleTarget, setRescheduleTarget] = useState(null)
   const [rescheduleDate, setRescheduleDate] = useState('')
@@ -286,6 +297,7 @@ function HeroSlider() {
 
   useEffect(() => {
     fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
+    fetchBoardingSettings(db).then(setBoardingSettings).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -550,20 +562,36 @@ function HeroSlider() {
       <div className="home-redesign-inner">
         <div className="mobile-hero-card">
           <div className="mobile-hero-media" aria-label="Pet grooming hero images">
-            {images.length ? (
-              images.map((image, i) => (
+            {/* Fallback hero image displayed immediately while loading or when image fails */}
+            <img
+              src={HERO_FALLBACK_IMAGE}
+              alt="Paw Paw Pet Grooming"
+              className="mobile-hero-fallback-img"
+              onError={e => {
+                if (!e.currentTarget.dataset.retried) {
+                  e.currentTarget.dataset.retried = 'true'
+                  e.currentTarget.src = '/hero-fallback.png'
+                }
+              }}
+            />
+            {images.map((image, i) => {
+              const isLoaded = Boolean(loadedMap[image.src])
+              const isError = Boolean(errorMap[image.src])
+              const isActive = i === current
+
+              if (isError) return null
+
+              return (
                 <img
                   key={image.src}
                   src={image.src}
                   alt={image.alt}
-                  className={i === current ? 'active' : ''}
+                  onLoad={() => setLoadedMap(prev => prev[image.src] ? prev : ({ ...prev, [image.src]: true }))}
+                  onError={() => setErrorMap(prev => prev[image.src] ? prev : ({ ...prev, [image.src]: true }))}
+                  className={`mobile-hero-slide-img ${isActive ? 'active' : ''} ${isLoaded ? 'is-loaded' : ''}`}
                 />
-              ))
-            ) : isHeroImagesLoading ? (
-              <div className="mobile-hero-empty"><Scissors size={34} /><span>Loading images…</span></div>
-            ) : (
-              <div className="mobile-hero-empty"><Scissors size={34} /><span>Welcome to Paw Paw</span></div>
-            )}
+              )
+            })}
           </div>
           {images.length > 1 && (
             <>
@@ -588,6 +616,199 @@ function HeroSlider() {
             <Link to="/services" className="btn btn-secondary">View Services <ArrowRight size={16} /></Link>
           </div>
         </div>
+
+        {/* Pet Boarding — Your Pet's Home Away From Home (Matches Reference Mockup) */}
+        <section className="home-boarding-section" aria-label="Pet Boarding Suites">
+          <div className="home-boarding-card">
+            <div className="home-boarding-content">
+              {/* Top Bar with PET BOARDING pill and NEW badge */}
+              <div className="home-boarding-top-bar">
+                <div className="home-boarding-pill">
+                  <PawPrint size={13} /> PET BOARDING
+                </div>
+                {(boardingSettings?.showNewBadge !== false) && (
+                  <div className="home-boarding-new-badge" aria-label="New feature announcement">
+                    <Sparkles size={11} /> NEW
+                  </div>
+                )}
+              </div>
+
+              <h2 className="home-boarding-title">
+                Your Pet's Home <br />
+                <span className="gold-accent">Away From Home</span>
+              </h2>
+
+              <p className="home-boarding-desc">
+                Safe, clean and comfortable stay for your furry family with loving care while you are away.
+              </p>
+
+              {/* Pricing Cards */}
+              <div className="home-boarding-prices">
+                <div className="home-boarding-price-card">
+                  <img
+                    src={boardingDogAvatar}
+                    alt="Dog Boarding"
+                    className="home-boarding-avatar"
+                    onError={e => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = boardingDogAvatar;
+                    }}
+                  />
+                  <div className="home-boarding-price-info">
+                    <div className="home-boarding-price-label">Dog Boarding</div>
+                    <div className="home-boarding-price-amount">
+                      ₹{boardingSettings?.dogDailyRate || 800} <span className="home-boarding-price-unit">/ day</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="home-boarding-price-card">
+                  <img
+                    src={boardingCatAvatar}
+                    alt="Cat Boarding"
+                    className="home-boarding-avatar"
+                    onError={e => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = boardingCatAvatar;
+                    }}
+                  />
+                  <div className="home-boarding-price-info">
+                    <div className="home-boarding-price-label">Cat Boarding</div>
+                    <div className="home-boarding-price-amount">
+                      ₹{boardingSettings?.catDailyRate || 600} <span className="home-boarding-price-unit">/ day</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className={`home-boarding-actions ${boardingSettings?.acceptBookings === false ? 'is-closed' : ''}`}>
+                {(boardingSettings?.acceptBookings !== false) ? (
+                  <Link to="/boarding" className="home-boarding-btn-primary">
+                    <Calendar size={16} /> Book Pet Boarding <ArrowRight size={15} />
+                  </Link>
+                ) : (
+                  <div className="home-boarding-closed-pill" title="Boarding reservations are temporarily closed">
+                    <Clock size={15} /> Boarding Bookings Temporarily Closed
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowBoardingLearnMore(true)}
+                  className="home-boarding-btn-secondary"
+                >
+                  Learn More <ArrowRight size={15} />
+                </button>
+              </div>
+            </div>
+
+            {/* Large Hero Image (Default illustration as background to prevent blank box while custom image loads) */}
+            <div
+              className="home-boarding-hero-wrap"
+              style={{
+                backgroundImage: `url(${boardingHeroPets})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center 25%',
+              }}
+            >
+              <img
+                src={boardingSettings?.bannerImageUrl || boardingHeroPets}
+                alt="Dog and cat resting comfortably together in cozy pet boarding suite"
+                className="home-boarding-pets-img"
+                loading="eager"
+                decoding="async"
+                onError={e => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = boardingHeroPets;
+                }}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Learn More Modal */}
+        {showBoardingLearnMore && (
+          <div className="modal-overlay" onClick={() => setShowBoardingLearnMore(false)}>
+            <div className="reschedule-modal-card" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
+              <div className="reschedule-modal-header">
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text)' }}>
+                    Paw Paw Pet Boarding Guide
+                  </h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--muted)' }}>
+                    Everything you need to know about our overnight care for dogs & cats
+                  </p>
+                </div>
+                <button type="button" className="icon-btn" onClick={() => setShowBoardingLearnMore(false)}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gap: '12px', margin: '16px 0', maxHeight: '60vh', overflowY: 'auto' }}>
+                <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <HomeIcon size={16} /> 1. Cozy, Sanitized Suites
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    Climate-controlled, clean, and spacious rooms designed to feel like home. Separate quiet spaces for cats and lively play zones for dogs.
+                  </p>
+                </div>
+
+                <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Utensils size={16} /> 2. Tailored Meals & Fresh Water
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    We follow your pet's exact feeding routine. Bring their favorite food or choose Paw Paw's nutritious fresh home food or packaged kibble.
+                  </p>
+                </div>
+
+                <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <PawPrint size={16} /> 3. Daily Walks, Play & Cuddles
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    Dogs enjoy morning and evening walks plus outdoor playtime. Cats receive interactive indoor play, scratching posts, and gentle attention.
+                  </p>
+                </div>
+
+                <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <MessageCircle size={16} /> 4. Daily WhatsApp Updates
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    Stay connected while you travel with daily photos and videos showing your furry family eating, playing, and relaxing happily.
+                  </p>
+                </div>
+
+                <div style={{ padding: '14px', background: 'var(--accent-bg)', borderRadius: '14px', border: '1px solid var(--accent-border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px' }}>
+                    Transparent Daily Rates & No Advance Fees
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.5 }}>
+                    <strong>Dog Boarding:</strong> ₹{boardingSettings?.dogDailyRate || 800} / day · <strong>Cat Boarding:</strong> ₹{boardingSettings?.catDailyRate || 600} / day. No online payments required in advance; pay upon check-in or pick-up.
+                  </div>
+                </div>
+              </div>
+
+              <div className="reschedule-modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowBoardingLearnMore(false)}>
+                  Close
+                </button>
+                {(boardingSettings?.acceptBookings !== false) && (
+                  <Link
+                    to="/boarding"
+                    className="btn btn-primary"
+                    onClick={() => setShowBoardingLearnMore(false)}
+                  >
+                    <Calendar size={15} /> Book Pet Boarding
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {(user?.uid || user?.email) && (
           <section className="upcoming-appointment-section">
@@ -712,12 +933,20 @@ function HeroSlider() {
                 <div className="upcoming-appointment-body" style={{ cursor: 'default' }}>
                   <div className="upcoming-appointment-main">
                     <div className="upcoming-appointment-photo-stack">
-                      <div className="upcoming-appointment-photo">
-                        <PawPrint size={28} />
+                      <div className="upcoming-appointment-photo upcoming-appointment-photo-empty">
+                        <img
+                          src={boardingHeroPets}
+                          alt="No upcoming appointments"
+                          className="upcoming-appointment-empty-img"
+                          onError={e => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = boardingHeroPets;
+                          }}
+                        />
                       </div>
                     </div>
                     <div className="upcoming-appointment-details">
-                      <h4>No Upcoming Appointment</h4>
+                      <h4>No Upcoming Appointments</h4>
                       <div className="upcoming-appointment-meta-column">
                         <span className="upcoming-appointment-info-item">
                           Book an appointment and give them the care they deserve.
@@ -854,23 +1083,19 @@ export default function Home() {
   useEffect(() => {
     async function fetchStats() {
       const [
-        bookingsResult,
         reviewsResult,
         galleryResult,
         detailsResult,
         packagesResult,
         featuresResult,
-        allReviewsResult,
         homeStatsResult,
         businessInfoResult,
       ] = await Promise.allSettled([
-        getDocs(collection(db, 'bookings')),
         getDocs(query(collection(db, 'reviews'), orderBy('createdAt', 'desc'), limit(6))),
-        getDocs(collection(db, 'gallery')),
+        getDocs(query(collection(db, 'gallery'), limit(12))),
         getDocs(collection(db, 'serviceDetails')),
         getDocs(collection(db, 'packages')),
         getDoc(doc(db, 'settings', 'whyChooseUs')),
-        getDocs(collection(db, 'reviews')),
         getDoc(doc(db, 'settings', 'homeStats')),
         fetchBusinessInfo(db),
       ])
@@ -894,32 +1119,36 @@ export default function Home() {
             petName: item.petName || '',
           }))
           : []
-        const allRevs = allReviewsResult.status === 'fulfilled'
-          ? allReviewsResult.value.docs.map(d => d.data()).filter(item => item.active !== false).map(item => ({
-            ...item,
-            source: item.source || 'website',
-            rating: Number(item.rating || item.stars || 5),
-            comment: item.comment || item.review || '',
-            customerName: item.customerName || item.userName || item.name || 'Pet Parent',
-            profileImage: item.profileImage || item.userPhoto || '',
-            reviewImages: Array.isArray(item.reviewImages) ? item.reviewImages : (Array.isArray(item.images) ? item.images : []),
-            reviewDate: item.reviewDate || '',
-            petName: item.petName || '',
-          }))
-          : revs
-        const avg = allRevs.length
-          ? (allRevs.reduce((s, r) => s + (r.rating || 5), 0) / allRevs.length).toFixed(1)
-          : 5.0
+
         const publicStats = homeStatsResult.status === 'fulfilled' && homeStatsResult.value.exists()
           ? homeStatsResult.value.data()
           : {}
+
+        let fallbackBookingsCount = publicStats.totalBookings
+        let fallbackReviewsCount = publicStats.totalReviews
+        if (fallbackBookingsCount === undefined || fallbackReviewsCount === undefined) {
+          try {
+            const [bCountSnap, rCountSnap] = await Promise.allSettled([
+              getCountFromServer(collection(db, 'bookings')),
+              getCountFromServer(collection(db, 'reviews')),
+            ])
+            if (bCountSnap.status === 'fulfilled') fallbackBookingsCount = bCountSnap.value.data().count
+            if (rCountSnap.status === 'fulfilled') fallbackReviewsCount = rCountSnap.value.data().count
+          } catch {}
+        }
+
+        const revAvg = revs.length
+          ? (revs.reduce((s, r) => s + (r.rating || 5), 0) / revs.length).toFixed(1)
+          : 5.0
+
         const scheduleDaysOpen = businessInfoResult.status === 'fulfilled'
           ? countOpenDays(businessInfoResult.value.bookingSettings)
           : null
+
         setStats({
-          totalBookings: Number(publicStats.totalBookings ?? (bookingsResult.status === 'fulfilled' ? bookingsResult.value.size : 0)),
-          totalReviews: Number(publicStats.totalReviews ?? allRevs.length),
-          avgRating: publicStats.avgRating ?? avg,
+          totalBookings: Number(publicStats.totalBookings ?? fallbackBookingsCount ?? 0),
+          totalReviews: Number(publicStats.totalReviews ?? fallbackReviewsCount ?? revs.length),
+          avgRating: Number(publicStats.avgRating ?? revAvg),
           daysOpen: scheduleDaysOpen ?? Number(publicStats.daysOpen ?? 7),
         })
         setReviews(revs)
@@ -1052,25 +1281,6 @@ export default function Home() {
       {/* Hero slider */}
       <HeroSlider />
 
-      {/* Features */}
-      <section className="home-why-section">
-        <div className="home-why-head">
-          <p className="section-label"><PawPrint size={14} /> Why Choose Us <PawPrint size={14} /></p>
-          <h2>Trusted by Pet Parents</h2>
-        </div>
-        <div className="why-choose-grid">
-          {features.map((f, i) => (
-            <div key={`${f.title}-${i}`} className="why-choose-card fade-up" style={{ animationDelay: `${i * 0.1}s` }}>
-              <div className="why-choose-icon">
-                {FEATURE_ICONS[f.icon] || FEATURE_ICONS.star}
-              </div>
-              <span className="why-choose-number">0{i + 1}</span>
-              <h3>{f.title}</h3>
-              <p>{f.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
       {/* Services preview */}
       <section className="home-services-mobile-section">
         <div className="home-section-card home-services-panel">
@@ -1270,6 +1480,26 @@ export default function Home() {
           </div>
         </section>
       )}
+
+      {/* Why Choose Us */}
+      <section className="home-why-section">
+        <div className="home-why-head">
+          <p className="section-label"><PawPrint size={14} /> Why Choose Us <PawPrint size={14} /></p>
+          <h2>Trusted by Pet Parents</h2>
+        </div>
+        <div className="why-choose-grid">
+          {features.map((f, i) => (
+            <div key={`${f.title}-${i}`} className="why-choose-card fade-up" style={{ animationDelay: `${i * 0.1}s` }}>
+              <div className="why-choose-icon">
+                {FEATURE_ICONS[f.icon] || FEATURE_ICONS.star}
+              </div>
+              <span className="why-choose-number">0{i + 1}</span>
+              <h3>{f.title}</h3>
+              <p>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* Call CTA Section */}
       <section className="home-help-cta">

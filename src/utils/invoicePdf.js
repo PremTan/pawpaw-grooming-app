@@ -8,6 +8,11 @@ const clean = value => String(value || '').trim()
 const shortId = id => String(id || '').slice(0, 8).toUpperCase()
 
 export const getInvoiceNumber = booking => {
+  if (booking?.isBoarding) {
+    const rawDate = booking?.actualCheckOutDate || booking?.checkOutDate || booking?.checkInDate || booking?.date
+    const date = clean(rawDate).replaceAll('-', '') || new Date().toISOString().slice(0, 10).replaceAll('-', '')
+    return `BRD${date}${shortId(booking?.id) || 'STAY'}`
+  }
   const date = clean(booking?.date).replaceAll('-', '') || new Date().toISOString().slice(0, 10).replaceAll('-', '')
   return `INV${date}${shortId(booking?.id) || 'BOOKING'}`
 }
@@ -15,11 +20,25 @@ export const getInvoiceNumber = booking => {
 export const getInvoiceFileName = booking => `${getInvoiceNumber(booking)}.pdf`
 
 export const getInvoiceSummary = (booking, businessInfo = {}) => {
-  const shopName = businessInfo.contact?.shopName || 'Paw Paw'
+  const shopName = businessInfo.contact?.shopName || 'Paw Paw Pet Grooming'
   const invoiceNo = getInvoiceNumber(booking)
   const amountPaid = getAmountPaid(booking)
   const gstAmount = getGstAmount(booking)
   const total = getTotalAmount(booking)
+
+  if (booking?.isBoarding) {
+    return [
+      `${shopName} Pet Boarding Invoice`,
+      `Invoice No: ${invoiceNo}`,
+      `Customer: ${booking?.ownerName || '-'}`,
+      `Phone: ${booking?.phone || '-'}`,
+      `Pet: ${buildPetLabel(booking)}`,
+      `Stay: ${booking?.checkInDate || '-'} to ${booking?.actualCheckOutDate || booking?.checkOutDate || '-'} (${booking?.stayDays || 1} Days)`,
+      `Amount Paid: ${money(amountPaid)}`,
+      `GST: ${gstAmount > 0 ? money(gstAmount) : 'Not applicable'}`,
+      `Total: ${money(total)}`,
+    ].join('\n')
+  }
 
   return [
     `${shopName} invoice`,
@@ -56,7 +75,7 @@ export async function shareInvoicePdfFile(booking, businessInfo = {}, title = 'S
   if (navigator.canShare?.({ files: [file] })) {
     await navigator.share({
       title,
-      text: `${businessInfo.contact?.shopName || 'Paw Paw'} invoice ${getInvoiceNumber(booking)}`,
+      text: `${businessInfo.contact?.shopName || 'Paw Paw Pet Grooming'} invoice ${getInvoiceNumber(booking)}`,
       files: [file],
     })
     return true
@@ -85,6 +104,9 @@ export async function viewInvoicePdf(booking, businessInfo = {}) {
 }
 
 function getAmountPaid(booking) {
+  if (booking?.isBoarding) {
+    return Number(booking?.amountCollected || booking?.totalAmount || booking?.estimatedTotal || 0)
+  }
   return Number(booking?.amountCollected || booking?.estimatedTotal || 0)
 }
 
@@ -194,7 +216,7 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4', compress: true })
   const contact = businessInfo.contact || {}
   const footer = businessInfo.footer || {}
-  const shopName = contact.shopName || 'Paw Paw'
+  const shopName = contact.shopName || 'Paw Paw Pet Grooming'
   const invoiceNo = getInvoiceNumber(booking)
   const invoiceDate = new Date()
   const amountPaid = getAmountPaid(booking)
@@ -217,7 +239,7 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   } else {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(20)
-    doc.text('Paw Paw', margin + 25, 118, { maxWidth: 60 })
+    doc.text('Paw Paw Pet Grooming', margin + 25, 118, { maxWidth: 60 })
   }
 
   doc.setFont('helvetica', 'bold')
@@ -262,23 +284,32 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   doc.setFont('helvetica', 'normal')
   doc.text(address, margin + 18, 344, { maxWidth: 225, lineHeightFactor: 1.3 })
 
+  const serviceTitle = booking?.isBoarding ? 'Boarding Facility' : 'Service Address'
+  const serviceValue = booking?.isBoarding
+    ? (contact.address || 'Paw Paw Pet Boarding Facility')
+    : (booking?.bookingType === 'home' ? address : (contact.address || 'In-store visit'))
+
   doc.setFont('helvetica', 'bold')
-  doc.text('Service Address', margin + 300, 326)
+  doc.text(serviceTitle, margin + 300, 326)
   doc.setFont('helvetica', 'normal')
-  doc.text(booking?.bookingType === 'home' ? address : (contact.address || 'In-store visit'), margin + 300, 344, { maxWidth: 230, lineHeightFactor: 1.3 })
+  doc.text(serviceValue, margin + 300, 344, { maxWidth: 230, lineHeightFactor: 1.3 })
+
+  const tableBody = (Array.isArray(booking?.invoiceItems) && booking.invoiceItems.length > 0)
+    ? booking.invoiceItems
+    : [[
+      '01',
+      [booking?.serviceName || '-', `Pet: ${buildPetLabel(booking)}`, `Appointment: ${booking?.date || '-'} ${booking?.slot || '-'}`].join('\n'),
+      '1',
+      Number(amountPaid || 0).toLocaleString('en-IN'),
+      Number(amountPaid || 0).toLocaleString('en-IN'),
+    ]]
 
   autoTable(doc, {
     startY: 382,
     margin: { left: margin + 8, right: margin + 8 },
     theme: 'grid',
     head: [['No.', 'Item', 'Quantity', 'Rate (Rs)', 'Amount (Rs)']],
-    body: [[
-      '01',
-      [booking?.serviceName || '-', `Pet: ${buildPetLabel(booking)}`, `Appointment: ${booking?.date || '-'} ${booking?.slot || '-'}`].join('\n'),
-      '1',
-      Number(amountPaid || 0).toLocaleString('en-IN'),
-      Number(amountPaid || 0).toLocaleString('en-IN'),
-    ]],
+    body: tableBody,
     styles: { font: 'helvetica', fontSize: 10, cellPadding: 8, textColor: [45, 49, 56], lineColor: [210, 214, 220], lineWidth: 1 },
     headStyles: { fillColor: [255, 255, 255], textColor: [45, 49, 56], fontStyle: 'bold', lineColor: [210, 214, 220], lineWidth: 1 },
     columnStyles: {
@@ -291,8 +322,11 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   })
 
   const tableBottom = doc.lastAutoTable.finalY + 14
-  drawTextBox(doc, 'Terms and Conditions', ['Invoice is generated only after the appointment is marked completed.', 'Payment received as recorded by admin.'], margin + 8, tableBottom, 260, 104)
-  drawTextBox(doc, 'Customer Note', [booking?.notes || ''], margin + 8, tableBottom + 118, 260, 54)
+  const terms = booking?.isBoarding
+    ? ['Invoice generated after pet boarding stay is completed.', 'Payment received as recorded by admin.']
+    : ['Invoice is generated only after the appointment is marked completed.', 'Payment received as recorded by admin.']
+  drawTextBox(doc, 'Terms and Conditions', terms, margin + 8, tableBottom, 260, 104)
+  drawTextBox(doc, 'Customer Note', [booking?.notes || booking?.additionalInstructions || ''], margin + 8, tableBottom + 118, 260, 54)
 
   const summaryX = margin + 285
   const labelW = 150

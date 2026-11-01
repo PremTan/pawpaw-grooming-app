@@ -1,8 +1,44 @@
 // src/pages/MyBookings.jsx
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
-import { Calendar, ChevronRight, ChevronDown, Clock, Home, PawPrint, Plus, Store, UserRound, X } from 'lucide-react'
+import {
+  AlertCircle,
+  ArrowRight,
+  Bed,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  ChevronRight,
+  ChevronDown,
+  Clock,
+  Droplets,
+  Footprints,
+  Home,
+  IndianRupee,
+  LogIn,
+  Mail,
+  MapPin,
+  MessageCircle,
+  Moon,
+  PawPrint,
+  Phone,
+  Plus,
+  PlusSquare,
+  Receipt,
+  Scale,
+  Scissors,
+  ShieldCheck,
+  Store,
+  Syringe,
+  Tag,
+  User,
+  UserRound,
+  Users,
+  Utensils,
+  Wallet,
+  X,
+} from 'lucide-react'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
@@ -12,20 +48,67 @@ import Toast from '../components/Toast'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel, getPaymentOptionLabel } from '../utils/bookingSettings'
 import { SERVICES } from '../utils/services'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
+import { fetchBusinessInfo } from '../utils/businessInfo'
+import { buildBoardingWhatsAppMessage } from '../utils/boardingSettings'
 
 const STATUS_BADGE = {
   pending: 'badge-pending',
   confirmed: 'badge-confirmed',
+  checked_in: 'badge-confirmed',
+  checked_out: 'badge-completed',
   completed: 'badge-completed',
   cancelled: 'badge-cancelled',
 }
 
 const STATUS_FILTERS = ['all', 'pending', 'confirmed', 'completed', 'cancelled']
 
-const statusLabel = status => status === 'all' ? 'All' : (status || 'pending').charAt(0).toUpperCase() + (status || 'pending').slice(1)
+const statusLabel = status => {
+  if (status === 'all') return 'All'
+  if (status === 'checked_in') return 'Checked In'
+  if (status === 'checked_out') return 'Checked Out'
+  return (status || 'pending').charAt(0).toUpperCase() + (status || 'pending').slice(1)
+}
 const money = value => Number(value || 0).toLocaleString('en-IN')
 const shortId = id => id ? `#${id.slice(0, 8).toUpperCase()}` : '-'
 const assignedWorker = booking => booking.assignedTeamMemberName || (booking.status === 'confirmed' || booking.status === 'completed' ? 'Owner' : '')
+
+function formatBoardingDate(dateStr) {
+  if (!dateStr) return 'N/A'
+  try {
+    const parts = String(dateStr).split('-')
+    if (parts.length === 3) {
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+      if (!Number.isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      }
+    }
+    const d = new Date(dateStr)
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    }
+  } catch {}
+  return dateStr
+}
+
+function formatPetAge(dob) {
+  if (!dob) return ''
+  try {
+    const birth = new Date(dob)
+    if (!Number.isNaN(birth.getTime())) {
+      const now = new Date()
+      let years = now.getFullYear() - birth.getFullYear()
+      let months = now.getMonth() - birth.getMonth()
+      if (months < 0) {
+        years--
+        months += 12
+      }
+      if (years > 0) return `${years} Year${years > 1 ? 's' : ''}`
+      if (months > 0) return `${months} Month${months > 1 ? 's' : ''}`
+      return 'Puppy / Kitten'
+    }
+  } catch {}
+  return dob
+}
 
 function parseAppointmentStart(booking) {
   if (booking.bookingStartAt?.toDate) return booking.bookingStartAt.toDate()
@@ -193,6 +276,101 @@ export default function MyBookings() {
   const [editFullOpen, setEditFullOpen] = useState(false)
   const editAddressRef = useRef(null)
   const [savingEdit, setSavingEdit] = useState(false)
+
+  // Pet Boarding state
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+
+  const tabFromUrl = searchParams.get('tab') || location.state?.tab || location.state?.domainTab
+  const [domainTab, setDomainTab] = useState(tabFromUrl === 'boarding' ? 'boarding' : 'grooming')
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab') || location.state?.tab || location.state?.domainTab
+    if (tabParam === 'boarding') {
+      setDomainTab('boarding')
+    } else if (tabParam === 'grooming') {
+      setDomainTab('grooming')
+    }
+  }, [searchParams, location.state])
+  const [boardings, setBoardings] = useState([])
+  const [boardingLoading, setBoardingLoading] = useState(false)
+  const [selectedBoarding, setSelectedBoarding] = useState(null)
+  const [boardingCancelTarget, setBoardingCancelTarget] = useState(null)
+  const [boardingCancelReason, setBoardingCancelReason] = useState('')
+  const [cancellingBoardingId, setCancellingBoardingId] = useState('')
+  const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
+  const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
+  const [shopAddress, setShopAddress] = useState('')
+
+  // Lock background scroll when boarding modal is open
+  useEffect(() => {
+    if (selectedBoarding) {
+      const prev = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = prev
+      }
+    }
+  }, [selectedBoarding])
+
+  useEffect(() => {
+    fetchBusinessInfo(db).then(biz => {
+      setAdminWhatsappNumber(biz.whatsappNumber || '')
+      setShopName(biz.contact?.shopName || 'Paw Paw Pet Grooming')
+      setShopAddress(biz.contact?.address || '')
+    })
+  }, [])
+
+  const fetchBoardings = async () => {
+    if (!user?.uid) return
+    setBoardingLoading(true)
+    try {
+      const q = query(collection(db, 'boardingBookings'), where('userId', '==', user.uid))
+      const snap = await getDocs(q)
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      list.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
+      setBoardings(list)
+    } catch {}
+    setBoardingLoading(false)
+  }
+
+  useEffect(() => {
+    if (user?.uid) {
+      fetchBoardings()
+    }
+  }, [user])
+
+  const cancelBoardingBooking = async () => {
+    if (!boardingCancelTarget || !boardingCancelReason.trim()) return
+    setCancellingBoardingId(boardingCancelTarget.id)
+    try {
+      const patch = {
+        status: 'cancelled',
+        cancelledBy: 'user',
+        cancelledAt: serverTimestamp(),
+        cancellationReason: boardingCancelReason.trim(),
+        updatedAt: serverTimestamp(),
+      }
+      await setDoc(doc(db, 'boardingBookings', boardingCancelTarget.id), patch, { merge: true })
+      setBoardings(prev => prev.map(b => b.id === boardingCancelTarget.id ? { ...b, ...patch, cancelledAt: new Date(), updatedAt: new Date() } : b))
+      if (ADMIN_EMAIL) {
+        await sendNotification('', {
+          userEmail: ADMIN_EMAIL,
+          title: 'Pet Boarding Cancelled by Customer',
+          message: `Boarding request for ${boardingCancelTarget.petName} was cancelled by ${boardingCancelTarget.ownerName}. Reason: ${boardingCancelReason.trim()}`,
+          type: 'boarding_cancelled',
+          bookingId: boardingCancelTarget.id,
+          actionUrl: '/admin/boarding',
+        })
+      }
+      setCancelToast('Boarding reservation cancelled successfully.')
+      setBoardingCancelTarget(null)
+      setBoardingCancelReason('')
+    } catch (err) {
+      alert('Could not cancel boarding reservation. Please try again.')
+    }
+    setCancellingBoardingId('')
+  }
 
   useEffect(() => {
     fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
@@ -578,23 +756,189 @@ export default function MyBookings() {
             <PawPrint size={20} className="my-bookings-paw-icon" />
             <div>
               <h1>My Bookings</h1>
-              <p>{bookings.length} total appointment{bookings.length !== 1 ? 's' : ''}</p>
+              <p>{domainTab === 'boarding' ? `${boardings.length} total boarding stay${boardings.length !== 1 ? 's' : ''}` : `${bookings.length} total appointment${bookings.length !== 1 ? 's' : ''}`}</p>
             </div>
           </div>
-          <Link to="/book" className="btn btn-primary my-bookings-new">
-            <Plus size={16} /> New Booking
+          <Link to={domainTab === 'boarding' ? "/boarding" : "/book"} className="btn btn-primary my-bookings-new">
+            <Plus size={16} /> {domainTab === 'boarding' ? 'New Boarding Stay' : 'New Grooming'}
           </Link>
         </div>
 
-        <div className="my-bookings-stats" aria-label="Booking summary">
-          <div className="my-bookings-stat-card">
-            <span>Total</span>
-            <strong>{bookingSummary.total}</strong>
+        {/* Domain Switcher */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '22px' }}>
+          <button
+            type="button"
+            onClick={() => setDomainTab('grooming')}
+            style={{
+              padding: '9px 16px',
+              borderRadius: '12px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: `1.5px solid ${domainTab === 'grooming' ? 'var(--accent)' : 'var(--border)'}`,
+              background: domainTab === 'grooming' ? 'var(--accent-bg)' : 'var(--surface)',
+              color: domainTab === 'grooming' ? 'var(--accent)' : 'var(--muted)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <Scissors size={14} /> Grooming ({bookings.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setDomainTab('boarding')}
+            style={{
+              padding: '9px 16px',
+              borderRadius: '12px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: `1.5px solid ${domainTab === 'boarding' ? 'var(--accent)' : 'var(--border)'}`,
+              background: domainTab === 'boarding' ? 'var(--accent-bg)' : 'var(--surface)',
+              color: domainTab === 'boarding' ? 'var(--accent)' : 'var(--muted)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <Building2 size={14} /> Pet Boarding ({boardings.length})
+          </button>
+        </div>
+
+        {domainTab === 'boarding' ? (
+          <div>
+            {/* Boarding Stats */}
+            <div className="my-bookings-stats">
+              <div className="my-bookings-stat-card">
+                <span>Total Stays</span>
+                <strong>{boardings.length}</strong>
+              </div>
+              <div className="my-bookings-stat-card">
+                <span>Pending Review</span>
+                <strong style={{ color: '#f59e0b' }}>{boardings.filter(b => b.status === 'pending').length}</strong>
+              </div>
+              <div className="my-bookings-stat-card">
+                <span>Confirmed</span>
+                <strong style={{ color: 'var(--accent)' }}>{boardings.filter(b => b.status === 'confirmed').length}</strong>
+              </div>
+              <div className="my-bookings-stat-card">
+                <span>Checked In</span>
+                <strong style={{ color: '#3b82f6' }}>{boardings.filter(b => b.status === 'checked_in').length}</strong>
+              </div>
+            </div>
+
+            {boardingLoading ? (
+              <Spinner text="Loading boarding reservations..." />
+            ) : boardings.length === 0 ? (
+              <div className="my-bookings-empty" style={{ padding: '48px 20px', textAlign: 'center', background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                <Building2 size={36} style={{ color: 'var(--muted)', margin: '0 auto 12px' }} />
+                <p style={{ fontWeight: 700, fontSize: '16px', color: 'var(--text)', margin: '0 0 6px' }}>No boarding stays found</p>
+                <span style={{ color: 'var(--muted)', fontSize: '13px', display: 'block', marginBottom: '18px' }}>Book your pet a cozy stay while you travel.</span>
+                <Link to="/boarding" className="btn btn-primary">Book Pet Boarding</Link>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {boardings.map(b => (
+                  <div
+                    key={b.id}
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(255,255,255,0.03), rgba(212,175,55,0.04))',
+                      border: '1px solid var(--border)',
+                      borderRadius: '16px',
+                      padding: '16px 18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '12px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'var(--accent-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', flexShrink: 0 }}>
+                        {b.petPhotoUrl ? (
+                          <img src={b.petPhotoUrl} alt={b.petName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }} />
+                        ) : (
+                          <PawPrint size={20} />
+                        )}
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <strong style={{ fontSize: '15px', color: 'var(--text)' }}>{b.petName}</strong>
+                          <span className={`badge ${STATUS_BADGE[b.status] || 'badge-pending'}`}>
+                            {statusLabel(b.status)}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
+                          {b.petType} {b.petBreed ? `· ${b.petBreed}` : ''}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 700, marginTop: '2px' }}>
+                          {b.stayDays || 1} Day(s) ({b.stayNights || 0} Nights) · ₹{money(b.totalAmount || (Number(b.estimatedTotal || 0) + Number(b.specialFoodCharge || 0) + Number(b.lateCheckOutCharge || 0)))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase' }}>Stay Dates</div>
+                      <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 600, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                        <span>{formatBoardingDate(b.checkInDate)} → {formatBoardingDate(b.actualCheckOutDate || b.checkOutDate)}</span>
+                        {b.actualCheckOutDate && b.actualCheckOutDate !== b.checkOutDate && (
+                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(217, 119, 6, 0.15)', color: '#d97706', fontWeight: 700 }}>
+                            (Actual)
+                          </span>
+                        )}
+                      </div>
+                      {(b.actualCheckOutTime || b.checkOutTime) && (
+                        <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '3px' }}>
+                          Check-out: <span style={{ color: b.actualCheckOutTime ? '#d97706' : 'var(--text)', fontWeight: 600 }}>{b.actualCheckOutTime || b.checkOutTime}</span>
+                          {b.actualCheckOutTime && (
+                            <span style={{ marginLeft: '4px', fontSize: '10px', color: '#d97706', fontWeight: 700 }}>(Actual)</span>
+                          )}
+                        </div>
+                      )}
+                      {Number(b.lateCheckOutCharge || 0) > 0 && (
+                        <div style={{ fontSize: '11px', color: '#d97706', fontWeight: 600, marginTop: '2px' }}>
+                          Late check-out: +₹{money(b.lateCheckOutCharge)}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBoarding(b)}
+                        className="btn btn-secondary"
+                        style={{ fontSize: '12px', padding: '7px 12px' }}
+                      >
+                        View Details
+                      </button>
+                      {(b.status === 'pending' || b.status === 'confirmed') && (
+                        <button
+                          type="button"
+                          onClick={() => { setBoardingCancelTarget(b); setBoardingCancelReason('') }}
+                          className="btn btn-secondary"
+                          style={{ fontSize: '12px', padding: '7px 10px', color: '#ef4444' }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="my-bookings-stat-card">
-            <span>Upcoming</span>
-            <strong>{bookingSummary.upcoming}</strong>
-          </div>
+        ) : (
+          <div>
+            <div className="my-bookings-stats" aria-label="Booking summary">
+              <div className="my-bookings-stat-card">
+                <span>Total</span>
+                <strong>{bookingSummary.total}</strong>
+              </div>
+              <div className="my-bookings-stat-card">
+                <span>Upcoming</span>
+                <strong>{bookingSummary.upcoming}</strong>
+              </div>
           <div className="my-bookings-stat-card">
             <span>Completed</span>
             <strong>{bookingSummary.completed}</strong>
@@ -699,6 +1043,8 @@ export default function MyBookings() {
                 </div>
               )
             })}
+          </div>
+        )}
           </div>
         )}
       </div>
@@ -1120,6 +1466,477 @@ export default function MyBookings() {
         reasonPlaceholder="Please tell us why you are cancelling"
         reasonValue={cancelReason}
         onReasonChange={setCancelReason}
+        reasonRequired
+      />
+
+      {/* Boarding Details Modal (Screenshot 1 Match) */}
+      {selectedBoarding && (
+        <div className="my-booking-modal-overlay boarding-modal-overlay" onClick={() => setSelectedBoarding(null)}>
+          <div className="boarding-details-modal" onClick={e => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="details-modal-header">
+              {/* Row 1: Title on left, actions on right */}
+              <div className="details-header-top-row">
+                <h2 className="details-title">Boarding Reservation</h2>
+
+                <div className="header-actions-row">
+                  {adminWhatsappNumber && (
+                    <a
+                      href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(selectedBoarding, shopName)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="details-header-btn whatsapp"
+                      aria-label="Send details to WhatsApp"
+                    >
+                      <MessageCircle size={14} /> <span>WhatsApp</span>
+                    </a>
+                  )}
+
+                  <button
+                    type="button"
+                    className="details-close-btn"
+                    onClick={() => setSelectedBoarding(null)}
+                    aria-label="Close modal"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Row 2: Status badge and Reservation ID on the same line */}
+              <div className="details-header-sub-row">
+                <span className={`boarding-status-pill ${selectedBoarding.status || 'pending'}`}>
+                  {selectedBoarding.status === 'checked_out' && <CheckCircle2 size={13} />}
+                  {selectedBoarding.status === 'checked_in' && <LogIn size={13} />}
+                  {selectedBoarding.status === 'confirmed' && <Check size={13} />}
+                  {selectedBoarding.status === 'cancelled' && <X size={13} />}
+                  <span>{statusLabel(selectedBoarding.status)}</span>
+                </span>
+                <span className="details-ref-id">{shortId(selectedBoarding.id)}</span>
+              </div>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="details-modal-body">
+              {/* CARD A: Pet & Owner Details */}
+              <div className="boarding-section-card">
+                <div className="section-card-header">
+                  <div className="section-icon-wrap paw">
+                    <PawPrint size={16} />
+                  </div>
+                  <h3>Pet & Owner Details</h3>
+                </div>
+
+                <div className="pet-hero-row">
+                  <div className="pet-avatar-large">
+                    {selectedBoarding.petPhotoUrl ? (
+                      <img
+                        src={selectedBoarding.petPhotoUrl}
+                        alt={selectedBoarding.petName}
+                        onError={e => {
+                          e.currentTarget.style.display = 'none'
+                          if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex'
+                        }}
+                      />
+                    ) : null}
+                    <div className="avatar-fallback" style={{ display: selectedBoarding.petPhotoUrl ? 'none' : 'flex' }}>
+                      <PawPrint size={24} />
+                    </div>
+                  </div>
+
+                  <div className="pet-hero-info">
+                    <strong className="pet-hero-name">{selectedBoarding.petName || 'Pet'}</strong>
+                    <div className="pet-hero-subtitle">
+                      {selectedBoarding.petType || 'Pet'} • {selectedBoarding.petBreed || 'Breed Not Specified'}
+                    </div>
+
+                    <div className="pet-pills-row">
+                      {selectedBoarding.petGender && (
+                        <span className="pet-pill">
+                          <Users size={12} /> {selectedBoarding.petGender}
+                        </span>
+                      )}
+                      {selectedBoarding.petDob && (
+                        <span className="pet-pill">
+                          <Calendar size={12} /> {formatPetAge(selectedBoarding.petDob)}
+                        </span>
+                      )}
+                      {selectedBoarding.petWeight && (
+                        <span className="pet-pill">
+                          <Scale size={12} /> {selectedBoarding.petWeight} kg
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="detail-two-col-grid">
+                  <div className="detail-item">
+                    <span className="detail-label"><User size={14} /> Owner Name</span>
+                    <strong className="detail-val">{selectedBoarding.ownerName || 'N/A'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><ShieldCheck size={14} /> Emergency Contact</span>
+                    <strong className="detail-val">
+                      {selectedBoarding.emergencyContactPhone
+                        ? `${selectedBoarding.emergencyContactName ? selectedBoarding.emergencyContactName + ' ' : ''}(${selectedBoarding.emergencyContactPhone})`
+                        : 'None'}
+                    </strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Phone size={14} /> Phone Number</span>
+                    <strong className="detail-val">{selectedBoarding.phone || 'N/A'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Mail size={14} /> Email</span>
+                    <strong className="detail-val email">{selectedBoarding.userEmail || 'N/A'}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD B: Health & Vaccinations */}
+              <div className="boarding-section-card">
+                <div className="section-card-header">
+                  <div className="section-icon-wrap shield">
+                    <ShieldCheck size={16} />
+                  </div>
+                  <h3>Health & Vaccinations</h3>
+                </div>
+
+                <div className="detail-two-col-grid">
+                  <div className="detail-item">
+                    <span className="detail-label"><Syringe size={14} /> Vaccination Status</span>
+                    <span className="badge-vaccine">
+                      {selectedBoarding.vaccinationStatus || 'Fully Vaccinated'}
+                    </span>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Calendar size={14} /> Last Vaccination / Notes</span>
+                    <strong className="detail-val">{selectedBoarding.vaccinationNotes || 'None'}</strong>
+                  </div>
+                </div>
+
+                <div className="detail-item full" style={{ marginTop: '12px' }}>
+                  <span className="detail-label"><PlusSquare size={14} /> Medical Conditions / Medicines</span>
+                  <strong className="detail-val">
+                    {selectedBoarding.medicalConditions || selectedBoarding.medicines || selectedBoarding.allergies || 'No'}
+                  </strong>
+                </div>
+              </div>
+
+              {/* CARD C: Stay & Billing Details */}
+              <div className="boarding-section-card">
+                <div className="section-card-header">
+                  <div className="section-icon-wrap calendar">
+                    <Calendar size={16} />
+                  </div>
+                  <h3>Stay & Billing Details</h3>
+                </div>
+
+                <div className="stay-banner-strip">
+                  <div className="stay-banner-item">
+                    <span className="stay-label"><Calendar size={13} /> Check-In</span>
+                    <strong className="stay-val">{formatBoardingDate(selectedBoarding.checkInDate)}</strong>
+                    <span className="stay-sub">{selectedBoarding.checkInTime || '10:00 AM'}</span>
+                  </div>
+
+                  <div className="stay-arrow">
+                    <ArrowRight size={18} />
+                  </div>
+
+                  <div className="stay-banner-item">
+                    <span className="stay-label">
+                      <Calendar size={13} /> {selectedBoarding.actualCheckOutDate || selectedBoarding.actualCheckOutTime ? 'Actual Check-Out' : 'Check-Out'}
+                    </span>
+                    <strong className="stay-val">
+                      {formatBoardingDate(selectedBoarding.actualCheckOutDate || selectedBoarding.checkOutDate)}
+                    </strong>
+                    <span className="stay-sub">
+                      {selectedBoarding.actualCheckOutTime || selectedBoarding.checkOutTime || '11:00 PM'}
+                      {selectedBoarding.actualCheckOutTime && (
+                        <span style={{ color: '#d97706', fontWeight: 700, marginLeft: '4px' }}>
+                          (Actual)
+                        </span>
+                      )}
+                      {selectedBoarding.actualCheckOutDate && selectedBoarding.actualCheckOutDate !== selectedBoarding.checkOutDate && (
+                        <span style={{ color: '#d97706', display: 'block', fontSize: '10px', fontWeight: 600 }}>
+                          (Sched: {formatBoardingDate(selectedBoarding.checkOutDate)})
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="stay-banner-item total">
+                    <span className="stay-label"><Moon size={13} /> Total Stay</span>
+                    <strong className="stay-val duration">
+                      {selectedBoarding.stayDays || 1} Days
+                    </strong>
+                    <span className="stay-sub">({selectedBoarding.stayNights || 0} Nights)</span>
+                  </div>
+                </div>
+
+                {(selectedBoarding.actualCheckOutDate || selectedBoarding.actualCheckOutTime) && (
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    background: 'rgba(217, 119, 6, 0.08)',
+                    border: '1px solid rgba(217, 119, 6, 0.25)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                    fontSize: '12px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309' }}>
+                      <Clock size={15} />
+                      <span>
+                        <strong>Actual Check-Out Pick-up:</strong> {formatBoardingDate(selectedBoarding.actualCheckOutDate || selectedBoarding.checkOutDate)} at {selectedBoarding.actualCheckOutTime || selectedBoarding.checkOutTime || '11:00 PM'}
+                      </span>
+                    </div>
+                    {selectedBoarding.actualCheckOutDate && selectedBoarding.actualCheckOutDate !== selectedBoarding.checkOutDate && (
+                      <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                        (Scheduled: {formatBoardingDate(selectedBoarding.checkOutDate)})
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Hostel Drop-off & Pick-up Location */}
+                <div style={{
+                  marginTop: '12px',
+                  background: 'var(--card-bg, #F9FAFB)',
+                  border: '1px solid var(--border-color, #E5E7EB)',
+                  borderRadius: '10px',
+                  padding: '11px 13px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                }}>
+                  <MapPin size={16} style={{ flexShrink: 0, marginTop: '2px', color: '#C08820' }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text, #1F2937)', marginBottom: '2px' }}>
+                      Hostel Drop-off & Pick-up Location
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--muted, #4B5563)', lineHeight: 1.45, marginBottom: '6px' }}>
+                      {selectedBoarding.hostelAddress || shopAddress || 'Paw Paw Pet Boarding Facility, Pune'}
+                    </div>
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedBoarding.hostelAddress || shopAddress || 'Paw Paw Pet Boarding Facility, Pune')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontSize: '11.5px',
+                        color: '#C08820',
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                      onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                    >
+                      Get Directions / View on Google Maps →
+                    </a>
+                  </div>
+                </div>
+
+                <div className="billing-three-col-row">
+                  <div className="billing-item">
+                    <span className="billing-label"><Tag size={14} /> Daily Rate</span>
+                    <strong className="billing-val">₹{money(selectedBoarding.dailyRate || 800)}</strong>
+                  </div>
+
+                  <div className="billing-item">
+                    <span className="billing-label"><Receipt size={14} /> Base Boarding Stay</span>
+                    <strong className="billing-val estimated">₹{money(selectedBoarding.estimatedTotal)}</strong>
+                  </div>
+
+                  {Number(selectedBoarding.specialFoodCharge || 0) > 0 && (
+                    <div className="billing-item">
+                      <span className="billing-label"><Utensils size={14} /> Special Food Charge</span>
+                      <strong className="billing-val" style={{ color: '#16a34a' }}>
+                        +₹{money(selectedBoarding.specialFoodCharge)}
+                      </strong>
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px' }}>
+                        {selectedBoarding.specialFoodChargeCollectedAt === 'check_in' ? 'Paid at Check-In' : 'Paid at Checkout'}
+                      </span>
+                    </div>
+                  )}
+
+                  {Number(selectedBoarding.lateCheckOutCharge || 0) > 0 && (
+                    <div className="billing-item">
+                      <span className="billing-label"><Clock size={14} /> Late Check-Out Fee</span>
+                      <strong className="billing-val" style={{ color: '#d97706' }}>
+                        +₹{money(selectedBoarding.lateCheckOutCharge)}
+                      </strong>
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px' }}>
+                        {selectedBoarding.actualCheckOutTime
+                          ? `Picked up at ${selectedBoarding.actualCheckOutTime}${selectedBoarding.actualCheckOutDate && selectedBoarding.actualCheckOutDate !== selectedBoarding.checkOutDate ? ` on ${formatBoardingDate(selectedBoarding.actualCheckOutDate)}` : ''} (after 11:00 PM)`
+                          : 'Paid at Checkout (Picked up after 11 PM)'}
+                      </span>
+                    </div>
+                  )}
+
+                  {(Number(selectedBoarding.specialFoodCharge || 0) > 0 || Number(selectedBoarding.lateCheckOutCharge || 0) > 0) && (
+                    <div className="billing-item">
+                      <span className="billing-label"><Receipt size={14} /> Total Stay Amount</span>
+                      <strong className="billing-val" style={{ color: 'var(--text)' }}>
+                        ₹{money(selectedBoarding.totalAmount || (Number(selectedBoarding.estimatedTotal || 0) + Number(selectedBoarding.specialFoodCharge || 0) + Number(selectedBoarding.lateCheckOutCharge || 0)))}
+                      </strong>
+                    </div>
+                  )}
+
+                  <div className="billing-item">
+                    <span className="billing-label"><Wallet size={14} /> Amount Paid</span>
+                    <strong className="billing-val collected">₹{money(selectedBoarding.amountCollected || 0)}</strong>
+                  </div>
+
+                  <div className="billing-item">
+                    <span className="billing-label"><Receipt size={14} /> Remaining Balance</span>
+                    <strong className="billing-val" style={{ color: Math.max(0, (Number(selectedBoarding.totalAmount || (Number(selectedBoarding.estimatedTotal || 0) + Number(selectedBoarding.specialFoodCharge || 0) + Number(selectedBoarding.lateCheckOutCharge || 0)))) - Number(selectedBoarding.amountCollected || 0)) > 0 ? 'var(--accent)' : '#16a34a' }}>
+                      ₹{money(Math.max(0, (Number(selectedBoarding.totalAmount || (Number(selectedBoarding.estimatedTotal || 0) + Number(selectedBoarding.specialFoodCharge || 0) + Number(selectedBoarding.lateCheckOutCharge || 0)))) - Number(selectedBoarding.amountCollected || 0)))}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD D: Food & Care Instructions */}
+              <div className="boarding-section-card">
+                <div className="section-card-header">
+                  <div className="section-icon-wrap food">
+                    <Utensils size={16} />
+                  </div>
+                  <h3>Food & Care Instructions</h3>
+                </div>
+
+                <div className="detail-two-col-grid care">
+                  <div className="detail-item">
+                    <span className="detail-label"><Utensils size={14} /> Regular Food</span>
+                    <strong className="detail-val" style={{ color: '#16a34a' }}>
+                      ✓ Included (Provided by Paw Paw)
+                    </strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Utensils size={14} /> Special Food Required</span>
+                    <strong className="detail-val">
+                      {selectedBoarding.specialFoodRequired
+                        ? 'Yes'
+                        : (selectedBoarding.specialFoodRequired === false ? 'No (Regular food fine)' : (selectedBoarding.foodType || 'No'))}
+                    </strong>
+                  </div>
+
+                  {selectedBoarding.specialFoodRequired && (
+                    <div className="detail-item">
+                      <span className="detail-label"><Users size={14} /> Special Food Provider</span>
+                      <strong className="detail-val">
+                        {selectedBoarding.specialFoodProvider === 'pawpaw'
+                          ? 'Paw Paw will provide it'
+                          : selectedBoarding.specialFoodProvider === 'customer'
+                            ? 'Owner will provide (No extra charge)'
+                            : (selectedBoarding.foodProvider || 'Owner')}
+                      </strong>
+                    </div>
+                  )}
+
+                  {selectedBoarding.specialFoodRequired && (
+                    <div className="detail-item">
+                      <span className="detail-label"><Receipt size={14} /> Special Food Charge</span>
+                      <strong className="detail-val" style={{ color: Number(selectedBoarding.specialFoodCharge || 0) > 0 ? '#16a34a' : 'var(--text)' }}>
+                        {Number(selectedBoarding.specialFoodCharge || 0) > 0
+                          ? `₹${money(selectedBoarding.specialFoodCharge)} (${selectedBoarding.specialFoodChargeCollectedAt === 'check_in' ? 'Paid at Check-In' : selectedBoarding.specialFoodChargeCollectedAt === 'checkout' ? 'Paid at Checkout' : 'Confirmed by hostel'})`
+                          : selectedBoarding.specialFoodProvider === 'customer'
+                            ? '₹0 (Owner provides food)'
+                            : 'Confirmed at check-in or checkout'}
+                      </strong>
+                    </div>
+                  )}
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Clock size={14} /> Feeding Schedule</span>
+                    <strong className="detail-val">{selectedBoarding.feedingSchedule || 'Twice a day'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><AlertCircle size={14} /> Food Allergies / Dislikes</span>
+                    <strong className="detail-val">
+                      {selectedBoarding.foodAllergies || selectedBoarding.allergies || 'None'}
+                    </strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Droplets size={14} /> Diet / Water Notes</span>
+                    <strong className="detail-val">
+                      {selectedBoarding.specialDietInstructions || selectedBoarding.waterInstructions || selectedBoarding.dietInstructions || 'None'}
+                    </strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><PawPrint size={14} /> Walking Routine</span>
+                    <strong className="detail-val">{selectedBoarding.walkingFrequency || '2 walks per day (Standard)'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Bed size={14} /> Sleeping Habits</span>
+                    <strong className="detail-val">{selectedBoarding.sleepingHabits || 'None'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Footprints size={14} /> Toilet Habits</span>
+                    <strong className="detail-val">{selectedBoarding.toiletHabits || 'Outdoor breaks'}</strong>
+                  </div>
+
+                  <div className="detail-item">
+                    <span className="detail-label"><Users size={14} /> Behaviour around pets</span>
+                    <strong className="detail-val">{selectedBoarding.behaviorNotes || 'Friendly'}</strong>
+                  </div>
+
+                  <div className="detail-item full">
+                    <span className="detail-label"><User size={14} /> Special Requests</span>
+                    <strong className="detail-val">{selectedBoarding.additionalInstructions || 'None'}</strong>
+                  </div>
+
+                  <div className="detail-item full">
+                    <span className="detail-label"><ShieldCheck size={14} /> Terms & Conditions</span>
+                    <strong className="detail-val" style={{ color: selectedBoarding.termsAccepted ? '#16a34a' : 'var(--text)' }}>
+                      {selectedBoarding.termsAccepted ? (
+                        <>
+                          ✓ Accepted & Agreed at Booking
+                          {selectedBoarding.termsSnapshot?.length ? ` (${selectedBoarding.termsSnapshot.length} conditions)` : ''}
+                        </>
+                      ) : (
+                        'Standard Paw Paw Boarding Terms'
+                      )}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Boarding Cancel Modal */}
+      <ConfirmModal
+        open={!!boardingCancelTarget}
+        title="Cancel boarding reservation?"
+        message={boardingCancelTarget ? `Are you sure you want to cancel the boarding reservation for ${boardingCancelTarget.petName} from ${boardingCancelTarget.checkInDate} to ${boardingCancelTarget.checkOutDate}?` : ''}
+        confirmText="Yes, cancel reservation"
+        cancelText="Keep reservation"
+        loading={!!boardingCancelTarget && cancellingBoardingId === boardingCancelTarget.id}
+        onCancel={() => { setBoardingCancelTarget(null); setBoardingCancelReason('') }}
+        onConfirm={cancelBoardingBooking}
+        reasonLabel="Cancellation reason"
+        reasonPlaceholder="Please tell us why you are cancelling this boarding stay"
+        reasonValue={boardingCancelReason}
+        onReasonChange={setBoardingCancelReason}
         reasonRequired
       />
       <style>{`
@@ -2080,6 +2897,473 @@ export default function MyBookings() {
           .my-booking-image-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px;
+          }
+        }
+
+        /* Boarding Details Modal Styles (Customer Portal) */
+        .boarding-modal-overlay {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          padding: 16px !important;
+          box-sizing: border-box !important;
+        }
+
+        .boarding-details-modal {
+          background: #FFFDF9;
+          border: 1.5px solid #EFE6D8;
+          border-radius: 22px;
+          width: min(calc(100vw - 24px), 620px);
+          max-height: calc(100dvh - 32px);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          box-shadow: 0 16px 48px rgba(60, 40, 20, 0.18);
+          margin: auto;
+          box-sizing: border-box;
+        }
+
+        .details-modal-header {
+          padding: 14px 18px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          border-bottom: 1.2px solid #EFE6D8;
+          background: #FFFDF9;
+          flex-shrink: 0;
+          box-sizing: border-box;
+        }
+
+        .details-header-top-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          width: 100%;
+        }
+
+        .details-title {
+          font-size: 18px;
+          font-weight: 800;
+          color: #221711;
+          margin: 0;
+          line-height: 1.25;
+          min-width: 0;
+          word-break: break-word;
+          flex: 1;
+        }
+
+        .header-actions-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-shrink: 0;
+        }
+
+        .details-header-sub-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .boarding-status-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 3px 9px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: capitalize;
+        }
+
+        .boarding-status-pill.pending {
+          background: #FEFCE8;
+          color: #B45309;
+          border: 1px solid #FEF08A;
+        }
+        .boarding-status-pill.confirmed {
+          background: #EFF8FF;
+          color: #0284C7;
+          border: 1px solid #B2DDFF;
+        }
+        .boarding-status-pill.checked_in {
+          background: #F0F9FF;
+          color: #0369A1;
+          border: 1.2px solid #BAE6FD;
+        }
+        .boarding-status-pill.checked_out {
+          background: #ECFDF3;
+          color: #027A48;
+          border: 1px solid #A6F4C5;
+        }
+        .boarding-status-pill.cancelled {
+          background: #FEF3F2;
+          color: #B42318;
+          border: 1px solid #FECDCA;
+        }
+
+        .details-ref-id {
+          font-size: 12px;
+          font-weight: 800;
+          color: #9E6B18;
+          background: #FAF3E5;
+          border: 1px solid #EEDBC2;
+          padding: 3px 8px;
+          border-radius: 6px;
+          letter-spacing: 0.5px;
+          display: inline-flex;
+          align-items: center;
+          line-height: 1;
+        }
+
+        .details-header-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 6px 11px;
+          border-radius: 9px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          text-decoration: none;
+          transition: all 0.15s;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .details-header-btn.whatsapp {
+          background: #FFFFFF;
+          border: 1.3px solid #25D366;
+          color: #128C7E;
+        }
+        .details-header-btn.whatsapp:hover {
+          background: #F0FDF4;
+        }
+
+        .details-close-btn {
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          border: 1px solid #EFE6D8;
+          background: #FFFDF9;
+          color: var(--muted);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: all 0.15s ease;
+        }
+        .details-close-btn:hover {
+          background: #FAF3E5;
+          border-color: var(--accent);
+          color: var(--text);
+        }
+
+        .details-modal-body {
+          flex: 1 1 auto;
+          padding: 16px 18px;
+          overflow-y: auto;
+          display: grid;
+          gap: 14px;
+        }
+
+        .boarding-section-card {
+          background: #FFFFFF;
+          border: 1.2px solid #EFE6D8;
+          border-radius: 16px;
+          padding: 16px 18px;
+          box-shadow: 0 2px 8px rgba(60, 40, 20, 0.02);
+        }
+
+        .section-card-header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 14px;
+        }
+
+        .section-icon-wrap {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #FAF3E3;
+          color: #B8860B;
+          flex-shrink: 0;
+        }
+
+        .section-card-header h3 {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 800;
+          color: #2B1D15;
+        }
+
+        .pet-hero-row {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding-bottom: 14px;
+          border-bottom: 1px solid #F5EFE6;
+          margin-bottom: 12px;
+        }
+
+        .pet-avatar-large {
+          width: 60px;
+          height: 60px;
+          border-radius: 14px;
+          background: #FAF3E3;
+          color: #B8860B;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          flex-shrink: 0;
+          border: 1px solid #EFE6D8;
+        }
+        .pet-avatar-large img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .pet-hero-name {
+          font-size: 18px;
+          font-weight: 800;
+          color: #221711;
+          display: block;
+        }
+
+        .pet-hero-subtitle {
+          font-size: 13px;
+          color: #7D6B60;
+          margin: 2px 0 6px;
+        }
+
+        .pet-pills-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
+        .pet-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 3px 9px;
+          border-radius: 999px;
+          background: #F8F5EE;
+          border: 1px solid #EADBCE;
+          color: #55443A;
+          font-size: 11.5px;
+          font-weight: 700;
+        }
+
+        .detail-two-col-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px 14px;
+        }
+
+        .detail-two-col-grid.care {
+          gap: 10px 14px;
+        }
+
+        .detail-item {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          min-width: 0;
+        }
+
+        .detail-item.full {
+          grid-column: 1 / -1;
+        }
+
+        .detail-label {
+          font-size: 11px;
+          font-weight: 800;
+          color: #8C786E;
+          text-transform: capitalize;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .detail-label svg {
+          color: #C08820;
+        }
+
+        .detail-val {
+          font-size: 13.5px;
+          font-weight: 700;
+          color: #2B1D15;
+          word-break: break-word;
+        }
+        .detail-val.email {
+          font-size: 12.5px;
+          font-weight: 600;
+        }
+
+        .badge-vaccine {
+          display: inline-block;
+          width: fit-content;
+          background: #ECFDF3;
+          color: #027A48;
+          border: 1px solid #A6F4C5;
+          padding: 3px 9px;
+          border-radius: 8px;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .stay-banner-strip {
+          background: #FDFBF7;
+          border: 1px solid #EFE6D8;
+          border-radius: 14px;
+          padding: 12px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 14px;
+          gap: 8px;
+        }
+
+        .stay-banner-item {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .stay-banner-item.total {
+          text-align: right;
+        }
+
+        .stay-arrow {
+          color: #C08820;
+          opacity: 0.7;
+          flex-shrink: 0;
+        }
+
+        .stay-label {
+          font-size: 11px;
+          font-weight: 800;
+          color: #8C786E;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          text-transform: uppercase;
+        }
+
+        .stay-val {
+          font-size: 14px;
+          font-weight: 800;
+          color: #221711;
+        }
+
+        .stay-val.duration {
+          color: #D97706;
+          font-size: 15px;
+        }
+
+        .stay-sub {
+          font-size: 11px;
+          color: #8C786E;
+          font-weight: 600;
+        }
+
+        .billing-three-col-row {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+          padding-top: 4px;
+        }
+
+        .billing-item {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .billing-label {
+          font-size: 11px;
+          font-weight: 800;
+          color: #8C786E;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .billing-val {
+          font-size: 15px;
+          font-weight: 800;
+          color: #2B1D15;
+        }
+        .billing-val.estimated {
+          color: #C08820;
+          font-size: 16.5px;
+        }
+        .billing-val.collected {
+          color: #16A34A;
+          font-size: 16.5px;
+        }
+
+        @media (max-width: 640px) {
+          .boarding-modal-overlay {
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 10px !important;
+          }
+
+          .boarding-details-modal {
+            width: min(calc(100vw - 20px), 620px);
+            max-height: calc(100dvh - 24px);
+            border-radius: 20px;
+            margin: auto;
+          }
+
+          .details-modal-header {
+            padding: 12px 14px 10px;
+            gap: 6px;
+          }
+
+          .details-title {
+            font-size: 16px;
+          }
+
+          .details-header-btn {
+            padding: 5px 9px;
+            font-size: 11.5px;
+          }
+
+          .details-close-btn {
+            width: 30px;
+            height: 30px;
+          }
+
+          .details-modal-body {
+            padding: 12px 14px;
+            gap: 12px;
+          }
+
+          .detail-two-col-grid {
+            grid-template-columns: 1fr;
+            gap: 10px;
+          }
+
+          .stay-banner-strip {
+            flex-wrap: wrap;
+            gap: 10px;
+          }
+
+          .billing-three-col-row {
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
           }
         }
       `}</style>

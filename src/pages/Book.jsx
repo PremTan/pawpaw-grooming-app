@@ -377,6 +377,37 @@ export default function Book() {
       }
       const ref = await addDoc(collection(db, 'bookings'), bookingData)
       setBookingRef({ id: ref.id, ...bookingData })
+
+      // Notify Admin via notifications collection and push notification
+      try {
+        const notifTitle = `New Appointment Request: ${form.petName}`
+        const notifMsg = `${form.petName} (${form.petType}) - ${bookingLabel} on ${form.date} at ${form.slot} by ${form.ownerName}`
+        await addDoc(collection(db, 'notifications'), {
+          userId: '',
+          userEmail: ADMIN_EMAIL,
+          title: notifTitle,
+          message: notifMsg,
+          type: 'booking_request',
+          bookingId: ref.id,
+          actionUrl: `/admin/bookings`,
+          read: false,
+          createdAt: serverTimestamp(),
+        })
+
+        fetch('/api/send-push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userEmail: ADMIN_EMAIL,
+            toAdmin: true,
+            title: notifTitle,
+            body: notifMsg,
+            bookingId: ref.id,
+            actionUrl: `/admin/bookings`,
+          }),
+        }).catch(() => {})
+      } catch { }
+
       setBookingToast('Thank you! Your appointment request has been submitted successfully.')
       setDone(true)
     } catch (err) { alert(err?.message || 'Booking failed. Please try again.') }

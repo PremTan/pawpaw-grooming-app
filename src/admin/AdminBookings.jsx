@@ -94,6 +94,15 @@ const canRescheduleBooking = (booking) => {
   return booking.status === 'cancelled' && booking.cancelledBy === 'admin'
 }
 
+let cachedBookingsData = null
+let cachedBookingsTime = 0
+const BOOKINGS_CACHE_TTL = 45 * 1000
+
+let cachedTeamMembers = null
+let cachedPackages = null
+let cachedBusinessInfo = null
+let cachedBookingSettings = null
+
 export default function AdminBookings() {
   const { user } = useAuth()
   const { sendNotification } = useNotifications()
@@ -134,16 +143,34 @@ export default function AdminBookings() {
   const [rescheduleBookedSlots, setRescheduleBookedSlots] = useState([])
   const [reschedulingId, setReschedulingId] = useState('')
 
-  const fetchBookings = async () => {
-    setLoading(true)
+  const fetchBookings = async (isBackground = false) => {
+    const isFresh = cachedBookingsData && (Date.now() - cachedBookingsTime < BOOKINGS_CACHE_TTL)
+    if (isFresh && !isBackground) {
+      setBookings(cachedBookingsData.bookings)
+      setServiceDetails(cachedBookingsData.serviceDetails)
+      setLoading(false)
+      // Background revalidation
+      fetchBookings(true)
+      return
+    }
+
+    if (!isBackground && !cachedBookingsData) {
+      setLoading(true)
+    }
+
     try {
       const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'))
       const [snap, serviceSnap] = await Promise.all([getDocs(q), getDocs(collection(db, 'serviceDetails'))])
       const nextServiceDetails = {}
       serviceSnap.docs.forEach(d => { nextServiceDetails[d.id] = { id: d.id, ...d.data() } })
       setServiceDetails(nextServiceDetails)
-      setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-      await syncPublicStats(db)
+      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      setBookings(rows)
+      cachedBookingsData = { bookings: rows, serviceDetails: nextServiceDetails }
+      cachedBookingsTime = Date.now()
+      setLoading(false)
+      // Sync public stats in the background without blocking the UI
+      syncPublicStats(db).catch(() => {})
     } catch {
       try {
         const [snap, serviceSnap] = await Promise.all([getDocs(collection(db, 'bookings')), getDocs(collection(db, 'serviceDetails'))])
@@ -153,23 +180,35 @@ export default function AdminBookings() {
         const r = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         r.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
         setBookings(r)
-        await syncPublicStats(db)
-      } catch {}
+        cachedBookingsData = { bookings: r, serviceDetails: nextServiceDetails }
+        cachedBookingsTime = Date.now()
+        setLoading(false)
+        syncPublicStats(db).catch(() => {})
+      } catch {
+        setLoading(false)
+      }
     }
-    setLoading(false)
   }
 
   useEffect(() => { fetchBookings() }, [])
 
   useEffect(() => {
+    if (cachedTeamMembers) {
+      setTeamMembers(cachedTeamMembers)
+      return
+    }
     async function fetchTeamMembers() {
       try {
         const snap = await getDocs(query(collection(db, 'teamMembers'), orderBy('createdAt', 'desc')))
-        setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+        const members = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        cachedTeamMembers = members
+        setTeamMembers(members)
       } catch {
         try {
           const snap = await getDocs(collection(db, 'teamMembers'))
-          setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+          const members = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+          cachedTeamMembers = members
+          setTeamMembers(members)
         } catch {}
       }
     }
@@ -177,14 +216,22 @@ export default function AdminBookings() {
   }, [])
 
   useEffect(() => {
+    if (cachedPackages) {
+      setPackageOptions(cachedPackages)
+      return
+    }
     async function fetchPackages() {
       try {
         const snap = await getDocs(query(collection(db, 'packages'), orderBy('createdAt', 'desc')))
-        setPackageOptions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
+        const pkgs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false)
+        cachedPackages = pkgs
+        setPackageOptions(pkgs)
       } catch {
         try {
           const snap = await getDocs(collection(db, 'packages'))
-          setPackageOptions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
+          const pkgs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false)
+          cachedPackages = pkgs
+          setPackageOptions(pkgs)
         } catch {}
       }
     }
@@ -289,7 +336,11 @@ export default function AdminBookings() {
   ), [bookings])
 
   const patchBooking = (id, patch) => {
-    setBookings(prev => prev.map(x => x.id === id ? { ...x, ...patch } : x))
+    setBookings(prev => {
+      const next = prev.map(x => x.id === id ? { ...x, ...patch } : x)
+      if (cachedBookingsData) cachedBookingsData.bookings = next
+      return next
+    })
     setSelectedBooking(prev => prev?.id === id ? { ...prev, ...patch } : prev)
   }
 

@@ -108,6 +108,7 @@ export default function MyPets() {
   const [form, setForm] = useState(EMPTY_PET)
   const [selectedId, setSelectedId] = useState('')
   const [editingId, setEditingId] = useState('')
+  const [showDetailModal, setShowDetailModal] = useState(false)
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -145,6 +146,35 @@ export default function MyPets() {
     return () => window.clearTimeout(t)
   }, [toastMessage])
 
+  // Prevent background scrolling while any popup or modal is open
+  useEffect(() => {
+    const isAnyModalOpen = Boolean(showDetailModal || showForm || cropData || deleteTarget)
+    if (isAnyModalOpen) {
+      const prevOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = prevOverflow
+      }
+    }
+  }, [showDetailModal, showForm, cropData, deleteTarget])
+
+  // Keyboard navigation: Close active modal on Escape
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') {
+        if (cropData) {
+          cancelCrop()
+        } else if (showForm) {
+          closeForm()
+        } else if (showDetailModal) {
+          closeDetails()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [cropData, showForm, showDetailModal])
+
   async function fetchPets() {
     setLoading(true)
     try {
@@ -177,6 +207,7 @@ export default function MyPets() {
     setEditingId('')
     setPhotoFile(null)
     setPhotoPreview('')
+    setShowDetailModal(false)
     setShowForm(true)
     setMessage('')
     setError('')
@@ -189,6 +220,11 @@ export default function MyPets() {
     setPhotoFile(null)
     setPhotoPreview('')
     setShowForm(false)
+  }
+
+  const closeDetails = () => {
+    setShowDetailModal(false)
+    setSelectedId('')
   }
 
   const startEdit = (pet) => {
@@ -210,6 +246,7 @@ export default function MyPets() {
     setPhotoFile(null)
     setPhotoPreview(pet.photoUrl || '')
     setEditingId(pet.id)
+    setShowDetailModal(false)
     setShowForm(true)
     setMessage('')
     setError('')
@@ -331,7 +368,10 @@ export default function MyPets() {
       await deleteDoc(doc(db, 'pets', pet.id))
       setPets(prev => prev.filter(item => item.id !== pet.id))
       if (editingId === pet.id) closeForm()
-      if (selectedId === pet.id) setSelectedId('')
+      if (selectedId === pet.id) {
+        setSelectedId('')
+        setShowDetailModal(false)
+      }
       setDeleteTarget(null)
       setToastType('success')
       setToastMessage('Pet profile deleted successfully.')
@@ -352,117 +392,218 @@ export default function MyPets() {
   }
 
   const petForm = (
-    <form onSubmit={savePet} className="pet-detail-card pet-form-modal">
-      <div className="pet-detail-head">
+    <form onSubmit={savePet} className="pet-modal-form">
+      {/* Header */}
+      <div className="pet-modal-header">
         <div>
-          <div style={{ color: 'var(--accent)', fontSize: '11px', fontWeight: 800, letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: '6px' }}>
-            {editingId ? 'Update Profile' : 'New Profile'}
+          <div className="pet-modal-badge">
+            {editingId ? 'UPDATE PROFILE' : 'NEW PROFILE'}
           </div>
-          <h2 style={{ color: 'var(--text)', fontSize: '24px', fontWeight: 800 }}>{editingId ? 'Edit Pet Details' : 'Add Pet'}</h2>
+          <h2 className="pet-modal-title">
+            {editingId ? 'Edit Pet Details' : 'Add Pet'}
+          </h2>
         </div>
-        <button type="button" onClick={closeForm} className="pet-icon-btn" aria-label="Close form">
-          <X size={18} />
+        <button
+          type="button"
+          onClick={closeForm}
+          className="pet-modal-close"
+          aria-label="Close form"
+        >
+          <X size={20} />
         </button>
       </div>
 
-      <div className="pet-form-layout">
-        <div>
-          <label className="photo-picker">
+      {/* Form Content Area */}
+      <div className="pet-modal-body">
+        {/* Compact Pet Photo Section */}
+        <div className="pet-edit-photo-card">
+          <label className="pet-edit-photo-preview" title="Click to upload photo">
             {photoPreview ? (
               <img src={photoPreview} alt="Pet preview" />
             ) : (
-              <span>
-                <Camera size={28} />
-                Upload Photo
-              </span>
+              <div className="pet-edit-photo-placeholder">
+                <Camera size={22} />
+                <span>Add Photo</span>
+              </div>
             )}
-            <input type="file" accept={IMAGE_FILE_ACCEPT} onChange={choosePhoto} />
+            <input
+              type="file"
+              accept={IMAGE_FILE_ACCEPT}
+              onChange={choosePhoto}
+              className="pet-file-input"
+            />
           </label>
-          {photoPreview && (
-            <button type="button" onClick={removePhoto} className="btn btn-secondary" style={{ width: '100%', marginTop: '10px', padding: '9px 12px', fontSize: '12px' }}>
-              Remove Photo
-            </button>
-          )}
+          <div className="pet-edit-photo-controls">
+            <label className="pet-photo-upload-btn">
+              <Camera size={14} />
+              <span>{photoPreview ? 'Change Photo' : 'Upload Photo'}</span>
+              <input
+                type="file"
+                accept={IMAGE_FILE_ACCEPT}
+                onChange={choosePhoto}
+                className="pet-file-input"
+              />
+            </label>
+            {photoPreview && (
+              <button
+                type="button"
+                onClick={removePhoto}
+                className="pet-photo-remove-btn"
+              >
+                <Trash2 size={13} />
+                <span>Remove Photo</span>
+              </button>
+            )}
+            <span className="pet-edit-photo-hint">JPG, PNG or WebP</span>
+          </div>
         </div>
 
-        <div style={{ display: 'grid', gap: '14px' }}>
-          <div>
-            <label style={L}>Pet Name *</label>
-            <input className="input" value={form.name} onChange={e => update('name', e.target.value)} placeholder="e.g. Bruno" />
+        {/* Form fields in logical order */}
+        <div className="pet-edit-fields">
+          {/* 1. Pet Name */}
+          <div className="pet-form-field">
+            <label className="pet-form-label">Pet Name *</label>
+            <input
+              className="input pet-form-input"
+              value={form.name}
+              onChange={e => update('name', e.target.value)}
+              placeholder="e.g. Bruno"
+              required
+            />
           </div>
 
-          <div className="pet-form-grid">
-            <div>
-              <label style={L}>Type</label>
-              <select className="input" value={form.type} onChange={e => update('type', e.target.value)}>
-                {PET_TYPES.map(type => <option key={type}>{type}</option>)}
+          {/* 2 & 3. Type and Breed */}
+          <div className="pet-form-row">
+            <div className="pet-form-field">
+              <label className="pet-form-label">Type</label>
+              <select
+                className="input pet-form-input"
+                value={form.type}
+                onChange={e => update('type', e.target.value)}
+              >
+                {PET_TYPES.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
               </select>
             </div>
-            <div>
-              <label style={L}>Breed</label>
+            <div className="pet-form-field">
+              <label className="pet-form-label">Breed</label>
               {breedOptions.length > 0 ? (
-                <select className="input" value={form.breed} onChange={e => update('breed', e.target.value)}>
-                  <option value="">Select</option>
-                  {breedOptions.map(breed => <option key={breed}>{breed}</option>)}
+                <select
+                  className="input pet-form-input"
+                  value={form.breed}
+                  onChange={e => update('breed', e.target.value)}
+                >
+                  <option value="">Select breed</option>
+                  {breedOptions.map(breed => (
+                    <option key={breed} value={breed}>{breed}</option>
+                  ))}
                 </select>
               ) : (
-                <input className="input" value={form.breed} onChange={e => update('breed', e.target.value)} placeholder="Optional" />
+                <input
+                  className="input pet-form-input"
+                  value={form.breed}
+                  onChange={e => update('breed', e.target.value)}
+                  placeholder="Optional"
+                />
               )}
             </div>
           </div>
 
-          <div className="pet-form-grid">
-            <div>
-              <label style={L}>Date of Birth</label>
-              <input type="date" className="input" value={form.dob} onChange={e => update('dob', e.target.value)} />
+          {/* 4 & 5. Date of Birth and Weight */}
+          <div className="pet-form-row">
+            <div className="pet-form-field">
+              <label className="pet-form-label">Date of Birth</label>
+              <input
+                type="date"
+                className="input pet-form-input"
+                value={form.dob}
+                onChange={e => update('dob', e.target.value)}
+              />
             </div>
-            <div>
-              <label style={L}>Weight</label>
-              <input type="number" min="0" step="0.1" className="input" value={form.weight} onChange={e => update('weight', e.target.value)} placeholder="kg" />
+            <div className="pet-form-field">
+              <label className="pet-form-label">Weight</label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                className="input pet-form-input"
+                value={form.weight}
+                onChange={e => update('weight', e.target.value)}
+                placeholder="kg"
+              />
             </div>
           </div>
 
-          <div>
-            <label style={L}>Gender</label>
-            <select className="input" value={form.gender} onChange={e => update('gender', e.target.value)}>
-              <option value="">Select</option>
-              <option>Male</option>
-              <option>Female</option>
+          {/* 6. Gender */}
+          <div className="pet-form-field">
+            <label className="pet-form-label">Gender</label>
+            <select
+              className="input pet-form-input"
+              value={form.gender}
+              onChange={e => update('gender', e.target.value)}
+            >
+              <option value="">Select gender</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
             </select>
           </div>
 
-          <div>
-            <label style={L}>Notes</label>
-            <textarea className="input" rows={4} style={{ resize: 'none' }} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Allergies, behavior notes, grooming preferences..." />
+          {/* 7. Notes */}
+          <div className="pet-form-field">
+            <label className="pet-form-label">Notes</label>
+            <textarea
+              className="input pet-form-input pet-form-textarea"
+              rows={3}
+              value={form.notes}
+              onChange={e => update('notes', e.target.value)}
+              placeholder="Allergies, behavior notes, grooming preferences..."
+            />
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px', flexWrap: 'wrap' }}>
-        <button type="button" onClick={closeForm} className="btn btn-secondary">
+      {/* Footer Actions */}
+      <div className="pet-modal-footer">
+        <button
+          type="button"
+          onClick={closeForm}
+          className="btn btn-secondary pet-modal-btn"
+        >
           Cancel
         </button>
-        <button type="submit" disabled={isBlocked || saving || !form.name.trim()} className="btn btn-primary">
-          <Save size={16} /> {optimizingPhoto ? 'Optimizing image...' : saving ? 'Saving...' : editingId ? 'Update Profile' : 'Save Pet'}
+        <button
+          type="submit"
+          disabled={isBlocked || saving || !form.name.trim()}
+          className="btn btn-primary pet-modal-btn"
+        >
+          <Save size={16} />
+          {optimizingPhoto
+            ? 'Optimizing image...'
+            : saving
+            ? 'Saving...'
+            : editingId
+            ? 'Update Profile'
+            : 'Save Pet'}
         </button>
       </div>
     </form>
   )
 
   if (loading) return (
-    <div style={{ background: 'var(--bg)', paddingTop: '80px', minHeight: '100vh' }}>
+    <div style={{ background: 'var(--bg)', paddingTop: '80px', minHeight: '50vh' }}>
       <Spinner text="Loading pets..." />
     </div>
   )
 
   return (
-    <div style={{ background: 'var(--bg)', paddingTop: '80px', minHeight: '100vh' }}>
+    <div className="my-pets-page">
       {toastMessage && (
         <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
           <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
         </div>
       )}
-      <div style={{ maxWidth: '1180px', margin: '0 auto', padding: '38px 20px 80px' }}>
+      <div className="my-pets-container">
         <div className="pets-hero">
           <div>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'var(--accent)', fontSize: '11px', fontWeight: 800, letterSpacing: '1.6px', textTransform: 'uppercase', marginBottom: '8px' }}>
@@ -512,13 +653,14 @@ export default function MyPets() {
             ) : (
               <div style={{ display: 'grid', gap: '10px' }}>
                 {pets.map(pet => {
-                  const active = selectedPet?.id === pet.id && !showForm
+                  const active = selectedPet?.id === pet.id && showDetailModal
                   return (
                     <button
                       key={pet.id}
                       type="button"
                       onClick={() => {
                         setSelectedId(pet.id)
+                        setShowDetailModal(true)
                         setShowForm(false)
                         setEditingId('')
                       }}
@@ -539,74 +681,151 @@ export default function MyPets() {
               </div>
             )}
           </aside>
-
-          {(selectedPet || pets.length === 0) && (
-            <main>
-              {selectedPet ? (
-              <section className="pet-detail-card">
-                <div className="pet-profile-top">
-                  {selectedPet.photoUrl ? (
-                    <img src={selectedPet.photoUrl} alt={selectedPet.name} className="pet-profile-photo" />
-                  ) : (
-                    <div className="pet-profile-fallback">{(selectedPet.name || 'P')[0].toUpperCase()}</div>
-                  )}
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <p style={{ color: 'var(--accent)', fontSize: '11px', fontWeight: 800, letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: '6px' }}>Pet Profile</p>
-                    <h2 style={{ color: 'var(--text)', fontSize: '30px', fontWeight: 900, marginBottom: '6px', overflowWrap: 'anywhere' }}>{selectedPet.name}</h2>
-                    <p style={{ color: 'var(--muted)', fontSize: '14px' }}>{petSummary(selectedPet)}</p>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button type="button" onClick={() => startEdit(selectedPet)} className="btn btn-secondary" style={{ padding: '10px 14px', fontSize: '13px' }}>
-                      <Edit3 size={15} /> Edit
-                    </button>
-                    <button type="button" onClick={() => setDeleteTarget(selectedPet)} className="btn btn-danger" style={{ padding: '10px 12px' }}>
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="pet-stat-grid">
-                  <div className="pet-stat">
-                    <Cake size={18} />
-                    <span>DOB</span>
-                    <strong>{selectedPet.dob || 'Not added'}</strong>
-                    {selectedPet.dob && <small>{getAge(selectedPet.dob)}</small>}
-                  </div>
-                  <div className="pet-stat">
-                    <Weight size={18} />
-                    <span>Weight</span>
-                    <strong>{selectedPet.weight ? `${selectedPet.weight} kg` : 'Not added'}</strong>
-                  </div>
-                  <div className="pet-stat">
-                    <PawPrint size={18} />
-                    <span>Gender</span>
-                    <strong>{selectedPet.gender || 'Not added'}</strong>
-                  </div>
-                </div>
-
-                <div className="pet-notes">
-                  <h3>Care Notes</h3>
-                  <p>{selectedPet.notes || 'No notes added yet.'}</p>
-                </div>
-              </section>
-              ) : (
-                <section className="pet-detail-card empty-detail">
-                  <ImagePlus size={34} />
-                  <h2>Add a pet profile</h2>
-                  <p>Create a saved profile with photo, DOB, weight, and grooming notes.</p>
-                  <button type="button" onClick={openAddForm} className="btn btn-primary">
-                    <Plus size={16} /> Add Pet
-                  </button>
-                </section>
-              )}
-            </main>
-          )}
         </div>
       </div>
 
+      {/* Pet Details Modal */}
+      {showDetailModal && selectedPet && !showForm && (
+        <div className="modal-overlay pet-modal-overlay" onClick={closeDetails}>
+          <div
+            className="modal-box pet-detail-modal"
+            onClick={event => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pet-detail-title"
+          >
+            {/* Header */}
+            <div className="pet-modal-header">
+              <div className="pet-modal-header-info">
+                <div className="pet-modal-badge">
+                  <PawPrint size={13} />
+                  <span>Pet Details</span>
+                </div>
+                <h2 id="pet-detail-title" className="pet-modal-title">
+                  {selectedPet.name}
+                </h2>
+                <p className="pet-modal-subtitle">
+                  {petSummary(selectedPet)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeDetails}
+                className="pet-modal-close"
+                aria-label="Close pet details"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="pet-modal-body">
+              {/* Pet photo */}
+              <div className="pet-detail-photo-section">
+                {selectedPet.photoUrl ? (
+                  <img
+                    src={selectedPet.photoUrl}
+                    alt={selectedPet.name}
+                    className="pet-detail-photo"
+                  />
+                ) : (
+                  <div className="pet-detail-photo-fallback">
+                    {(selectedPet.name || 'P')[0].toUpperCase()}
+                  </div>
+                )}
+              </div>
+
+              {/* Pet information */}
+              <div className="pet-detail-stats">
+                <div className="pet-detail-stat-card">
+                  <div className="pet-detail-stat-icon">
+                    <Cake size={17} />
+                  </div>
+                  <span className="pet-detail-stat-label">DOB / Age</span>
+                  <strong className="pet-detail-stat-value">
+                    {selectedPet.dob || 'Not added'}
+                  </strong>
+                  {selectedPet.dob && (
+                    <small className="pet-detail-stat-sub">
+                      {getAge(selectedPet.dob)}
+                    </small>
+                  )}
+                </div>
+
+                <div className="pet-detail-stat-card">
+                  <div className="pet-detail-stat-icon">
+                    <Weight size={17} />
+                  </div>
+                  <span className="pet-detail-stat-label">Weight</span>
+                  <strong className="pet-detail-stat-value">
+                    {selectedPet.weight ? `${selectedPet.weight} kg` : 'Not added'}
+                  </strong>
+                </div>
+
+                <div className="pet-detail-stat-card">
+                  <div className="pet-detail-stat-icon">
+                    <PawPrint size={17} />
+                  </div>
+                  <span className="pet-detail-stat-label">Gender</span>
+                  <strong className="pet-detail-stat-value">
+                    {selectedPet.gender || 'Not added'}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Care notes */}
+              <div className="pet-detail-notes-card">
+                <div className="pet-detail-notes-head">
+                  <h3 className="pet-detail-notes-title">Care & Grooming Notes</h3>
+                </div>
+                {selectedPet.notes && selectedPet.notes.trim() ? (
+                  <p className="pet-detail-notes-text">{selectedPet.notes}</p>
+                ) : (
+                  <div className="pet-detail-notes-empty">
+                    <span>No special care instructions, allergies, or notes added yet.</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="pet-detail-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDetailModal(false)
+                  startEdit(selectedPet)
+                }}
+                className="btn btn-primary pet-modal-action-edit"
+              >
+                <Edit3 size={15} /> Edit Details
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDetailModal(false)
+                  setDeleteTarget(selectedPet)
+                }}
+                className="pet-modal-action-delete"
+                aria-label={`Delete ${selectedPet.name}`}
+                title="Delete pet profile"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit / Add Pet Modal */}
       {showForm && (
-        <div className="modal-overlay pet-form-overlay" onClick={closeForm}>
-          <div className="modal-box pet-form-shell" onClick={event => event.stopPropagation()}>
+        <div className="modal-overlay pet-modal-overlay" onClick={closeForm}>
+          <div
+            className="modal-box pet-form-modal-box"
+            onClick={event => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
             {petForm}
           </div>
         </div>
@@ -655,28 +874,502 @@ export default function MyPets() {
       />
 
       <style>{`
-        .pet-form-overlay {
-          z-index: 110;
+        /* --- Modal Overlays & Animations --- */
+        .pet-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(12, 10, 7, 0.68);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          z-index: 1200;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          animation: petModalFadeIn 0.2s ease-out;
         }
 
-        .pet-form-shell {
-          max-width: 820px;
-          background: transparent;
-          border: 0;
-          border-radius: 16px;
-          overflow: visible;
-          box-shadow: none;
+        @keyframes petModalFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
 
-        .pet-form-modal {
+        @keyframes petModalSlideUp {
+          from {
+            opacity: 0;
+            transform: translateY(16px) scale(0.98);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        /* --- Shared Modal Boxes --- */
+        .pet-detail-modal {
           width: 100%;
+          max-width: 460px;
+          max-height: min(90vh, 680px);
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          position: relative;
+          animation: petModalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .pet-form-modal-box {
+          width: 100%;
+          max-width: 500px;
+          max-height: min(92vh, 740px);
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          position: relative;
+          animation: petModalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .pet-modal-form {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
           min-height: 0;
-          max-height: calc(100dvh - 32px);
+        }
+
+        /* --- Modal Header --- */
+        .pet-modal-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 14px;
+          padding: 18px 22px 14px;
+          border-bottom: 1px solid var(--border);
+          background: var(--card);
+          flex-shrink: 0;
+        }
+
+        .pet-modal-header-info {
+          min-width: 0;
+          flex: 1;
+        }
+
+        .pet-modal-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          color: var(--accent);
+          font-size: 10.5px;
+          font-weight: 800;
+          letter-spacing: 1.2px;
+          text-transform: uppercase;
+          margin-bottom: 4px;
+        }
+
+        .pet-modal-title {
+          color: var(--text);
+          font-size: 22px;
+          font-weight: 800;
+          line-height: 1.25;
+          margin: 0 0 3px;
+          overflow-wrap: anywhere;
+        }
+
+        .pet-modal-subtitle {
+          color: var(--muted);
+          font-size: 13px;
+          font-weight: 500;
+          margin: 0;
+        }
+
+        .pet-modal-close {
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--muted);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.2s ease;
+        }
+
+        .pet-modal-close:hover {
+          color: var(--text);
+          border-color: var(--accent-border);
+          background: var(--accent-bg);
+          transform: translateY(-1px);
+        }
+
+        /* --- Modal Body (Scrollable) --- */
+        .pet-modal-body {
+          padding: 18px 22px;
           overflow-y: auto;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          flex: 1;
+          min-height: 0;
         }
+
+        /* --- Pet Details: Compact Photo --- */
+        .pet-detail-photo-section {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          padding: 2px 0 4px;
+        }
+
+        .pet-detail-photo {
+          width: 108px;
+          height: 108px;
+          border-radius: 20px;
+          object-fit: cover;
+          border: 2px solid var(--accent-border);
+          box-shadow: 0 8px 22px rgba(0, 0, 0, 0.08);
+        }
+
+        .pet-detail-photo-fallback {
+          width: 108px;
+          height: 108px;
+          border-radius: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--accent-bg);
+          border: 2px solid var(--accent-border);
+          color: var(--accent);
+          font-size: 40px;
+          font-weight: 900;
+        }
+
+        /* --- Pet Details: Information Stats --- */
+        .pet-detail-stats {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 8px;
+        }
+
+        .pet-detail-stat-card {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 10px 6px;
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-width: 0;
+        }
+
+        .pet-detail-stat-icon {
+          color: var(--accent);
+          margin-bottom: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .pet-detail-stat-label {
+          display: block;
+          color: var(--muted);
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.6px;
+          text-transform: uppercase;
+          margin-bottom: 2px;
+        }
+
+        .pet-detail-stat-value {
+          display: block;
+          color: var(--text);
+          font-size: 13px;
+          font-weight: 700;
+          line-height: 1.2;
+          word-break: break-word;
+        }
+
+        .pet-detail-stat-sub {
+          display: block;
+          color: var(--muted);
+          font-size: 11px;
+          margin-top: 2px;
+        }
+
+        /* --- Pet Details: Care Notes --- */
+        .pet-detail-notes-card {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 12px 14px;
+        }
+
+        .pet-detail-notes-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 6px;
+        }
+
+        .pet-detail-notes-title {
+          color: var(--text);
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+        }
+
+        .pet-detail-notes-text {
+          color: var(--muted);
+          font-size: 13px;
+          line-height: 1.6;
+          margin: 0;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        .pet-detail-notes-empty {
+          color: var(--muted);
+          font-size: 12px;
+          font-style: italic;
+          opacity: 0.75;
+          padding: 2px 0;
+        }
+
+        /* --- Pet Details: Actions --- */
+        .pet-detail-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 14px 22px 18px;
+          border-top: 1px solid var(--border);
+          background: var(--card);
+          flex-shrink: 0;
+        }
+
+        .pet-modal-action-edit {
+          flex: 1;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 10px 16px;
+          font-size: 13px;
+          font-weight: 700;
+          border-radius: 10px;
+          min-height: 42px;
+        }
+
+        .pet-modal-action-delete {
+          width: 42px;
+          height: 42px;
+          border-radius: 10px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #ef4444;
+          background: rgba(239, 68, 68, 0.08);
+          border: 1px solid rgba(239, 68, 68, 0.22);
+          cursor: pointer;
+          transition: all 0.2s ease;
+          flex-shrink: 0;
+        }
+
+        .pet-modal-action-delete:hover {
+          background: rgba(239, 68, 68, 0.16);
+          border-color: rgba(239, 68, 68, 0.4);
+        }
+
+        /* --- Edit Pet Modal: Compact Photo Controls --- */
+        .pet-edit-photo-card {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 10px 14px;
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 14px;
+        }
+
+        .pet-edit-photo-preview {
+          width: 74px;
+          height: 74px;
+          min-width: 74px;
+          aspect-ratio: 1;
+          border-radius: 12px;
+          border: 1.5px dashed var(--accent-border);
+          background: var(--accent-bg);
+          color: var(--accent);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          overflow: hidden;
+          position: relative;
+          transition: all 0.2s ease;
+          flex-shrink: 0;
+        }
+
+        .pet-edit-photo-preview:hover {
+          border-color: var(--accent);
+          transform: scale(1.02);
+        }
+
+        .pet-edit-photo-preview img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .pet-edit-photo-placeholder {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          color: var(--accent);
+        }
+
+        .pet-file-input {
+          display: none;
+        }
+
+        .pet-edit-photo-controls {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 6px;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .pet-photo-upload-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          font-size: 12px;
+          font-weight: 700;
+          border-radius: 8px;
+          cursor: pointer;
+          border: 1px solid var(--border);
+          background: var(--card);
+          color: var(--text);
+          transition: all 0.2s ease;
+        }
+
+        .pet-photo-upload-btn:hover {
+          border-color: var(--accent-border);
+          background: var(--accent-bg);
+        }
+
+        .pet-photo-remove-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          background: transparent;
+          border: none;
+          color: var(--muted);
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+          padding: 2px 0;
+          transition: color 0.15s ease;
+        }
+
+        .pet-photo-remove-btn:hover {
+          color: #ef4444;
+        }
+
+        .pet-edit-photo-hint {
+          color: var(--muted);
+          font-size: 10px;
+          opacity: 0.8;
+        }
+
+        /* --- Edit Pet Modal: Fields --- */
+        .pet-edit-fields {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .pet-form-row {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .pet-form-field {
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+        }
+
+        .pet-form-label {
+          display: block;
+          margin-bottom: 5px;
+          color: var(--muted);
+          font-size: 10.5px;
+          font-weight: 700;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+        }
+
+        .pet-form-input {
+          width: 100%;
+          min-height: 40px;
+          border-radius: 10px;
+          font-size: 13px;
+          box-sizing: border-box;
+        }
+
+        .pet-form-textarea {
+          resize: none;
+          min-height: 68px;
+          line-height: 1.5;
+        }
+
+        /* --- Modal Footer Actions --- */
+        .pet-modal-footer {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          padding: 14px 22px 18px;
+          border-top: 1px solid var(--border);
+          background: var(--card);
+          flex-shrink: 0;
+        }
+
+        .pet-modal-btn {
+          padding: 10px 18px;
+          font-size: 13px;
+          font-weight: 700;
+          min-height: 42px;
+          border-radius: 10px;
+        }
+
+        /* --- Cropper Modal --- */
         .pet-crop-overlay {
-          z-index: 120;
+          z-index: 1300;
         }
+
         .pet-crop-modal {
           max-width: 560px;
           overflow: hidden;
@@ -746,6 +1439,24 @@ export default function MyPets() {
           padding: 16px 18px 18px;
         }
 
+        /* --- Saved Pets Page Layout --- */
+        .my-pets-page {
+          background: var(--bg);
+          padding-top: 80px;
+        }
+
+        .my-pets-container {
+          max-width: 1180px;
+          margin: 0 auto;
+          padding: 32px 20px 36px;
+        }
+
+        @media (max-width: 768px) {
+          .my-pets-container {
+            padding: 20px 16px 28px;
+          }
+        }
+
         .pets-hero {
           display: flex;
           align-items: flex-start;
@@ -756,29 +1467,16 @@ export default function MyPets() {
         }
 
         .my-pets-layout {
-          display: grid;
-          grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
-          gap: 18px;
-          align-items: start;
+          width: 100%;
+          max-width: 680px;
         }
 
-        .pets-panel,
-        .pet-detail-card {
+        .pets-panel {
           background: var(--card);
           border: 1px solid var(--border);
           border-radius: 16px;
           box-shadow: 0 18px 50px rgba(0,0,0,0.08);
-        }
-
-        .pets-panel {
           padding: 18px;
-          position: sticky;
-          top: 98px;
-        }
-
-        .pet-detail-card {
-          padding: 24px;
-          min-height: 480px;
         }
 
         .pet-icon-btn {
@@ -878,208 +1576,69 @@ export default function MyPets() {
           font-weight: 800;
         }
 
-        .pet-detail-head,
-        .pet-profile-top {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 18px;
-          margin-bottom: 24px;
-        }
-
-        .pet-form-layout {
-          display: grid;
-          grid-template-columns: minmax(180px, 240px) 1fr;
-          gap: 22px;
-        }
-
-        .pet-form-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px;
-        }
-
-        .photo-picker {
-          width: 100%;
-          aspect-ratio: 1;
-          min-height: 210px;
-          border: 1px dashed var(--accent-border);
-          border-radius: 16px;
-          background: var(--accent-bg);
-          color: var(--accent);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          overflow: hidden;
-          font-weight: 800;
-          text-align: center;
-        }
-
-        .photo-picker span {
-          display: inline-flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .photo-picker img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-
-        .photo-picker input {
-          display: none;
-        }
-
-        .pet-profile-photo,
-        .pet-profile-fallback {
-          width: 132px;
-          height: 132px;
-          border-radius: 18px;
-          flex-shrink: 0;
-        }
-
-        .pet-profile-photo {
-          object-fit: cover;
-          border: 1px solid var(--border);
-        }
-
-        .pet-profile-fallback {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--accent);
-          background: var(--accent-bg);
-          border: 1px solid var(--accent-border);
-          font-size: 42px;
-          font-weight: 900;
-        }
-
-        .pet-stat-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
-          margin-bottom: 18px;
-        }
-
-        .pet-stat {
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: 14px;
-          padding: 16px;
-          min-height: 124px;
-        }
-
-        .pet-stat svg {
-          color: var(--accent);
-          margin-bottom: 14px;
-        }
-
-        .pet-stat span {
-          display: block;
-          color: var(--muted);
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 1px;
-          text-transform: uppercase;
-          margin-bottom: 6px;
-        }
-
-        .pet-stat strong {
-          display: block;
-          color: var(--text);
-          font-size: 15px;
-          overflow-wrap: anywhere;
-        }
-
-        .pet-stat small {
-          display: block;
-          color: var(--muted);
-          font-size: 12px;
-          margin-top: 4px;
-        }
-
-        .pet-notes {
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: 14px;
-          padding: 18px;
-        }
-
-        .pet-notes h3 {
-          color: var(--text);
-          font-size: 16px;
-          font-weight: 800;
-          margin-bottom: 8px;
-        }
-
-        .pet-notes p {
-          color: var(--muted);
-          font-size: 14px;
-          line-height: 1.7;
-          white-space: pre-wrap;
-        }
-
-        .empty-detail {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          text-align: center;
-          gap: 12px;
-          color: var(--muted);
-        }
-
-        .empty-detail svg {
-          color: var(--accent);
-        }
-
-        .empty-detail h2 {
-          color: var(--text);
-          font-size: 24px;
-          font-weight: 900;
-        }
-
-        @media (max-width: 900px) {
-          .my-pets-layout {
-            grid-template-columns: 1fr !important;
+        /* --- Mobile Responsive Rules --- */
+        @media (max-width: 480px) {
+          .pet-modal-overlay {
+            padding: 12px 10px;
           }
 
-          .pets-panel {
-            position: static;
-          }
-        }
-
-        @media (max-width: 700px) {
-          .pet-detail-card {
-            padding: 18px;
+          .pet-detail-modal,
+          .pet-form-modal-box {
+            max-height: calc(100dvh - 24px);
+            border-radius: 16px;
           }
 
-          .pet-form-layout,
-          .pet-profile-top,
-          .pet-stat-grid {
-            grid-template-columns: 1fr;
+          .pet-modal-header {
+            padding: 15px 16px 12px;
           }
 
-          .pet-form-layout {
+          .pet-modal-title {
+            font-size: 19px;
+          }
+
+          .pet-modal-body {
+            padding: 14px 16px;
+            gap: 14px;
+          }
+
+          .pet-detail-photo,
+          .pet-detail-photo-fallback {
+            width: 96px;
+            height: 96px;
+          }
+
+          .pet-detail-stats {
+            gap: 6px;
+          }
+
+          .pet-detail-stat-card {
+            padding: 8px 4px;
+          }
+
+          .pet-detail-stat-value {
+            font-size: 12px;
+          }
+
+          .pet-modal-footer {
             display: grid;
+            grid-template-columns: 1fr 1.25fr;
+            padding: 12px 16px 16px;
+            gap: 8px;
           }
 
-          .pet-profile-top {
-            display: grid;
-          }
-
-          .pet-form-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .pet-profile-photo,
-          .pet-profile-fallback {
+          .pet-modal-btn {
             width: 100%;
-            height: auto;
-            aspect-ratio: 16 / 10;
+            justify-content: center;
+          }
+
+          .pet-detail-actions {
+            padding: 12px 16px 16px;
+          }
+        }
+
+        @media (max-width: 350px) {
+          .pet-form-row {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>

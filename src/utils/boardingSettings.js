@@ -1,0 +1,281 @@
+// src/utils/boardingSettings.js
+import { doc, getDoc } from 'firebase/firestore'
+
+export const BOARDING_STATUS = {
+  PENDING: 'pending',
+  CONFIRMED: 'confirmed',
+  CHECKED_IN: 'checked_in',
+  CHECKED_OUT: 'checked_out',
+  CANCELLED: 'cancelled',
+}
+
+export const DEFAULT_BOARDING_TERMS = [
+  'Advance booking is mandatory and subject to availability.',
+  'Dogs must be properly bathed and receive mandatory tick and flea treatment before boarding.',
+  'Cats must be clean and receive appropriate cat-safe parasite treatment before boarding.',
+  'Vaccination records must be shared before check-in.',
+  'Pet parents must inform us about medical conditions, allergies, medications, and behavioural issues.',
+  'Pet parents must provide any required medicines.',
+  'Regular food is included in the boarding price. Customers may bring special food, or Paw Paw may provide special food for an additional charge confirmed and collected by the Admin at checkout.',
+  'Check-in and check-out timings must be confirmed in advance.',
+  'Veterinary expenses during boarding are the pet parent\'s responsibility.',
+  'Boarding charges and applicable cancellation policies will be communicated at the time of booking.',
+]
+
+export const DEFAULT_BOARDING_TERMS_CLOSING = "Your pet's safety, comfort, and happiness are our priority! ❤️🐶🐱"
+
+export const DEFAULT_BOARDING_SETTINGS = {
+  dogDailyRate: 800,
+  catDailyRate: 600,
+  otherDailyRate: 500,
+  checkInTimeDefault: '10:00 AM',
+  checkOutTimeDefault: '11:00 PM',
+  lateCheckOutFee: 400,
+  bannerImageUrl: '',
+  maxDogCapacity: 10,
+  maxCatCapacity: 6,
+  emergencyContactRequired: true,
+  dailyWalkingCountDefault: 2,
+  showNewBadge: true,
+  acceptBookings: true,
+  active: true,
+  terms: DEFAULT_BOARDING_TERMS,
+  termsClosingMessage: DEFAULT_BOARDING_TERMS_CLOSING,
+}
+
+export const TIME_SLOT_OPTIONS = [
+  '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
+  '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM',
+  '06:00 PM', '07:00 PM', '08:00 PM', '09:00 PM', '10:00 PM',
+  '11:00 PM',
+]
+
+export const FOOD_TYPES = [
+  { id: 'packaged', label: 'Packaged Pet Food (Kibble/Wet)' },
+  { id: 'home', label: 'Fresh Home-cooked Food' },
+  { id: 'mixed', label: 'Mixed (Kibble + Fresh Food)' },
+  { id: 'special', label: 'Prescription / Special Diet' },
+]
+
+export const FOOD_PROVIDERS = [
+  { id: 'owner', label: 'Owner will provide pet food' },
+  { id: 'pawpaw', label: 'Hostel will provide pet food' },
+]
+
+export const FEEDING_FREQUENCIES = [
+  'Once a day',
+  'Twice a day (Morning & Evening)',
+  '3 times a day (Morning, Afternoon & Night)',
+  'Custom schedule',
+]
+
+export const WALKING_FREQUENCIES = [
+  '1 walk per day',
+  '2 walks per day (Standard)',
+  '3 walks per day',
+  'Indoor play only / No outdoor walks',
+]
+
+export function normalizeBoardingSettings(data = {}) {
+  let terms = DEFAULT_BOARDING_TERMS
+  if (Array.isArray(data.terms) && data.terms.length > 0) {
+    const cleaned = data.terms.map(t => String(t || '').trim()).filter(Boolean)
+    if (cleaned.length > 0) terms = cleaned
+  } else if (typeof data.terms === 'string' && data.terms.trim()) {
+    const lines = data.terms
+      .split('\n')
+      .map(l => l.replace(/^\d+[\.\)]\s*/, '').trim())
+      .filter(Boolean)
+    if (lines.length > 0) terms = lines
+  }
+
+  const termsClosingMessage = typeof data.termsClosingMessage === 'string' && data.termsClosingMessage.trim()
+    ? data.termsClosingMessage.trim()
+    : DEFAULT_BOARDING_TERMS_CLOSING
+
+  return {
+    dogDailyRate: Math.max(100, Number(data.dogDailyRate || DEFAULT_BOARDING_SETTINGS.dogDailyRate)),
+    catDailyRate: Math.max(100, Number(data.catDailyRate || DEFAULT_BOARDING_SETTINGS.catDailyRate)),
+    otherDailyRate: Math.max(100, Number(data.otherDailyRate || DEFAULT_BOARDING_SETTINGS.otherDailyRate)),
+    checkInTimeDefault: data.checkInTimeDefault || DEFAULT_BOARDING_SETTINGS.checkInTimeDefault,
+    checkOutTimeDefault: data.checkOutTimeDefault || DEFAULT_BOARDING_SETTINGS.checkOutTimeDefault,
+    lateCheckOutFee: data.lateCheckOutFee !== undefined && data.lateCheckOutFee !== null && !isNaN(Number(data.lateCheckOutFee))
+      ? Math.max(0, Number(data.lateCheckOutFee))
+      : DEFAULT_BOARDING_SETTINGS.lateCheckOutFee,
+    bannerImageUrl: String(data.bannerImageUrl || '').trim(),
+    maxDogCapacity: Math.max(1, Number(data.maxDogCapacity || DEFAULT_BOARDING_SETTINGS.maxDogCapacity)),
+    maxCatCapacity: Math.max(1, Number(data.maxCatCapacity || DEFAULT_BOARDING_SETTINGS.maxCatCapacity)),
+    emergencyContactRequired: data.emergencyContactRequired !== false,
+    showNewBadge: data.showNewBadge !== false,
+    acceptBookings: data.acceptBookings !== false,
+    active: data.active !== false && data.acceptBookings !== false,
+    terms,
+    termsClosingMessage,
+  }
+}
+
+export function parseTimeStrToMinutes(timeStr) {
+  if (!timeStr) return 23 * 60 // 11:00 PM default (1380 mins)
+  const match = String(timeStr).trim().match(/(\d+)(?::(\d+))?\s*(AM|PM)?/i)
+  if (!match) return 23 * 60
+  let hours = parseInt(match[1], 10)
+  const minutes = parseInt(match[2] || '0', 10)
+  const meridian = match[3] ? match[3].toUpperCase() : null
+  if (meridian === 'PM' && hours < 12) hours += 12
+  if (meridian === 'AM' && hours === 12) hours = 0
+  return hours * 60 + minutes
+}
+
+export function isPastStandardCheckOut(scheduledCheckOutDate, standardCheckOutTime = '11:00 PM', actualCheckOutDate = new Date()) {
+  if (!scheduledCheckOutDate) return false
+  const actual = actualCheckOutDate instanceof Date ? actualCheckOutDate : new Date(actualCheckOutDate)
+  if (isNaN(actual.getTime())) return false
+
+  const year = actual.getFullYear()
+  const month = String(actual.getMonth() + 1).padStart(2, '0')
+  const day = String(actual.getDate()).padStart(2, '0')
+  const actualDateStr = `${year}-${month}-${day}`
+
+  if (actualDateStr > scheduledCheckOutDate) {
+    return true
+  }
+  if (actualDateStr === scheduledCheckOutDate) {
+    const cutoffMinutes = parseTimeStrToMinutes(standardCheckOutTime)
+    const actualMinutes = actual.getHours() * 60 + actual.getMinutes()
+    return actualMinutes > cutoffMinutes
+  }
+  return false
+}
+
+let cachedBoardingSettings = null
+let cachedBoardingSettingsTime = 0
+const CACHE_TTL_MS = 60 * 1000
+
+export function clearBoardingSettingsCache() {
+  cachedBoardingSettings = null
+  cachedBoardingSettingsTime = 0
+}
+
+export async function fetchBoardingSettings(db, forceRefresh = false) {
+  const now = Date.now()
+  if (!forceRefresh && cachedBoardingSettings && (now - cachedBoardingSettingsTime < CACHE_TTL_MS)) {
+    return cachedBoardingSettings
+  }
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'boardingSettings'))
+    const normalized = normalizeBoardingSettings(snap.exists() ? snap.data() : {})
+    cachedBoardingSettings = normalized
+    cachedBoardingSettingsTime = now
+    return normalized
+  } catch {
+    return normalizeBoardingSettings({})
+  }
+}
+
+/**
+ * Calculates boarding stay duration and estimated pricing.
+ * Charging rule:
+ * 1. Base duration is calculated as the difference in calendar days between check-in and check-out.
+ * 2. Minimum duration is 1 day.
+ * 3. Daily rate is ₹800 for Dog, ₹600 for Cat, and ₹500 for other pets by default.
+ * 4. Duration is clearly reported as days and overnight nights.
+ */
+export function calculateBoardingStay(checkInDate, checkInTime, checkOutDate, checkOutTime, petType = 'Dog', settings = null) {
+  const config = normalizeBoardingSettings(settings || {})
+
+  const rate = petType === 'Cat'
+    ? config.catDailyRate
+    : petType === 'Dog'
+      ? config.dogDailyRate
+      : config.otherDailyRate
+
+  if (!checkInDate || !checkOutDate) {
+    return {
+      valid: false,
+      error: 'Please select both check-in and check-out dates.',
+      days: 0,
+      nights: 0,
+      dailyRate: rate,
+      estimatedTotal: 0,
+    }
+  }
+
+  const inDate = new Date(`${checkInDate}T00:00:00`)
+  const outDate = new Date(`${checkOutDate}T00:00:00`)
+
+  if (Number.isNaN(inDate.getTime()) || Number.isNaN(outDate.getTime())) {
+    return {
+      valid: false,
+      error: 'Invalid dates selected.',
+      days: 0,
+      nights: 0,
+      dailyRate: rate,
+      estimatedTotal: 0,
+    }
+  }
+
+  const diffMs = outDate.getTime() - inDate.getTime()
+  const rawDiffDays = Math.round(diffMs / (1000 * 60 * 60 * 24))
+
+  if (rawDiffDays < 0) {
+    return {
+      valid: false,
+      error: 'Check-out date must be on or after check-in date.',
+      days: 0,
+      nights: 0,
+      dailyRate: rate,
+      estimatedTotal: 0,
+    }
+  }
+
+  // Same day boarding is 1 day, 0 nights. Otherwise nights = rawDiffDays, days = rawDiffDays
+  const days = Math.max(1, rawDiffDays)
+  const nights = rawDiffDays
+  const estimatedTotal = days * rate
+
+  return {
+    valid: true,
+    error: '',
+    days,
+    nights,
+    dailyRate: rate,
+    estimatedTotal,
+    inDateFormatted: inDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+    outDateFormatted: outDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+  }
+}
+
+export function buildBoardingWhatsAppMessage(booking, shopName = 'Paw Paw Pet Grooming') {
+  const petName = booking.petName || 'Pet'
+  const petType = booking.petType || 'Dog'
+  const breed = booking.petBreed ? ` (${booking.petBreed})` : ''
+  const inStr = `${booking.checkInDate || '-'} at ${booking.checkInTime || '-'}`
+  const effectiveOutDate = booking.actualCheckOutDate || booking.checkOutDate || '-'
+  const effectiveOutTime = booking.actualCheckOutTime || booking.checkOutTime || '-'
+  const outStr = `${effectiveOutDate} at ${effectiveOutTime}${booking.actualCheckOutDate && booking.actualCheckOutDate !== booking.checkOutDate ? ' (Actual)' : ''}`
+  const idShort = (booking.id || '').slice(0, 8).toUpperCase()
+
+  const foodDetail = booking.specialFoodRequired
+    ? `Regular Food (Included) + Special Food (Provider: ${booking.specialFoodProvider === 'pawpaw' ? 'Paw Paw' : 'Owner'})`
+    : (booking.regularFoodIncluded ? 'Regular Food (Included - Paw Paw)' : (booking.foodType || 'Standard'))
+
+  return encodeURIComponent(
+    `*New Pet Boarding Request - ${shopName}*\n\n` +
+    `*Owner:* ${booking.ownerName || '-'}\n` +
+    `*Phone:* ${booking.phone || '-'}\n` +
+    `*Pet:* ${petName} - ${petType}${breed}\n` +
+    `*Check-In:* ${inStr}\n` +
+    `*Check-Out:* ${outStr}\n` +
+    `*Duration:* ${booking.stayDays || 1} Day(s) (${booking.stayNights || 0} Night(s))\n` +
+    `*Estimated Total:* Rs ${booking.estimatedTotal || 0}\n` +
+    (Number(booking.specialFoodCharge || 0) > 0 ? `*Special Food Charge:* Rs ${booking.specialFoodCharge}\n` : '') +
+    (Number(booking.lateCheckOutCharge || 0) > 0 ? `*Late Check-Out Fee:* Rs ${booking.lateCheckOutCharge}\n` : '') +
+    `*Food:* ${foodDetail}\n` +
+    (booking.feedingSchedule ? `*Feeding Schedule:* ${booking.feedingSchedule}\n` : '') +
+    (booking.foodAllergies || booking.allergies ? `*Allergies:* ${booking.foodAllergies || booking.allergies}\n` : '') +
+    (booking.emergencyContactPhone ? `*Emergency Contact:* ${booking.emergencyContactName || ''} - ${booking.emergencyContactPhone}\n` : '') +
+    (booking.specialDietInstructions ? `*Diet Notes:* ${booking.specialDietInstructions}\n` : '') +
+    (booking.additionalInstructions ? `*Instructions:* ${booking.additionalInstructions}\n` : '') +
+    `\n_Boarding Request ID: #${idShort}_`
+  )
+}
