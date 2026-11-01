@@ -23,7 +23,6 @@ export function NotificationProvider({ children }) {
   const unreadCount = notifications.filter(n => !n.read).length
 
   const PUSH_ICON = 'https://res.cloudinary.com/doawldbnh/image/upload/w_192,h_192,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png'
-  const PUSH_IMAGE = 'https://res.cloudinary.com/doawldbnh/image/upload/w_512,h_512,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png'
   const recentAlertsRef = useRef(new Map())
 
   const showBrowserNotification = async (notification) => {
@@ -45,7 +44,6 @@ export function NotificationProvider({ children }) {
     const options = {
       body: notification.message || notification.body || '',
       icon: PUSH_ICON,
-      image: PUSH_IMAGE,
       tag,
       vibrate: [200, 100, 200],
       requireInteraction: true,
@@ -89,9 +87,8 @@ export function NotificationProvider({ children }) {
   useEffect(() => {
     let unsubscribe = () => {}
     listenForForegroundMessages(payload => {
-      // When the admin is actively looking at the website, the in-app bell updates in real-time.
-      // Only pop a system OS notification if the page is currently hidden or in background.
-      if (isAdmin && typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      // Pop a system OS notification for Admin whether the page is in foreground or background
+      if (isAdmin) {
         showBrowserNotification({
           title: payload.data?.title || payload.notification?.title || 'Paw Paw Pet Grooming',
           message: payload.data?.body || payload.notification?.body || '',

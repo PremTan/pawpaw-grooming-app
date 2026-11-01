@@ -4,9 +4,9 @@ import { getMessaging } from 'firebase-admin/messaging'
 import fs from 'fs'
 import path from 'path'
 
-const ADMIN_EMAIL = 'premtandalekar12345@gmail.com'
+// Admin email dynamically resolved from environment variables (.env / Vercel envs)
+const ENV_ADMIN_EMAIL = (process.env.VITE_ADMIN_EMAIL || process.env.ADMIN_EMAIL || '').trim().toLowerCase()
 const PUSH_ICON = 'https://res.cloudinary.com/doawldbnh/image/upload/w_192,h_192,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png'
-const PUSH_IMAGE = 'https://res.cloudinary.com/doawldbnh/image/upload/w_512,h_512,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png'
 
 function getServiceAccount() {
   const envKey = process.env.FIREBASE_SERVICE_ACCOUNT
@@ -103,7 +103,8 @@ export default async function handler(req, res) {
       })
     }
 
-    const isAdminTarget = toAdmin || (userEmail && userEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase())
+    const targetEmail = String(userEmail || '').trim().toLowerCase()
+    const isAdminTarget = toAdmin || (targetEmail && (targetEmail === ENV_ADMIN_EMAIL || ENV_ADMIN_EMAIL === ''))
 
     // Restriction: Push notifications to mobile/browser notification bars are currently enabled for Admin only.
     // User notifications are stored in Firestore for in-app website display only and not pushed to user notification bars.
@@ -116,13 +117,22 @@ export default async function handler(req, res) {
       })
     }
 
-    // Admin target tokens only
-    const [adminRoleSnap, adminEmailSnap] = await Promise.all([
+    // Admin target tokens:
+    // 1) All devices registered with isAdmin: true
+    // 2) Any device registered with the active admin email from env (dev or prod)
+    // 3) Any device registered with the target admin email passed in request
+    const queries = [
       tokensCol.where('isAdmin', '==', true).get(),
-      tokensCol.where('userEmail', '==', ADMIN_EMAIL).get(),
-    ])
-    addDocsTokens(adminRoleSnap)
-    addDocsTokens(adminEmailSnap)
+    ]
+    if (ENV_ADMIN_EMAIL) {
+      queries.push(tokensCol.where('userEmail', '==', ENV_ADMIN_EMAIL).get())
+    }
+    if (targetEmail && targetEmail !== ENV_ADMIN_EMAIL) {
+      queries.push(tokensCol.where('userEmail', '==', targetEmail).get())
+    }
+
+    const querySnaps = await Promise.all(queries)
+    querySnaps.forEach(addDocsTokens)
 
     const tokens = Array.from(tokensSet)
 
@@ -136,17 +146,15 @@ export default async function handler(req, res) {
     }
 
     // 2. Multicast FCM message with high priority for Web Push
-    // Note: badge is omitted so Android doesn't flatten a full-color logo into a grey square.
-    // icon provides the small notification icon, and image / imageUrl provides the large preview.
     const cleanTopic = notificationTag.replace(/[^a-zA-Z0-9-_.~%]/g, '_').slice(0, 32)
+    const actionBtnTitle = finalUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking'
 
-    // Data-only message payload:
-    // This is the industry-standard solution for FCM Web Push on Android Chrome.
-    // By omitting top-level and webpush 'notification' objects, Chrome will NOT display its own native push.
-    // Our Service Worker acts as the single authoritative display handler via self.registration.showNotification,
-    // which guarantees that only ONE notification is ever shown.
     const multicastMessage = {
       tokens,
+      notification: {
+        title: finalTitle,
+        body: textBody,
+      },
       data: {
         title: finalTitle,
         body: textBody,
@@ -154,18 +162,37 @@ export default async function handler(req, res) {
         actionUrl: finalUrl,
         link: finalUrl,
         icon: PUSH_ICON,
-        image: PUSH_IMAGE,
         tag: notificationTag,
-        actionTitle: finalUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking',
+        actionTitle: actionBtnTitle,
       },
       android: {
         collapseKey: cleanTopic,
         priority: 'high',
+        notification: {
+          tag: notificationTag,
+          clickAction: finalUrl,
+          icon: PUSH_ICON,
+        },
       },
       webpush: {
         headers: {
           Urgency: 'high',
           Topic: cleanTopic,
+        },
+        notification: {
+          title: finalTitle,
+          body: textBody,
+          icon: PUSH_ICON,
+          tag: notificationTag,
+          renotify: true,
+          requireInteraction: true,
+          actions: [
+            { action: 'open_url', title: actionBtnTitle },
+            { action: 'dismiss', title: 'Dismiss' },
+          ],
+          data: {
+            url: finalUrl,
+          },
         },
         fcmOptions: {
           link: finalUrl,

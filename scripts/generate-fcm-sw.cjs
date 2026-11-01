@@ -52,9 +52,15 @@ firebase.initializeApp(${JSON.stringify(config, null, 2)});
 const messaging = firebase.messaging();
 
 const PUSH_ICON = 'https://res.cloudinary.com/doawldbnh/image/upload/w_192,h_192,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png';
-const PUSH_IMAGE = 'https://res.cloudinary.com/doawldbnh/image/upload/w_512,h_512,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png';
 
 messaging.onBackgroundMessage((payload) => {
+  // If the payload already has a notification object, the Firebase Web SDK
+  // displays it automatically using webpush.notification options.
+  // Avoid calling showNotification here to prevent duplicate notifications.
+  if (payload.notification) {
+    return;
+  }
+
   const data = payload.data || {};
   if (!data.title && !data.body) return;
 
@@ -66,8 +72,6 @@ messaging.onBackgroundMessage((payload) => {
   const options = {
     body: data.body || '',
     icon: data.icon || PUSH_ICON,
-    image: data.image || PUSH_IMAGE,
-    badge: PUSH_ICON,
     tag: tag,
     renotify: true,
     vibrate: [200, 100, 200],
@@ -81,7 +85,7 @@ messaging.onBackgroundMessage((payload) => {
     ],
   };
 
-  self.registration.showNotification(title, options);
+  return self.registration.showNotification(title, options);
 });
 
 self.addEventListener('install', (event) => {

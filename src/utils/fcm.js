@@ -58,17 +58,6 @@ export async function registerFcmToken(user) {
       updatedAt: serverTimestamp(),
       ...(!tokenSnap.exists() ? { createdAt: serverTimestamp() } : {}),
     }, { merge: true })
-
-    // Deactivate any older tokens for this user to prevent duplicate push sends
-    try {
-      const q = query(collection(db, 'fcmTokens'), where('userId', '==', user.uid), where('active', '==', true))
-      const olderTokensSnap = await getDocs(q)
-      olderTokensSnap.forEach(d => {
-        if (d.id !== token) {
-          updateDoc(d.ref, { active: false, supersededAt: serverTimestamp() }).catch(() => {})
-        }
-      })
-    } catch {}
   } catch (err) {
     console.warn('FCM token Firestore save failed:', err)
     return { ok: false, reason: shortError('firestore', err) }
