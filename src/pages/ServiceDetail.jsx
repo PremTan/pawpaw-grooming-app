@@ -7,20 +7,25 @@ import Spinner from '../components/Spinner'
 import { SERVICES } from '../utils/services'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { defaultServiceIconKey, renderServiceIcon } from '../utils/serviceIcons.jsx'
+import { optimizeCloudinary } from '../utils/imageOptimizer'
+
+const serviceDetailCache = new Map()
 
 export default function ServiceDetail() {
   const { serviceId } = useParams()
   const baseService = SERVICES.find(s => s.id === serviceId)
-  const [detail, setDetail] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [detail, setDetail] = useState(() => serviceDetailCache.get(serviceId) || null)
+  const [loading, setLoading] = useState(() => !serviceDetailCache.has(serviceId))
 
   useEffect(() => {
     async function fetchDetail() {
       try {
         const snap = await getDoc(doc(db, 'serviceDetails', serviceId))
-        setDetail(snap.exists() ? { id: snap.id, ...snap.data() } : null)
+        const data = snap.exists() ? { id: snap.id, ...snap.data() } : null
+        serviceDetailCache.set(serviceId, data)
+        setDetail(data)
       } catch {
-        setDetail(null)
+        if (!serviceDetailCache.has(serviceId)) setDetail(null)
       }
       setLoading(false)
     }
@@ -36,7 +41,9 @@ export default function ServiceDetail() {
       description: found.description || found.summary,
       summary: found.summary || found.description,
       iconKey: found.iconKey || defaultServiceIconKey(found.id),
-      images: Array.isArray(found.images) ? found.images.filter(i => i?.url).slice(0, 5) : [],
+      images: Array.isArray(found.images)
+        ? found.images.filter(i => i?.url).slice(0, 5).map(img => ({ ...img, url: optimizeCloudinary(img.url, 900) }))
+        : [],
     }
   }, [baseService, detail, serviceId])
 

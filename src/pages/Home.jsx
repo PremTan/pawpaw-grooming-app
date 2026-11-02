@@ -11,6 +11,7 @@ import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
 import { countOpenDays, fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
 import { fetchBoardingSettings } from '../utils/boardingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
+import { optimizeCloudinary } from '../utils/imageOptimizer'
 import { useAuth } from '../context/AuthContext'
 import { BOOKING_STATUS } from '../utils/services'
 import boardingHeroPets from '../assets/boarding-hero-pets.png'
@@ -222,20 +223,28 @@ function matchesCurrentUserBooking(booking, user) {
   return false
 }
 
+// Module-level caches to preserve state during navigation
+let cachedHeroImages = null
+let cachedVisitImages = null
+let cachedHeroFetchTime = 0
+let cachedBookingSettings = null
+let cachedBoardingSettings = null
+const HERO_CACHE_TTL = 3 * 60 * 1000
+
 function HeroSlider() {
   const { user } = useAuth()
   const [current, setCurrent] = useState(0)
-  const [heroImages, setHeroImages] = useState(null)
+  const [heroImages, setHeroImages] = useState(cachedHeroImages)
   const [loadedMap, setLoadedMap] = useState({})
   const [errorMap, setErrorMap] = useState({})
-  const [visitImages, setVisitImages] = useState(DEFAULT_VISIT_IMAGES)
+  const [visitImages, setVisitImages] = useState(cachedVisitImages || DEFAULT_VISIT_IMAGES)
   const [paused, setPaused] = useState(false)
   const [upcomingAppointment, setUpcomingAppointment] = useState(null)
   const [upcomingPetProfile, setUpcomingPetProfile] = useState(null)
   const [recommendedVisit, setRecommendedVisit] = useState(null)
   const [upcomingLoading, setUpcomingLoading] = useState(true)
-  const [bookingSettings, setBookingSettings] = useState(null)
-  const [boardingSettings, setBoardingSettings] = useState(null)
+  const [bookingSettings, setBookingSettings] = useState(cachedBookingSettings)
+  const [boardingSettings, setBoardingSettings] = useState(cachedBoardingSettings)
   const [showBoardingLearnMore, setShowBoardingLearnMore] = useState(false)
   const [rescheduleToast, setRescheduleToast] = useState('')
   const [rescheduleTarget, setRescheduleTarget] = useState(null)
@@ -713,7 +722,7 @@ function HeroSlider() {
               }}
             >
               <img
-                src={boardingSettings?.bannerImageUrl || boardingHeroPets}
+                src={boardingSettings?.bannerImageUrl ? optimizeCloudinary(boardingSettings.bannerImageUrl, 800) : boardingHeroPets}
                 alt="Dog and cat resting comfortably together in cozy pet boarding suite"
                 className="home-boarding-pets-img"
                 loading="eager"
@@ -858,7 +867,7 @@ function HeroSlider() {
                     <div className="upcoming-appointment-photo-stack">
                       <div className="upcoming-appointment-photo">
                           {petImageUrl ? (
-                            <img src={petImageUrl} alt={petNameLabel} />
+                            <img src={optimizeCloudinary(petImageUrl, 200)} alt={petNameLabel} loading="lazy" decoding="async" />
                           ) : (
                             <PawPrint size={28} />
                           )}
@@ -905,7 +914,7 @@ function HeroSlider() {
                     <div className="upcoming-appointment-photo-stack">
                       <div className="upcoming-appointment-photo">
                           {recommendedPetImageUrl ? (
-                            <img src={recommendedPetImageUrl} alt={recommendedVisit?.petName || recommendedVisit?.pet?.name || 'Pet'} />
+                            <img src={optimizeCloudinary(recommendedPetImageUrl, 200)} alt={recommendedVisit?.petName || recommendedVisit?.pet?.name || 'Pet'} loading="lazy" decoding="async" />
                           ) : (
                             <PawPrint size={28} />
                           )}
@@ -1033,7 +1042,7 @@ function HeroSlider() {
                 <div className="visit-choice-icon">{card.icon}</div>
                 <div className="visit-choice-image">
                   {card.image?.url ? (
-                    <img src={card.image.url} alt={card.image.alt} />
+                    <img src={optimizeCloudinary(card.image.url, 600)} alt={card.image.alt} loading="lazy" decoding="async" />
                   ) : (
                     <div className="visit-choice-placeholder">{card.icon}</div>
                   )}
@@ -1057,23 +1066,28 @@ function HeroSlider() {
     </section>
   )
 }
+// Module-level caches for Home page sections
+let cachedHomeSectionsData = null
+let cachedHomeSectionsTime = 0
+const HOME_SECTIONS_TTL = 3 * 60 * 1000
+
 export default function Home() {
-  const [stats, setStats]   = useState({ totalBookings: 0, totalReviews: 0, avgRating: 5, daysOpen: 7 })
-  const [reviews, setReviews] = useState([])
-  const [serviceDetails, setServiceDetails] = useState({})
-  const [galleryImages, setGalleryImages] = useState([])
+  const [stats, setStats]   = useState(() => cachedHomeSectionsData?.stats || { totalBookings: 0, totalReviews: 0, avgRating: 5, daysOpen: 7 })
+  const [reviews, setReviews] = useState(() => cachedHomeSectionsData?.reviews || [])
+  const [serviceDetails, setServiceDetails] = useState(() => cachedHomeSectionsData?.serviceDetails || {})
+  const [galleryImages, setGalleryImages] = useState(() => cachedHomeSectionsData?.galleryImages || [])
   const [galleryIndex, setGalleryIndex] = useState(0)
   const [galleryLightbox, setGalleryLightbox] = useState(null)
   const [reviewLightbox, setReviewLightbox] = useState(null)
-  const [features, setFeatures] = useState(DEFAULT_FEATURES)
-  const [packages, setPackages] = useState([])
-  const [adminPhone, setAdminPhone] = useState('')
-  const [contactAddress, setContactAddress] = useState('')
-  const [contactHours, setContactHours] = useState('')
-  const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
-  const [googleReviewUrl, setGoogleReviewUrl] = useState('')
-  const [homePetImages, setHomePetImages] = useState({ cta: '', follow: '' })
-  const [footerInfo, setFooterInfo] = useState({ tagline: '', socials: [], phones: [], email: '' })
+  const [features, setFeatures] = useState(() => cachedHomeSectionsData?.features || DEFAULT_FEATURES)
+  const [packages, setPackages] = useState(() => cachedHomeSectionsData?.packages || [])
+  const [adminPhone, setAdminPhone] = useState(() => cachedHomeSectionsData?.adminPhone || '')
+  const [contactAddress, setContactAddress] = useState(() => cachedHomeSectionsData?.contactAddress || '')
+  const [contactHours, setContactHours] = useState(() => cachedHomeSectionsData?.contactHours || '')
+  const [shopName, setShopName] = useState(() => cachedHomeSectionsData?.shopName || 'Paw Paw Pet Grooming')
+  const [googleReviewUrl, setGoogleReviewUrl] = useState(() => cachedHomeSectionsData?.googleReviewUrl || '')
+  const [homePetImages, setHomePetImages] = useState(() => cachedHomeSectionsData?.homePetImages || { cta: '', follow: '' })
+  const [footerInfo, setFooterInfo] = useState(() => cachedHomeSectionsData?.footerInfo || { tagline: '', socials: [], phones: [], email: '' })
   const [reviewIndex, setReviewIndex] = useState(0)
   const [reviewCarouselHeight, setReviewCarouselHeight] = useState(0)
   const [touchStartX, setTouchStartX] = useState(null)
@@ -1103,7 +1117,10 @@ export default function Home() {
       try {
         const details = {}
         if (detailsResult.status === 'fulfilled') {
-          detailsResult.value.docs.forEach(d => { details[d.id] = { id: d.id, ...d.data() } })
+          detailsResult.value.docs.forEach(d => {
+            const data = d.data()
+            details[d.id] = { id: d.id, ...data, iconImageUrl: data.iconImageUrl ? optimizeCloudinary(data.iconImageUrl, 300) : '' }
+          })
         }
 
         const revs = reviewsResult.status === 'fulfilled'
@@ -1157,7 +1174,10 @@ export default function Home() {
           setPackages(packagesResult.value.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
         }
         if (galleryResult.status === 'fulfilled') {
-          const galleryItems = galleryResult.value.docs.map(d => ({ id: d.id, ...d.data() })).filter(image => image.url)
+          const galleryItems = galleryResult.value.docs.map(d => {
+            const data = d.data()
+            return { id: d.id, ...data, url: data.type === 'video' ? data.url : optimizeCloudinary(data.url, 600), rawUrl: data.url }
+          }).filter(image => image.url)
           setGalleryImages(galleryItems.sort((a, b) => {
             const aPos = Number(a.position ?? -1)
             const bPos = Number(b.position ?? -1)
@@ -1301,7 +1321,7 @@ export default function Home() {
                 style={{ animationDelay: `${i * 0.06}s`, '--service-color': s.color || 'var(--accent)' }}
               >
                 <span className="home-service-visual">
-                  {s.iconImageUrl && <img src={s.iconImageUrl} alt="" loading="lazy" />}
+                  {s.iconImageUrl && <img src={s.iconImageUrl} alt="" loading="lazy" decoding="async" />}
                 </span>
                 <span className="home-service-main">
                   <strong>{s.name}</strong>
@@ -1378,7 +1398,7 @@ export default function Home() {
                 {image.type === 'video' ? (
                   <video src={image.url} muted loop playsInline autoPlay preload="metadata" />
                 ) : (
-                  <img src={image.url} alt={image.caption || 'Gallery image'} loading="lazy" />
+                  <img src={image.url} alt={image.caption || 'Gallery image'} loading="lazy" decoding="async" />
                 )}
               </button>
             ))}
@@ -1411,7 +1431,7 @@ export default function Home() {
                   <div className="home-review-person">
                     <div className="home-review-avatar">
                       {r.profileImage || r.userPhoto
-                        ? <img src={r.profileImage || r.userPhoto} alt="" />
+                        ? <img src={r.profileImage || r.userPhoto} alt="" loading="lazy" decoding="async" />
                         : <span>{(r.customerName || r.userName || 'P').slice(0, 1).toUpperCase()}</span>}
                     </div>
                     <div>
@@ -1445,7 +1465,7 @@ export default function Home() {
                           onClick={() => setReviewLightbox({ url: image, alt: `${r.customerName || r.userName || 'Review'} image ${index + 1}` })}
                           aria-label={`Open review image ${index + 1}`}
                         >
-                          <img className="home-review-image-thumb" src={image} alt={`${r.customerName || r.userName || 'Review'} image ${index + 1}`} loading="lazy" />
+                          <img className="home-review-image-thumb" src={image} alt={`${r.customerName || r.userName || 'Review'} image ${index + 1}`} loading="lazy" decoding="async" />
                         </button>
                       ))}
                     </div>
@@ -1505,7 +1525,7 @@ export default function Home() {
       <section className="home-help-cta">
         <div className="home-help-card">
           <div className="home-help-image">
-            {homePetImages.cta ? <img src={homePetImages.cta} alt="Happy pet" /> : <PawPrint size={72} />}
+            {homePetImages.cta ? <img src={homePetImages.cta} alt="Happy pet" loading="lazy" decoding="async" /> : <PawPrint size={72} />}
           </div>
           <div className="home-help-copy">
             <h2>Not sure which service to choose? <PawPrint size={20} /></h2>
@@ -1553,7 +1573,7 @@ export default function Home() {
           </div>
         </div>
         <div className="home-follow-pet">
-          {homePetImages.follow ? <img src={homePetImages.follow} alt="Paw Paw pet" /> : <PawPrint size={80} />}
+          {homePetImages.follow ? <img src={homePetImages.follow} alt="Paw Paw pet" loading="lazy" decoding="async" /> : <PawPrint size={80} />}
         </div>
         <div className="home-follow-actions">
           <h3>Follow Us</h3>
@@ -1584,7 +1604,7 @@ export default function Home() {
                 style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain', background: '#000' }}
               />
             ) : (
-              <img src={galleryLightbox.url} alt={galleryLightbox.caption || ''} style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain' }} />
+              <img src={galleryLightbox.rawUrl || galleryLightbox.url} alt={galleryLightbox.caption || ''} style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain' }} />
             )}
             {galleryLightbox.caption && <p style={{ color:'#fff', textAlign:'center', marginTop:'14px', fontSize:'15px' }}>{galleryLightbox.caption}</p>}
           </div>
