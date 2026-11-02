@@ -362,6 +362,36 @@ export default function BookBoarding() {
             actionUrl: `/admin/boarding`,
           }),
         }).catch(() => {})
+
+        if (user?.uid) {
+          const userNotifTitle = 'Boarding Request Received'
+          const userNotifMsg = `Your boarding request for ${form.petName} (${stayCalculation.days} days from ${form.checkInDate} to ${form.checkOutDate}) has been received!`
+          await addDoc(collection(db, 'notifications'), {
+            userId: user.uid,
+            userEmail: user.email || '',
+            title: userNotifTitle,
+            message: userNotifMsg,
+            type: 'boarding_request',
+            bookingId: ref.id,
+            actionUrl: '/my-bookings',
+            read: false,
+            createdAt: serverTimestamp(),
+          })
+
+          fetch('/api/send-push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: user.uid,
+              userEmail: user.email || '',
+              toAdmin: false,
+              title: userNotifTitle,
+              body: userNotifMsg,
+              bookingId: ref.id,
+              actionUrl: '/my-bookings',
+            }),
+          }).catch(() => {})
+        }
       } catch { }
 
       setToastMessage('Boarding request sent successfully!')

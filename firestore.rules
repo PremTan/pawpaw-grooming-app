@@ -107,15 +107,12 @@ service cloud.firestore {
     }
 
     match /fcmTokens/{tokenId} {
-      allow read: if isAdmin() ||
-                  (request.auth != null && request.auth.uid == resource.data.userId);
-      allow create: if isNotBlocked() &&
+      allow read: if request.auth != null;
+      allow write: if isNotBlocked() &&
+                    request.auth != null &&
                     request.resource.data.userId == request.auth.uid;
-      allow update: if isNotBlocked() &&
-                    resource.data.userId == request.auth.uid &&
-                    request.resource.data.userId == request.auth.uid;
-      allow delete: if isAdmin() ||
-                    (isNotBlocked() && request.auth.uid == resource.data.userId);
+      allow delete: if request.auth != null &&
+                    (isAdmin() || resource.data.userId == request.auth.uid);
     }
     match /pushReceipts/{id} {
       allow read, write: if isAdmin();

@@ -455,6 +455,7 @@ export default function AdminBoarding() {
 
       if (b.userId) {
         await sendNotification(b.userId, {
+          userEmail: b.userEmail || b.customerEmail || b.email || '',
           title: 'Pet Boarding Confirmed!',
           message: `Your pet ${b.petName}'s stay from ${b.checkInDate} to ${b.checkOutDate} has been confirmed. We look forward to hosting them!`,
           type: 'boarding_confirmed',
@@ -523,6 +524,7 @@ export default function AdminBoarding() {
           msg += ` Payment of ₹${money(advanceNow + foodCollectedNow)} recorded at check-in.`
         }
         await sendNotification(checkInModal.userId, {
+          userEmail: checkInModal.userEmail || checkInModal.customerEmail || checkInModal.email || '',
           title: `${checkInModal.petName} has Checked In!`,
           message: msg,
           type: 'boarding_checked_in',
@@ -681,6 +683,7 @@ export default function AdminBoarding() {
 
       if (checkoutModal.userId) {
         await sendNotification(checkoutModal.userId, {
+          userEmail: checkoutModal.userEmail || checkoutModal.customerEmail || checkoutModal.email || '',
           title: 'Pet Boarding Completed',
           message: `Thank you for trusting Paw Paw with ${checkoutModal.petName}'s stay! Hope to see them again soon.`,
           type: 'boarding_completed',
@@ -715,6 +718,7 @@ export default function AdminBoarding() {
 
       if (cancelTarget.userId) {
         await sendNotification(cancelTarget.userId, {
+          userEmail: cancelTarget.userEmail || cancelTarget.customerEmail || cancelTarget.email || '',
           title: 'Boarding Request Cancelled',
           message: `Your boarding request for ${cancelTarget.petName} was cancelled by admin. Reason: ${cancelReason.trim() || 'Suite unavailable'}`,
           type: 'boarding_cancelled',

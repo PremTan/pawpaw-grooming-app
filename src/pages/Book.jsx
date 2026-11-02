@@ -406,6 +406,36 @@ export default function Book() {
             actionUrl: `/admin/bookings`,
           }),
         }).catch(() => {})
+
+        if (user?.uid) {
+          const userNotifTitle = 'Booking Request Received'
+          const userNotifMsg = `Your appointment for ${form.petName} (${bookingLabel}) on ${form.date} at ${form.slot} has been received. We will confirm shortly!`
+          await addDoc(collection(db, 'notifications'), {
+            userId: user.uid,
+            userEmail: user.email || '',
+            title: userNotifTitle,
+            message: userNotifMsg,
+            type: 'booking_request',
+            bookingId: ref.id,
+            actionUrl: '/my-bookings',
+            read: false,
+            createdAt: serverTimestamp(),
+          })
+
+          fetch('/api/send-push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: user.uid,
+              userEmail: user.email || '',
+              toAdmin: false,
+              title: userNotifTitle,
+              body: userNotifMsg,
+              bookingId: ref.id,
+              actionUrl: '/my-bookings',
+            }),
+          }).catch(() => {})
+        }
       } catch { }
 
       setBookingToast('Thank you! Your appointment request has been submitted successfully.')
