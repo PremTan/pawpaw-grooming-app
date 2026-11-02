@@ -104,31 +104,34 @@ export default async function handler(req, res) {
     }
 
     const targetEmail = String(userEmail || '').trim().toLowerCase()
-    const isAdminTarget = toAdmin || (targetEmail && (targetEmail === ENV_ADMIN_EMAIL || ENV_ADMIN_EMAIL === ''))
+    const isAdminTarget = toAdmin || (targetEmail && (targetEmail === ENV_ADMIN_EMAIL && ENV_ADMIN_EMAIL !== ''))
 
-    // Restriction: Push notifications to mobile/browser notification bars are currently enabled for Admin only.
-    // User notifications are stored in Firestore for in-app website display only and not pushed to user notification bars.
-    if (!isAdminTarget) {
-      return res.status(200).json({
-        success: true,
-        message: 'Push notifications are currently enabled for Admin only. In-app website notification preserved.',
-        recipient: { userId, userEmail, toAdmin: false },
-        sentCount: 0,
-      })
-    }
+    const queries = []
 
-    // Admin target tokens:
-    // 1) All devices registered with isAdmin: true
-    // 2) Any device registered with the active admin email from env (dev or prod)
-    // 3) Any device registered with the target admin email passed in request
-    const queries = [
-      tokensCol.where('isAdmin', '==', true).get(),
-    ]
-    if (ENV_ADMIN_EMAIL) {
-      queries.push(tokensCol.where('userEmail', '==', ENV_ADMIN_EMAIL).get())
-    }
-    if (targetEmail && targetEmail !== ENV_ADMIN_EMAIL) {
-      queries.push(tokensCol.where('userEmail', '==', targetEmail).get())
+    if (isAdminTarget) {
+      // Admin target tokens:
+      // 1) All devices registered with isAdmin: true
+      // 2) Any device registered with the active admin email from env (dev or prod)
+      // 3) Any device registered with the target admin email passed in request
+      queries.push(tokensCol.where('isAdmin', '==', true).get())
+      if (ENV_ADMIN_EMAIL) {
+        queries.push(tokensCol.where('userEmail', '==', ENV_ADMIN_EMAIL).get())
+      }
+      if (targetEmail && targetEmail !== ENV_ADMIN_EMAIL) {
+        queries.push(tokensCol.where('userEmail', '==', targetEmail).get())
+      }
+    } else {
+      // Customer / User target tokens:
+      // Match active devices registered for this user by userId or email
+      if (userId) {
+        queries.push(tokensCol.where('userId', '==', userId).get())
+      }
+      if (targetEmail) {
+        queries.push(tokensCol.where('userEmail', '==', targetEmail).get())
+      }
+      if (userEmail && String(userEmail).trim().toLowerCase() !== String(userEmail).trim()) {
+        queries.push(tokensCol.where('userEmail', '==', String(userEmail).trim()).get())
+      }
     }
 
     const querySnaps = await Promise.all(queries)
@@ -147,7 +150,9 @@ export default async function handler(req, res) {
 
     // 2. Multicast FCM message with high priority for Web Push
     const cleanTopic = notificationTag.replace(/[^a-zA-Z0-9-_.~%]/g, '_').slice(0, 32)
-    const actionBtnTitle = finalUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking'
+    const actionBtnTitle = isAdminTarget
+      ? (finalUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking')
+      : (finalUrl.includes('boarding') ? '🐾 View Stay' : '📅 View Appointment')
 
     const multicastMessage = {
       tokens,

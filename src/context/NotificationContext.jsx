@@ -26,8 +26,6 @@ export function NotificationProvider({ children }) {
   const recentAlertsRef = useRef(new Map())
 
   const showBrowserNotification = async (notification) => {
-    // Only display browser/system notification popups for Admin; users see notifications in the website UI only
-    if (!isAdmin) return
     if (!canUseBrowserNotifications() || window.Notification.permission !== 'granted') return
 
     const tag = notification.tag || notification.bookingId || notification.id || 'pawpaw-alert'
@@ -40,7 +38,9 @@ export function NotificationProvider({ children }) {
 
     const title = notification.title || 'Paw Paw Pet Grooming'
     const targetUrl = notification.actionUrl || notification.link || '/'
-    const actionTitle = targetUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking'
+    const actionTitle = isAdmin
+      ? (targetUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking')
+      : (targetUrl.includes('boarding') ? '🐾 View Stay' : '📅 View Appointment')
     const options = {
       body: notification.message || notification.body || '',
       icon: PUSH_ICON,
@@ -75,30 +75,27 @@ export function NotificationProvider({ children }) {
   }
 
   useEffect(() => {
-    // Register FCM device push token for Admin only for now;
-    // Regular users receive in-app website notifications via Firestore
-    if (!user || !canUseBrowserNotifications() || !isAdmin) return
+    // Register FCM device push token for logged-in user (both Admin and regular customers)
+    if (!user || !canUseBrowserNotifications()) return
     registerFcmToken(user).then(result => setFcmStatus(result.ok ? 'registered' : result.reason)).catch(err => {
       console.warn('FCM registration failed:', err)
       setFcmStatus(err?.code || err?.message || 'error')
     })
-  }, [user, isAdmin])
+  }, [user])
 
   useEffect(() => {
     let unsubscribe = () => {}
     listenForForegroundMessages(payload => {
-      // Pop a system OS notification for Admin whether the page is in foreground or background
-      if (isAdmin) {
-        showBrowserNotification({
-          title: payload.data?.title || payload.notification?.title || 'Paw Paw Pet Grooming',
-          message: payload.data?.body || payload.notification?.body || '',
-          bookingId: payload.data?.bookingId || '',
-          tag: payload.data?.tag || 'pawpaw-alert',
-        })
-      }
+      showBrowserNotification({
+        title: payload.data?.title || payload.notification?.title || 'Paw Paw Pet Grooming',
+        message: payload.data?.body || payload.notification?.body || '',
+        bookingId: payload.data?.bookingId || '',
+        tag: payload.data?.tag || 'pawpaw-alert',
+        actionUrl: payload.data?.actionUrl || payload.data?.link || '/',
+      })
     }).then(nextUnsubscribe => { unsubscribe = nextUnsubscribe }).catch(err => console.warn('FCM foreground listener failed:', err))
     return () => unsubscribe()
-  }, [isAdmin])
+  }, [])
 
   useEffect(() => {
     if (!user) {
@@ -148,9 +145,6 @@ export function NotificationProvider({ children }) {
       setFcmStatus('unsupported-browser')
       return 'unsupported'
     }
-    if (!isAdmin) {
-      return 'disabled-for-users'
-    }
 
     const result = await registerFcmToken(user)
     setBrowserPermission(window.Notification.permission)
@@ -187,25 +181,21 @@ export function NotificationProvider({ children }) {
         createdAt: serverTimestamp(),
       })
 
-      // Push notifications are triggered for Admin only for now.
-      // For regular users, in-app notifications are saved in Firestore above and displayed in the website bell.
-      const shouldPushToDevice = toAdmin || (userEmail && userEmail.toLowerCase() === (ADMIN_EMAIL || '').toLowerCase())
-      if (shouldPushToDevice) {
-        fetch('/api/send-push', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: userId || '',
-            userEmail: userEmail || '',
-            toAdmin: true,
-            title,
-            body: message,
-            message,
-            bookingId,
-            actionUrl,
-          }),
-        }).catch(pushErr => console.warn('Push API dispatch error:', pushErr))
-      }
+      // Dispatch push notification to recipient's device (Admin or customer)
+      fetch('/api/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: userId || '',
+          userEmail: userEmail || '',
+          toAdmin: Boolean(toAdmin),
+          title,
+          body: message,
+          message,
+          bookingId,
+          actionUrl,
+        }),
+      }).catch(pushErr => console.warn('Push API dispatch error:', pushErr))
 
       return true
     } catch (err) {

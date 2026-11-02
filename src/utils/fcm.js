@@ -62,11 +62,13 @@ export async function registerFcmToken(user) {
   try {
     const tokenRef = doc(db, 'fcmTokens', token)
     const tokenSnap = await getDoc(tokenRef)
+    const userEmail = (user.email || '').toLowerCase()
+    const envAdminEmail = (ADMIN_EMAIL || '').toLowerCase()
     await setDoc(tokenRef, {
       token,
       userId: user.uid,
-      userEmail: user.email || '',
-      isAdmin: user.email === ADMIN_EMAIL,
+      userEmail,
+      isAdmin: userEmail === envAdminEmail,
       active: true,
       platform: navigator.userAgent || '',
       updatedAt: serverTimestamp(),

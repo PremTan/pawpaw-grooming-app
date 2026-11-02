@@ -128,7 +128,7 @@ export default function NotificationBell() {
             </div>
           </div>
 
-          {fcmStatus && !['idle', 'registered'].includes(fcmStatus) && (
+          {isAdmin && fcmStatus && !['idle', 'registered'].includes(fcmStatus) && (
             <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', color: '#ef4444', fontSize: '11px', lineHeight: 1.4 }}>
               Push not active: {fcmStatus}
             </div>
