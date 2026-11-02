@@ -96,8 +96,14 @@ export default async function handler(req, res) {
 
       if (status === 'completed') {
         completedCount++
-        const rev = Number(data?.finalTotal || data?.estimatedTotal || data?.serviceTotal || 0)
-        if (!isNaN(rev)) totalRevenue += rev
+        // Primary: actual amount collected at checkout. Fallback: finalTotal, totalAmount, or estimatedTotal
+        const collected = (data?.amountCollected !== undefined && data?.amountCollected !== null && data?.amountCollected !== '')
+          ? Number(data.amountCollected)
+          : Number(data?.finalTotal ?? data?.totalAmount ?? data?.estimatedTotal ?? data?.serviceTotal ?? 0)
+
+        if (!isNaN(collected) && collected > 0) {
+          totalRevenue += collected
+        }
       } else if (status === 'cancelled') {
         cancelledCount++
       } else {
@@ -152,7 +158,8 @@ export default async function handler(req, res) {
       textBody = parts.join(' • ')
     }
 
-    const finalUrl = '/admin'
+    const finalUrl = `/admin/bookings?date=${todayIst}`
+    const actionBtnTitle = "📅 Today's Bookings"
     const notificationTag = `pawpaw-summary-${todayIst}`
 
     // 4. Save notification in Firestore for in-app bell
@@ -223,7 +230,7 @@ export default async function handler(req, res) {
         link: finalUrl,
         icon: PUSH_ICON,
         tag: notificationTag,
-        actionTitle: '📊 View Admin',
+        actionTitle: actionBtnTitle,
       },
       android: {
         priority: 'high',
@@ -246,7 +253,7 @@ export default async function handler(req, res) {
           renotify: true,
           requireInteraction: true,
           actions: [
-            { action: 'open_url', title: '📊 View Admin' },
+            { action: 'open_url', title: actionBtnTitle },
             { action: 'dismiss', title: 'Dismiss' },
           ],
           data: {

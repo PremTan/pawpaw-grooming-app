@@ -117,6 +117,13 @@ export default function AdminBookings() {
   const [serviceF, setServiceF] = useState('all')
   const [dateFrom, setDateFrom] = useState(requestedDate)
   const [dateTo, setDateTo] = useState(requestedDate)
+
+  useEffect(() => {
+    if (requestedDate) {
+      setDateFrom(requestedDate)
+      setDateTo(requestedDate)
+    }
+  }, [requestedDate])
   const [page, setPage] = useState(1)
   const [updating, setUpdating] = useState(null)
   const [cashModal, setCashModal] = useState(null)
