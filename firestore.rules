@@ -91,8 +91,9 @@ service cloud.firestore {
       function isRecipient(data) {
         return request.auth != null &&
                (
+                 isAdmin() ||
                  request.auth.uid == data.userId ||
-                 (data.userEmail is string && data.userEmail != "" && request.auth.token.email == data.userEmail)
+                 (data.userEmail is string && data.userEmail != "" && request.auth.token.email.lower() == data.userEmail.lower())
                );
       }
 
@@ -100,10 +101,9 @@ service cloud.firestore {
       allow create: if isNotBlocked() &&
                     (request.resource.data.userId is string || request.resource.data.userEmail is string);
       allow update: if isNotBlocked() &&
-                    isRecipient(resource.data) &&
-                    request.resource.data.userId == resource.data.userId &&
-                    request.resource.data.userEmail == resource.data.userEmail;
-      allow delete: if isNotBlocked() && isRecipient(resource.data);
+                    (isAdmin() || isRecipient(resource.data)) &&
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isNotBlocked() && (isAdmin() || isRecipient(resource.data));
     }
 
     match /fcmTokens/{tokenId} {

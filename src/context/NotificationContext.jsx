@@ -156,14 +156,27 @@ export function NotificationProvider({ children }) {
     if (!user) return
     const unread = notifications.filter(n => !n.read)
     if (!unread.length) return
-    const batch = writeBatch(db)
-    unread.forEach(n => batch.update(doc(db, 'notifications', n.id), { read: true }))
-    await batch.commit()
+
+    // Optimistically update local state immediately
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+
+    // Update each document individually so a single stale/permission-blocked document doesn't fail the rest
+    const updatePromises = unread.map(n =>
+      updateDoc(doc(db, 'notifications', n.id), { read: true }).catch(err => {
+        console.warn(`Could not mark notification ${n.id} read:`, err)
+      })
+    )
+    await Promise.allSettled(updatePromises)
   }
 
   const markRead = async (id) => {
     if (!id) return
-    await updateDoc(doc(db, 'notifications', id), { read: true })
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+    try {
+      await updateDoc(doc(db, 'notifications', id), { read: true })
+    } catch (err) {
+      console.warn(`Failed to mark notification ${id} read:`, err)
+    }
   }
 
   const sendNotification = async (userId, { userEmail = '', title, message, type = 'info', bookingId = '', actionUrl = '', toAdmin = false }) => {

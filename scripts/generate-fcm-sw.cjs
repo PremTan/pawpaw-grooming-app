@@ -54,23 +54,19 @@ const messaging = firebase.messaging();
 const PUSH_ICON = 'https://res.cloudinary.com/doawldbnh/image/upload/w_192,h_192,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png';
 
 messaging.onBackgroundMessage((payload) => {
-  // If the payload already has a notification object, the Firebase Web SDK
-  // displays it automatically using webpush.notification options.
-  // Avoid calling showNotification here to prevent duplicate notifications.
-  if (payload.notification) {
-    return;
-  }
-
   const data = payload.data || {};
-  if (!data.title && !data.body) return;
+  const notification = payload.notification || {};
 
-  const title = data.title || 'Paw Paw Pet Grooming';
+  const title = notification.title || data.title || 'Paw Paw Pet Grooming';
+  const body = notification.body || data.body || '';
+  if (!title && !body) return;
+
   const tag = data.tag || data.bookingId || 'pawpaw-alert';
   const targetUrl = data.actionUrl || data.link || '/';
   const actionTitle = data.actionTitle || (targetUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking');
 
   const options = {
-    body: data.body || '',
+    body: body,
     icon: data.icon || PUSH_ICON,
     tag: tag,
     renotify: true,
