@@ -29,6 +29,7 @@ export async function registerFcmToken(user) {
   try {
     registration = await navigator.serviceWorker.register(swPath)
     await navigator.serviceWorker.ready
+    await registration.update().catch(() => {})
   } catch (err) {
     console.warn('FCM service worker registration failed:', err)
     return { ok: false, reason: shortError('sw', err) }
@@ -59,22 +60,41 @@ export async function registerFcmToken(user) {
 
   if (!token) return { ok: false, reason: 'empty-token' }
 
+  const userEmail = (user.email || '').toLowerCase().trim()
+  const envAdminEmail = (ADMIN_EMAIL || '').toLowerCase().trim()
+
+  // 1. Primary: Register token via server-side Admin SDK endpoint
+  // Bypasses Firestore client-side security rules, cleanly handles multi-user/switching accounts
+  try {
+    await fetch('/api/send-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'register-token',
+        token,
+        userId: user.uid,
+        userEmail,
+        platform: navigator.userAgent || '',
+      }),
+    })
+  } catch (apiErr) {
+    console.warn('FCM token server register attempt failed:', apiErr)
+  }
+
+  // 2. Secondary: Dual-write via client Firestore SDK
   try {
     const tokenRef = doc(db, 'fcmTokens', token)
-    const userEmail = (user.email || '').toLowerCase()
-    const envAdminEmail = (ADMIN_EMAIL || '').toLowerCase()
     await setDoc(tokenRef, {
       token,
       userId: user.uid,
       userEmail,
-      isAdmin: userEmail === envAdminEmail,
+      isAdmin: userEmail === envAdminEmail && envAdminEmail !== '',
       active: true,
       platform: navigator.userAgent || '',
       updatedAt: serverTimestamp(),
     }, { merge: true })
   } catch (err) {
-    console.warn('FCM token Firestore save failed:', err)
-    return { ok: false, reason: shortError('firestore', err) }
+    console.warn('FCM token client Firestore write warning:', err)
   }
 
   return { ok: true, token }

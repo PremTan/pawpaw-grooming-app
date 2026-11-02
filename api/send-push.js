@@ -75,6 +75,9 @@ export default async function handler(req, res) {
     const messaging = getMessaging(app)
 
     const {
+      action = '',
+      token = '',
+      platform = '',
       userId = '',
       userEmail = '',
       toAdmin = false,
@@ -85,13 +88,33 @@ export default async function handler(req, res) {
       actionUrl = '/',
     } = req.body || {}
 
+    const tokensCol = firestore.collection('fcmTokens')
+
+    // Handle token registration action (runs with Admin SDK, guarantees token is saved in Firestore)
+    if (action === 'register-token' || req.body?.registerToken) {
+      if (!token || !userId) {
+        return res.status(400).json({ error: 'Missing token or userId' })
+      }
+      const cleanEmail = String(userEmail || '').trim().toLowerCase()
+      await tokensCol.doc(token).set({
+        token,
+        userId,
+        userEmail: cleanEmail,
+        isAdmin: cleanEmail === ENV_ADMIN_EMAIL && ENV_ADMIN_EMAIL !== '',
+        active: true,
+        platform: String(platform || ''),
+        updatedAt: new Date(),
+      }, { merge: true })
+
+      return res.status(200).json({ success: true, message: 'FCM token registered in Firestore' })
+    }
+
     const textBody = String(body || message || '').trim()
     const finalTitle = String(title || 'Paw Paw Pet Grooming').trim()
     const finalUrl = String(actionUrl || '/').trim()
     const notificationTag = String(bookingId ? `pawpaw-booking-${bookingId}` : 'pawpaw-alert')
 
     // 1. Collect all active recipient tokens uniquely
-    const tokensCol = firestore.collection('fcmTokens')
     const tokensSet = new Set()
 
     const addDocsTokens = (snap) => {

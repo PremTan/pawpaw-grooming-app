@@ -144,9 +144,17 @@ export default function NotificationBell() {
             </div>
           )}
 
-          {isAdmin && fcmStatus && !['idle', 'registered'].includes(fcmStatus) && (
-            <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', color: '#ef4444', fontSize: '11px', lineHeight: 1.4 }}>
-              Push not active: {fcmStatus}
+          {fcmStatus && !['idle', 'registered'].includes(fcmStatus) && (
+            <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', color: '#ef4444', fontSize: '11px', lineHeight: 1.4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Push alerts: {fcmStatus}</span>
+              <button
+                type="button"
+                onClick={async () => { await requestBrowserPermission?.() }}
+                className="px-2 py-0.5 rounded text-xs font-semibold cursor-pointer"
+                style={{ background: '#ef4444', color: '#fff' }}
+              >
+                Retry
+              </button>
             </div>
           )}
 
