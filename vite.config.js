@@ -6,8 +6,9 @@ function apiDevPlugin() {
     name: 'api-dev-server',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        if (req.url?.startsWith('/api/send-push')) {
+        if (req.url?.startsWith('/api/send-push') || req.url?.startsWith('/api/daily-summary')) {
           try {
+            const apiFile = req.url?.startsWith('/api/daily-summary') ? './api/daily-summary.js' : './api/send-push.js'
             let body = ''
             req.on('data', chunk => { body += chunk })
             req.on('end', async () => {
@@ -18,7 +19,7 @@ function apiDevPlugin() {
               }
 
               // Load the handler dynamically
-              const { default: handler } = await import('./api/send-push.js')
+              const { default: handler } = await import(apiFile)
 
               res.status = (statusCode) => {
                 res.statusCode = statusCode
