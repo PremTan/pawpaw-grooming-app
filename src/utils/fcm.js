@@ -39,8 +39,22 @@ export async function registerFcmToken(user) {
     const messaging = getMessaging(app)
     token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration })
   } catch (err) {
-    console.warn('FCM token fetch failed:', err)
-    return { ok: false, reason: shortError('token', err) }
+    console.warn('FCM token fetch initial attempt failed:', err)
+    // If a subscription with a different VAPID key already exists (DOMException code 15: InvalidAccessError),
+    // unsubscribe the stale subscription and get a fresh token with the current environment's vapidKey.
+    try {
+      const existingSub = await registration.pushManager?.getSubscription()
+      if (existingSub) {
+        await existingSub.unsubscribe()
+        const messaging = getMessaging(app)
+        token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration })
+      } else {
+        return { ok: false, reason: shortError('token', err) }
+      }
+    } catch (retryErr) {
+      console.warn('FCM token fetch retry failed:', retryErr)
+      return { ok: false, reason: shortError('token', retryErr) }
+    }
   }
 
   if (!token) return { ok: false, reason: 'empty-token' }
