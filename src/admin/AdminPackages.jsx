@@ -32,7 +32,7 @@ const getCroppedPackageImage = async (imageSrc, pixelCrop, fileName) => {
         return
       }
       resolve(new File([blob], `${safeName}-package.jpg`, { type: 'image/jpeg' }))
-    }, 'image/jpeg', 0.9)
+    }, 'image/jpeg', 0.82)
   })
 }
 

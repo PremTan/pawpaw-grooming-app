@@ -54,6 +54,48 @@ export const getInvoiceSummary = (booking, businessInfo = {}) => {
   ].join('\n')
 }
 
+export const buildCustomerInvoiceWhatsAppMessage = (booking, businessInfo = {}) => {
+  const shopName = businessInfo.contact?.shopName || 'Paw Paw Pet Grooming'
+  const invoiceNo = getInvoiceNumber(booking)
+  const isBoarding = !!booking?.isBoarding
+  const ownerName = booking?.ownerName || 'Customer'
+  const petLabel = buildPetLabel(booking)
+  const amountPaid = Number(getAmountPaid(booking) || 0).toLocaleString('en-IN')
+
+  let detailsText = ''
+  if (isBoarding) {
+    const stayStr = `${booking?.checkInDate || '-'} to ${booking?.actualCheckOutDate || booking?.checkOutDate || '-'}`
+    const days = booking?.stayDays || 1
+    detailsText = [
+      `🐕 *Pet:* ${petLabel}`,
+      `🏨 *Stay:* ${stayStr} (${days} Day${days > 1 ? 's' : ''})`,
+    ].join('\n')
+  } else {
+    const serviceName = booking?.serviceName || 'Grooming Service'
+    const dateSlot = `${booking?.date || '-'}${booking?.slot ? ` at ${booking.slot}` : ''}`
+    detailsText = [
+      `🐕 *Pet:* ${petLabel}`,
+      `✂️ *Service:* ${serviceName}`,
+      `📅 *Date:* ${dateSlot}`,
+    ].join('\n')
+  }
+
+  const lines = [
+    `*Invoice from ${shopName}* 🐾`,
+    ``,
+    `Dear ${ownerName},`,
+    `Thank you for visiting us! Here is your invoice summary:`,
+    ``,
+    `📄 *Invoice No:* ${invoiceNo}`,
+    detailsText,
+    `💰 *Amount Paid:* Rs ${amountPaid}`,
+    ``,
+    `Your detailed PDF invoice has been generated. Please find it attached below. Have a pawsome day! 🐾`,
+  ]
+
+  return encodeURIComponent(lines.join('\n'))
+}
+
 export async function createInvoicePdfBlob(booking, businessInfo = {}) {
   const withLogo = await buildInvoicePdf(booking, businessInfo, true)
   let blob = withLogo.output('blob')
@@ -332,7 +374,10 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   const labelW = 150
   const valueW = contentWidth - 285 - 8 - labelW
   const rows = [
-    ['Sub Total', money(amountPaid)],
+    ['Sub Total', money(booking?.originalSubtotal || amountPaid)],
+    ...(booking?.couponCode ? [
+      [`Discount (${booking.couponCode})`, `-Rs ${money(booking.discountAmount || 0)}`]
+    ] : []),
     ['GST', gstAmount > 0 ? money(gstAmount) : 'Not applicable'],
     ['Adjustment', money(0)],
     ['Total', money(total)],

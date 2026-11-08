@@ -1,6 +1,6 @@
 // src/pages/MyBookings.jsx
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
 import {
   AlertCircle,
@@ -8,11 +8,15 @@ import {
   Bed,
   Building2,
   Calendar,
+  Camera,
+  Check,
   CheckCircle2,
   ChevronRight,
   ChevronDown,
   Clock,
   Droplets,
+  Edit,
+  FileText,
   Footprints,
   Home,
   IndianRupee,
@@ -21,14 +25,17 @@ import {
   MapPin,
   MessageCircle,
   Moon,
+  Package,
   PawPrint,
   Phone,
   Plus,
   PlusSquare,
   Receipt,
+  RotateCcw,
   Scale,
   Scissors,
   ShieldCheck,
+  Sparkles,
   Store,
   Syringe,
   Tag,
@@ -46,10 +53,11 @@ import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import Toast from '../components/Toast'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel, getPaymentOptionLabel } from '../utils/bookingSettings'
-import { SERVICES } from '../utils/services'
+import { SERVICES, buildWhatsAppMessage } from '../utils/services'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { buildBoardingWhatsAppMessage } from '../utils/boardingSettings'
+import { downloadInvoicePdf } from '../utils/invoicePdf'
 
 const STATUS_BADGE = {
   pending: 'badge-pending',
@@ -193,6 +201,42 @@ function serviceIdsFor(booking) {
   return booking.serviceId ? [booking.serviceId] : []
 }
 
+function getRebookUrl(booking) {
+  const params = new URLSearchParams()
+  if (Array.isArray(booking.serviceIds) && booking.serviceIds.length > 0) {
+    booking.serviceIds.forEach(id => params.append('service', id))
+  } else if (booking.serviceId) {
+    params.append('service', booking.serviceId)
+  }
+  if (Array.isArray(booking.selectedPackages) && booking.selectedPackages.length > 0) {
+    params.append('package', booking.selectedPackages[0])
+  } else if (booking.packageId) {
+    params.append('package', booking.packageId)
+  }
+  if (booking.petName) params.set('petName', booking.petName)
+  if (booking.petType) params.set('petType', booking.petType)
+  if (booking.petBreed) params.set('petBreed', booking.petBreed)
+  if (booking.bookingType) params.set('visit', booking.bookingType)
+  if (booking.address) params.set('address', booking.address)
+  if (booking.phone) params.set('phone', booking.phone)
+  if (booking.ownerName) params.set('ownerName', booking.ownerName)
+  params.set('step', '3')
+  params.set('rebook', '1')
+  return `/book?${params.toString()}`
+}
+
+function getBoardingRebookUrl(booking) {
+  if (!booking) return '/boarding'
+  const params = new URLSearchParams()
+  if (booking.id) params.set('rebookId', booking.id)
+  if (booking.petName) params.set('petName', booking.petName)
+  if (booking.petType) params.set('petType', booking.petType)
+  if (booking.petBreed) params.set('petBreed', booking.petBreed)
+  if (booking.phone) params.set('phone', booking.phone)
+  if (booking.ownerName) params.set('ownerName', booking.ownerName)
+  return `/boarding?${params.toString()}`
+}
+
 function getPriceRange(value) {
   const values = String(value || '')
     .match(/\d[\d,]*(?:\.\d+)?/g)
@@ -249,6 +293,7 @@ function petImageUrlFor(booking) {
 export default function MyBookings() {
   const { user } = useAuth()
   const { sendNotification } = useNotifications()
+  const navigate = useNavigate()
   const [bookings, setBookings] = useState([])
   const [bookingSettings, setBookingSettings] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -301,6 +346,10 @@ export default function MyBookings() {
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
   const [shopAddress, setShopAddress] = useState('')
+  const [businessInfo, setBusinessInfo] = useState(null)
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState('')
+  const [invoiceToast, setInvoiceToast] = useState('')
+  const [invoiceToastType, setInvoiceToastType] = useState('success')
 
   // Lock background scroll when boarding modal is open
   useEffect(() => {
@@ -315,11 +364,104 @@ export default function MyBookings() {
 
   useEffect(() => {
     fetchBusinessInfo(db).then(biz => {
+      setBusinessInfo(biz)
       setAdminWhatsappNumber(biz.whatsappNumber || '')
       setShopName(biz.contact?.shopName || 'Paw Paw Pet Grooming')
       setShopAddress(biz.contact?.address || '')
     })
   }, [])
+
+  useEffect(() => {
+    if (!invoiceToast) return
+    const t = window.setTimeout(() => setInvoiceToast(''), 3500)
+    return () => window.clearTimeout(t)
+  }, [invoiceToast])
+
+  const allowInvoice = bookingSettings?.allowCustomerInvoiceDownload === true
+
+  const handleDownloadGroomingInvoice = async (booking) => {
+    if (!booking) return
+    setDownloadingInvoiceId(booking.id)
+    try {
+      const invoiceData = {
+        ...booking,
+        serviceName: appointmentTitle(booking),
+        totalAmount: Number(booking.amountCollected || booking.estimatedTotal || 0),
+        amountCollected: Number(booking.amountCollected || booking.estimatedTotal || 0),
+      }
+      await downloadInvoicePdf(invoiceData, businessInfo || {})
+      setInvoiceToastType('success')
+      setInvoiceToast('Invoice downloaded successfully!')
+    } catch (err) {
+      console.error('Invoice download failed:', err)
+      setInvoiceToastType('error')
+      setInvoiceToast('Failed to download invoice. Please try again.')
+    } finally {
+      setDownloadingInvoiceId('')
+    }
+  }
+
+  const handleDownloadBoardingInvoice = async (b) => {
+    if (!b) return
+    setDownloadingInvoiceId(b.id)
+    try {
+      const stayDays = b.stayDays || 1
+      const dailyRate = Number(b.dailyRate || 0)
+      const baseAmount = stayDays * dailyRate
+      const foodCharge = Number(b.specialFoodCharge || 0)
+      const lateFee = Number(b.lateCheckOutCharge || 0)
+
+      const items = [
+        [
+          '01',
+          `Pet Boarding Stay (${stayDays} Days, ${b.stayNights || 0} Nights)\nPet: ${b.petName || 'Pet'} (${b.petType || 'Pet'})\nCheck-In: ${b.checkInDate} ${b.checkInTime || ''}\nCheck-Out: ${b.actualCheckOutDate || b.checkOutDate} ${b.actualCheckOutTime || b.checkOutTime || ''}`,
+          `${stayDays}`,
+          dailyRate.toLocaleString('en-IN'),
+          baseAmount.toLocaleString('en-IN'),
+        ],
+      ]
+      if (foodCharge > 0) {
+        items.push([
+          '02',
+          `Special Food Charge (${b.specialFoodProvider === 'pawpaw' ? 'Provided by Paw Paw' : 'Special Diet'})`,
+          '1',
+          foodCharge.toLocaleString('en-IN'),
+          foodCharge.toLocaleString('en-IN'),
+        ])
+      }
+      if (lateFee > 0) {
+        items.push([
+          '03',
+          `Late Check-Out Fee (${b.actualCheckOutTime || ''})`,
+          '1',
+          lateFee.toLocaleString('en-IN'),
+          lateFee.toLocaleString('en-IN'),
+        ])
+      }
+
+      const finalTotal = Number(b.totalAmount || (baseAmount + foodCharge + lateFee))
+      const finalCollected = Number(b.amountCollected || finalTotal)
+
+      const boardingInvoiceData = {
+        ...b,
+        isBoarding: true,
+        serviceName: 'Pet Boarding Stay',
+        date: b.checkInDate,
+        invoiceItems: items,
+        totalAmount: finalTotal,
+        amountCollected: finalCollected,
+      }
+      await downloadInvoicePdf(boardingInvoiceData, businessInfo || {})
+      setInvoiceToastType('success')
+      setInvoiceToast('Boarding invoice downloaded successfully!')
+    } catch (err) {
+      console.error('Boarding invoice download failed:', err)
+      setInvoiceToastType('error')
+      setInvoiceToast('Failed to download invoice. Please try again.')
+    } finally {
+      setDownloadingInvoiceId('')
+    }
+  }
 
   const fetchBoardings = async () => {
     if (!user?.uid) return
@@ -750,6 +892,11 @@ export default function MyBookings() {
           <Toast message={rescheduleToast} type={rescheduleToast.includes('Cannot') ? 'error' : 'success'} onClose={() => setRescheduleToast('')} />
         </div>
       )}
+      {invoiceToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300, marginTop: '144px' }}>
+          <Toast message={invoiceToast} type={invoiceToastType} onClose={() => setInvoiceToast('')} />
+        </div>
+      )}
       <div className="my-bookings-shell">
         <div className="my-bookings-header">
           <div className="my-bookings-title-group">
@@ -842,6 +989,7 @@ export default function MyBookings() {
                 {boardings.map(b => (
                   <div
                     key={b.id}
+                    className="my-boarding-card"
                     style={{
                       background: 'linear-gradient(135deg, rgba(255,255,255,0.03), rgba(212,175,55,0.04))',
                       border: '1px solid var(--border)',
@@ -903,21 +1051,41 @@ export default function MyBookings() {
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div className="my-booking-row-actions boarding-card-actions" onClick={e => e.stopPropagation()}>
                       <button
                         type="button"
                         onClick={() => setSelectedBoarding(b)}
-                        className="btn btn-secondary"
-                        style={{ fontSize: '12px', padding: '7px 12px' }}
+                        className="my-booking-card-btn secondary"
                       >
                         View Details
                       </button>
+                      {(b.status === 'checked_out' || b.status === 'completed') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigate(getBoardingRebookUrl(b), { state: { rebookBooking: b } })
+                          }}
+                          className="my-booking-card-btn primary rebook"
+                        >
+                          <RotateCcw size={12} /> Re-book
+                        </button>
+                      )}
+                      {allowInvoice && (b.status === 'checked_out' || b.status === 'completed') && (
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadBoardingInvoice(b)}
+                          disabled={downloadingInvoiceId === b.id}
+                          className="my-booking-card-btn invoice"
+                          title="Download PDF Invoice"
+                        >
+                          <FileText size={12} /> {downloadingInvoiceId === b.id ? 'Downloading...' : 'Invoice'}
+                        </button>
+                      )}
                       {(b.status === 'pending' || b.status === 'confirmed') && (
                         <button
                           type="button"
                           onClick={() => { setBoardingCancelTarget(b); setBoardingCancelReason('') }}
-                          className="btn btn-secondary"
-                          style={{ fontSize: '12px', padding: '7px 10px', color: '#ef4444' }}
+                          className="my-booking-card-btn cancel"
                         >
                           Cancel
                         </button>
@@ -1009,10 +1177,12 @@ export default function MyBookings() {
                         <small title={petLine(booking)}>{petLine(booking)}</small>
                         <div className="my-booking-row-meta">
                           <span>{getBookingTypeLabel(booking.bookingType || 'store')}</span>
-                          <span>{booking.status === 'completed'
-                            ? `Paid Amount: Rs ${money(booking.amountCollected || booking.estimatedTotal)}`
-                            : `Est. total - ${formatBookingEstimate(booking)}`
-                          }</span>
+                          <span className={booking.status === 'completed' ? 'meta-paid' : ''}>
+                            {booking.status === 'completed'
+                              ? `Paid: ₹${money(booking.amountCollected || booking.estimatedTotal)}`
+                              : `Est. total: ${formatBookingEstimate(booking)}`
+                            }
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1039,7 +1209,61 @@ export default function MyBookings() {
                       </div>
                     )}
                   </div>
-                  <ChevronRight size={17} className="my-booking-chevron" />
+
+                  {/* Dedicated Action Bar */}
+                  <div className="my-booking-row-actions" onClick={event => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBooking(booking)}
+                      className="my-booking-card-btn secondary"
+                    >
+                      View Details
+                    </button>
+                    {booking.status === 'completed' && (
+                      <button
+                        type="button"
+                        className="my-booking-card-btn primary rebook"
+                        onClick={() => navigate(getRebookUrl(booking))}
+                        title={`Book again for ${booking.petName || 'your pet'}`}
+                      >
+                        <RotateCcw size={12} />
+                        <span>Re-book</span>
+                      </button>
+                    )}
+                    {allowInvoice && booking.status === 'completed' && (
+                      <button
+                        type="button"
+                        className="my-booking-card-btn invoice"
+                        onClick={() => handleDownloadGroomingInvoice(booking)}
+                        disabled={downloadingInvoiceId === booking.id}
+                        title="Download Invoice PDF"
+                      >
+                        <FileText size={12} />
+                        <span>{downloadingInvoiceId === booking.id ? 'Downloading...' : 'Invoice'}</span>
+                      </button>
+                    )}
+                    {canRescheduleBooking(booking) && (
+                      <button
+                        type="button"
+                        className="my-booking-card-btn reschedule"
+                        onClick={() => openRescheduleModal(booking)}
+                        disabled={reschedulingId === booking.id}
+                      >
+                        <Clock size={12} />
+                        <span>Reschedule</span>
+                      </button>
+                    )}
+                    {canCancelBooking(booking, bookingSettings) && (
+                      <button
+                        type="button"
+                        className="my-booking-card-btn cancel"
+                        disabled={cancellingId === booking.id}
+                        onClick={() => { setCancelReason(''); setCancelTarget(booking) }}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
               )
             })}
@@ -1061,324 +1285,593 @@ export default function MyBookings() {
         </div>
       )}
 
-      {selectedBooking && (
-        <div className="my-booking-modal-overlay" onClick={() => setSelectedBooking(null)}>
-          <section className="my-booking-modal" onClick={event => event.stopPropagation()}>
-            <div className="my-booking-modal-head">
-              <div>
-                <div className="my-booking-modal-badges">
-                  <span className={`badge ${STATUS_BADGE[selectedBooking.status] || 'badge-pending'}`}>{statusLabel(selectedBooking.status)}</span>
+            {selectedBooking && (() => {
+        const selectedServices = serviceNamesFor(selectedBooking)
+        const selectedPackages = Array.isArray(selectedBooking.packageNames) && selectedBooking.packageNames.length
+          ? selectedBooking.packageNames
+          : (selectedBooking.packageName ? [selectedBooking.packageName] : [])
+        const hasServicesOrPackages = selectedServices.length > 0 || selectedPackages.length > 0
+        const isCompleted = selectedBooking.status === 'completed'
+        const isCancelled = selectedBooking.status === 'cancelled'
+        const isPending = selectedBooking.status === 'pending'
+        const isConfirmed = selectedBooking.status === 'confirmed'
+        const canResched = canRescheduleBooking(selectedBooking)
+        const canCancel = canCancelBooking(selectedBooking, bookingSettings)
+
+        return (
+          <div className="my-booking-modal-overlay boarding-modal-overlay" onClick={() => setSelectedBooking(null)}>
+            <div className="boarding-details-modal grooming-details-modal" onClick={event => event.stopPropagation()}>
+              
+              {/* Modal Header */}
+              <div className="details-modal-header">
+                <div className="details-header-top-row">
+                  <h2 className="details-title">Grooming Appointment</h2>
+
+                  <div className="header-actions-row">
+                    {adminWhatsappNumber && (
+                      <a
+                        href={`https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(selectedBooking, shopName)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="details-header-btn whatsapp"
+                        aria-label="Send details to WhatsApp"
+                      >
+                        <MessageCircle size={14} /> <span>WhatsApp</span>
+                      </a>
+                    )}
+
+                    <button
+                      type="button"
+                      className="details-close-btn"
+                      onClick={() => setSelectedBooking(null)}
+                      aria-label="Close modal"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="details-header-sub-row">
+                  <span className={`boarding-status-pill ${selectedBooking.status || 'pending'}`}>
+                    {isCompleted && <CheckCircle2 size={13} />}
+                    {isConfirmed && <Check size={13} />}
+                    {isCancelled && <X size={13} />}
+                    {isPending && <Clock size={13} />}
+                    <span>{statusLabel(selectedBooking.status)}</span>
+                  </span>
                   {(selectedBooking.rescheduleCount || 0) > 0 && (
-                    <span className="badge badge-rescheduled">
-                      Rescheduled
+                    <span className="boarding-status-pill rescheduled">
+                      <Clock size={13} />
+                      <span>Rescheduled</span>
                     </span>
                   )}
-                </div>
-                <h2>{appointmentTitle(selectedBooking)}</h2>
-                <p>{shortId(selectedBooking.id)} • {selectedBooking.date || '-'} • {formatSlot(selectedBooking.slot)}</p>
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {selectedBooking.status === 'pending' && (
-                  <button type="button" className="btn btn-ghost" onClick={() => openEditAppointment(selectedBooking)}>Edit</button>
-                )}
-                <button type="button" onClick={() => setSelectedBooking(null)} aria-label="Close booking details">
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-
-            <div className="my-booking-modal-hero">
-              <div className="my-booking-modal-hero-content">
-                {petImageUrlFor(selectedBooking) ? <img className="my-booking-modal-pet-image" src={petImageUrlFor(selectedBooking)} alt={petLine(selectedBooking)} /> : <div className="my-booking-modal-pet-image placeholder"><PawPrint size={18} /></div>}
-                <div>
-                  <div className="my-booking-modal-hero-label">Appointment overview</div>
-                  <div className="my-booking-modal-hero-title">{appointmentTitle(selectedBooking)}</div>
+                  <span className="details-ref-id">{shortId(selectedBooking.id)}</span>
                 </div>
               </div>
-              <div className="my-booking-modal-hero-meta">
-                <span>{getBookingTypeLabel(selectedBooking.bookingType || 'store')}</span>
-                {selectedBooking.phone ? <span>{selectedBooking.phone}</span> : null}
-              </div>
-            </div>
 
-            <div className="my-booking-detail-grid">
-              <Detail label="Pet" value={selectedBooking.petName || '-'} />
-              <Detail label="Breed" value={selectedBooking.petBreed || selectedBooking.petType || '-'} />
-              <Detail label="Date" value={selectedBooking.date || '-'} icon={<Calendar size={15} />} />
-              <Detail label="Time" value={formatSlot(selectedBooking.slot)} icon={<Clock size={15} />} />
-              {selectedBooking.status === 'cancelled' && <Detail label="Cancelled By" value={selectedBooking.cancelledBy === 'admin' ? 'Paw Paw' : 'You'} />}
-              {selectedBooking.status === 'cancelled' && selectedBooking.cancellationReason && <Detail label="Reason" value={selectedBooking.cancellationReason} />}
-              <Detail label="Visit" value={getBookingTypeLabel(selectedBooking.bookingType || 'store')} icon={(selectedBooking.bookingType || 'store') === 'home' ? <Home size={15} /> : <Store size={15} />} />
-              {selectedBooking.address && <Detail label="Address" value={selectedBooking.address} />}
-            </div>
+              {/* Modal Scrollable Body */}
+              <div className="details-modal-body">
 
-            {selectedBooking.status === 'pending' && editingAppointmentId === selectedBooking.id ? (
-              <div className="my-booking-edit-section">
-                <h3>Edit appointment</h3>
-                <div className="my-booking-edit-grid">
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label className="input-label" style={{ display: 'block', marginBottom: '8px' }}>Services & Packages</label>
-                    <details className="my-booking-dropdown">
-                      <summary>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, width: '100%', minWidth: 0 }}>
-                          <div className="my-booking-dropdown-summary" title={(() => {
-                            const names = []
-                            selectedEditServices.forEach(s => names.push(s.name))
-                            selectedEditPackages.forEach(p => names.push(p.name))
-                            return names.join(', ')
-                          })()}>
-                            {(() => {
-                              const names = []
-                              selectedEditServices.forEach(s => names.push(s.name))
-                              selectedEditPackages.forEach(p => names.push(p.name))
-                              if (!names.length) return 'Edit Services / Packages'
-                              return names.join(', ')
-                            })()}
-                          </div>
-                          <div className="my-booking-dropdown-toggle" aria-hidden>
-                            <ChevronDown size={16} className="my-booking-dropdown-icon" />
-                          </div>
-                        </div>
-                      </summary>
-                      <div style={{ padding: '10px', display: 'grid', gap: '10px' }}>
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '8px', background: 'var(--card)', maxHeight: '340px', overflow: 'auto' }}>
-                          <div style={{ display: 'grid', gap: '10px' }}>
-                            <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>Services / Packages</div>
-                            <div className="my-booking-checkbox-list" style={{ display: 'grid', gap: '4px' }}>
-                              {[...visibleServices.map(service => ({
-                                id: service.id,
-                                name: service.name,
-                                priceLabel: formatRangeLabel(getPriceRange(service.price || service.basePrice)) || (service.basePrice ? `Rs ${service.basePrice}` : ''),
-                                checked: editServiceIds.includes(service.id),
-                                onChange: () => setEditServiceIds(prev => prev.includes(service.id) ? prev.filter(id => id !== service.id) : [...prev, service.id]),
-                              })), ...packages.map(pkg => ({
-                                id: pkg.id,
-                                name: pkg.name,
-                                priceLabel: formatRangeLabel(getPackagePriceRange(pkg)) || (pkg.price ? String(pkg.price) : ''),
-                                checked: editPackageIds.includes(pkg.id),
-                                onChange: () => setEditPackageIds(prev => prev.includes(pkg.id) ? prev.filter(id => id !== pkg.id) : [...prev, pkg.id]),
-                              }))].map(item => (
-                                <label key={item.id} className="my-booking-checkbox-item" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '6px 4px', justifyContent: 'space-between' }}>
-                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: '1 1 0', minWidth: 0 }}>
-                                    <input type="checkbox" checked={item.checked} onChange={item.onChange} style={{ flexShrink: 0, marginTop: 4 }} />
-                                    <span style={{ fontSize: '14px', flex: '1 1 0', minWidth: 0, wordBreak: 'break-word' }}>{item.name}</span>
-                                  </div>
-                                  <div style={{ color: 'var(--muted)', fontSize: '13px', whiteSpace: 'nowrap', flexShrink: 0 }}>{item.priceLabel}</div>
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </details>
-                  </div>
-                </div>
-
-                <div className="my-booking-edit-grid" style={{ marginTop: '12px' }}>
-                  <div>
-                    <label className="input-label" style={{ display: 'block', marginBottom: '8px' }}>Visit Type</label>
-                    <select className="input" value={editBookingType} onChange={(event) => setEditBookingType(event.target.value)}>
-                      <option value="store">In Store</option>
-                      <option value="home">Home Visit</option>
-                    </select>
-                  </div>
-                  {editBookingType === 'home' && (
-                    <div>
-                      <label className="input-label" style={{ display: 'block', marginBottom: '8px' }}>Address</label>
-                      <textarea className="input" rows="3" value={editAddress} onChange={(event) => setEditAddress(event.target.value)} placeholder="Enter your address for the home visit" />
+                {/* Card 1: Services & Appointment Overview */}
+                <div className="boarding-section-card">
+                  <div className="section-card-header">
+                    <div className="section-icon-wrap scissors">
+                      <Scissors size={16} />
                     </div>
-                  )}
-                </div>
-
-                <div className="my-booking-edit-summary" style={{ marginTop: '12px' }}>
-                  <span>Estimated Total</span>
-                  <strong>{editTotalPrice() || 'Rs 0'}</strong>
-                </div>
-
-                <div className="my-booking-modal-actions" style={{ marginTop: '16px' }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setEditingAppointmentId(null)}>Cancel</button>
-                  <button type="button" className="btn btn-primary" onClick={saveEditAppointment} disabled={savingEdit || (editServiceIds.length === 0 && editPackageIds.length === 0) || (editBookingType === 'home' && !String(editAddress || '').trim())}>
-                    {savingEdit ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Full screen edit overlay (opened via Edit) */}
-            {editingAppointmentId === selectedBooking.id && editFullOpen && (
-              <div className="my-booking-edit-full-overlay" onClick={() => { try { window.history.back() } catch(e){ setEditFullOpen(false); setEditingAppointmentId(null) } }}>
-                <div className="my-booking-edit-full" onClick={e => e.stopPropagation()}>
-                  <div className="my-booking-edit-full-head">
-                    <button type="button" className="icon-btn" onClick={() => { try { window.history.back() } catch(e){ setEditFullOpen(false); setEditingAppointmentId(null) } }} aria-label="Back"><ChevronRight style={{ transform: 'rotate(180deg)' }} size={18} /></button>
-                    <h3>Edit appointment</h3>
+                    <h3>Services & Appointment</h3>
                   </div>
-                  <div className="my-booking-edit-full-body">
-                    <div style={{ marginBottom: 12 }}>
-                      <label className="input-label">Services & Packages</label>
-                      <details className="my-booking-dropdown">
-                        <summary>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, width: '100%', minWidth: 0 }}>
-                            <div className="my-booking-dropdown-summary" title={(() => {
-                              const names = []
-                              selectedEditServices.forEach(s => names.push(s.name))
-                              selectedEditPackages.forEach(p => names.push(p.name))
-                              return names.join(', ')
-                            })()}>
-                              {(() => {
-                                const names = []
-                                selectedEditServices.forEach(s => names.push(s.name))
-                                selectedEditPackages.forEach(p => names.push(p.name))
-                                if (!names.length) return 'Edit Services / Packages'
-                                return names.join(', ')
-                              })()}
-                            </div>
-                            <div className="my-booking-dropdown-toggle" aria-hidden>
-                              <ChevronDown size={16} className="my-booking-dropdown-icon" />
-                            </div>
-                          </div>
-                        </summary>
-                        <div style={{ padding: '10px', display: 'grid', gap: '10px' }}>
-                          <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '8px', background: 'var(--card)', maxHeight: '520px', overflow: 'auto' }}>
-                            <div style={{ display: 'grid', gap: '10px' }}>
-                              <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>Services / Packages</div>
-                              <div className="my-booking-checkbox-list" style={{ display: 'grid', gap: '4px' }}>
-                                {[...visibleServices.map(service => ({
-                                  id: service.id,
-                                  name: service.name,
-                                  priceLabel: formatRangeLabel(getPriceRange(service.price || service.basePrice)) || (service.basePrice ? `Rs ${service.basePrice}` : ''),
-                                  checked: editServiceIds.includes(service.id),
-                                  onChange: () => setEditServiceIds(prev => prev.includes(service.id) ? prev.filter(id => id !== service.id) : [...prev, service.id]),
-                                })), ...packages.map(pkg => ({
-                                  id: pkg.id,
-                                  name: pkg.name,
-                                  priceLabel: formatRangeLabel(getPackagePriceRange(pkg)) || (pkg.price ? String(pkg.price) : ''),
-                                  checked: editPackageIds.includes(pkg.id),
-                                  onChange: () => setEditPackageIds(prev => prev.includes(pkg.id) ? prev.filter(id => id !== pkg.id) : [...prev, pkg.id]),
-                                }))].map(item => (
-                                  <label key={item.id} className="my-booking-checkbox-item" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '8px 6px', justifyContent: 'space-between' }}>
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: '1 1 0', minWidth: 0 }}>
-                                      <input type="checkbox" checked={item.checked} onChange={item.onChange} style={{ flexShrink: 0, marginTop: 4 }} />
-                                      <span style={{ fontSize: '14px', flex: '1 1 0', minWidth: 0, wordBreak: 'break-word' }}>{item.name}</span>
-                                    </div>
-                                    <div style={{ color: 'var(--muted)', fontSize: '13px', whiteSpace: 'nowrap', flexShrink: 0 }}>{item.priceLabel}</div>
-                                  </label>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </details>
+
+                  {/* Highlighted Service / Package Tags */}
+                  <div className="grooming-services-chips">
+                    {selectedServices.map((name, i) => (
+                      <span key={`srv-${i}`} className="grooming-service-tag">
+                        <Scissors size={12} /> {name}
+                      </span>
+                    ))}
+                    {selectedPackages.map((name, i) => (
+                      <span key={`pkg-${i}`} className="grooming-package-tag">
+                        <Package size={12} /> {name}
+                      </span>
+                    ))}
+                    {!hasServicesOrPackages && (
+                      <span className="grooming-service-tag">
+                        <Scissors size={12} /> {selectedBooking.serviceName || appointmentTitle(selectedBooking)}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="detail-two-col-grid">
+                    <div className="detail-item">
+                      <span className="detail-label"><Calendar size={14} /> Date</span>
+                      <strong className="detail-val">{selectedBooking.date || '-'}</strong>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                      <div>
-                        <label className="input-label">Visit Type</label>
-                        <select className="input" value={editBookingType} onChange={(event) => setEditBookingType(event.target.value)}>
-                          <option value="store">In Store</option>
-                          <option value="home">Home Visit</option>
-                        </select>
+                    <div className="detail-item">
+                      <span className="detail-label"><Clock size={14} /> Time Slot</span>
+                      <strong className="detail-val">{formatSlot(selectedBooking.slot)}</strong>
+                    </div>
+
+                    <div className="detail-item">
+                      <span className="detail-label">
+                        {(selectedBooking.bookingType || 'store') === 'home' ? <Home size={14} /> : <Store size={14} />} Visit Type
+                      </span>
+                      <strong className="detail-val">{getBookingTypeLabel(selectedBooking.bookingType || 'store')}</strong>
+                    </div>
+
+                    {(selectedBooking.assignedStaffName || selectedBooking.assignedStaff) ? (
+                      <div className="detail-item">
+                        <span className="detail-label"><User size={14} /> Assigned Groomer</span>
+                        <strong className="detail-val">{selectedBooking.assignedStaffName || selectedBooking.assignedStaff}</strong>
                       </div>
-                      {editBookingType === 'home' && (
-                        <div style={{ gridColumn: '1 / -1' }}>
-                          <label className="input-label">Address</label>
-                          <div style={{ marginBottom: 8 }}>
-                            {profileAddresses.length > 0 ? (
-                              <select className="input" value={editAddress} onChange={(e) => setEditAddress(e.target.value)}>
-                                <option value="">Select address</option>
-                                {profileAddresses.map(a => (
-                                  <option key={a.id} value={a.address}>{a.address}{a.isDefault ? ' (Default)' : ''}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <select className="input" value={editAddress} onChange={(e) => setEditAddress(e.target.value)}>
-                                <option value="">No saved addresses</option>
-                              </select>
-                            )}
-                          </div>
-                          <textarea ref={editAddressRef} className="input" rows="3" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} placeholder="Enter your address for the home visit" />
-                          <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                            <button type="button" className="btn btn-ghost" onClick={() => { setEditAddress(''); setTimeout(() => editAddressRef.current?.focus(), 50) }}>Use custom</button>
-                            <Link to="/profile" className="btn btn-ghost">Manage addresses</Link>
-                          </div>
+                    ) : (
+                      <div className="detail-item">
+                        <span className="detail-label"><User size={14} /> Team Member</span>
+                        <strong className="detail-val" style={{ color: 'var(--muted)', fontWeight: 600 }}>Assigned at Salon</strong>
+                      </div>
+                    )}
+
+                    {selectedBooking.address && (
+                      <div className="detail-item full">
+                        <span className="detail-label"><MapPin size={14} /> Service Address</span>
+                        <strong className="detail-val">{selectedBooking.address}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card 2: Pet Details */}
+                <div className="boarding-section-card">
+                  <div className="section-card-header">
+                    <div className="section-icon-wrap paw">
+                      <PawPrint size={16} />
+                    </div>
+                    <h3>Pet Details</h3>
+                  </div>
+
+                  <div className="pet-hero-row">
+                    <div className="pet-avatar-large">
+                      {petImageUrlFor(selectedBooking) ? (
+                        <img
+                          src={petImageUrlFor(selectedBooking)}
+                          alt={selectedBooking.petName || 'Pet'}
+                          onError={e => {
+                            e.currentTarget.style.display = 'none'
+                            if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex'
+                          }}
+                        />
+                      ) : null}
+                      <div className="avatar-fallback" style={{ display: petImageUrlFor(selectedBooking) ? 'none' : 'flex' }}>
+                        <PawPrint size={24} />
+                      </div>
+                    </div>
+
+                    <div className="pet-hero-info">
+                      <strong className="pet-hero-name">{selectedBooking.petName || 'Pet'}</strong>
+                      <div className="pet-hero-subtitle">
+                        {selectedBooking.petBreed || selectedBooking.petType || 'Pet Details'}
+                        {selectedBooking.petBreed && selectedBooking.petType ? ` (${selectedBooking.petType})` : ''}
+                      </div>
+
+                      <div className="pet-pills-row">
+                        {selectedBooking.petGender && (
+                          <span className="pet-pill">
+                            <Users size={12} /> {selectedBooking.petGender}
+                          </span>
+                        )}
+                        {selectedBooking.petDob && (
+                          <span className="pet-pill">
+                            <Calendar size={12} /> {formatPetAge(selectedBooking.petDob)}
+                          </span>
+                        )}
+                        {selectedBooking.petWeight && (
+                          <span className="pet-pill">
+                            <Scale size={12} /> {selectedBooking.petWeight} kg
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {(selectedBooking.phone || selectedBooking.ownerName) && (
+                    <div className="detail-two-col-grid">
+                      {selectedBooking.ownerName && (
+                        <div className="detail-item">
+                          <span className="detail-label"><User size={14} /> Owner</span>
+                          <strong className="detail-val">{selectedBooking.ownerName}</strong>
+                        </div>
+                      )}
+                      {selectedBooking.phone && (
+                        <div className="detail-item">
+                          <span className="detail-label"><Phone size={14} /> Phone</span>
+                          <strong className="detail-val">{selectedBooking.phone}</strong>
                         </div>
                       )}
                     </div>
+                  )}
+                </div>
 
-                    <div className="my-booking-edit-summary" style={{ marginTop: 12 }}>
+                {/* Card 3: Pricing & Estimate */}
+                <div className="boarding-section-card">
+                  <div className="section-card-header">
+                    <div className="section-icon-wrap rupee">
+                      <IndianRupee size={16} />
+                    </div>
+                    <h3>Pricing & Estimate</h3>
+                  </div>
+
+                  <div className="detail-two-col-grid">
+                    {selectedBooking.originalSubtotal > 0 && selectedBooking.couponCode && (
+                      <div className="detail-item">
+                        <span className="detail-label">Subtotal</span>
+                        <strong className="detail-val">Rs {money(selectedBooking.originalSubtotal)}</strong>
+                      </div>
+                    )}
+                    {selectedBooking.couponCode && (
+                      <div className="detail-item">
+                        <span className="detail-label">Offer Applied</span>
+                        <span className="grooming-package-tag" style={{ width: 'fit-content', padding: '3px 8px', fontSize: '11.5px' }}>
+                          <Tag size={12} /> {selectedBooking.couponCode} (-Rs {money(selectedBooking.discountAmount || 0)})
+                        </span>
+                      </div>
+                    )}
+                    {selectedBooking.visitCharge > 0 && (
+                      <div className="detail-item">
+                        <span className="detail-label">Visit Charge</span>
+                        <strong className="detail-val">Rs {money(selectedBooking.visitCharge)}</strong>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grooming-price-banner">
+                    <div className="grooming-price-label">
                       <span>Estimated Total</span>
-                      <strong>{editTotalPrice() || 'Rs 0'}</strong>
+                      {selectedBooking.estimatedTotalMax && Number(selectedBooking.estimatedTotalMax) > Number(selectedBooking.estimatedTotal || 0) && (
+                        <div style={{ fontSize: '11px', color: '#9E721D', marginTop: '2px' }}>Final price depends on pet breed & size</div>
+                      )}
+                    </div>
+                    <div className="grooming-price-value">
+                      {formatBookingEstimate(selectedBooking)}
+                    </div>
+                  </div>
+
+                  {isCompleted && (
+                    <div className="grooming-payment-completed-row">
+                      <div className="detail-item">
+                        <span className="detail-label"><Receipt size={14} /> Payment Status</span>
+                        <span className="boarding-status-pill completed" style={{ width: 'fit-content', marginTop: '3px' }}>
+                          <CheckCircle2 size={12} /> Paid / Collected
+                        </span>
+                      </div>
+                      <div className="detail-item" style={{ textAlign: 'right' }}>
+                        <span className="detail-label" style={{ justifyContent: 'flex-end' }}>Amount Paid</span>
+                        <strong className="detail-val" style={{ color: '#16A34A', fontSize: '16px' }}>
+                          Rs {money(selectedBooking.amountPaid || selectedBooking.amountCollected || selectedBooking.finalAmount || selectedBooking.price || 0)}
+                        </strong>
+                      </div>
+                    </div>
+                  )}
+
+                  {isCompleted && (selectedBooking.nextRecommendedDays || selectedBooking.nextRecommendedDate) && (
+                    <div className="grooming-next-visit-pill">
+                      <Sparkles size={15} style={{ color: '#2563EB', flexShrink: 0 }} />
+                      <span>
+                        Recommended next grooming: <strong>{selectedBooking.nextRecommendedDate ? selectedBooking.nextRecommendedDate : `in ${selectedBooking.nextRecommendedDays} days`}</strong>
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Card 4: Before & After Photos */}
+                {(selectedBooking.beforeImageUrl || selectedBooking.afterImageUrl) && (
+                  <div className="boarding-section-card">
+                    <div className="section-card-header">
+                      <div className="section-icon-wrap camera">
+                        <Camera size={16} />
+                      </div>
+                      <h3>Before & After</h3>
                     </div>
 
-                    <div style={{ marginTop: 16, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                      <button type="button" className="btn btn-secondary" onClick={() => { try { window.history.back() } catch(e){ setEditFullOpen(false); setEditingAppointmentId(null) } }}>Back</button>
-                      <button type="button" className="btn btn-primary" onClick={saveEditAppointment} disabled={savingEdit || (editServiceIds.length === 0 && editPackageIds.length === 0) || (editBookingType === 'home' && !String(editAddress || '').trim())}>
-                        {savingEdit ? 'Saving...' : 'Save Changes'}
+                    <div className="grooming-photos-grid">
+                      {selectedBooking.beforeImageUrl && (
+                        <button
+                          type="button"
+                          className="grooming-photo-card"
+                          onClick={() => setPreviewImage({ url: selectedBooking.beforeImageUrl, label: 'Before' })}
+                        >
+                          <img src={selectedBooking.beforeImageUrl} alt="Before grooming" />
+                          <span className="grooming-photo-tag">Before</span>
+                        </button>
+                      )}
+                      {selectedBooking.afterImageUrl && (
+                        <button
+                          type="button"
+                          className="grooming-photo-card"
+                          onClick={() => setPreviewImage({ url: selectedBooking.afterImageUrl, label: 'After' })}
+                        >
+                          <img src={selectedBooking.afterImageUrl} alt="After grooming" />
+                          <span className="grooming-photo-tag">After</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Card 5: Cancellation Notice */}
+                {isCancelled && (
+                  <div className="grooming-cancel-alert">
+                    <AlertCircle size={18} className="alert-icon" />
+                    <div>
+                      <strong>Appointment Cancelled</strong>
+                      <p>
+                        Cancelled by: {selectedBooking.cancelledBy === 'admin' ? (shopName || 'Paw Paw Salon') : 'You'}
+                        {selectedBooking.cancellationReason ? ` • "${selectedBooking.cancellationReason}"` : ''}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Card 6: Customer Notes */}
+                {selectedBooking.notes && (
+                  <div className="boarding-section-card">
+                    <div className="section-card-header">
+                      <div className="section-icon-wrap notes">
+                        <FileText size={16} />
+                      </div>
+                      <h3>Special Notes</h3>
+                    </div>
+                    <div style={{ fontSize: '13.5px', color: '#4B382A', lineHeight: 1.5, background: '#FBF8F2', padding: '10px 14px', borderRadius: '10px', border: '1px solid #EFE6D8' }}>
+                      {selectedBooking.notes}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className={`details-modal-footer ${(!canResched && !canCancel && !isPending) ? 'single-btn' : ''}`}>
+                {isPending && (
+                  <>
+                    <button
+                      type="button"
+                      className="grooming-action-btn edit"
+                      onClick={() => openEditAppointment(selectedBooking)}
+                    >
+                      <Scissors size={15} /> Edit
+                    </button>
+                    {canCancel && (
+                      <button
+                        type="button"
+                        className="grooming-action-btn cancel"
+                        disabled={cancellingId === selectedBooking.id}
+                        onClick={() => { setCancelReason(''); setCancelTarget(selectedBooking) }}
+                      >
+                        <X size={15} /> {cancellingId === selectedBooking.id ? 'Cancelling...' : 'Cancel'}
                       </button>
+                    )}
+                  </>
+                )}
+
+                {isConfirmed && (
+                  <>
+                    {canResched && (
+                      <button
+                        type="button"
+                        className="grooming-action-btn reschedule"
+                        disabled={reschedulingId === selectedBooking.id}
+                        onClick={() => openRescheduleModal(selectedBooking)}
+                      >
+                        <Clock size={15} /> Reschedule
+                      </button>
+                    )}
+                    {canCancel && (
+                      <button
+                        type="button"
+                        className="grooming-action-btn cancel"
+                        disabled={cancellingId === selectedBooking.id}
+                        onClick={() => { setCancelReason(''); setCancelTarget(selectedBooking) }}
+                      >
+                        <X size={15} /> Cancel Booking
+                      </button>
+                    )}
+                    {!canResched && !canCancel && adminWhatsappNumber && (
+                      <a
+                        href={`https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(selectedBooking, shopName)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="grooming-action-btn whatsapp"
+                      >
+                        <MessageCircle size={15} /> Chat with Salon
+                      </a>
+                    )}
+                  </>
+                )}
+
+                {isCompleted && (
+                  <>
+                    <button
+                      type="button"
+                      className="grooming-action-btn primary"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => {
+                        setSelectedBooking(null)
+                        navigate(getRebookUrl(selectedBooking))
+                      }}
+                    >
+                      <RotateCcw size={15} /> Re-book
+                    </button>
+                    {allowInvoice && (
+                      <button
+                        type="button"
+                        className="grooming-action-btn invoice"
+                        style={{
+                          background: 'rgba(16, 185, 129, 0.08)',
+                          borderColor: 'rgba(16, 185, 129, 0.35)',
+                          color: '#059669',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                        disabled={downloadingInvoiceId === selectedBooking.id}
+                        onClick={() => handleDownloadGroomingInvoice(selectedBooking)}
+                      >
+                        <FileText size={15} /> {downloadingInvoiceId === selectedBooking.id ? 'Downloading...' : 'Download Invoice'}
+                      </button>
+                    )}
+                    {adminWhatsappNumber && (
+                      <a
+                        href={`https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(selectedBooking, shopName)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="grooming-action-btn whatsapp"
+                      >
+                        <MessageCircle size={15} /> Contact Salon
+                      </a>
+                    )}
+                  </>
+                )}
+
+                {isCancelled && (
+                  <>
+                    <Link
+                      to="/services"
+                      className="grooming-action-btn primary"
+                      onClick={() => setSelectedBooking(null)}
+                    >
+                      <Scissors size={15} /> Book New
+                    </Link>
+                    {adminWhatsappNumber && (
+                      <a
+                        href={`https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(selectedBooking, shopName)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="grooming-action-btn whatsapp"
+                      >
+                        <MessageCircle size={15} /> Chat on WA
+                      </a>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Full screen edit overlay (opened via Edit) */}
+              {editingAppointmentId === selectedBooking.id && editFullOpen && (
+                <div className="my-booking-edit-full-overlay" onClick={() => { try { window.history.back() } catch(e){ setEditFullOpen(false); setEditingAppointmentId(null) } }}>
+                  <div className="my-booking-edit-full" onClick={e => e.stopPropagation()}>
+                    <div className="my-booking-edit-full-head">
+                      <button type="button" className="icon-btn" onClick={() => { try { window.history.back() } catch(e){ setEditFullOpen(false); setEditingAppointmentId(null) } }} aria-label="Back"><ChevronRight style={{ transform: 'rotate(180deg)' }} size={18} /></button>
+                      <h3>Edit appointment</h3>
+                    </div>
+                    <div className="my-booking-edit-full-body">
+                      <div style={{ marginBottom: 12 }}>
+                        <label className="input-label">Services & Packages</label>
+                        <details className="my-booking-dropdown">
+                          <summary>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, width: '100%', minWidth: 0 }}>
+                              <div className="my-booking-dropdown-summary" title={(() => {
+                                const names = []
+                                selectedEditServices.forEach(s => names.push(s.name))
+                                selectedEditPackages.forEach(p => names.push(p.name))
+                                return names.join(', ')
+                              })()}>
+                                {(() => {
+                                  const names = []
+                                  selectedEditServices.forEach(s => names.push(s.name))
+                                  selectedEditPackages.forEach(p => names.push(p.name))
+                                  if (!names.length) return 'Edit Services / Packages'
+                                  return names.join(', ')
+                                })()}
+                              </div>
+                              <div className="my-booking-dropdown-toggle" aria-hidden>
+                                <ChevronDown size={16} className="my-booking-dropdown-icon" />
+                              </div>
+                            </div>
+                          </summary>
+                          <div style={{ padding: '10px', display: 'grid', gap: '10px' }}>
+                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '8px', background: 'var(--card)', maxHeight: '520px', overflow: 'auto' }}>
+                              <div style={{ display: 'grid', gap: '10px' }}>
+                                <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>Services / Packages</div>
+                                <div className="my-booking-checkbox-list" style={{ display: 'grid', gap: '4px' }}>
+                                  {[...visibleServices.map(service => ({
+                                    id: service.id,
+                                    name: service.name,
+                                    priceLabel: formatRangeLabel(getPriceRange(service.price || service.basePrice)) || (service.basePrice ? `Rs ${service.basePrice}` : ''),
+                                    checked: editServiceIds.includes(service.id),
+                                    onChange: () => setEditServiceIds(prev => prev.includes(service.id) ? prev.filter(id => id !== service.id) : [...prev, service.id]),
+                                  })), ...packages.map(pkg => ({
+                                    id: pkg.id,
+                                    name: pkg.name,
+                                    priceLabel: formatRangeLabel(getPackagePriceRange(pkg)) || (pkg.price ? String(pkg.price) : ''),
+                                    checked: editPackageIds.includes(pkg.id),
+                                    onChange: () => setEditPackageIds(prev => prev.includes(pkg.id) ? prev.filter(id => id !== pkg.id) : [...prev, pkg.id]),
+                                  }))].map(item => (
+                                    <label key={item.id} className="my-booking-checkbox-item" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '8px 6px', justifyContent: 'space-between' }}>
+                                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: '1 1 0', minWidth: 0 }}>
+                                        <input type="checkbox" checked={item.checked} onChange={item.onChange} style={{ flexShrink: 0, marginTop: 4 }} />
+                                        <span style={{ fontSize: '14px', flex: '1 1 0', minWidth: 0, wordBreak: 'break-word' }}>{item.name}</span>
+                                      </div>
+                                      <div style={{ color: 'var(--muted)', fontSize: '13px', whiteSpace: 'nowrap', flexShrink: 0 }}>{item.priceLabel}</div>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </details>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                          <label className="input-label">Visit Type</label>
+                          <select className="input" value={editBookingType} onChange={(event) => setEditBookingType(event.target.value)}>
+                            <option value="store">In Store</option>
+                            <option value="home">Home Visit</option>
+                          </select>
+                        </div>
+                        {editBookingType === 'home' && (
+                          <div style={{ gridColumn: '1 / -1' }}>
+                            <label className="input-label">Address</label>
+                            <div style={{ marginBottom: 8 }}>
+                              {profileAddresses.length > 0 ? (
+                                <select className="input" value={editAddress} onChange={(e) => setEditAddress(e.target.value)}>
+                                  <option value="">Select address</option>
+                                  {profileAddresses.map(a => (
+                                    <option key={a.id} value={a.address}>{a.address}{a.isDefault ? ' (Default)' : ''}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <select className="input" value={editAddress} onChange={(e) => setEditAddress(e.target.value)}>
+                                  <option value="">No saved addresses</option>
+                                </select>
+                              )}
+                            </div>
+                            <textarea ref={editAddressRef} className="input" rows="3" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} placeholder="Enter your address for the home visit" />
+                            <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                              <button type="button" className="btn btn-ghost" onClick={() => { setEditAddress(''); setTimeout(() => editAddressRef.current?.focus(), 50) }}>Use custom</button>
+                              <Link to="/profile" className="btn btn-ghost">Manage addresses</Link>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="my-booking-edit-summary" style={{ marginTop: 12 }}>
+                        <span>Estimated Total</span>
+                        <strong>{editTotalPrice() || 'Rs 0'}</strong>
+                      </div>
+
+                      <div style={{ marginTop: 16, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                        <button type="button" className="btn btn-secondary" onClick={() => { try { window.history.back() } catch(e){ setEditFullOpen(false); setEditingAppointmentId(null) } }}>Back</button>
+                        <button type="button" className="btn btn-primary" onClick={saveEditAppointment} disabled={savingEdit || (editServiceIds.length === 0 && editPackageIds.length === 0) || (editBookingType === 'home' && !String(editAddress || '').trim())}>
+                          {savingEdit ? 'Saving...' : 'Save Changes'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {(selectedBooking.beforeImageUrl || selectedBooking.afterImageUrl) && (
-              <div className="my-booking-image-section">
-                <h3>Before & After</h3>
-                <div className="my-booking-image-grid">
-                  {selectedBooking.beforeImageUrl && (
-                    <button type="button" className="my-booking-image-card" onClick={() => setPreviewImage({ url: selectedBooking.beforeImageUrl, label: 'Before' })}>
-                      <div className="my-booking-image-label-row"><span>Before</span><span className="my-booking-image-icon">↔</span></div>
-                      <img src={selectedBooking.beforeImageUrl} alt="Before appointment" />
-                    </button>
-                  )}
-                  {selectedBooking.afterImageUrl && (
-                    <button type="button" className="my-booking-image-card" onClick={() => setPreviewImage({ url: selectedBooking.afterImageUrl, label: 'After' })}>
-                      <div className="my-booking-image-label-row"><span>After</span><span className="my-booking-image-icon">↔</span></div>
-                      <img src={selectedBooking.afterImageUrl} alt="After appointment" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-            {selectedBooking.status === 'pending' && (
-              <button
-                type="button"
-                className="btn btn-secondary my-booking-reschedule-btn"
-                onClick={() => editingAppointmentId === selectedBooking.id ? setEditingAppointmentId(null) : openEditAppointment(selectedBooking)}
-              >
-                {editingAppointmentId === selectedBooking.id ? 'Close Edit' : 'Edit Appointment'}
-              </button>
-            )}
-            {canRescheduleBooking(selectedBooking) && (
-              <button
-                type="button"
-                className="btn btn-secondary my-booking-reschedule-btn"
-                disabled={reschedulingId === selectedBooking.id}
-                onClick={() => openRescheduleModal(selectedBooking)}
-              >
-                Reschedule
-              </button>
-            )}
-            {canCancelBooking(selectedBooking, bookingSettings) && (
-              <button
-                type="button"
-                className="btn btn-danger my-booking-cancel-btn"
-                disabled={cancellingId === selectedBooking.id}
-                onClick={() => { setCancelReason(''); setCancelTarget(selectedBooking) }}
-              >
-                <X size={15} /> {cancellingId === selectedBooking.id ? 'Cancelling...' : 'Cancel Booking'}
-              </button>
-            )}
-
-            {selectedBooking.notes && (
-              <div className="my-booking-detail-note">
-                <strong>Notes</strong>
-                <p>{selectedBooking.notes}</p>
-              </div>
-            )}
-
-          </section>
-        </div>
-      )}
+            </div>
+          </div>
+        )
+      })()}
 
 
       {rescheduleTarget && (
@@ -1753,8 +2246,24 @@ export default function MyBookings() {
                     <strong className="billing-val">₹{money(selectedBoarding.dailyRate || 800)}</strong>
                   </div>
 
+                  {Number(selectedBoarding.originalSubtotal || 0) > 0 && selectedBoarding.couponCode && (
+                    <div className="billing-item">
+                      <span className="billing-label"><Receipt size={14} /> Subtotal</span>
+                      <strong className="billing-val">₹{money(selectedBoarding.originalSubtotal)}</strong>
+                    </div>
+                  )}
+
+                  {selectedBoarding.couponCode && (
+                    <div className="billing-item">
+                      <span className="billing-label"><Tag size={14} /> Offer Applied</span>
+                      <strong className="billing-val" style={{ color: '#10b981' }}>
+                        {selectedBoarding.couponCode} (-₹{money(selectedBoarding.discountAmount)})
+                      </strong>
+                    </div>
+                  )}
+
                   <div className="billing-item">
-                    <span className="billing-label"><Receipt size={14} /> Base Boarding Stay</span>
+                    <span className="billing-label"><Receipt size={14} /> Estimated Total</span>
                     <strong className="billing-val estimated">₹{money(selectedBoarding.estimatedTotal)}</strong>
                   </div>
 
@@ -1919,6 +2428,72 @@ export default function MyBookings() {
                 </div>
               </div>
             </div>
+
+            {/* Modal Footer Actions */}
+            {(() => {
+              const isFinished = selectedBoarding.status === 'checked_out' || selectedBoarding.status === 'completed'
+              const isPendingOrConfirmed = selectedBoarding.status === 'pending' || selectedBoarding.status === 'confirmed'
+              const isCancelled = selectedBoarding.status === 'cancelled'
+              const hasMultiple = isFinished && allowInvoice
+
+              return (
+                <div className={`details-modal-footer boarding-modal-footer ${!hasMultiple ? 'single-btn' : ''}`}>
+                  {isFinished && (
+                    <>
+                      <button
+                        type="button"
+                        className="grooming-action-btn primary"
+                        onClick={() => {
+                          const target = selectedBoarding
+                          setSelectedBoarding(null)
+                          navigate(getBoardingRebookUrl(target), { state: { rebookBooking: target } })
+                        }}
+                      >
+                        <RotateCcw size={15} /> Re-book
+                      </button>
+                      {allowInvoice && (
+                        <button
+                          type="button"
+                          className="grooming-action-btn invoice"
+                          disabled={downloadingInvoiceId === selectedBoarding.id}
+                          onClick={() => handleDownloadBoardingInvoice(selectedBoarding)}
+                        >
+                          <FileText size={15} /> {downloadingInvoiceId === selectedBoarding.id ? 'Downloading...' : 'Download Invoice'}
+                        </button>
+                      )}
+                    </>
+                  )}
+
+                  {isPendingOrConfirmed && (
+                    <button
+                      type="button"
+                      className="grooming-action-btn cancel"
+                      onClick={() => {
+                        const target = selectedBoarding
+                        setBoardingCancelTarget(target)
+                        setBoardingCancelReason('')
+                      }}
+                    >
+                      <X size={15} /> Cancel Reservation
+                    </button>
+                  )}
+
+                  {isCancelled && (
+                    <button
+                      type="button"
+                      className="grooming-action-btn primary"
+                      onClick={() => {
+                        const target = selectedBoarding
+                        setSelectedBoarding(null)
+                        navigate(getBoardingRebookUrl(target), { state: { rebookBooking: target } })
+                      }}
+                    >
+                      <RotateCcw size={15} /> Re-book
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         </div>
       )}
@@ -2312,6 +2887,110 @@ export default function MyBookings() {
           border: 1px solid var(--border);
         }
 
+        .my-booking-row-meta span.meta-paid {
+          background: rgba(16, 185, 129, 0.1);
+          color: #10b981;
+          border-color: rgba(16, 185, 129, 0.28);
+        }
+
+        .my-booking-row-actions {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 6px;
+          padding-top: 10px;
+          border-top: 1px solid var(--border);
+        }
+
+        .my-booking-card-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          font-size: 12px;
+          font-weight: 600;
+          padding: 6px 12px;
+          border-radius: 8px;
+          border: 1px solid var(--border);
+          background: rgba(255, 255, 255, 0.04);
+          color: var(--text);
+          cursor: pointer;
+          transition: all 0.18s ease;
+          line-height: 1.25;
+        }
+
+        .my-booking-card-btn:hover {
+          background: rgba(255, 255, 255, 0.08);
+          border-color: rgba(255, 255, 255, 0.22);
+        }
+
+        .my-booking-card-btn.primary {
+          background: rgba(212, 175, 55, 0.1);
+          border-color: rgba(212, 175, 55, 0.4);
+          color: var(--accent);
+          font-weight: 700;
+        }
+
+        .my-booking-card-btn.primary:hover {
+          background: var(--accent);
+          border-color: var(--accent);
+          color: #ffffff;
+          transform: translateY(-1px);
+          box-shadow: 0 3px 10px rgba(212, 175, 55, 0.25);
+        }
+
+        .my-booking-card-btn.reschedule {
+          background: rgba(37, 99, 235, 0.08);
+          border-color: rgba(37, 99, 235, 0.35);
+          color: #2563eb;
+        }
+
+        .my-booking-card-btn.reschedule:hover {
+          background: rgba(37, 99, 235, 0.16);
+          border-color: #2563eb;
+          color: #1d4ed8;
+          transform: translateY(-1px);
+        }
+
+        .theme-dark .my-booking-card-btn.reschedule,
+        .theme-purple .my-booking-card-btn.reschedule {
+          color: #60a5fa;
+          border-color: rgba(96, 165, 250, 0.35);
+          background: rgba(59, 130, 246, 0.12);
+        }
+
+        .my-booking-card-btn.invoice {
+          background: rgba(16, 185, 129, 0.08);
+          border-color: rgba(16, 185, 129, 0.35);
+          color: #059669;
+        }
+
+        .my-booking-card-btn.invoice:hover {
+          background: rgba(16, 185, 129, 0.16);
+          border-color: #059669;
+          color: #047857;
+          transform: translateY(-1px);
+        }
+
+        .theme-dark .my-booking-card-btn.invoice,
+        .theme-purple .my-booking-card-btn.invoice {
+          color: #34d399;
+          border-color: rgba(52, 211, 153, 0.35);
+          background: rgba(16, 185, 129, 0.12);
+        }
+
+        .my-booking-card-btn.cancel {
+          background: transparent;
+          border-color: rgba(239, 68, 68, 0.3);
+          color: #ef4444;
+        }
+
+        .my-booking-card-btn.cancel:hover {
+          background: rgba(239, 68, 68, 0.1);
+          border-color: #ef4444;
+        }
+
         .my-booking-row-images {
           display: flex;
           align-items: center;
@@ -2544,6 +3223,293 @@ export default function MyBookings() {
         .my-booking-edit-full-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
         .my-booking-edit-full .input { width: 100%; box-sizing: border-box }
         .my-booking-edit-full .my-booking-checkbox-list { max-height: 240px }
+
+        
+        /* Grooming Details Modal Redesign */
+        .grooming-details-modal {
+          max-width: 620px;
+        }
+
+        .grooming-services-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 7px;
+          margin-bottom: 14px;
+        }
+
+        .grooming-service-tag {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 4px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 700;
+          background: #FAF3E5;
+          border: 1.2px solid #EEDBC2;
+          color: #8C5D08;
+        }
+
+        .grooming-package-tag {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 4px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 700;
+          background: #F0FDF4;
+          border: 1.2px solid #BBF7D0;
+          color: #15803D;
+        }
+
+        .section-icon-wrap.scissors {
+          background: #FAF3E3;
+          color: #B8860B;
+        }
+
+        .section-icon-wrap.camera {
+          background: #FDF2F8;
+          color: #DB2777;
+        }
+
+        .section-icon-wrap.rupee {
+          background: #F0FDF4;
+          color: #16A34A;
+        }
+
+        .section-icon-wrap.notes {
+          background: #F8FAFC;
+          color: #475569;
+        }
+
+        .grooming-price-banner {
+          background: #FDFBF7;
+          border: 1.2px dashed #E5D5BC;
+          border-radius: 12px;
+          padding: 12px 14px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-top: 10px;
+        }
+
+        .grooming-price-label {
+          font-size: 13px;
+          font-weight: 700;
+          color: #6E584B;
+        }
+
+        .grooming-price-value {
+          font-size: 18px;
+          font-weight: 800;
+          color: #B8860B;
+        }
+
+        .grooming-payment-completed-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding-top: 10px;
+          margin-top: 10px;
+          border-top: 1px solid #F5EFE6;
+        }
+
+        .grooming-next-visit-pill {
+          margin-top: 10px;
+          background: #EFF6FF;
+          border: 1px solid #BFDBFE;
+          border-radius: 10px;
+          padding: 8px 12px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12.5px;
+          color: #1E40AF;
+          font-weight: 600;
+        }
+
+        .grooming-photos-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+
+        .grooming-photo-card {
+          position: relative;
+          border-radius: 12px;
+          overflow: hidden;
+          aspect-ratio: 4 / 3;
+          border: 1px solid #EFE6D8;
+          background: #F7F3EB;
+          cursor: pointer;
+          padding: 0;
+          display: block;
+          width: 100%;
+        }
+
+        .grooming-photo-card img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          transition: transform 0.2s ease;
+        }
+
+        .grooming-photo-card:hover img {
+          transform: scale(1.04);
+        }
+
+        .grooming-photo-tag {
+          position: absolute;
+          bottom: 8px;
+          left: 8px;
+          padding: 3px 8px;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 800;
+          background: rgba(30, 20, 10, 0.72);
+          color: #FFF;
+          backdrop-filter: blur(4px);
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .grooming-cancel-alert {
+          background: #FEF2F2;
+          border: 1.2px solid #FECACA;
+          border-radius: 14px;
+          padding: 12px 14px;
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+        }
+
+        .grooming-cancel-alert .alert-icon {
+          color: #DC2626;
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+
+        .grooming-cancel-alert strong {
+          display: block;
+          font-size: 13.5px;
+          font-weight: 800;
+          color: #991B1B;
+          margin-bottom: 2px;
+        }
+
+        .grooming-cancel-alert p {
+          margin: 0;
+          font-size: 12.5px;
+          color: #7F1D1D;
+        }
+
+        .boarding-status-pill.completed {
+          background: #ECFDF3;
+          color: #027A48;
+          border: 1px solid #A6F4C5;
+        }
+
+        .boarding-status-pill.rescheduled {
+          background: #F3E8FF;
+          color: #7E22CE;
+          border: 1px solid #D8B4FE;
+        }
+
+        .details-modal-footer {
+          padding: 12px 18px 16px;
+          border-top: 1.2px solid #EFE6D8;
+          background: #FFFDF9;
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 10px;
+          flex-shrink: 0;
+        }
+
+        .details-modal-footer.single-btn {
+          grid-template-columns: 1fr;
+        }
+
+        .grooming-action-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          padding: 10px 14px;
+          border-radius: 12px;
+          font-size: 13.5px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          border: 1.2px solid transparent;
+          text-decoration: none;
+          font-family: inherit;
+          box-sizing: border-box;
+          min-height: 42px;
+        }
+
+        .grooming-action-btn.edit {
+          background: #FFFBEB;
+          border-color: #FDE68A;
+          color: #B45309;
+        }
+        .grooming-action-btn.edit:hover {
+          background: #FEF3C7;
+          border-color: #FCD34D;
+        }
+
+        .grooming-action-btn.reschedule {
+          background: #EFF6FF;
+          border-color: #BFDBFE;
+          color: #1D4ED8;
+        }
+        .grooming-action-btn.reschedule:hover {
+          background: #DBEAFE;
+          border-color: #93C5FD;
+        }
+
+        .grooming-action-btn.cancel {
+          background: #FEF2F2;
+          border-color: #FECACA;
+          color: #DC2626;
+        }
+        .grooming-action-btn.cancel:hover {
+          background: #FEE2E2;
+          border-color: #FCA5A5;
+        }
+
+        .grooming-action-btn.whatsapp {
+          background: #F0FDF4;
+          border-color: #BBF7D0;
+          color: #15803D;
+        }
+        .grooming-action-btn.whatsapp:hover {
+          background: #DCFCE7;
+          border-color: #86EFAC;
+        }
+
+        .grooming-action-btn.primary {
+          background: linear-gradient(135deg, #C29326, #A67818);
+          border-color: #946910;
+          color: #FFFFFF;
+        }
+        .grooming-action-btn.primary:hover {
+          filter: brightness(1.05);
+        }
+
+        .grooming-action-btn.invoice {
+          background: rgba(16, 185, 129, 0.08);
+          border-color: rgba(16, 185, 129, 0.35);
+          color: #059669;
+          font-weight: 700;
+        }
+        .grooming-action-btn.invoice:hover {
+          background: rgba(16, 185, 129, 0.16);
+          border-color: #059669;
+          color: #047857;
+        }
 
         @media (max-width: 640px) {
           .my-booking-edit-full { padding: 12px }
@@ -2868,6 +3834,37 @@ export default function MyBookings() {
 
           .my-booking-chevron {
             display: none;
+          }
+
+          .my-boarding-card {
+            padding: 14px 12px !important;
+          }
+
+          .my-booking-row-actions {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 6px;
+            width: 100%;
+          }
+
+          .my-booking-card-btn {
+            flex: 1 1 0;
+            min-width: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            text-align: center;
+            padding: 7px 4px;
+            font-size: 11.5px;
+            box-sizing: border-box;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+
+          .my-booking-card-btn svg {
+            flex-shrink: 0;
           }
 
           .my-booking-modal-overlay {
@@ -3364,6 +4361,17 @@ export default function MyBookings() {
           .billing-three-col-row {
             grid-template-columns: 1fr 1fr;
             gap: 10px;
+          }
+
+          .details-modal-footer {
+            padding: 10px 14px 14px;
+            gap: 8px;
+          }
+
+          .grooming-action-btn {
+            padding: 9px 8px;
+            font-size: 13px;
+            min-height: 40px;
           }
         }
       `}</style>

@@ -38,9 +38,13 @@ export function NotificationProvider({ children }) {
 
     const title = notification.title || 'Paw Paw Pet Grooming'
     const targetUrl = notification.actionUrl || notification.link || '/'
-    const actionTitle = isAdmin
-      ? (targetUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking')
-      : (targetUrl.includes('boarding') ? '🐾 View Stay' : '📅 View Appointment')
+    const actionTitle = notification.actionTitle || (
+      isAdmin
+        ? (targetUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking')
+        : (targetUrl.includes('/book')
+            ? '📅 Book Appointment'
+            : (targetUrl.includes('boarding') ? '🐾 View Stay' : '📅 View Appointment'))
+    )
     const options = {
       body: notification.message || notification.body || '',
       icon: PUSH_ICON,

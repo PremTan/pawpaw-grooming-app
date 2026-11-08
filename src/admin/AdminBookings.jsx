@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { collection, doc, getDocs, orderBy, query, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore'
 import Cropper from 'react-easy-crop'
-import { Calendar, Camera, CheckCircle2, Clock, IndianRupee, MessageCircle, Phone, Search, Upload, UserRound, X } from 'lucide-react'
+import { Calendar, Camera, Check, CheckCircle2, Clock, Edit3, IndianRupee, MapPin, MessageCircle, Phone, ReceiptText, RotateCcw, Scissors, Search, ShieldAlert, SlidersHorizontal, Sparkles, Tag, Upload, User, UserRound, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import Toast from '../components/Toast'
@@ -115,6 +115,7 @@ export default function AdminBookings() {
   const [search, setSearch] = useState('')
   const [statusF, setStatusF] = useState('all')
   const [serviceF, setServiceF] = useState('all')
+  const [quickFilter, setQuickFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState(requestedDate)
   const [dateTo, setDateTo] = useState(requestedDate)
 
@@ -126,6 +127,7 @@ export default function AdminBookings() {
   }, [requestedDate])
   const [page, setPage] = useState(1)
   const [updating, setUpdating] = useState(null)
+  const [showFilterModal, setShowFilterModal] = useState(false)
   const [cashModal, setCashModal] = useState(null)
   const [cashAmt, setCashAmt] = useState('')
   const [recommendedVisitDays, setRecommendedVisitDays] = useState('')
@@ -136,6 +138,7 @@ export default function AdminBookings() {
   const [toastMessage, setToastMessage] = useState('')
   const [toastType, setToastType] = useState('success')
   const [selectedBooking, setSelectedBooking] = useState(null)
+  const [selectedCustomerHistory, setSelectedCustomerHistory] = useState(null)
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
   const [teamMembers, setTeamMembers] = useState([])
@@ -305,8 +308,41 @@ export default function AdminBookings() {
   const assigneeOptions = useMemo(() => [ownerAssignee, ...assignableTeamMembers], [ownerAssignee, assignableTeamMembers])
   const assigneeFor = booking => getBookingAssignee(booking, ownerAssignee, teamMembers)
 
+  const todayKey = dateKeyLocal(new Date())
+
+  const todayCount = useMemo(() => {
+    return bookings.filter(b => b.date === todayKey && b.status !== 'cancelled').length
+  }, [bookings, todayKey])
+
+  const upcomingCount = useMemo(() => {
+    return bookings.filter(b => b.date && b.date > todayKey && b.status !== 'cancelled').length
+  }, [bookings, todayKey])
+
+  const customerHistoryMap = useMemo(() => {
+    const map = new Map()
+    bookings.forEach(item => {
+      const key = (item.phone || item.userId || item.ownerName || '').trim().toLowerCase()
+      if (!key) return
+      if (!map.has(key)) map.set(key, [])
+      map.get(key).push(item)
+    })
+    map.forEach(list => {
+      list.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (new Date(a.date || a.createdAt || 0).getTime() || 0)
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (new Date(b.date || b.createdAt || 0).getTime() || 0)
+        return timeB - timeA
+      })
+    })
+    return map
+  }, [bookings])
+
   const filtered = useMemo(() => {
     let r = [...bookings]
+    if (quickFilter === 'today') {
+      r = r.filter(b => b.date === todayKey)
+    } else if (quickFilter === 'upcoming') {
+      r = r.filter(b => b.date && b.date > todayKey)
+    }
     if (statusF !== 'all') r = r.filter(b => b.status === statusF)
     if (serviceF !== 'all') r = r.filter(b => b.serviceId === serviceF || b.serviceIds?.includes?.(serviceF))
     if (dateFrom) r = r.filter(b => b.date && b.date >= dateFrom)
@@ -322,15 +358,33 @@ export default function AdminBookings() {
         b.id?.toLowerCase().includes(s)
       )
     }
+    if (quickFilter === 'today') {
+      r.sort((a, b) => {
+        const timeA = parseAppointmentStart(a)?.getTime() || 0
+        const timeB = parseAppointmentStart(b)?.getTime() || 0
+        return timeA - timeB
+      })
+    }
     return r
-  }, [bookings, serviceF, statusF, search, dateFrom, dateTo])
+  }, [bookings, quickFilter, todayKey, serviceF, statusF, search, dateFrom, dateTo])
 
-  useEffect(() => { setPage(1) }, [serviceF, statusF, search, dateFrom, dateTo])
+  useEffect(() => { setPage(1) }, [quickFilter, serviceF, statusF, search, dateFrom, dateTo])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
   const pageStart = (currentPage - 1) * PAGE_SIZE
   const paginated = filtered.slice(pageStart, pageStart + PAGE_SIZE)
+
+  const hasActiveFilters = quickFilter !== 'all' || statusF !== 'all' || serviceF !== 'all' || Boolean(dateFrom) || Boolean(dateTo)
+  const activeFilterCount = (quickFilter !== 'all' ? 1 : 0) + (statusF !== 'all' ? 1 : 0) + (serviceF !== 'all' ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)
+  const clearAllFilters = () => {
+    setQuickFilter('all')
+    setStatusF('all')
+    setServiceF('all')
+    setDateFrom('')
+    setDateTo('')
+    setSearchParams({})
+  }
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount)
@@ -451,7 +505,16 @@ export default function AdminBookings() {
     if (status === 'completed') {
       if (b.status !== 'confirmed') return
       resetCompletionUploads()
-      setCashAmt('')
+      const estTotal = Number(b.estimatedTotal)
+      const amtColl = Number(b.amountCollected)
+      const priceNum = parseFloat(String(b.price || '').replace(/[^0-9.]/g, ''))
+      const defaultAmount = (!isNaN(estTotal) && estTotal > 0)
+        ? estTotal
+        : ((!isNaN(amtColl) && amtColl > 0)
+            ? amtColl
+            : ((!isNaN(priceNum) && priceNum > 0) ? priceNum : ''))
+      setCashAmt(defaultAmount !== '' ? String(defaultAmount) : '')
+      setRecommendedVisitDays(b.recommendedVisitDays ? String(b.recommendedVisitDays) : '30')
       setCashModal(b)
       return
     }
@@ -534,13 +597,17 @@ export default function AdminBookings() {
     const { kind, file } = cropperState
     setCompletionUploading(prev => ({ ...prev, [kind]: true }))
     try {
-      const croppedFile = await cropImageFile(file, cropperState.croppedAreaPixels, { outputType: file.type || 'image/jpeg' })
+      const croppedFile = await cropImageFile(file, cropperState.croppedAreaPixels, { outputType: 'image/jpeg', quality: 0.82 })
+      const previewUrl = URL.createObjectURL(croppedFile)
+      setCompletionPreviewUrls(prev => ({ ...prev, [kind]: previewUrl }))
+      setCropperState(null)
+
       const url = await uploadToCloudinary(croppedFile)
       setCompletionImageUrls(prev => ({ ...prev, [kind]: url }))
-      setCompletionPreviewUrls(prev => ({ ...prev, [kind]: url }))
-      setCropperState(null)
     } catch (err) {
       alert(err.message || `Could not upload the ${kind === 'before' ? 'before' : 'after'} image.`)
+      setCompletionPreviewUrls(prev => ({ ...prev, [kind]: null }))
+      setCropperState(null)
     } finally {
       setCompletionUploading(prev => ({ ...prev, [kind]: false }))
     }
@@ -638,22 +705,112 @@ export default function AdminBookings() {
         </div>
       </div>
 
-      <div className="admin-booking-filters">
+      {/* Search & Filter Bar: Single row with Search and Filter button beside it */}
+      <div className="admin-booking-search-row">
         <div className="admin-booking-search">
-          <Search size={14} />
-          <input placeholder="Search name, pet, phone or ID" value={search} onChange={e => setSearch(e.target.value)} />
+          <Search size={15} />
+          <input
+            placeholder="Search name, pet, phone or ID"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              className="admin-search-clear-btn"
+              onClick={() => setSearch('')}
+              aria-label="Clear search"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
-        <select value={statusF} onChange={e => setStatusF(e.target.value)}>
-          {STATUS_OPTS.map(s => <option key={s} value={s}>{s === 'all' ? 'All Status' : statusLabel(s)}</option>)}
-        </select>
-        <select value={serviceF} onChange={e => setServiceF(e.target.value)}>
-          <option value="all">All Services</option>
-          {serviceCatalog.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <input type="date" aria-label="From date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-        <input type="date" aria-label="To date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-        {(dateFrom || dateTo) && <button type="button" className="admin-booking-clear-filter" onClick={() => { setDateFrom(''); setDateTo(''); setSearchParams({}) }}>Clear dates</button>}
+
+        <button
+          type="button"
+          className={`admin-booking-filter-btn ${hasActiveFilters ? 'active' : ''}`}
+          onClick={() => setShowFilterModal(true)}
+        >
+          <SlidersHorizontal size={15} />
+          <span>Filters</span>
+          {hasActiveFilters && (
+            <span className="admin-filter-count-badge">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
       </div>
+
+      {/* Quick Run Sheet Filter Pills */}
+      <div className="admin-quick-filter-scroll" role="tablist" aria-label="Quick schedule filter">
+        <button
+          type="button"
+          className={`admin-quick-pill ${quickFilter === 'all' ? 'active' : ''}`}
+          onClick={() => setQuickFilter('all')}
+        >
+          All Bookings
+        </button>
+        <button
+          type="button"
+          className={`admin-quick-pill ${quickFilter === 'today' ? 'active' : ''}`}
+          onClick={() => {
+            setQuickFilter(prev => prev === 'today' ? 'all' : 'today')
+            setDateFrom('')
+            setDateTo('')
+          }}
+        >
+          <Calendar size={13} />
+          <span>Today</span>
+          <span className="admin-quick-pill-count">{todayCount}</span>
+        </button>
+        <button
+          type="button"
+          className={`admin-quick-pill ${quickFilter === 'upcoming' ? 'active' : ''}`}
+          onClick={() => {
+            setQuickFilter(prev => prev === 'upcoming' ? 'all' : 'upcoming')
+            setDateFrom('')
+            setDateTo('')
+          }}
+        >
+          <Clock size={13} />
+          <span>Upcoming</span>
+          <span className="admin-quick-pill-count">{upcomingCount}</span>
+        </button>
+      </div>
+
+      {/* Active filters pill summary if any active */}
+      {hasActiveFilters && (
+        <div className="admin-active-filters-bar">
+          <span style={{ fontSize: '11.5px', color: 'var(--muted)', fontWeight: 600 }}>Active filters:</span>
+          {quickFilter !== 'all' && (
+            <span className="admin-filter-pill-tag">
+              Schedule: {quickFilter === 'today' ? 'Today' : 'Upcoming'}
+              <button type="button" onClick={() => setQuickFilter('all')} aria-label="Clear schedule filter"><X size={11} /></button>
+            </span>
+          )}
+          {statusF !== 'all' && (
+            <span className="admin-filter-pill-tag">
+              Status: {statusLabel(statusF)}
+              <button type="button" onClick={() => setStatusF('all')} aria-label="Clear status filter"><X size={11} /></button>
+            </span>
+          )}
+          {serviceF !== 'all' && (
+            <span className="admin-filter-pill-tag">
+              Service: {serviceCatalog.find(s => s.id === serviceF)?.name || serviceF}
+              <button type="button" onClick={() => setServiceF('all')} aria-label="Clear service filter"><X size={11} /></button>
+            </span>
+          )}
+          {(dateFrom || dateTo) && (
+            <span className="admin-filter-pill-tag">
+              Dates: {dateFrom || '...'} to {dateTo || '...'}
+              <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); setSearchParams({}) }} aria-label="Clear date filter"><X size={11} /></button>
+            </span>
+          )}
+          <button type="button" className="admin-filter-reset-link" onClick={clearAllFilters}>
+            Clear all
+          </button>
+        </div>
+      )}
 
       {loading ? <Spinner text="Loading bookings..." /> : filtered.length === 0 ? (
         <div className="admin-booking-empty">No bookings found.</div>
@@ -678,6 +835,36 @@ export default function AdminBookings() {
                   <strong>{b.ownerName || 'Customer'}</strong>
                   <span>{shortId(b.id)}</span>
                   {b.isWalkIn && <span className="badge badge-walkin">Walk-in</span>}
+                  {(() => {
+                    const custKey = (b.phone || b.userId || b.ownerName || '').trim().toLowerCase()
+                    const custHistory = custKey ? customerHistoryMap.get(custKey) || [] : []
+                    const visitCount = custHistory.length
+                    if (visitCount > 1) {
+                      return (
+                        <button
+                          type="button"
+                          className="admin-booking-history-badge"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedCustomerHistory({
+                              customerName: b.ownerName || 'Customer',
+                              phone: b.phone || '-',
+                              petName: b.petName || 'Pet',
+                              history: custHistory,
+                            })
+                          }}
+                          title="View customer visit history"
+                        >
+                          <Clock size={11} /> {visitCount} visits
+                        </button>
+                      )
+                    }
+                    return (
+                      <span className="admin-booking-history-badge new-client" title="First-time client">
+                        ⭐ New Client
+                      </span>
+                    )
+                  })()}
                 </div>
                 <p>{b.petName || 'Pet'}{b.petType ? ` (${b.petType}${b.petBreed ? `, ${b.petBreed}` : ''})` : ''}</p>
                 <p>{b.serviceName || 'Service'}{b.packageNames?.length > 0 ? ` + ${b.packageNames.join(', ')}` : ''}</p>
@@ -685,13 +872,18 @@ export default function AdminBookings() {
                   <span style={S.meta}><Calendar size={13} /> {b.date || '-'}</span>
                   <span style={S.meta}><Clock size={13} /> {formatSlot(b.slot)}</span>
                   <span style={S.meta}><Phone size={13} /> {b.phone || '-'}</span>
-                  <span style={S.meta}><UserRound size={13} /> {getAssigneeLabel(assigneeFor(b))}</span>
+                  <span style={S.meta}><UserRound size={13} /> Assigned: {getAssigneeLabel(assigneeFor(b))}</span>
+                  {b.couponCode && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent-border)', borderRadius: '999px', padding: '2px 8px', fontSize: '11px', fontWeight: 800 }}>
+                      <Tag size={10} /> {b.couponCode} {b.discountAmount ? `(-Rs ${money(b.discountAmount)})` : ''}
+                    </span>
+                  )}
                   {b.amountCollected > 0 && <span className="admin-booking-money">Rs {money(b.amountCollected)}</span>}
                 </div>
               </div>
 
               <div className="admin-booking-actions" onClick={stop}>
-                <span style={{ display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ display: 'inline-flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <span className={`badge ${BADGE[b.status] || 'badge-pending'}`}>{statusLabel(b.status || 'pending')}</span>
                   {(b.rescheduleCount || 0) > 0 && (
                     <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.16)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.24)' }}>
@@ -704,7 +896,7 @@ export default function AdminBookings() {
                     {assigneeOptions.map(member => <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>)}
                   </select>
                 )}
-                <div style={{ position: 'relative' }}>
+                <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginLeft: 'auto' }}>
                   {canRescheduleBooking(b) && (
                     <button type="button" onClick={() => openRescheduleModal(b)} disabled={updating === b.id || reschedulingId === b.id} style={S.iconBtn('#f59e0b', 'rgba(245, 158, 11, 0.12)')} className="admin-action">
                       <Clock size={14} /> <span className="action-label">Reschedule</span>
@@ -713,6 +905,17 @@ export default function AdminBookings() {
                   {b.status === 'pending' && (
                     <button type="button" onClick={() => updateStatus(b, 'confirmed')} disabled={updating === b.id} style={S.iconBtn('#34d399', 'rgba(52,211,153,0.1)')} className="admin-action">
                       <CheckCircle2 size={14} /> <span className="action-label">Approve</span>
+                    </button>
+                  )}
+                  {b.status === 'completed' && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/admin/invoices?mode=appointment&id=${b.id}`)}
+                      style={S.iconBtn('var(--accent)', 'var(--accent-bg)')}
+                      className="admin-action"
+                      title="Invoice"
+                    >
+                      <ReceiptText size={14} /> <span className="action-label">Invoice</span>
                     </button>
                   )}
                   {/* icon-only secondary actions (shrink on mobile) */}
@@ -821,48 +1024,536 @@ export default function AdminBookings() {
         reasonRequired
       />
 
+      {/* ============================================================
+          BOOKING FILTERS MODAL / BOTTOM SHEET
+          ============================================================ */}
+      {showFilterModal && (
+        <div className="admin-filter-modal-overlay" onClick={() => setShowFilterModal(false)}>
+          <div className="admin-filter-bottom-sheet" onClick={e => e.stopPropagation()}>
+            <div className="admin-filter-sheet-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <SlidersHorizontal size={18} color="var(--accent)" />
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: 'var(--text)' }}>Booking Filters</h3>
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setShowFilterModal(false)}
+                aria-label="Close filters"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', alignItems: 'center' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="admin-filter-sheet-body">
+              {/* Status filter */}
+              <div className="admin-filter-field">
+                <label>Status</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {STATUS_OPTS.map(s => {
+                    const active = statusF === s
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setStatusF(s)}
+                        style={{
+                          padding: '7px 12px',
+                          borderRadius: '8px',
+                          border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                          background: active ? 'var(--accent-bg)' : 'var(--surface)',
+                          color: active ? 'var(--accent)' : 'var(--text)',
+                          fontSize: '12.5px',
+                          fontWeight: active ? 700 : 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {s === 'all' ? 'All Status' : statusLabel(s)}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Service filter */}
+              <div className="admin-filter-field">
+                <label>Service</label>
+                <select
+                  className="input"
+                  value={serviceF}
+                  onChange={e => setServiceF(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '10px' }}
+                >
+                  <option value="all">All Services</option>
+                  {serviceCatalog.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+
+              {/* Date filters */}
+              <div className="admin-filter-field">
+                <label>Date Range (Optional)</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+                  <div>
+                    <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '3px' }}>From Date</span>
+                    <input
+                      type="date"
+                      className="input"
+                      value={dateFrom}
+                      onChange={e => setDateFrom(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', fontSize: '13px', borderRadius: '8px' }}
+                    />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '3px' }}>To Date</span>
+                    <input
+                      type="date"
+                      className="input"
+                      value={dateTo}
+                      onChange={e => setDateTo(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', fontSize: '13px', borderRadius: '8px' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="admin-filter-sheet-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={clearAllFilters}
+                style={{ fontSize: '13px', padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <RotateCcw size={14} /> Reset
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setShowFilterModal(false)}
+                style={{ fontSize: '13px', padding: '8px 18px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Check size={14} /> Apply Filters
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedCustomerHistory && (
+        <div className="modal-overlay" onClick={() => setSelectedCustomerHistory(null)}>
+          <div className="modal-box" style={{ maxWidth: '520px', maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'var(--accent-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
+                  <UserRound size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>
+                    {selectedCustomerHistory.customerName}
+                  </h3>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                    Phone: {selectedCustomerHistory.phone} • {selectedCustomerHistory.history.length} Total Visits
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setSelectedCustomerHistory(null)}
+                aria-label="Close history"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', alignItems: 'center' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '16px 20px', overflowY: 'auto', display: 'grid', gap: '10px', flex: 1 }}>
+              {selectedCustomerHistory.history.map(item => (
+                <div
+                  key={item.id}
+                  style={{
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '10px',
+                    padding: '12px 14px',
+                    display: 'grid',
+                    gap: '6px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <strong style={{ fontSize: '13.5px', color: 'var(--text)' }}>
+                      {item.serviceName || 'Grooming Service'}
+                    </strong>
+                    <span className={`badge ${BADGE[item.status] || 'badge-pending'}`} style={{ fontSize: '10.5px' }}>
+                      {statusLabel(item.status)}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: 'var(--muted)', flexWrap: 'wrap' }}>
+                    <span>🐾 {item.petName || 'Pet'}{item.petBreed ? ` (${item.petBreed})` : ''}</span>
+                    <span>📅 {item.date || '-'} {item.slot ? `• ${formatSlot(item.slot)}` : ''}</span>
+                    {item.amountCollected > 0 && <span style={{ fontWeight: 700, color: 'var(--text)' }}>₹{money(item.amountCollected)}</span>}
+                  </div>
+                  {item.assignedTeamMemberName && (
+                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                      Groomer: <strong>{item.assignedTeamMemberName}</strong>
+                    </div>
+                  )}
+                  {item.notes && (
+                    <div style={{ fontSize: '11.5px', background: 'rgba(0,0,0,0.03)', padding: '6px 10px', borderRadius: '6px', color: 'var(--text)', borderLeft: '3px solid var(--accent)' }}>
+                      <em>"{item.notes}"</em>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setSelectedCustomerHistory(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {cashModal && (
         <div className="modal-overlay" onClick={closeCompletionModal}>
           <div className="modal-box admin-booking-cash-modal" onClick={e => e.stopPropagation()}>
             <div>
-              <h2>Complete Appointment</h2>
-              <p>{cashModal.ownerName} · {cashModal.serviceName} · {cashModal.date}</p>
-              <label>Cash Collected (Rs)</label>
-              <div className="admin-booking-cash-input">
-                <span>Rs</span>
-                <input className="input" type="number" min="0" placeholder="e.g. 600" value={cashAmt} onChange={e => setCashAmt(e.target.value)} autoFocus />
-              </div>
-              {cashAmt && <p className="admin-booking-confirm-money">Rs {money(cashAmt)} will be recorded</p>}
-              <label style={{ marginTop: '16px', display: 'block', fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>Next recommended visit (days, optional)</label>
-              <input className="input" type="number" min="1" placeholder="e.g. 30" value={recommendedVisitDays} onChange={e => setRecommendedVisitDays(e.target.value)} />
-              <div style={{ marginTop: '16px', display: 'grid', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '4px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>Before image (optional)</label>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13px', padding: '10px 14px' }}>
-                      <Upload size={15} /> {completionUploading.before ? 'Uploading...' : completionImageUrls.before ? 'Change Before Image' : 'Upload Before Image'}
-                      <input type="file" accept={IMAGE_FILE_ACCEPT} style={{ display: 'none' }} onChange={e => openCompletionCropper('before', e.target.files?.[0])} />
-                    </label>
-                    {completionImageUrls.before && <button type="button" className="btn btn-danger" style={{ fontSize: '13px', padding: '10px 14px' }} onClick={() => removeCompletionImage('before')}>Remove</button>}
-                  </div>
-                  {completionPreviewUrls.before && <img src={completionPreviewUrls.before} alt="Before appointment" style={{ width: '100%', maxHeight: '180px', objectFit: 'cover', borderRadius: '12px', border: '1px solid var(--border)', marginTop: '10px' }} />}
+                  <h2 style={{ margin: 0, fontFamily: 'Playfair Display, serif', fontSize: '22px', fontWeight: 800, color: 'var(--text)' }}>Complete Appointment</h2>
+                  <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: '13px' }}>{cashModal.ownerName} · {cashModal.serviceName} · {cashModal.date}</p>
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: 'var(--muted)', marginBottom: '8px' }}>After image (optional)</label>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13px', padding: '10px 14px' }}>
-                      <Upload size={15} /> {completionUploading.after ? 'Uploading...' : completionImageUrls.after ? 'Change After Image' : 'Upload After Image'}
-                      <input type="file" accept={IMAGE_FILE_ACCEPT} style={{ display: 'none' }} onChange={e => openCompletionCropper('after', e.target.files?.[0])} />
-                    </label>
-                    {completionImageUrls.after && <button type="button" className="btn btn-danger" style={{ fontSize: '13px', padding: '10px 14px' }} onClick={() => removeCompletionImage('after')}>Remove</button>}
+                <button
+                  type="button"
+                  onClick={closeCompletionModal}
+                  aria-label="Close completion modal"
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    flexShrink: 0,
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--surface)',
+                    color: 'var(--muted)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Promo / Discount summary breakdown if applied */}
+              {(cashModal.couponCode || Number(cashModal.discountAmount) > 0) ? (
+                <div style={{
+                  background: 'rgba(217, 119, 6, 0.07)',
+                  border: '1.5px dashed var(--gold, #d97706)',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  margin: '12px 0 16px',
+                  fontSize: '13px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: 'var(--muted)' }}>
+                    <span>Estimated Subtotal</span>
+                    <span>Rs {money(cashModal.originalSubtotal || ((Number(cashModal.estimatedTotal) || 0) + (Number(cashModal.discountAmount) || 0)))}</span>
                   </div>
-                  {completionPreviewUrls.after && <img src={completionPreviewUrls.after} alt="After appointment" style={{ width: '100%', maxHeight: '180px', objectFit: 'cover', borderRadius: '12px', border: '1px solid var(--border)', marginTop: '10px' }} />}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#16a34a', fontWeight: 700 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      <Tag size={13} /> Offer Applied ({cashModal.couponCode || 'PROMO'})
+                    </span>
+                    <span>-Rs {money(cashModal.discountAmount || 0)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(217, 119, 6, 0.2)', paddingTop: '6px', fontWeight: 800, color: 'var(--text)' }}>
+                    <span>Estimated Total (Autofilled)</span>
+                    <span style={{ color: 'var(--gold-dark, #b45309)' }}>
+                      Rs {money(cashModal.estimatedTotal || Math.max(0, (Number(cashModal.originalSubtotal) || 0) - (Number(cashModal.discountAmount) || 0)))}
+                    </span>
+                  </div>
+                </div>
+              ) : (Number(cashModal.estimatedTotal) > 0 || cashModal.price) ? (
+                <div style={{
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  margin: '12px 0 16px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '13px',
+                }}>
+                  <span style={{ color: 'var(--muted)' }}>Estimated Appointment Total:</span>
+                  <strong style={{ color: 'var(--text)', fontSize: '14px' }}>
+                    Rs {money(cashModal.estimatedTotal || parseFloat(String(cashModal.price || '').replace(/[^0-9.]/g, '')) || 0)}
+                  </strong>
+                </div>
+              ) : null}
+
+              {/* Redesigned Cash Collected */}
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '6px' }}>
+                  <IndianRupee size={13} /> Cash Collected (Rs)
+                </label>
+                <div style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: 'var(--surface)',
+                  border: '1.5px solid var(--accent-border, var(--border))',
+                  borderRadius: '12px',
+                  padding: '0 12px',
+                }}>
+                  <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--gold-dark, #b45309)', marginRight: '6px' }}>Rs</span>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 600"
+                    value={cashAmt}
+                    onChange={e => setCashAmt(e.target.value)}
+                    autoFocus
+                    style={{
+                      width: '100%',
+                      padding: '10px 0',
+                      border: 'none',
+                      background: 'transparent',
+                      fontSize: '16px',
+                      fontWeight: 700,
+                      color: 'var(--text)',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+                {cashAmt && (
+                  <p style={{ fontSize: '12px', color: '#16a34a', fontWeight: 700, marginTop: '5px', marginBottom: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    ✓ Rs {money(cashAmt)} will be recorded
+                  </p>
+                )}
+              </div>
+
+              {/* Redesigned Next Recommended Visit */}
+              <div style={{ marginTop: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.6px', margin: 0 }}>
+                    <Calendar size={13} /> Next Recommended Visit (Days)
+                  </label>
+                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Optional</span>
+                </div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: 'var(--surface)',
+                  border: '1.5px solid var(--border)',
+                  borderRadius: '12px',
+                  padding: '0 12px',
+                }}>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 30"
+                    value={recommendedVisitDays}
+                    onChange={e => setRecommendedVisitDays(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '9px 0',
+                      border: 'none',
+                      background: 'transparent',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: 'var(--text)',
+                      outline: 'none',
+                    }}
+                  />
+                  <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>days</span>
+                </div>
+                {/* 1-tap quick interval chips */}
+                <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  {[15, 30, 45, 60].map(days => (
+                    <button
+                      key={days}
+                      type="button"
+                      onClick={() => setRecommendedVisitDays(String(days))}
+                      style={{
+                        padding: '3px 9px',
+                        borderRadius: '999px',
+                        border: `1px solid ${recommendedVisitDays === String(days) ? 'var(--gold, #d97706)' : 'var(--border)'}`,
+                        background: recommendedVisitDays === String(days) ? 'rgba(217, 119, 6, 0.12)' : 'var(--surface)',
+                        color: recommendedVisitDays === String(days) ? 'var(--gold-dark, #b45309)' : 'var(--muted)',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {days}d
+                    </button>
+                  ))}
                 </div>
               </div>
-              <p style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '10px' }}>Images are optional. Uploads up to 10 MB are auto-resized to around 1 MB.</p>
-              <div className="admin-booking-modal-actions">
-                <button onClick={closeCompletionModal} className="btn btn-secondary">Cancel</button>
-                <button onClick={handleComplete} className="btn btn-primary">Mark Complete</button>
+
+              {/* Redesigned Before & After Images (Side-by-side) */}
+              <div style={{ marginTop: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.6px', margin: 0 }}>
+                    <Camera size={13} /> Service Photos
+                  </label>
+                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Optional</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
+                  {/* Before Upload Card */}
+                  <div style={{
+                    border: '1.5px dashed var(--border)',
+                    borderRadius: '12px',
+                    padding: '8px',
+                    background: 'var(--surface)',
+                    textAlign: 'center',
+                    minHeight: '105px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                  }}>
+                    <span style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Before</span>
+                    {completionPreviewUrls.before ? (
+                      <div style={{ width: '100%', position: 'relative' }}>
+                        <img src={completionPreviewUrls.before} alt="Before" style={{ width: '100%', height: '70px', objectFit: 'cover', borderRadius: '8px' }} />
+                        <button
+                          type="button"
+                          onClick={() => removeCompletionImage('before')}
+                          aria-label="Remove before image"
+                          style={{
+                            position: 'absolute',
+                            top: '-5px',
+                            right: '-5px',
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '999px',
+                            background: '#dc2626',
+                            color: 'white',
+                            border: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <label style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '3px',
+                        cursor: 'pointer',
+                        color: 'var(--accent)',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        padding: '6px 4px',
+                        width: '100%',
+                      }}>
+                        <Upload size={16} />
+                        <span>{completionUploading.before ? 'Uploading...' : 'Upload'}</span>
+                        <input type="file" accept={IMAGE_FILE_ACCEPT} style={{ display: 'none' }} onChange={e => openCompletionCropper('before', e.target.files?.[0])} />
+                      </label>
+                    )}
+                  </div>
+
+                  {/* After Upload Card */}
+                  <div style={{
+                    border: '1.5px dashed var(--border)',
+                    borderRadius: '12px',
+                    padding: '8px',
+                    background: 'var(--surface)',
+                    textAlign: 'center',
+                    minHeight: '105px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                  }}>
+                    <span style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>After</span>
+                    {completionPreviewUrls.after ? (
+                      <div style={{ width: '100%', position: 'relative' }}>
+                        <img src={completionPreviewUrls.after} alt="After" style={{ width: '100%', height: '70px', objectFit: 'cover', borderRadius: '8px' }} />
+                        <button
+                          type="button"
+                          onClick={() => removeCompletionImage('after')}
+                          aria-label="Remove after image"
+                          style={{
+                            position: 'absolute',
+                            top: '-5px',
+                            right: '-5px',
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '999px',
+                            background: '#dc2626',
+                            color: 'white',
+                            border: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <label style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '3px',
+                        cursor: 'pointer',
+                        color: 'var(--accent)',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        padding: '6px 4px',
+                        width: '100%',
+                      }}>
+                        <Upload size={16} />
+                        <span>{completionUploading.after ? 'Uploading...' : 'Upload'}</span>
+                        <input type="file" accept={IMAGE_FILE_ACCEPT} style={{ display: 'none' }} onChange={e => openCompletionCropper('after', e.target.files?.[0])} />
+                      </label>
+                    )}
+                  </div>
+                </div>
+                <p style={{ color: 'var(--muted)', fontSize: '10.5px', margin: '6px 0 0', textAlign: 'center' }}>
+                  Images optional • Auto-compressed to ~1 MB
+                </p>
+              </div>
+
+              {/* Single "Mark Complete" Button (Cancel moved to top cross mark) */}
+              <div style={{ marginTop: '18px' }}>
+                <button
+                  type="button"
+                  onClick={handleComplete}
+                  disabled={updating === cashModal.id || completionUploading.before || completionUploading.after}
+                  className="btn btn-primary"
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    fontSize: '14.5px',
+                    fontWeight: 800,
+                    borderRadius: '12px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <CheckCircle2 size={17} /> {updating === cashModal.id ? 'Completing...' : 'Mark Complete'}
+                </button>
               </div>
             </div>
           </div>
@@ -910,6 +1601,7 @@ function cancellationActor(booking) {
 }
 
 function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, assignee, assigneeOptions, serviceCatalog, packageOptions, bookingSettings, onAssign, onSave, onClose, onStatus, onCancelBooking, onReschedule, canReschedule }) {
+  const navigate = useNavigate()
   const [lightboxImage, setLightboxImage] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editServiceIds, setEditServiceIds] = useState(Array.isArray(booking.serviceIds) && booking.serviceIds.length ? booking.serviceIds : booking.serviceId ? [booking.serviceId] : [])
@@ -951,6 +1643,14 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
   }, [booking, packageOptions, assignee])
 
   const canEditBooking = ['confirmed', 'completed'].includes(booking.status)
+  const displayServices = Array.isArray(booking.serviceNames) && booking.serviceNames.length
+    ? booking.serviceNames
+    : booking.serviceName
+      ? [booking.serviceName]
+      : []
+  const displayPackages = Array.isArray(booking.packageNames) && booking.packageNames.length
+    ? booking.packageNames
+    : []
   const currentServices = serviceCatalog.filter(service => editServiceIds.includes(service.id))
   const currentServiceNames = currentServices.length ? currentServices.map(service => service.name) : []
   const selectedPackages = packageOptions.filter(pkg => editPackageIds.includes(pkg.id))
@@ -999,207 +1699,458 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
   }
 
   const canEditDateTime = !!booking.isWalkIn
-  const detailRows = [
-    ['Booking ID', shortId(booking.id)],
-    ['Owner', booking.ownerName || '-'],
-    ['Phone', booking.phone || '-'],
-    ['Pet', `${booking.petName || '-'}${booking.petType ? ` (${booking.petType}${booking.petBreed ? `, ${booking.petBreed}` : ''})` : ''}`],
-    ['Service', booking.serviceName || '-'],
-    ['Packages', booking.packageNames?.length ? booking.packageNames.join(', ') : '-'],
-    ['Visit Type', getBookingTypeLabel(booking.bookingType || 'store')],
-    ['Date', booking.date || '-'],
-    ['Time', formatSlot(booking.slot)],
-    ['Request Sent', formatDateTime(booking.createdAt)],
-    ['Appointment Date & Time', formatAppointmentStart(booking)],
-    ['Address', booking.bookingType === 'home' ? (booking.address || '-') : '-'],
-    ['Visit Charge', booking.visitCharge > 0 ? `Rs ${money(booking.visitCharge)}` : '-'],
-    ['Estimated Total', booking.estimatedTotal > 0 ? `Rs ${money(booking.estimatedTotal)}` : '-'],
-    ['Reschedules', booking.rescheduleCount ? `${booking.rescheduleCount} time${booking.rescheduleCount === 1 ? '' : 's'}` : '0'],
-    ['Source', booking.isWalkIn ? 'Walk-in' : 'Online'],
-    ['Assigned To', getAssigneeLabel(assignee)],
-    ['Amount Collected', booking.amountCollected > 0 ? `Rs ${money(booking.amountCollected)}` : '-'],
-    ...(booking.status === 'cancelled' ? [
-      ['Cancelled By', cancellationActor(booking)],
-      ['Cancelled At', formatDateTime(booking.cancelledAt)],
-      ['Reason', booking.cancellationReason || '-'],
-    ] : []),
-    ['Notes', booking.notes || '-'],
-  ]
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-box admin-booking-detail-modal" onClick={e => e.stopPropagation()}>
+        {/* Modal Header */}
         <div className="admin-booking-detail-head">
-          <div>
-            <span className={`badge ${BADGE[booking.status] || 'badge-pending'}`}>{statusLabel(booking.status || 'pending')}</span>
-            {(booking.rescheduleCount || 0) > 0 && (
-              <span className="badge" style={{ marginLeft: '8px', background: 'rgba(245, 158, 11, 0.16)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.24)' }}>
-                Rescheduled
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+              <span className={`badge ${BADGE[booking.status] || 'badge-pending'}`}>{statusLabel(booking.status || 'pending')}</span>
+              {(booking.rescheduleCount || 0) > 0 && (
+                <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.16)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.24)' }}>
+                  Rescheduled {booking.rescheduleCount}x
+                </span>
+              )}
+              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', background: 'var(--surface)', padding: '2px 8px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                {shortId(booking.id)}
               </span>
-            )}
-            <h2>{booking.ownerName || 'Booking Details'}</h2>
-            <p>{booking.serviceName || 'Service'} · {booking.date || '-'} · {booking.slot || '-'}</p>
+            </div>
+            <h2>{booking.ownerName || 'Customer'}</h2>
+            <p>
+              Requested {formatDateTime(booking.createdAt)} • {booking.isWalkIn ? 'Walk-in' : 'Online Booking'}
+            </p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close booking details"><X size={18} /></button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            {canEditBooking && !isEditing && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setIsEditing(true)}
+                style={{ fontSize: '12.5px', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+              >
+                <Edit3 size={13} /> <span>Edit</span>
+              </button>
+            )}
+            <button type="button" onClick={onClose} aria-label="Close booking details"><X size={18} /></button>
+          </div>
         </div>
 
-        {!isEditing && (
-          <div className="admin-booking-detail-grid">
-            {detailRows.map(([label, value]) => (
-              <div key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {canEditBooking && !isEditing && (
-          <div style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-secondary" onClick={() => setIsEditing(true)}>Edit booking details</button>
-          </div>
-        )}
-
-        {canEditBooking && isEditing && (
-          <div className="admin-booking-edit-panel" style={{ marginTop: '18px', padding: '18px', borderRadius: '16px', background: 'var(--surface-alt)', border: '1px solid var(--border)' }}>
-            <div style={{ marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, color: 'var(--text)', fontSize: '15px' }}>{booking.status === 'completed' ? 'Edit completed booking' : 'Edit confirmed booking'}</h3>
-            </div>
-
-            <div style={{ display: 'grid', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Services / Packages</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', minHeight: '46px', padding: '10px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--surface)' }}>
-                  {currentServices.map(service => (
-                    <span key={service.id} style={{ padding: '6px 10px', borderRadius: '999px', background: 'rgba(164, 118, 0, 0.12)', color: '#8f6a00', fontSize: '13px' }}>
-                      {service.name}
-                    </span>
-                  ))}
-                  {selectedPackages.map(pkg => (
-                    <span key={pkg.id} style={{ padding: '6px 10px', borderRadius: '999px', background: 'rgba(0, 91, 139, 0.12)', color: '#005b8b', fontSize: '13px' }}>
-                      {pkg.name}
-                    </span>
-                  ))}
-                  {!currentServices.length && !selectedPackages.length && (
-                    <span style={{ color: 'var(--muted)' }}>No service or package selected</span>
-                  )}
+        {/* Modal Body */}
+        <div className="admin-booking-detail-body">
+          {!isEditing ? (
+            <>
+              {/* Card 1: Services & Appointment */}
+              <div className="admin-detail-card">
+                <div className="admin-detail-card-head">
+                  <h4 className="admin-detail-card-title">
+                    <Scissors size={13} /> Services & Appointment
+                  </h4>
                 </div>
-                <button type="button" className="btn btn-secondary" style={{ marginTop: '10px' }} onClick={() => setShowServicePackageOptions(prev => !prev)}>
-                  {showServicePackageOptions ? 'Hide options ▲' : 'Edit services/packages ▼'}
-                </button>
-                {showServicePackageOptions && (
-                  <div style={{ marginTop: '12px', display: 'grid', gap: '12px', padding: '14px', borderRadius: '16px', border: '1px solid var(--border)', background: 'var(--surface-alt)' }}>
-                    <div>
-                      <p style={{ margin: 0, fontWeight: 700, color: 'var(--text)' }}>Services</p>
-                      <div style={{ display: 'grid', gap: '8px', marginTop: '10px' }}>
-                        {serviceCatalog.map(service => (
-                          <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: 'var(--text)' }}>
-                            <input type="checkbox" checked={editServiceIds.includes(service.id)} onChange={() => toggleService(service.id)} />
-                            <span>{service.name}</span>
-                          </label>
+                <div className="admin-detail-kv-grid">
+                  <div className="admin-detail-kv-item" style={{ gridColumn: '1 / -1' }}>
+                    <span className="admin-detail-kv-label">Services Selected</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                      {displayServices.length > 0 ? (
+                        displayServices.map((svc, i) => (
+                          <span key={i} style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            background: 'rgba(217, 119, 6, 0.1)',
+                            color: 'var(--gold-dark, #b45309)',
+                            border: '1px solid rgba(217, 119, 6, 0.28)',
+                            borderRadius: '8px',
+                            padding: '4px 10px',
+                            fontSize: '13px',
+                            fontWeight: 700
+                          }}>
+                            ✂️ {svc}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="admin-detail-kv-value">-</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {displayPackages.length > 0 && (
+                    <div className="admin-detail-kv-item" style={{ gridColumn: '1 / -1' }}>
+                      <span className="admin-detail-kv-label">Packages Selected</span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                        {displayPackages.map((pkg, i) => (
+                          <span key={i} style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            background: 'rgba(59, 130, 246, 0.1)',
+                            color: '#1d4ed8',
+                            border: '1px solid rgba(59, 130, 246, 0.28)',
+                            borderRadius: '8px',
+                            padding: '4px 10px',
+                            fontSize: '13px',
+                            fontWeight: 700
+                          }}>
+                            📦 {pkg}
+                          </span>
                         ))}
                       </div>
                     </div>
-                    <div>
-                      <p style={{ margin: 0, fontWeight: 700, color: 'var(--text)' }}>Packages</p>
-                      <div style={{ display: 'grid', gap: '8px', marginTop: '10px' }}>
-                        {packageOptions.map(pkg => (
-                          <label key={pkg.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: 'var(--text)' }}>
-                            <input type="checkbox" checked={editPackageIds.includes(pkg.id)} onChange={() => togglePackage(pkg.id)} />
-                            <span>{pkg.name}</span>
-                          </label>
+                  )}
+
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Appointment Date</span>
+                    <span className="admin-detail-kv-value" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Calendar size={13} /> {booking.date || '-'}
+                    </span>
+                  </div>
+
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Time Slot</span>
+                    <span className="admin-detail-kv-value" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Clock size={13} /> {formatSlot(booking.slot)}
+                    </span>
+                  </div>
+
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Visit Type</span>
+                    <span className="admin-detail-kv-value" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <MapPin size={13} /> {getBookingTypeLabel(booking.bookingType || 'store')}
+                    </span>
+                  </div>
+
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Estimated Total</span>
+                    <span className="admin-detail-kv-value" style={{ fontWeight: 800, color: 'var(--gold-dark, #b45309)', fontSize: '13.5px' }}>
+                      Rs {money(booking.estimatedTotal || 0)}
+                    </span>
+                  </div>
+
+                  {booking.bookingType === 'home' && booking.address && (
+                    <div className="admin-detail-kv-item" style={{ gridColumn: '1 / -1' }}>
+                      <span className="admin-detail-kv-label">Home Visit Address</span>
+                      <span className="admin-detail-kv-value" style={{ fontWeight: 600 }}>📍 {booking.address}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 2: Customer & Pet Information */}
+              <div className="admin-detail-card">
+                <div className="admin-detail-card-head">
+                  <h4 className="admin-detail-card-title">
+                    <User size={13} /> Customer & Pet Info
+                  </h4>
+                </div>
+                <div className="admin-detail-kv-grid">
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Pet Owner</span>
+                    <span className="admin-detail-kv-value">{booking.ownerName || '-'}</span>
+                  </div>
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Phone</span>
+                    <span className="admin-detail-kv-value">
+                      {booking.phone ? (
+                        <a href={`tel:${booking.phone}`} style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 700 }}>
+                          {booking.phone}
+                        </a>
+                      ) : '-'}
+                    </span>
+                  </div>
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Pet Name</span>
+                    <span className="admin-detail-kv-value" style={{ fontWeight: 700 }}>
+                      {booking.petName || '-'}
+                    </span>
+                  </div>
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Pet Type / Breed</span>
+                    <span className="admin-detail-kv-value">
+                      {booking.petType ? `${booking.petType}${booking.petBreed ? ` • ${booking.petBreed}` : ''}` : '-'}
+                    </span>
+                  </div>
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Booking Source</span>
+                    <span className="admin-detail-kv-value">{booking.isWalkIn ? 'Walk-in' : 'Online Booking'}</span>
+                  </div>
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Request Sent</span>
+                    <span className="admin-detail-kv-value">{formatDateTime(booking.createdAt)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Pricing & Payment Breakdown */}
+              <div className="admin-detail-card">
+                <div className="admin-detail-card-head">
+                  <h4 className="admin-detail-card-title">
+                    <IndianRupee size={13} /> Pricing & Payment
+                  </h4>
+                  {booking.couponCode && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(217, 119, 6, 0.1)', color: 'var(--gold-dark, #b45309)', border: '1px solid var(--accent-border)', borderRadius: '999px', padding: '2px 8px', fontSize: '11px', fontWeight: 800 }}>
+                      <Tag size={11} /> {booking.couponCode}
+                    </span>
+                  )}
+                </div>
+                <div className="admin-detail-kv-grid">
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Estimated Total</span>
+                    <span className="admin-detail-kv-value" style={{ fontWeight: 800, color: 'var(--gold-dark, #b45309)' }}>
+                      {booking.estimatedTotal > 0 ? `Rs ${money(booking.estimatedTotal)}` : (booking.price || '-')}
+                    </span>
+                  </div>
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Amount Collected</span>
+                    <span className="admin-detail-kv-value" style={{ fontWeight: 700, color: booking.amountCollected > 0 ? '#16a34a' : 'var(--muted)' }}>
+                      {booking.amountCollected > 0 ? `Rs ${money(booking.amountCollected)}` : 'Pending'}
+                    </span>
+                  </div>
+                  {booking.visitCharge > 0 && (
+                    <div className="admin-detail-kv-item">
+                      <span className="admin-detail-kv-label">Home Visit Charge</span>
+                      <span className="admin-detail-kv-value">Rs {money(booking.visitCharge)}</span>
+                    </div>
+                  )}
+                  {booking.discountAmount > 0 && (
+                    <div className="admin-detail-kv-item">
+                      <span className="admin-detail-kv-label">Discount Applied</span>
+                      <span className="admin-detail-kv-value" style={{ color: '#16a34a', fontWeight: 700 }}>
+                        -Rs {money(booking.discountAmount)}
+                      </span>
+                    </div>
+                  )}
+                  {booking.nextVisitDays && (
+                    <div className="admin-detail-kv-item">
+                      <span className="admin-detail-kv-label">Next Recommended Visit</span>
+                      <span className="admin-detail-kv-value">In {booking.nextVisitDays} days</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 4: Team Assignment & Operational Info */}
+              <div className="admin-detail-card">
+                <div className="admin-detail-card-head">
+                  <h4 className="admin-detail-card-title">
+                    <UserRound size={13} /> Assignment & Status
+                  </h4>
+                </div>
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  <div className="admin-detail-kv-item">
+                    <span className="admin-detail-kv-label">Assigned Team Member</span>
+                    {booking.status === 'confirmed' ? (
+                      <select
+                        className="input"
+                        value={assignee?.id || OWNER_ASSIGNEE_ID}
+                        onChange={e => onAssign(booking, e.target.value)}
+                        disabled={updating === booking.id}
+                        style={{ marginTop: '4px', width: '100%', padding: '7px 10px', fontSize: '13px' }}
+                      >
+                        {assigneeOptions.map(member => (
+                          <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>
                         ))}
+                      </select>
+                    ) : (
+                      <span className="admin-detail-kv-value" style={{ marginTop: '2px', fontWeight: 600 }}>
+                        {getAssigneeLabel(assignee)}
+                      </span>
+                    )}
+                  </div>
+
+                  {booking.notes && (
+                    <div className="admin-detail-kv-item" style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                      <span className="admin-detail-kv-label">Customer Notes</span>
+                      <span className="admin-detail-kv-value" style={{ fontWeight: 500, fontSize: '12.5px' }}>
+                        {booking.notes}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 4: Cancellation Alert (if cancelled) */}
+              {booking.status === 'cancelled' && (
+                <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: '14px', padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#991b1b', fontWeight: 800, fontSize: '12.5px', marginBottom: '6px' }}>
+                    <ShieldAlert size={15} /> Appointment Cancelled
+                  </div>
+                  <div className="admin-detail-kv-grid" style={{ gap: '6px 12px' }}>
+                    <div>
+                      <span style={{ fontSize: '10.5px', color: '#b91c1c', fontWeight: 700, display: 'block' }}>Cancelled By</span>
+                      <span style={{ fontSize: '12px', color: '#7f1d1d', fontWeight: 600 }}>{cancellationActor(booking)}</span>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '10.5px', color: '#b91c1c', fontWeight: 700, display: 'block' }}>Cancelled At</span>
+                      <span style={{ fontSize: '12px', color: '#7f1d1d', fontWeight: 600 }}>{formatDateTime(booking.cancelledAt)}</span>
+                    </div>
+                    <div style={{ gridColumn: '1 / -1', marginTop: '4px' }}>
+                      <span style={{ fontSize: '10.5px', color: '#b91c1c', fontWeight: 700, display: 'block' }}>Reason</span>
+                      <span style={{ fontSize: '12.5px', color: '#991b1b', fontWeight: 600 }}>{booking.cancellationReason || 'No reason provided'}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Card 5: Before & After Photos */}
+              {(booking.beforeImageUrl || booking.afterImageUrl) && (
+                <div className="admin-detail-card">
+                  <div className="admin-detail-card-head">
+                    <h4 className="admin-detail-card-title">
+                      <Camera size={13} /> Before & After Photos
+                    </h4>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
+                    {booking.beforeImageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setLightboxImage({ url: booking.beforeImageUrl, label: 'Before' })}
+                        style={{ padding: 0, background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}
+                      >
+                        <span style={{ display: 'block', color: 'var(--muted)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '4px' }}>Before</span>
+                        <img src={booking.beforeImageUrl} alt="Before appointment" style={{ width: '100%', borderRadius: '10px', objectFit: 'cover', aspectRatio: '4/3', border: '1px solid var(--border)' }} />
+                      </button>
+                    )}
+                    {booking.afterImageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setLightboxImage({ url: booking.afterImageUrl, label: 'After' })}
+                        style={{ padding: 0, background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}
+                      >
+                        <span style={{ display: 'block', color: 'var(--muted)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '4px' }}>After</span>
+                        <img src={booking.afterImageUrl} alt="After appointment" style={{ width: '100%', borderRadius: '10px', objectFit: 'cover', aspectRatio: '4/3', border: '1px solid var(--border)' }} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            /* Edit Panel */
+            <div className="admin-booking-edit-panel" style={{ padding: '4px 0' }}>
+              <div style={{ marginBottom: '14px' }}>
+                <h3 style={{ margin: 0, color: 'var(--text)', fontSize: '15px', fontWeight: 800 }}>
+                  {booking.status === 'completed' ? 'Edit completed booking' : 'Edit confirmed booking'}
+                </h3>
+              </div>
+
+              <div style={{ display: 'grid', gap: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)', fontSize: '12px' }}>Services / Packages</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', minHeight: '44px', padding: '8px 10px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                    {currentServices.map(service => (
+                      <span key={service.id} style={{ padding: '4px 10px', borderRadius: '999px', background: 'rgba(164, 118, 0, 0.12)', color: '#8f6a00', fontSize: '12px', fontWeight: 700 }}>
+                        {service.name}
+                      </span>
+                    ))}
+                    {selectedPackages.map(pkg => (
+                      <span key={pkg.id} style={{ padding: '4px 10px', borderRadius: '999px', background: 'rgba(0, 91, 139, 0.12)', color: '#005b8b', fontSize: '12px', fontWeight: 700 }}>
+                        {pkg.name}
+                      </span>
+                    ))}
+                    {!currentServices.length && !selectedPackages.length && (
+                      <span style={{ color: 'var(--muted)', fontSize: '12px' }}>No service or package selected</span>
+                    )}
+                  </div>
+                  <button type="button" className="btn btn-secondary" style={{ marginTop: '8px', fontSize: '12px', padding: '6px 12px' }} onClick={() => setShowServicePackageOptions(prev => !prev)}>
+                    {showServicePackageOptions ? 'Hide options ▲' : 'Edit services/packages ▼'}
+                  </button>
+                  {showServicePackageOptions && (
+                    <div style={{ marginTop: '10px', display: 'grid', gap: '12px', padding: '12px', borderRadius: '14px', border: '1px solid var(--border)', background: 'var(--surface-alt)' }}>
+                      <div>
+                        <p style={{ margin: 0, fontWeight: 700, color: 'var(--text)', fontSize: '13px' }}>Services</p>
+                        <div style={{ display: 'grid', gap: '6px', marginTop: '8px' }}>
+                          {serviceCatalog.map(service => (
+                            <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text)', cursor: 'pointer' }}>
+                              <input type="checkbox" checked={editServiceIds.includes(service.id)} onChange={() => toggleService(service.id)} />
+                              <span>{service.name}</span>
+                            </label>
+                          ))}
+                        </div>
                       </div>
+                      <div>
+                        <p style={{ margin: 0, fontWeight: 700, color: 'var(--text)', fontSize: '13px' }}>Packages</p>
+                        <div style={{ display: 'grid', gap: '6px', marginTop: '8px' }}>
+                          {packageOptions.map(pkg => (
+                            <label key={pkg.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text)', cursor: 'pointer' }}>
+                              <input type="checkbox" checked={editPackageIds.includes(pkg.id)} onChange={() => togglePackage(pkg.id)} />
+                              <span>{pkg.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: 700, color: 'var(--muted)', fontSize: '12px' }}>Visit Type</label>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {['store', 'home'].map(type => (
+                      <button key={type} type="button" onClick={() => setEditBookingType(type)} className={editBookingType === type ? 'btn btn-primary' : 'btn btn-secondary'} style={{ minWidth: '100px', padding: '8px 12px', fontSize: '12.5px' }}>
+                        {getBookingTypeLabel(type)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {editBookingType === 'home' && (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '6px', fontWeight: 700, color: 'var(--muted)', fontSize: '12px' }}>Home Visit Address</label>
+                    <input className="input" type="text" value={editAddress} onChange={e => setEditAddress(e.target.value)} placeholder="Enter customer address" />
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: 700, color: 'var(--muted)', fontSize: '12px' }}>Assigned Team Member</label>
+                  <select className="input" value={editAssignedTeamMemberId} onChange={e => setEditAssignedTeamMemberId(e.target.value)}>
+                    {assigneeOptions.map(member => (
+                      <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {canEditDateTime && (
+                  <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <label style={{ display: 'block', marginBottom: '6px', fontWeight: 700, color: 'var(--muted)', fontSize: '12px' }}>Date *</label>
+                      <input className="input" type="date" value={editDate} onChange={e => { setEditDate(e.target.value); setEditSlot('') }} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <label style={{ display: 'block', marginBottom: '6px', fontWeight: 700, color: 'var(--muted)', fontSize: '12px' }}>Time *</label>
+                      <input className="input" type="time" value={editSlot} onChange={e => setEditSlot(e.target.value)} />
                     </div>
                   </div>
                 )}
-              </div>
 
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Visit Type</label>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {['store', 'home'].map(type => (
-                    <button key={type} type="button" onClick={() => setEditBookingType(type)} className={editBookingType === type ? 'btn btn-primary' : 'btn btn-secondary'} style={{ minWidth: '120px' }}>
-                      {getBookingTypeLabel(type)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {editBookingType === 'home' && (
-                <div>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Home Visit Address</label>
-                  <input className="input" type="text" value={editAddress} onChange={e => setEditAddress(e.target.value)} placeholder="Enter customer address" />
-                </div>
-              )}
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Assigned Team Member</label>
-                <select className="input" value={editAssignedTeamMemberId} onChange={e => setEditAssignedTeamMemberId(e.target.value)}>
-                  {assigneeOptions.map(member => (
-                    <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>
-                  ))}
-                </select>
-              </div>
-
-              {canEditDateTime && (
-                <div style={{ display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
                   <div style={{ minWidth: 0 }}>
-                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Date *</label>
-                    <input className="input" type="date" value={editDate} onChange={e => { setEditDate(e.target.value); setEditSlot('') }} />
+                    <label style={{ display: 'block', marginBottom: '6px', fontWeight: 700, color: 'var(--muted)', fontSize: '12px' }}>Amount Collected</label>
+                    <input className="input" type="number" min="0" value={editAmountCollected} onChange={e => setEditAmountCollected(e.target.value)} placeholder="Rs 0" />
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Time *</label>
-                    <input className="input" type="time" value={editSlot} onChange={e => setEditSlot(e.target.value)} />
+                    <label style={{ display: 'block', marginBottom: '6px', fontWeight: 700, color: 'var(--muted)', fontSize: '12px' }}>Visit Charge</label>
+                    <input className="input" type="number" min="0" value={editVisitCharge} onChange={e => setEditVisitCharge(e.target.value)} placeholder="Rs 0" />
                   </div>
                 </div>
+              </div>
+
+              {editError && (
+                <div style={{ marginTop: '8px', color: '#b91c1c', fontSize: '13px' }}>{editError}</div>
               )}
 
-              <div style={{ display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
-                <div style={{ minWidth: 0 }}>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Amount Collected</label>
-                  <input className="input" type="number" min="0" value={editAmountCollected} onChange={e => setEditAmountCollected(e.target.value)} placeholder="Rs 0" />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, color: 'var(--muted)' }}>Visit Charge</label>
-                  <input className="input" type="number" min="0" value={editVisitCharge} onChange={e => setEditVisitCharge(e.target.value)} placeholder="Rs 0" />
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => { setIsEditing(false); setEditError('') }} disabled={updating === booking.id}>Cancel</button>
+                <button type="button" onClick={saveBookingChanges} disabled={updating === booking.id} className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
+                  {updating === booking.id ? 'Saving...' : 'Save Changes'}
+                </button>
               </div>
             </div>
+          )}
+        </div>
 
-            {editError && (
-              <div style={{ marginTop: '8px', color: '#b91c1c', fontSize: '13px' }}>{editError}</div>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '18px' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => { setIsEditing(false); setEditError('') }} disabled={updating === booking.id}>Cancel</button>
-              <button type="button" onClick={saveBookingChanges} disabled={updating === booking.id} className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
-                {updating === booking.id ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {(booking.beforeImageUrl || booking.afterImageUrl) && !isEditing && (
-          <div className="admin-booking-image-section" style={{ marginTop: '16px' }}>
-            <h3 style={{ color: 'var(--text)', fontSize: '14px', fontWeight: 900, marginBottom: '10px' }}>Before & After</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
-              {booking.beforeImageUrl && <button type="button" onClick={() => setLightboxImage({ url: booking.beforeImageUrl, label: 'Before' })} style={{ padding: 0, background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}><span style={{ display: 'block', color: 'var(--muted)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>Before</span><img src={booking.beforeImageUrl} alt="Before appointment" style={{ width: '100%', borderRadius: '12px', objectFit: 'cover', aspectRatio: '4/3', border: '1px solid var(--border)' }} /></button>}
-              {booking.afterImageUrl && <button type="button" onClick={() => setLightboxImage({ url: booking.afterImageUrl, label: 'After' })} style={{ padding: 0, background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}><span style={{ display: 'block', color: 'var(--muted)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>After</span><img src={booking.afterImageUrl} alt="After appointment" style={{ width: '100%', borderRadius: '12px', objectFit: 'cover', aspectRatio: '4/3', border: '1px solid var(--border)' }} /></button>}
-            </div>
-          </div>
-        )}
-
-        {!isEditing && (
-          <div className="admin-booking-assignee-panel">
-            <label>Assigned Team Member</label>
-            <select className="input" value={assignee?.id || OWNER_ASSIGNEE_ID} onChange={e => onAssign(booking, e.target.value)} disabled={booking.status !== 'confirmed' || updating === booking.id}>
-              {assigneeOptions.map(member => <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>)}
-            </select>
-            {booking.status !== 'confirmed' && <p>Assignments can be changed after an appointment is confirmed.</p>}
-          </div>
-        )}
-
+        {/* Lightbox for Before/After preview */}
         {lightboxImage && (
           <div className="modal-overlay" onClick={() => setLightboxImage(null)} style={{ zIndex: 1400 }}>
             <div style={{ maxWidth: '900px', width: 'min(900px, calc(100vw - 24px))', maxHeight: '90vh', display: 'grid', gap: '10px' }} onClick={e => e.stopPropagation()}>
@@ -1212,29 +2163,65 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
           </div>
         )}
 
+        {/* Sticky Actions Footer */}
         {!isEditing && (
           <div className="admin-booking-detail-actions">
             {booking.status === 'pending' && (
-              <button type="button" onClick={() => onStatus(booking, 'confirmed')} disabled={updating === booking.id} className="btn btn-secondary">
+              <button
+                type="button"
+                onClick={() => onStatus(booking, 'confirmed')}
+                disabled={updating === booking.id}
+                className="btn admin-btn-approve"
+              >
                 <CheckCircle2 size={15} /> Approve
               </button>
             )}
-            {canReschedule && (
-              <button type="button" onClick={() => onReschedule(booking)} disabled={updating === booking.id} className="btn btn-secondary">
-                <Clock size={15} /> Reschedule
-              </button>
-            )}
             {booking.status === 'confirmed' && (
-              <button type="button" onClick={() => onStatus(booking, 'completed')} disabled={updating === booking.id} className="btn btn-primary">
+              <button
+                type="button"
+                onClick={() => onStatus(booking, 'completed')}
+                disabled={updating === booking.id}
+                className="btn admin-btn-complete"
+              >
                 <IndianRupee size={15} /> Complete
               </button>
             )}
+            {canReschedule && (
+              <button
+                type="button"
+                onClick={() => onReschedule(booking)}
+                disabled={updating === booking.id}
+                className="btn admin-btn-reschedule"
+              >
+                <Clock size={15} /> Reschedule
+              </button>
+            )}
             {['pending', 'confirmed'].includes(booking.status) && (
-              <button type="button" onClick={() => onCancelBooking(booking)} disabled={updating === booking.id} className="btn btn-danger">
+              <button
+                type="button"
+                onClick={() => onCancelBooking(booking)}
+                disabled={updating === booking.id}
+                className="btn admin-btn-cancel"
+              >
                 <X size={15} /> Cancel
               </button>
             )}
-            <a className="btn btn-secondary" href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(booking, shopName)}` : '#'} target="_blank" rel="noopener noreferrer">
+            {booking.status === 'completed' && (
+              <button
+                type="button"
+                onClick={() => navigate(`/admin/invoices?mode=appointment&id=${booking.id}`)}
+                className="btn btn-primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <ReceiptText size={15} /> Invoice
+              </button>
+            )}
+            <a
+              className="btn admin-btn-whatsapp"
+              href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(booking, shopName)}` : '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <MessageCircle size={15} /> Booking WA
             </a>
           </div>

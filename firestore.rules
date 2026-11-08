@@ -30,7 +30,7 @@ service cloud.firestore {
                       (
                         resource.data.status in ['pending', 'confirmed'] &&
                         request.resource.data.status == resource.data.status &&
-                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['serviceId', 'serviceIds', 'serviceNames', 'selectedPackages', 'packageNames', 'serviceName', 'bookingType', 'address', 'serviceTotal', 'visitCharge', 'estimatedTotal', 'estimatedTotalMax', 'updatedAt'])
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['serviceId', 'serviceIds', 'serviceNames', 'selectedPackages', 'packageNames', 'serviceName', 'bookingType', 'address', 'serviceTotal', 'visitCharge', 'estimatedTotal', 'estimatedTotalMax', 'couponCode', 'discountAmount', 'originalSubtotal', 'updatedAt'])
                       ) ||
                       (
                         resource.data.status in ['pending', 'confirmed'] &&
@@ -145,6 +145,11 @@ service cloud.firestore {
     }
 
     match /serviceDetails/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /offers/{id} {
       allow read: if true;
       allow write: if isAdmin();
     }

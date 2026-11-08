@@ -103,10 +103,11 @@ function normalizeBlockedSlots(value) {
   }, {})
 }
 
-export function normalizeBookingSettings(data = {}) {
+export function normalizeBookingSettings(raw = {}) {
+  const data = raw || {}
   const weekly = {}
   DAYS.forEach(day => {
-    const saved = data.weekly?.[day.key] || {}
+    const saved = data?.weekly?.[day.key] || {}
     weekly[day.key] = {
       open: saved.open !== false,
       windows: normalizeWindows(saved.windows, saved),
@@ -120,6 +121,7 @@ export function normalizeBookingSettings(data = {}) {
     centerVisitCharge: data.centerVisitCharge ?? '',
     cancellationCutoffMinutes: Math.max(0, Number(data.cancellationCutoffMinutes ?? 60)),
     paymentMode: ['prepaid', 'cash', 'both'].includes(data.paymentMode) ? data.paymentMode : 'cash',
+    allowCustomerInvoiceDownload: data.allowCustomerInvoiceDownload === true,
     weekly,
     holidays: Array.isArray(data.holidays) ? data.holidays.filter(Boolean) : [],
     blockedSlots: normalizeBlockedSlots(data.blockedSlots),

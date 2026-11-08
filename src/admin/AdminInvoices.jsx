@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore'
-import { Download, Eye, MessageCircle, ReceiptText, Search, X } from 'lucide-react'
+import { Download, Eye, MessageCircle, ReceiptText, Search, Share2, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import { db } from '../firebase'
 import { PET_TYPES } from '../utils/services'
 import { fetchBusinessInfo } from '../utils/businessInfo'
-import { downloadInvoicePdf, shareInvoicePdfFile, viewInvoicePdf } from '../utils/invoicePdf'
+import { buildCustomerInvoiceWhatsAppMessage, downloadInvoicePdf, shareInvoicePdfFile, viewInvoicePdf } from '../utils/invoicePdf'
 import { getBookingTypeLabel } from '../utils/bookingSettings'
 
 const blankCustom = {
@@ -23,7 +24,11 @@ let cachedInvoicesTimestamp = 0
 const INVOICES_CACHE_TTL = 60 * 1000
 
 export default function AdminInvoices() {
-  const [mode, setMode] = useState('appointment')
+  const [searchParams] = useSearchParams()
+  const initialMode = searchParams.get('mode')
+  const [mode, setMode] = useState(
+    initialMode === 'boarding' ? 'boarding' : initialMode === 'custom' ? 'custom' : 'appointment'
+  )
   const [bookings, setBookings] = useState([])
   const [boardings, setBoardings] = useState([])
   const [businessInfo, setBusinessInfo] = useState(null)
@@ -147,6 +152,38 @@ export default function AdminInvoices() {
   const appointmentLabel = booking => `${booking.ownerName || 'Customer'} - ${booking.petName || 'Pet'} - ${booking.date || '-'} - Rs ${money(booking.amountCollected || booking.estimatedTotal)}`
   const boardingLabel = b => `${b.ownerName || 'Customer'} - ${b.petName || 'Pet'} (${b.checkInDate || '-'} to ${b.checkOutDate || '-'}) - Rs ${money(b.totalAmount || (Number(b.estimatedTotal || 0) + Number(b.specialFoodCharge || 0) + Number(b.lateCheckOutCharge || 0)))}`
   const customerLabel = customer => `${customer.ownerName || 'Customer'} - ${customer.phone || customer.userEmail || '-'}`
+
+  useEffect(() => {
+    const pMode = searchParams.get('mode')
+    const pId = searchParams.get('id')
+    if (pMode === 'boarding') {
+      setMode('boarding')
+      if (pId && boardings.length > 0) {
+        const found = boardings.find(
+          b => (b.status === 'checked_out' || b.status === 'completed') &&
+               (b.id === pId || shortId(b.id).toUpperCase() === pId.toUpperCase())
+        )
+        if (found) {
+          setSelectedBoardingId(found.id)
+          setBoardingSearch(boardingLabel(found))
+        }
+      }
+    } else if (pMode === 'appointment') {
+      setMode('appointment')
+      if (pId && bookings.length > 0) {
+        const found = bookings.find(
+          b => b.status === 'completed' &&
+               (b.id === pId || shortId(b.id).toUpperCase() === pId.toUpperCase())
+        )
+        if (found) {
+          setSelectedId(found.id)
+          setAppointmentSearch(appointmentLabel(found))
+        }
+      }
+    } else if (pMode === 'custom') {
+      setMode('custom')
+    }
+  }, [searchParams, bookings, boardings])
 
   const filteredCompletedBoardings = useMemo(() => {
     if (!boardingSearch.trim()) return completedBoardings
@@ -430,6 +467,33 @@ export default function AdminInvoices() {
     }
   }
 
+  const sendInvoiceViaWhatsApp = async () => {
+    if (!generated?.booking) return
+    const booking = generated.booking
+    const rawPhone = String(booking.phone || '').trim().replace(/\D/g, '')
+    if (!rawPhone) {
+      setToastType('error')
+      setToastMessage('Customer phone number is missing in this invoice.')
+      setError('Cannot open WhatsApp: Customer phone number is missing.')
+      return
+    }
+
+    const cleanPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone
+
+    setBusy('whatsapp-customer')
+    try {
+      await downloadInvoicePdf(booking, invoiceInfo)
+    } catch {}
+    setBusy('')
+
+    const msg = buildCustomerInvoiceWhatsAppMessage(booking, invoiceInfo)
+    const waUrl = `https://wa.me/${cleanPhone}?text=${msg}`
+    window.open(waUrl, '_blank', 'noopener,noreferrer')
+
+    setToastType('success')
+    setToastMessage('PDF downloaded & customer WhatsApp opened!')
+  }
+
   if (loading) return <div style={{ padding: '28px' }}><Spinner text="Loading invoices..." /></div>
 
   return (
@@ -510,17 +574,24 @@ export default function AdminInvoices() {
               </div>
 
               {selectedBooking ? (
-                <div className="admin-booking-detail-grid" style={{ marginTop: '16px' }}>
-                  {[
-                    ['Booking ID', shortId(selectedBooking.id)],
-                    ['Customer', selectedBooking.ownerName || '-'],
-                    ['Phone', selectedBooking.phone || '-'],
-                    ['Pet', `${selectedBooking.petName || '-'}${selectedBooking.petType ? ` (${selectedBooking.petType})` : ''}`],
-                    ['Service', selectedBooking.serviceName || '-'],
-                    ['Visit Type', getBookingTypeLabel(selectedBooking.bookingType || 'store')],
-                    ['Date & Time', `${selectedBooking.date || '-'} ${selectedBooking.slot || ''}`],
-                    ['Amount', `Rs ${money(selectedBooking.amountCollected || selectedBooking.estimatedTotal)}`],
-                  ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+                <div style={{ marginTop: '16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+                  <div className="admin-detail-kv-grid">
+                    {[
+                      ['Booking ID', shortId(selectedBooking.id)],
+                      ['Customer', selectedBooking.ownerName || '-'],
+                      ['Phone', selectedBooking.phone || '-'],
+                      ['Pet', `${selectedBooking.petName || '-'}${selectedBooking.petType ? ` (${selectedBooking.petType})` : ''}`],
+                      ['Service', selectedBooking.serviceName || '-'],
+                      ['Visit Type', getBookingTypeLabel(selectedBooking.bookingType || 'store')],
+                      ['Date & Time', `${selectedBooking.date || '-'} ${selectedBooking.slot || ''}`],
+                      ['Amount', `Rs ${money(selectedBooking.amountCollected || selectedBooking.estimatedTotal)}`],
+                    ].map(([label, value]) => (
+                      <div key={label} className="admin-detail-kv-item">
+                        <span className="admin-detail-kv-label">{label}</span>
+                        <span className="admin-detail-kv-value">{value}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : <p style={{ color: 'var(--muted)', marginTop: '14px', fontSize: '13px' }}>No completed appointment selected.</p>}
 
@@ -570,21 +641,28 @@ export default function AdminInvoices() {
               </div>
 
               {selectedBoarding ? (
-                <div className="admin-booking-detail-grid" style={{ marginTop: '16px' }}>
-                  {[
-                    ['Stay ID', shortId(selectedBoarding.id)],
-                    ['Customer', selectedBoarding.ownerName || '-'],
-                    ['Phone', selectedBoarding.phone || '-'],
-                    ['Pet', `${selectedBoarding.petName || '-'}${selectedBoarding.petType ? ` (${selectedBoarding.petType}${selectedBoarding.petBreed ? `, ${selectedBoarding.petBreed}` : ''})` : ''}`],
-                    ['Stay Dates', `${selectedBoarding.checkInDate || '-'} to ${selectedBoarding.checkOutDate || '-'}`],
-                    ['Check-in / Out Time', `${selectedBoarding.checkInTime || '10:00 AM'} / ${selectedBoarding.checkOutTime || '11:00 PM'}`],
-                    ['Duration', `${selectedBoarding.stayDays || 1} Days (${selectedBoarding.stayNights || 1} Nights)`],
-                    ['Daily Rate', `Rs ${money(selectedBoarding.dailyRate || 0)}`],
-                    ...(Number(selectedBoarding.specialFoodCharge || 0) > 0 ? [['Special Food Charge', `Rs ${money(selectedBoarding.specialFoodCharge)}`]] : []),
-                    ...(Number(selectedBoarding.lateCheckOutCharge || 0) > 0 ? [['Late Check-out Fee', `Rs ${money(selectedBoarding.lateCheckOutCharge)}`]] : []),
-                    ['Total Stay Amount', `Rs ${money(selectedBoarding.totalAmount || (Number(selectedBoarding.estimatedTotal || 0) + Number(selectedBoarding.specialFoodCharge || 0) + Number(selectedBoarding.lateCheckOutCharge || 0)))}`],
-                    ['Amount Collected', `Rs ${money(selectedBoarding.amountCollected || selectedBoarding.totalAmount || selectedBoarding.estimatedTotal || 0)}`],
-                  ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+                <div style={{ marginTop: '16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+                  <div className="admin-detail-kv-grid">
+                    {[
+                      ['Stay ID', shortId(selectedBoarding.id)],
+                      ['Customer', selectedBoarding.ownerName || '-'],
+                      ['Phone', selectedBoarding.phone || '-'],
+                      ['Pet', `${selectedBoarding.petName || '-'}${selectedBoarding.petType ? ` (${selectedBoarding.petType}${selectedBoarding.petBreed ? `, ${selectedBoarding.petBreed}` : ''})` : ''}`],
+                      ['Stay Dates', `${selectedBoarding.checkInDate || '-'} to ${selectedBoarding.checkOutDate || '-'}`],
+                      ['Check-in / Out Time', `${selectedBoarding.checkInTime || '10:00 AM'} / ${selectedBoarding.checkOutTime || '11:00 PM'}`],
+                      ['Duration', `${selectedBoarding.stayDays || 1} Days (${selectedBoarding.stayNights || 1} Nights)`],
+                      ['Daily Rate', `Rs ${money(selectedBoarding.dailyRate || 0)}`],
+                      ...(Number(selectedBoarding.specialFoodCharge || 0) > 0 ? [['Special Food Charge', `Rs ${money(selectedBoarding.specialFoodCharge)}`]] : []),
+                      ...(Number(selectedBoarding.lateCheckOutCharge || 0) > 0 ? [['Late Check-out Fee', `Rs ${money(selectedBoarding.lateCheckOutCharge)}`]] : []),
+                      ['Total Stay Amount', `Rs ${money(selectedBoarding.totalAmount || (Number(selectedBoarding.estimatedTotal || 0) + Number(selectedBoarding.specialFoodCharge || 0) + Number(selectedBoarding.lateCheckOutCharge || 0)))}`],
+                      ['Amount Collected', `Rs ${money(selectedBoarding.amountCollected || selectedBoarding.totalAmount || selectedBoarding.estimatedTotal || 0)}`],
+                    ].map(([label, value]) => (
+                      <div key={label} className="admin-detail-kv-item">
+                        <span className="admin-detail-kv-label">{label}</span>
+                        <span className="admin-detail-kv-value">{value}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : <p style={{ color: 'var(--muted)', marginTop: '14px', fontSize: '13px' }}>No completed boarding stay selected.</p>}
 
@@ -613,9 +691,31 @@ export default function AdminInvoices() {
             <div>
               <p style={{ color: 'var(--muted)', fontSize: '13px', lineHeight: 1.6, marginBottom: '14px' }}>Invoice generated for <strong style={{ color: 'var(--text)' }}>{generated.label}</strong>. What would you like to do?</p>
               <div style={{ display: 'grid', gap: '10px' }}>
-                <button type="button" className="btn btn-secondary" disabled={busy === 'view'} onClick={() => run('view', viewInvoicePdf)}><Eye size={15} /> View</button>
-                <button type="button" className="btn btn-secondary" disabled={busy === 'download'} onClick={() => run('download', downloadInvoicePdf)}><Download size={15} /> Download</button>
-                <button type="button" className="btn btn-secondary" disabled={busy === 'whatsapp'} onClick={() => sharePdf('whatsapp')}><MessageCircle size={15} /> Share PDF</button>
+                <button
+                  type="button"
+                  className="btn"
+                  style={{
+                    background: '#25D366',
+                    borderColor: '#25D366',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    padding: '10px 16px',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(37, 211, 102, 0.25)',
+                    cursor: 'pointer',
+                  }}
+                  disabled={busy === 'whatsapp-customer'}
+                  onClick={sendInvoiceViaWhatsApp}
+                >
+                  <MessageCircle size={16} /> Send to Customer (WhatsApp)
+                </button>
+                <button type="button" className="btn btn-secondary" disabled={busy === 'view'} onClick={() => run('view', viewInvoicePdf)}><Eye size={15} /> View PDF</button>
+                <button type="button" className="btn btn-secondary" disabled={busy === 'download'} onClick={() => run('download', downloadInvoicePdf)}><Download size={15} /> Download PDF</button>
+                <button type="button" className="btn btn-secondary" disabled={busy === 'whatsapp'} onClick={() => sharePdf('whatsapp')}><Share2 size={15} /> Share PDF</button>
               </div>
             </div>
           ) : (
@@ -705,40 +805,57 @@ function CustomInvoiceForm({ custom, filteredCustomers, customCustomerSearch, on
           <Field label="Customer Name *" value={custom.ownerName} onChange={value => onChange('ownerName', value)} placeholder="Full name" />
           <Field label="Phone *" value={custom.phone} onChange={value => onChange('phone', value)} placeholder="10-digit" />
         </div>
-        <Field label="Email" value={custom.userEmail} onChange={value => onChange('userEmail', value)} placeholder="customer@email.com" />
 
         <div className="admin-form-grid">
+          <Field label="Email" value={custom.userEmail} onChange={value => onChange('userEmail', value)} placeholder="customer@email.com" />
           <Field label="Pet Name *" value={custom.petName} onChange={value => onChange('petName', value)} placeholder="e.g. Bruno" />
+        </div>
+
+        <div className="admin-form-grid">
           <div>
             <label className="invoice-label">Pet Type</label>
             <select className="input" value={custom.petType} onChange={event => onChange('petType', event.target.value)}>
               {PET_TYPES.map(type => <option key={type}>{type}</option>)}
             </select>
           </div>
+          <Field label="Pet Breed" value={custom.petBreed} onChange={value => onChange('petBreed', value)} placeholder="Breed" />
         </div>
-        <Field label="Pet Breed" value={custom.petBreed} onChange={value => onChange('petBreed', value)} placeholder="Breed" />
-        <Field label="Service Name *" value={custom.serviceName} onChange={value => onChange('serviceName', value)} placeholder="Service or item" />
+
+        <div className="admin-form-grid">
+          <Field label="Service Name *" value={custom.serviceName} onChange={value => onChange('serviceName', value)} placeholder="Service or item" />
+          <div>
+            <label className="invoice-label">Visit Type</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+              {[['store', 'In Store'], ['home', 'At Home']].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setVisitType(value)}
+                  className={custom.bookingType === value ? 'btn btn-primary' : 'btn btn-secondary'}
+                  style={{ padding: '8px 12px', fontSize: '13px', justifyContent: 'center' }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {custom.bookingType === 'home' && (
+          <Field label="Home Visit Address *" value={custom.address} onChange={value => onChange('address', value)} placeholder="Complete address" />
+        )}
 
         <div className="admin-form-grid">
           <Field type="date" label="Date *" value={custom.date} onChange={value => onChange('date', value)} />
           <Field label="Time" value={custom.slot} onChange={value => onChange('slot', value)} placeholder="e.g. 11:00 AM" />
         </div>
 
-        <div>
-          <label className="invoice-label">Visit Type</label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
-            {[['store', 'In Store'], ['home', 'At Home']].map(([value, label]) => (
-              <button key={value} type="button" onClick={() => setVisitType(value)} className={custom.bookingType === value ? 'btn btn-primary' : 'btn btn-secondary'}>{label}</button>
-            ))}
-          </div>
-        </div>
-        {custom.bookingType === 'home' && <Field label="Home Visit Address *" value={custom.address} onChange={value => onChange('address', value)} placeholder="Complete address" />}
-
-        <div className="admin-form-grid">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
           <Field type="number" label="Service Amount *" value={custom.amountCollected} onChange={value => onChange('amountCollected', value)} placeholder="600" />
           <Field type="number" label="Visit Charge" value={custom.visitCharge} onChange={value => onChange('visitCharge', value)} placeholder="0" />
+          <Field type="number" label="GST Amount" value={custom.gstAmount} onChange={value => onChange('gstAmount', value)} placeholder="0" />
         </div>
-        <Field type="number" label="GST" value={custom.gstAmount} onChange={value => onChange('gstAmount', value)} placeholder="0" />
+
         <div>
           <label className="invoice-label">Notes</label>
           <textarea className="input" rows={2} value={custom.notes} onChange={event => onChange('notes', event.target.value)} placeholder="Customer note or terms" />

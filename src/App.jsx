@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
+import MobileBottomNav from './components/MobileBottomNav'
 import Spinner from './components/Spinner'
 
 // Pages
@@ -41,6 +42,7 @@ const AdminBookingSettings = lazy(() => import('./admin/AdminBookingSettings'))
 const AdminInvoices = lazy(() => import('./admin/AdminInvoices'))
 const AdminTeam = lazy(() => import('./admin/AdminTeam'))
 const AdminShopPurchases = lazy(() => import('./admin/AdminShopPurchases'))
+const AdminOffers = lazy(() => import('./admin/AdminOffers'))
 
 function ScrollToTop() {
   const { pathname, search, hash } = useLocation()
@@ -88,6 +90,7 @@ function PublicLayout() {
         <Outlet />
       </main>
       <Footer />
+      <MobileBottomNav />
     </div>
   )
 }
@@ -119,6 +122,7 @@ export default function App() {
         <Route path="booking-settings" element={<AdminBookingSettings />} />
         <Route path="team" element={<AdminTeam />} />
         <Route path="shop-purchases" element={<AdminShopPurchases />} />
+        <Route path="offers" element={<AdminOffers />} />
       </Route>
 
       {/* Public — main layout */}
@@ -131,6 +135,7 @@ export default function App() {
         <Route path="login" element={<Login />} />
         <Route path="book" element={<ProtectedRoute><Book /></ProtectedRoute>} />
         <Route path="boarding" element={<ProtectedRoute><BookBoarding /></ProtectedRoute>} />
+        <Route path="book-boarding" element={<ProtectedRoute><BookBoarding /></ProtectedRoute>} />
         <Route path="profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="my-pets" element={<ProtectedRoute><MyPets /></ProtectedRoute>} />
         <Route path="my-bookings" element={<ProtectedRoute><MyBookings /></ProtectedRoute>} />

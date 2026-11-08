@@ -63,7 +63,11 @@ messaging.onBackgroundMessage((payload) => {
 
   const tag = data.tag || data.bookingId || 'pawpaw-alert';
   const targetUrl = data.actionUrl || data.link || '/';
-  const actionTitle = data.actionTitle || (targetUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking');
+  const actionTitle = data.actionTitle || (
+    targetUrl.includes('/book')
+      ? '📅 Book Appointment'
+      : (targetUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking')
+  );
 
   const options = {
     body: body,
@@ -90,6 +94,10 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('fetch', () => {
+  // Pass-through fetch handler satisfying PWA installability requirements
 });
 
 self.addEventListener('notificationclick', (event) => {

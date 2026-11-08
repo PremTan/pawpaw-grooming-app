@@ -1,5 +1,6 @@
 // src/admin/AdminBoarding.jsx
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   collection,
   doc,
@@ -41,6 +42,7 @@ import {
   Plus,
   PlusSquare,
   Receipt,
+  ReceiptText,
   RefreshCw,
   Scale,
   Search,
@@ -197,6 +199,7 @@ function formatPetAge(dob) {
 export default function AdminBoarding() {
   const { user } = useAuth()
   const { sendNotification } = useNotifications()
+  const navigate = useNavigate()
 
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
@@ -205,6 +208,7 @@ export default function AdminBoarding() {
   // Filters & Search state
   const [search, setSearch] = useState('')
   const [statusF, setStatusF] = useState('all')
+  const [quickFilter, setQuickFilter] = useState('all') // 'all' | 'in_kennel' | 'arriving_today' | 'leaving_today'
   const [dateRangeF, setDateRangeF] = useState('all')
   const [customDateFrom, setCustomDateFrom] = useState('')
   const [customDateTo, setCustomDateTo] = useState('')
@@ -315,8 +319,26 @@ export default function AdminBoarding() {
     setSelectedBooking(prev => prev?.id === id ? { ...prev, ...patch } : prev)
   }
 
+  const todayStr = useMemo(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  }, [])
+
+  const inKennelCount = useMemo(() => {
+    return bookings.filter(b => b.status === 'checked_in').length
+  }, [bookings])
+
+  const arrivingTodayCount = useMemo(() => {
+    return bookings.filter(b => b.checkInDate === todayStr && b.status !== 'cancelled' && b.status !== 'checked_out').length
+  }, [bookings, todayStr])
+
+  const leavingTodayCount = useMemo(() => {
+    return bookings.filter(b => b.checkOutDate === todayStr && b.status !== 'cancelled').length
+  }, [bookings, todayStr])
+
   const hasActiveFilters = useMemo(() => {
     return (
+      quickFilter !== 'all' ||
       statusF !== 'all' ||
       dateRangeF !== 'all' ||
       petTypeF !== 'all' ||
@@ -324,9 +346,10 @@ export default function AdminBoarding() {
       amountRangeF !== 'all' ||
       sortBy !== 'latest'
     )
-  }, [statusF, dateRangeF, petTypeF, customerF, amountRangeF, sortBy])
+  }, [quickFilter, statusF, dateRangeF, petTypeF, customerF, amountRangeF, sortBy])
 
   const clearAllFilters = () => {
+    setQuickFilter('all')
     setStatusF('all')
     setDateRangeF('all')
     setCustomDateFrom('')
@@ -340,6 +363,15 @@ export default function AdminBoarding() {
 
   const filtered = useMemo(() => {
     let r = [...bookings]
+
+    // Quick schedule run-sheet filters
+    if (quickFilter === 'in_kennel') {
+      r = r.filter(b => b.status === 'checked_in')
+    } else if (quickFilter === 'arriving_today') {
+      r = r.filter(b => b.checkInDate === todayStr && b.status !== 'cancelled')
+    } else if (quickFilter === 'leaving_today') {
+      r = r.filter(b => b.checkOutDate === todayStr && b.status !== 'cancelled')
+    }
 
     // Status filter
     if (statusF !== 'all') {
@@ -432,7 +464,7 @@ export default function AdminBoarding() {
     })
 
     return r
-  }, [bookings, statusF, petTypeF, customerF, search, dateRangeF, customDateFrom, customDateTo, amountRangeF, sortBy])
+  }, [bookings, quickFilter, todayStr, statusF, petTypeF, customerF, search, dateRangeF, customDateFrom, customDateTo, amountRangeF, sortBy])
 
   const stats = useMemo(() => {
     const total = bookings.length
@@ -569,7 +601,9 @@ export default function AdminBoarding() {
     const recalculated = getRecalculatedStay(b, defaultDate)
     const previousCollected = Number(b.amountCollected || 0)
     const existingFoodCharge = Number(b.specialFoodCharge || 0)
-    const totalStay = recalculated.baseTotal + existingFoodCharge + defaultLateFee
+    const discountAmt = Number(b.discountAmount || 0)
+    const netBaseTotal = Math.max(0, recalculated.baseTotal - discountAmt)
+    const totalStay = netBaseTotal + existingFoodCharge + defaultLateFee
     const remaining = Math.max(0, totalStay - previousCollected)
     setCheckoutAmount(String(remaining))
   }
@@ -606,7 +640,9 @@ export default function AdminBoarding() {
       ? alreadyFood
       : ((isPawPawFood && Number(checkoutFoodChargeInput) > 0) ? Math.round(Number(checkoutFoodChargeInput)) : 0)
 
-    const newTotalStay = recalculated.baseTotal + effectiveFood + fee
+    const discountAmt = Number(checkoutModal.discountAmount || 0)
+    const netBaseTotal = Math.max(0, recalculated.baseTotal - discountAmt)
+    const newTotalStay = netBaseTotal + effectiveFood + fee
     const prevCollected = Number(checkoutModal.amountCollected || 0)
     setCheckoutAmount(String(Math.max(0, newTotalStay - prevCollected)))
   }
@@ -624,6 +660,8 @@ export default function AdminBoarding() {
     const effectiveStayDays = recalculated.days
     const effectiveStayNights = recalculated.nights
     const effectiveBaseTotal = recalculated.baseTotal
+    const discountAmt = Number(checkoutModal.discountAmount || 0)
+    const netBaseTotal = Math.max(0, effectiveBaseTotal - discountAmt)
 
     const additionalAmt = Number(checkoutAmount) || 0
     const previousCollected = Number(checkoutModal.amountCollected || 0)
@@ -645,13 +683,14 @@ export default function AdminBoarding() {
 
       const effectiveFoodCharge = hasRecordedAtCheckIn ? alreadyRecordedFoodCharge : newlyAddedFoodCharge
       const effectiveLateFee = isLateCheckOutDetected ? Math.max(0, Math.round(Number(checkoutLateFeeInput) || 0)) : 0
-      const finalTotalAmount = effectiveBaseTotal + effectiveFoodCharge + effectiveLateFee
+      const finalTotalAmount = netBaseTotal + effectiveFoodCharge + effectiveLateFee
 
       const patch = {
         status: BOARDING_STATUS.CHECKED_OUT,
         stayDays: effectiveStayDays,
         stayNights: effectiveStayNights,
-        estimatedTotal: effectiveBaseTotal,
+        originalSubtotal: effectiveBaseTotal,
+        estimatedTotal: netBaseTotal,
         amountCollected: finalTotalCollected,
         totalAmount: finalTotalAmount,
         actualCheckOutDate: String(actualCheckOutDate).trim(),
@@ -1108,10 +1147,56 @@ export default function AdminBoarding() {
         </button>
       </div>
 
+      {/* Quick Run Sheet Filter Pills */}
+      <div className="admin-quick-filter-scroll" role="tablist" aria-label="Quick boarding schedule filter">
+        <button
+          type="button"
+          className={`admin-quick-pill ${quickFilter === 'all' ? 'active' : ''}`}
+          onClick={() => setQuickFilter('all')}
+        >
+          All Stays
+        </button>
+        <button
+          type="button"
+          className={`admin-quick-pill ${quickFilter === 'in_kennel' ? 'active' : ''}`}
+          onClick={() => setQuickFilter(prev => prev === 'in_kennel' ? 'all' : 'in_kennel')}
+          title="Pets currently checked in"
+        >
+          <Bed size={13} />
+          <span>In Hostel Now</span>
+          <span className="admin-quick-pill-count">{inKennelCount}</span>
+        </button>
+        <button
+          type="button"
+          className={`admin-quick-pill ${quickFilter === 'arriving_today' ? 'active' : ''}`}
+          onClick={() => setQuickFilter(prev => prev === 'arriving_today' ? 'all' : 'arriving_today')}
+          title="Pets arriving today"
+        >
+          <LogIn size={13} />
+          <span>Arriving Today</span>
+          <span className="admin-quick-pill-count">{arrivingTodayCount}</span>
+        </button>
+        <button
+          type="button"
+          className={`admin-quick-pill ${quickFilter === 'leaving_today' ? 'active' : ''}`}
+          onClick={() => setQuickFilter(prev => prev === 'leaving_today' ? 'all' : 'leaving_today')}
+          title="Pets checking out today"
+        >
+          <LogOut size={13} />
+          <span>Leaving Today</span>
+          <span className="admin-quick-pill-count">{leavingTodayCount}</span>
+        </button>
+      </div>
+
       {/* Booking count row */}
       <div className="boarding-count-row">
         <span className="boarding-results-count">
           <strong>{filtered.length}</strong> {filtered.length === 1 ? 'Booking' : 'Bookings'}
+          {quickFilter !== 'all' && (
+            <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--accent)', fontWeight: 600 }}>
+              ({quickFilter === 'in_kennel' ? 'Currently in facility' : quickFilter === 'arriving_today' ? "Today's check-ins" : "Today's check-outs"})
+            </span>
+          )}
         </span>
       </div>
 
@@ -1234,6 +1319,11 @@ export default function AdminBoarding() {
                       <strong className="strip-val amount">
                         ₹{money(b.totalAmount || (Number(b.estimatedTotal || 0) + Number(b.specialFoodCharge || 0)))}
                       </strong>
+                      {b.couponCode && (
+                        <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>
+                          <Tag size={10} /> {b.couponCode} (-₹{money(b.discountAmount || 0)})
+                        </span>
+                      )}
                       {Number(b.specialFoodCharge || 0) > 0 && (
                         <span className="strip-sub" style={{ color: '#16a34a' }}>
                           inc. ₹{money(b.specialFoodCharge)} food
@@ -1319,6 +1409,30 @@ export default function AdminBoarding() {
                         <Eye size={15} />
                         <span>View Details</span>
                       </button>
+                      {(isCheckedOut || b.status === 'completed') && (
+                        <button
+                          type="button"
+                          className="card-action-btn invoice"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            background: 'rgba(212, 175, 55, 0.12)',
+                            color: 'var(--accent)',
+                            border: '1px solid rgba(212, 175, 55, 0.3)',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            borderRadius: '8px',
+                            padding: '6px 12px',
+                            fontSize: '13px'
+                          }}
+                          onClick={() => navigate(`/admin/invoices?mode=boarding&id=${b.id}`)}
+                          title="Invoice"
+                        >
+                          <ReceiptText size={15} />
+                          <span>Invoice</span>
+                        </button>
+                      )}
                       {adminWhatsappNumber && (
                         <a
                           href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(b, shopName)}`}
@@ -1502,6 +1616,24 @@ export default function AdminBoarding() {
                 </h2>
 
                 <div className="header-actions-row">
+                  {!isEditing && (selectedBooking.status === 'checked_out' || selectedBooking.status === 'completed') && (
+                    <button
+                      type="button"
+                      className="details-header-btn invoice"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        background: 'rgba(212, 175, 55, 0.12)',
+                        color: 'var(--accent)',
+                        border: '1px solid rgba(212, 175, 55, 0.3)',
+                      }}
+                      onClick={() => navigate(`/admin/invoices?mode=boarding&id=${selectedBooking.id}`)}
+                      aria-label="Generate Invoice"
+                    >
+                      <ReceiptText size={14} /> <span>Invoice</span>
+                    </button>
+                  )}
                   {!isEditing && adminWhatsappNumber && (
                     <a
                       href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(selectedBooking, shopName)}`}
@@ -1760,6 +1892,22 @@ export default function AdminBoarding() {
                         <span className="billing-label"><Tag size={14} /> Daily Rate</span>
                         <strong className="billing-val">₹{money(selectedBooking.dailyRate || 800)}</strong>
                       </div>
+
+                      {Number(selectedBooking.originalSubtotal || 0) > 0 && selectedBooking.couponCode && (
+                        <div className="billing-item">
+                          <span className="billing-label"><Receipt size={14} /> Subtotal</span>
+                          <strong className="billing-val">₹{money(selectedBooking.originalSubtotal)}</strong>
+                        </div>
+                      )}
+
+                      {selectedBooking.couponCode && (
+                        <div className="billing-item">
+                          <span className="billing-label"><Tag size={14} /> Coupon Applied</span>
+                          <strong className="billing-val" style={{ color: '#10b981' }}>
+                            {selectedBooking.couponCode} (-₹{money(selectedBooking.discountAmount || 0)})
+                          </strong>
+                        </div>
+                      )}
 
                       <div className="billing-item">
                         <span className="billing-label"><Receipt size={14} /> Base Boarding Stay</span>
@@ -2401,8 +2549,10 @@ export default function AdminBoarding() {
         const effectiveStayNights = recalculatedStay.nights
         const effectiveBaseTotal = recalculatedStay.baseTotal
         const isStayRecalculated = recalculatedStay.isChanged
+        const discountAmount = Number(checkoutModal.discountAmount || 0)
+        const netBaseTotal = Math.max(0, effectiveBaseTotal - discountAmount)
 
-        const totalStayAmount = effectiveBaseTotal + effectiveFoodCharge + effectiveLateFee
+        const totalStayAmount = netBaseTotal + effectiveFoodCharge + effectiveLateFee
         const previouslyCollected = Number(checkoutModal.amountCollected || 0)
         const additionalAtCheckout = Number(checkoutAmount) || 0
         const totalCollectedAfter = previouslyCollected + additionalAtCheckout
@@ -2464,7 +2614,7 @@ export default function AdminBoarding() {
                       const val = e.target.value
                       setCheckoutFoodChargeInput(val)
                       const extra = Number(val) || 0
-                      const newRem = Math.max(0, (effectiveBaseTotal + extra + effectiveLateFee) - previouslyCollected)
+                      const newRem = Math.max(0, (netBaseTotal + extra + effectiveLateFee) - previouslyCollected)
                       setCheckoutAmount(String(newRem))
                     }}
                     placeholder="Enter special food charge, e.g. 500"
@@ -2593,7 +2743,7 @@ export default function AdminBoarding() {
                           type="button"
                           onClick={() => {
                             setCheckoutLateFeeInput('0')
-                            const newTotal = effectiveBaseTotal + effectiveFoodCharge
+                            const newTotal = netBaseTotal + effectiveFoodCharge
                             setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
                           }}
                           style={{
@@ -2615,7 +2765,7 @@ export default function AdminBoarding() {
                           onClick={() => {
                             const fee = savedSettings?.lateCheckOutFee ?? 400
                             setCheckoutLateFeeInput(String(fee))
-                            const newTotal = effectiveBaseTotal + effectiveFoodCharge + fee
+                            const newTotal = netBaseTotal + effectiveFoodCharge + fee
                             setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
                           }}
                           style={{
@@ -2637,7 +2787,7 @@ export default function AdminBoarding() {
                         onClick={() => {
                           setIsLateCheckOutDetected(false)
                           setCheckoutLateFeeInput('0')
-                          const newTotal = effectiveBaseTotal + effectiveFoodCharge
+                          const newTotal = netBaseTotal + effectiveFoodCharge
                           setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
                         }}
                         style={{
@@ -2666,7 +2816,7 @@ export default function AdminBoarding() {
                       const val = e.target.value
                       setCheckoutLateFeeInput(val)
                       const lateFeeVal = Number(val) || 0
-                      const newTotal = effectiveBaseTotal + effectiveFoodCharge + lateFeeVal
+                      const newTotal = netBaseTotal + effectiveFoodCharge + lateFeeVal
                       setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
                     }}
                     placeholder="Enter late check-out fee, e.g. 400"
@@ -2694,7 +2844,7 @@ export default function AdminBoarding() {
                       setIsLateCheckOutDetected(true)
                       const fee = savedSettings?.lateCheckOutFee ?? 400
                       setCheckoutLateFeeInput(String(fee))
-                      const newTotal = effectiveBaseTotal + effectiveFoodCharge + fee
+                      const newTotal = netBaseTotal + effectiveFoodCharge + fee
                       setCheckoutAmount(String(Math.max(0, newTotal - previouslyCollected)))
                     }}
                     style={{
@@ -2736,6 +2886,22 @@ export default function AdminBoarding() {
                   <strong style={{ color: 'var(--text)' }}>₹{money(effectiveBaseTotal)}</strong>
                 </div>
 
+                {discountAmount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a', fontWeight: 700 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <Tag size={12} /> Offer Applied ({checkoutModal.couponCode || 'PROMO'}):
+                    </span>
+                    <strong>-₹{money(discountAmount)}</strong>
+                  </div>
+                )}
+
+                {discountAmount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text)', fontWeight: 600 }}>
+                    <span>Net Stay (After Discount):</span>
+                    <strong>₹{money(netBaseTotal)}</strong>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: effectiveFoodCharge > 0 ? '#166534' : 'var(--muted)' }}>
                   <span>
                     Special-Food Charge:
@@ -2757,7 +2923,7 @@ export default function AdminBoarding() {
                   </div>
                 )}
 
-                {(effectiveFoodCharge > 0 || effectiveLateFee > 0) && (
+                {(discountAmount > 0 || effectiveFoodCharge > 0 || effectiveLateFee > 0) && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text)', fontWeight: 700, borderTop: '1px dotted var(--border)', paddingTop: '6px' }}>
                     <span>Total Final Stay Amount:</span>
                     <span>₹{money(totalStayAmount)}</span>

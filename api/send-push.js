@@ -81,6 +81,8 @@ export default async function handler(req, res) {
       userId = '',
       userEmail = '',
       toAdmin = false,
+      toAll = false,
+      broadcast = false,
       title = 'Paw Paw Pet Grooming',
       body = '',
       message = '',
@@ -131,7 +133,10 @@ export default async function handler(req, res) {
 
     const queries = []
 
-    if (isAdminTarget) {
+    if (toAll || broadcast) {
+      // Broadcast to all active customer devices
+      queries.push(tokensCol.where('active', '==', true).get())
+    } else if (isAdminTarget) {
       // Admin target tokens:
       // 1) All devices registered with isAdmin: true
       // 2) Any device registered with the active admin email from env (dev or prod)
@@ -173,9 +178,13 @@ export default async function handler(req, res) {
 
     // 2. Multicast FCM message with high priority for Web Push
     const cleanTopic = notificationTag.replace(/[^a-zA-Z0-9-_.~%]/g, '_').slice(0, 32)
-    const actionBtnTitle = isAdminTarget
-      ? (finalUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking')
-      : (finalUrl.includes('boarding') ? '🐾 View Stay' : '📅 View Appointment')
+    const actionBtnTitle = req.body?.actionTitle || (
+      isAdminTarget
+        ? (finalUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking')
+        : (finalUrl.includes('/book')
+            ? '📅 Book Appointment'
+            : (finalUrl.includes('boarding') ? '🐾 View Stay' : '📅 View Appointment'))
+    )
 
     const multicastMessage = {
       tokens,

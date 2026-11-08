@@ -272,9 +272,9 @@ function HeroSlider() {
         const savedImages = data.images || []
         const cleanImages = Array.isArray(savedImages)
           ? savedImages.filter(image => image?.url).slice(0, 5).map((image, index) => ({
-              src: image.url,
-              alt: image.alt || `Pet grooming hero image ${index + 1}`,
-            }))
+            src: image.url,
+            alt: image.alt || `Pet grooming hero image ${index + 1}`,
+          }))
           : []
         const savedVisitImages = Array.isArray(data.visitImages) ? data.visitImages : []
         const cleanVisitImages = DEFAULT_VISIT_IMAGES.map((fallback, index) => ({
@@ -305,8 +305,8 @@ function HeroSlider() {
   }, [heroImages])
 
   useEffect(() => {
-    fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
-    fetchBoardingSettings(db).then(setBoardingSettings).catch(() => {})
+    fetchBookingSettings(db).then(setBookingSettings).catch(() => { })
+    fetchBoardingSettings(db).then(setBoardingSettings).catch(() => { })
   }, [])
 
   useEffect(() => {
@@ -617,8 +617,11 @@ function HeroSlider() {
         <div className="mobile-hero-copy" key={`hero-copy-${current}`}>
           <div className="mobile-hero-text">
             <span className="mobile-hero-badge">{slideCopy.icon} {slideCopy.tag}</span>
-            <h1>{slideCopy.title} <span>{slideCopy.highlight}<PawPrint className="hero-title-paw" size={34} /></span></h1>
+            <h1>{slideCopy.title} <span>{slideCopy.highlight}<PawPrint className="hero-title-paw" size={26} /></span></h1>
             <p>{slideCopy.sub}</p>
+            <div className="mobile-hero-location-pill">
+              <span>📍 Premium Pet Grooming & Boarding · Dhayri, Pune</span>
+            </div>
           </div>
           <div className="mobile-hero-actions">
             <Link to="/book" className="btn btn-primary"><Calendar size={16} /> Book Appointment</Link>
@@ -866,13 +869,13 @@ function HeroSlider() {
                   <div className="upcoming-appointment-main">
                     <div className="upcoming-appointment-photo-stack">
                       <div className="upcoming-appointment-photo">
-                          {petImageUrl ? (
-                            <img src={optimizeCloudinary(petImageUrl, 200)} alt={petNameLabel} loading="lazy" decoding="async" />
-                          ) : (
-                            <PawPrint size={28} />
-                          )}
-                        </div>
-                        <div className="upcoming-appointment-petname">{petNameLabel}</div>
+                        {petImageUrl ? (
+                          <img src={optimizeCloudinary(petImageUrl, 200)} alt={petNameLabel} loading="lazy" decoding="async" />
+                        ) : (
+                          <PawPrint size={28} />
+                        )}
+                      </div>
+                      <div className="upcoming-appointment-petname">{petNameLabel}</div>
                     </div>
                     <div className="upcoming-appointment-details">
                       <div className="upcoming-appointment-meta">
@@ -913,13 +916,13 @@ function HeroSlider() {
                   <div className="upcoming-appointment-main">
                     <div className="upcoming-appointment-photo-stack">
                       <div className="upcoming-appointment-photo">
-                          {recommendedPetImageUrl ? (
-                            <img src={optimizeCloudinary(recommendedPetImageUrl, 200)} alt={recommendedVisit?.petName || recommendedVisit?.pet?.name || 'Pet'} loading="lazy" decoding="async" />
-                          ) : (
-                            <PawPrint size={28} />
-                          )}
-                        </div>
-                        <div className="upcoming-appointment-petname">{recommendedVisit?.petName || recommendedVisit?.pet?.name || 'Pet'}</div>
+                        {recommendedPetImageUrl ? (
+                          <img src={optimizeCloudinary(recommendedPetImageUrl, 200)} alt={recommendedVisit?.petName || recommendedVisit?.pet?.name || 'Pet'} loading="lazy" decoding="async" />
+                        ) : (
+                          <PawPrint size={28} />
+                        )}
+                      </div>
+                      <div className="upcoming-appointment-petname">{recommendedVisit?.petName || recommendedVisit?.pet?.name || 'Pet'}</div>
                     </div>
                     <div className="upcoming-appointment-details">
                       <div className="upcoming-appointment-meta">
@@ -1072,7 +1075,7 @@ let cachedHomeSectionsTime = 0
 const HOME_SECTIONS_TTL = 3 * 60 * 1000
 
 export default function Home() {
-  const [stats, setStats]   = useState(() => cachedHomeSectionsData?.stats || { totalBookings: 0, totalReviews: 0, avgRating: 5, daysOpen: 7 })
+  const [stats, setStats] = useState(() => cachedHomeSectionsData?.stats || { totalBookings: 0, totalReviews: 0, avgRating: 5, daysOpen: 7 })
   const [reviews, setReviews] = useState(() => cachedHomeSectionsData?.reviews || [])
   const [serviceDetails, setServiceDetails] = useState(() => cachedHomeSectionsData?.serviceDetails || {})
   const [galleryImages, setGalleryImages] = useState(() => cachedHomeSectionsData?.galleryImages || [])
@@ -1151,7 +1154,7 @@ export default function Home() {
             ])
             if (bCountSnap.status === 'fulfilled') fallbackBookingsCount = bCountSnap.value.data().count
             if (rCountSnap.status === 'fulfilled') fallbackReviewsCount = rCountSnap.value.data().count
-          } catch {}
+          } catch { }
         }
 
         const revAvg = revs.length
@@ -1213,7 +1216,7 @@ export default function Home() {
           })
           setFooterInfo(info.footer || { tagline: '', socials: [], phones: [], email: '' })
         }
-      } catch {}
+      } catch { }
     }
     fetchStats()
   }, [])
@@ -1421,56 +1424,56 @@ export default function Home() {
                   : (Array.isArray(r.images) ? r.images : [])
                 const hasReviewImages = reviewImageList.length > 0
                 return (
-                <article
-                  key={r.id}
-                  ref={(el) => {
-                    reviewSlideRefs.current[index] = el
-                  }}
-                  className={`home-review-card home-review-slide ${hasReviewImages ? 'has-images' : 'no-images'}`}
-                >
-                  <div className="home-review-person">
-                    <div className="home-review-avatar">
-                      {r.profileImage || r.userPhoto
-                        ? <img src={r.profileImage || r.userPhoto} alt="" loading="lazy" decoding="async" />
-                        : <span>{(r.customerName || r.userName || 'P').slice(0, 1).toUpperCase()}</span>}
+                  <article
+                    key={r.id}
+                    ref={(el) => {
+                      reviewSlideRefs.current[index] = el
+                    }}
+                    className={`home-review-card home-review-slide ${hasReviewImages ? 'has-images' : 'no-images'}`}
+                  >
+                    <div className="home-review-person">
+                      <div className="home-review-avatar">
+                        {r.profileImage || r.userPhoto
+                          ? <img src={r.profileImage || r.userPhoto} alt="" loading="lazy" decoding="async" />
+                          : <span>{(r.customerName || r.userName || 'P').slice(0, 1).toUpperCase()}</span>}
+                      </div>
+                      <div>
+                        <strong>{r.customerName || r.userName || 'Pet Parent'}</strong>
+                        {r.source === 'google' ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: '#16a34a', fontSize: '11px', fontWeight: 700 }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+                              <path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2h-9.4v3.8h5.4c-.2 1.3-.9 2.4-2 3.1v2.6h3.2c1.9-1.8 3-4.5 3-7.5Z" />
+                              <path fill="#34A853" d="M12 22c2.7 0 4.9-.9 6.6-2.4l-3.2-2.6c-.9.6-2.1.9-3.4.9-2.6 0-4.8-1.8-5.6-4.2H3.1v2.6C4.8 19.8 8.2 22 12 22Z" />
+                              <path fill="#FBBC05" d="M6.4 13.7c-.2-.6-.3-1.2-.3-1.8s.1-1.3.3-1.8V7.5H3.1C2.4 8.8 2 10.3 2 12s.4 3.2 1.1 4.5l3.3-2.8Z" />
+                              <path fill="#EA4335" d="M12 6.2c1.5 0 2.8.5 3.9 1.5l2.9-2.9C16.9 3.1 14.5 2 12 2 8.2 2 4.8 4.2 3.1 7.5l3.3 2.6c.8-2.4 3-4.2 5.6-4.2Z" />
+                            </svg>
+                            Google
+                          </span>
+                        ) : (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: '#16a34a', fontSize: '11px', fontWeight: 700 }}>
+                            <BadgeCheck size={12} /> Verified Customer
+                          </span>
+                        )}
+                        <span>{[1, 2, 3, 4, 5].map(n => <Star key={n} size={14} fill={n <= (r.rating || 5) ? 'currentColor' : 'none'} />)}</span>
+                      </div>
                     </div>
-                    <div>
-                      <strong>{r.customerName || r.userName || 'Pet Parent'}</strong>
-                      {r.source === 'google' ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: '#16a34a', fontSize: '11px', fontWeight: 700 }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
-                            <path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2h-9.4v3.8h5.4c-.2 1.3-.9 2.4-2 3.1v2.6h3.2c1.9-1.8 3-4.5 3-7.5Z" />
-                            <path fill="#34A853" d="M12 22c2.7 0 4.9-.9 6.6-2.4l-3.2-2.6c-.9.6-2.1.9-3.4.9-2.6 0-4.8-1.8-5.6-4.2H3.1v2.6C4.8 19.8 8.2 22 12 22Z" />
-                            <path fill="#FBBC05" d="M6.4 13.7c-.2-.6-.3-1.2-.3-1.8s.1-1.3.3-1.8V7.5H3.1C2.4 8.8 2 10.3 2 12s.4 3.2 1.1 4.5l3.3-2.8Z" />
-                            <path fill="#EA4335" d="M12 6.2c1.5 0 2.8.5 3.9 1.5l2.9-2.9C16.9 3.1 14.5 2 12 2 8.2 2 4.8 4.2 3.1 7.5l3.3 2.6c.8-2.4 3-4.2 5.6-4.2Z" />
-                          </svg>
-                          Google
-                        </span>
-                      ) : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: '#16a34a', fontSize: '11px', fontWeight: 700 }}>
-                          <BadgeCheck size={12} /> Verified Customer
-                        </span>
-                      )}
-                      <span>{[1,2,3,4,5].map(n => <Star key={n} size={14} fill={n <= (r.rating || 5) ? 'currentColor' : 'none'} />)}</span>
-                    </div>
-                  </div>
-                  <p>&quot;{cleanReviewText(r.comment || r.review || '')}&quot;</p>
-                  {hasReviewImages && (
-                    <div className="home-review-image-grid">
-                      {reviewImageList.slice(0, 3).map((image, index) => (
-                        <button
-                          key={`${r.id}-${index}`}
-                          type="button"
-                          className="home-review-image-thumb-btn"
-                          onClick={() => setReviewLightbox({ url: image, alt: `${r.customerName || r.userName || 'Review'} image ${index + 1}` })}
-                          aria-label={`Open review image ${index + 1}`}
-                        >
-                          <img className="home-review-image-thumb" src={image} alt={`${r.customerName || r.userName || 'Review'} image ${index + 1}`} loading="lazy" decoding="async" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </article>
+                    <p>&quot;{cleanReviewText(r.comment || r.review || '')}&quot;</p>
+                    {hasReviewImages && (
+                      <div className="home-review-image-grid">
+                        {reviewImageList.slice(0, 3).map((image, index) => (
+                          <button
+                            key={`${r.id}-${index}`}
+                            type="button"
+                            className="home-review-image-thumb-btn"
+                            onClick={() => setReviewLightbox({ url: image, alt: `${r.customerName || r.userName || 'Review'} image ${index + 1}` })}
+                            aria-label={`Open review image ${index + 1}`}
+                          >
+                            <img className="home-review-image-thumb" src={image} alt={`${r.customerName || r.userName || 'Review'} image ${index + 1}`} loading="lazy" decoding="async" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </article>
                 );
               })}
             </div>
@@ -1590,8 +1593,8 @@ export default function Home() {
       <a href={`https://wa.me/${adminPhone}?text=${encodeURIComponent(`Hi ${shopName}, I'm interested in booking a service for my pet. Could you help me with more details?`)}`} target="_blank" rel="noopener noreferrer" className="whatsapp-btn" title="Chat on WhatsApp" aria-label="Chat on WhatsApp"><MessageCircle size={24} /></a>
 
       {galleryLightbox && (
-        <div onClick={() => setGalleryLightbox(null)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.92)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px', cursor:'pointer' }}>
-          <div onClick={e => e.stopPropagation()} style={{ maxWidth:'900px', width:'100%', cursor:'default' }}>
+        <div onClick={() => setGalleryLightbox(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', cursor: 'pointer' }}>
+          <div onClick={e => e.stopPropagation()} style={{ maxWidth: '900px', width: '100%', cursor: 'default' }}>
             <button onClick={() => setGalleryLightbox(null)} aria-label="Close gallery image" style={{ marginLeft: 'auto', marginBottom: '12px', width: '36px', height: '36px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <X size={18} />
             </button>
@@ -1601,23 +1604,23 @@ export default function Home() {
                 controls
                 autoPlay
                 playsInline
-                style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain', background: '#000' }}
+                style={{ width: '100%', borderRadius: '8px', maxHeight: '80vh', objectFit: 'contain', background: '#000' }}
               />
             ) : (
-              <img src={galleryLightbox.rawUrl || galleryLightbox.url} alt={galleryLightbox.caption || ''} style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain' }} />
+              <img src={galleryLightbox.rawUrl || galleryLightbox.url} alt={galleryLightbox.caption || ''} style={{ width: '100%', borderRadius: '8px', maxHeight: '80vh', objectFit: 'contain' }} />
             )}
-            {galleryLightbox.caption && <p style={{ color:'#fff', textAlign:'center', marginTop:'14px', fontSize:'15px' }}>{galleryLightbox.caption}</p>}
+            {galleryLightbox.caption && <p style={{ color: '#fff', textAlign: 'center', marginTop: '14px', fontSize: '15px' }}>{galleryLightbox.caption}</p>}
           </div>
         </div>
       )}
 
       {reviewLightbox && (
-        <div onClick={() => setReviewLightbox(null)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.94)', zIndex:220, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px', cursor:'pointer' }}>
-          <div onClick={e => e.stopPropagation()} style={{ maxWidth:'900px', width:'100%', cursor:'default' }}>
+        <div onClick={() => setReviewLightbox(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.94)', zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', cursor: 'pointer' }}>
+          <div onClick={e => e.stopPropagation()} style={{ maxWidth: '900px', width: '100%', cursor: 'default' }}>
             <button onClick={() => setReviewLightbox(null)} aria-label="Close review image" style={{ marginLeft: 'auto', marginBottom: '12px', width: '36px', height: '36px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <X size={18} />
             </button>
-            <img src={reviewLightbox.url} alt={reviewLightbox.alt || 'Review image'} style={{ width:'100%', borderRadius:'8px', maxHeight:'80vh', objectFit:'contain' }} />
+            <img src={reviewLightbox.url} alt={reviewLightbox.alt || 'Review image'} style={{ width: '100%', borderRadius: '8px', maxHeight: '80vh', objectFit: 'contain' }} />
           </div>
         </div>
       )}

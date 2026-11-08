@@ -2,9 +2,16 @@ import { doc, getDoc, serverTimestamp, setDoc, collection, query, where, getDocs
 import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
 import { ADMIN_EMAIL, app, db } from '../firebase'
 
-const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY || ''
+const vapidKey = (import.meta.env.VITE_FIREBASE_VAPID_KEY || '').trim().replace(/^['"]|['"]$/g, '')
 const swPath = '/firebase-messaging-sw.js'
-const shortError = (prefix, err) => `${prefix}:${err?.code || err?.name || err?.message || 'error'}`.slice(0, 90)
+
+function formatFcmError(prefix, err) {
+  if (err?.code === 15 || err?.name === 'InvalidAccessError') {
+    return 'Invalid VAPID Key (check Firebase Cloud Messaging Key pair in Vercel)'
+  }
+  const msg = err?.message || err?.code || err?.name || 'error'
+  return `${prefix}:${msg}`.slice(0, 90)
+}
 
 export async function registerFcmToken(user) {
   if (!user?.uid || !vapidKey) return { ok: false, reason: !vapidKey ? 'missing-vapid-key' : 'missing-user' }
@@ -19,7 +26,7 @@ export async function registerFcmToken(user) {
       permission = await Notification.requestPermission()
     } catch (err) {
       console.warn('Notification permission request failed:', err)
-      return { ok: false, reason: shortError('permission', err) }
+      return { ok: false, reason: formatFcmError('permission', err) }
     }
   }
 
@@ -32,7 +39,7 @@ export async function registerFcmToken(user) {
     await registration.update().catch(() => {})
   } catch (err) {
     console.warn('FCM service worker registration failed:', err)
-    return { ok: false, reason: shortError('sw', err) }
+    return { ok: false, reason: formatFcmError('sw', err) }
   }
 
   let token
@@ -44,17 +51,15 @@ export async function registerFcmToken(user) {
     // If a subscription with a different VAPID key already exists (DOMException code 15: InvalidAccessError),
     // unsubscribe the stale subscription and get a fresh token with the current environment's vapidKey.
     try {
-      const existingSub = await registration.pushManager?.getSubscription()
+      const existingSub = await registration.pushManager?.getSubscription().catch(() => null)
       if (existingSub) {
-        await existingSub.unsubscribe()
-        const messaging = getMessaging(app)
-        token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration })
-      } else {
-        return { ok: false, reason: shortError('token', err) }
+        await existingSub.unsubscribe().catch(() => {})
       }
+      const messaging = getMessaging(app)
+      token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration })
     } catch (retryErr) {
       console.warn('FCM token fetch retry failed:', retryErr)
-      return { ok: false, reason: shortError('token', retryErr) }
+      return { ok: false, reason: formatFcmError('token', retryErr || err) }
     }
   }
 

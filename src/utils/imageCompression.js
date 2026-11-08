@@ -4,8 +4,8 @@ export const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 export const IMAGE_FILE_ACCEPT = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp'
 
 const MAX_SOURCE_SIZE_MB = 10
-const MAX_OUTPUT_SIZE_MB = 1
-const MAX_WIDTH_OR_HEIGHT = 1920
+const MAX_OUTPUT_SIZE_MB = 0.5
+const MAX_WIDTH_OR_HEIGHT = 1200
 const BYTES_PER_MB = 1024 * 1024
 
 function readImageFile(file) {
@@ -55,7 +55,7 @@ export function validateImageFile(file) {
 export async function cropImageToSquare(file, options = {}) {
   validateImageFile(file)
 
-  const { size = 1400, quality = 0.92, outputType = file.type || 'image/jpeg' } = options
+  const { size = 1000, quality = 0.82, outputType = file.type || 'image/jpeg' } = options
   const image = await readImageFile(file)
   const side = Math.min(image.naturalWidth || image.width, image.naturalHeight || image.height)
   const sx = ((image.naturalWidth || image.width) - side) / 2
@@ -70,6 +70,8 @@ export async function cropImageToSquare(file, options = {}) {
     throw new Error('Your browser does not support image cropping.')
   }
 
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
   context.drawImage(image, sx, sy, side, side, 0, 0, size, size)
 
   const blob = await new Promise((resolve, reject) => {
@@ -90,11 +92,26 @@ export async function cropImageFile(file, croppedAreaPixels, options = {}) {
   validateImageFile(file)
 
   const image = await readImageFile(file)
-  const outputWidth = Math.max(1, Math.round(croppedAreaPixels.width || 0))
-  const outputHeight = Math.max(1, Math.round(croppedAreaPixels.height || 0))
+  const sourceWidth = Math.max(1, Math.round(croppedAreaPixels.width || 0))
+  const sourceHeight = Math.max(1, Math.round(croppedAreaPixels.height || 0))
+
+  // Direct single-pass hardware downscaling to max 1200px (fast, GPU accelerated)
+  const maxDim = options.maxDimension || MAX_WIDTH_OR_HEIGHT
+  let targetWidth = sourceWidth
+  let targetHeight = sourceHeight
+  if (targetWidth > maxDim || targetHeight > maxDim) {
+    if (targetWidth >= targetHeight) {
+      targetHeight = Math.round((targetHeight * maxDim) / targetWidth)
+      targetWidth = maxDim
+    } else {
+      targetWidth = Math.round((targetWidth * maxDim) / targetHeight)
+      targetHeight = maxDim
+    }
+  }
+
   const canvas = document.createElement('canvas')
-  canvas.width = outputWidth
-  canvas.height = outputHeight
+  canvas.width = targetWidth
+  canvas.height = targetHeight
 
   const context = canvas.getContext('2d')
   if (!context) {
@@ -109,18 +126,19 @@ export async function cropImageFile(file, croppedAreaPixels, options = {}) {
     image,
     croppedAreaPixels.x,
     croppedAreaPixels.y,
-    outputWidth,
-    outputHeight,
+    sourceWidth,
+    sourceHeight,
     0,
     0,
-    outputWidth,
-    outputHeight,
+    targetWidth,
+    targetHeight,
   )
 
   const outputType = options.outputType || file.type || 'image/jpeg'
+  const quality = options.quality ?? 0.82
   const extension = outputType === 'image/png' ? 'png' : outputType === 'image/webp' ? 'webp' : 'jpg'
   const blob = await new Promise((resolve) => {
-    canvas.toBlob(resolve, outputType, options.quality ?? 0.95)
+    canvas.toBlob(resolve, outputType, quality)
   })
 
   if (!blob) {
@@ -152,20 +170,17 @@ export async function optimizeImageForUpload(file, options = {}) {
     const optimizedFile = await imageCompression(file, {
       maxSizeMB: MAX_OUTPUT_SIZE_MB,
       maxWidthOrHeight: MAX_WIDTH_OR_HEIGHT,
-      initialQuality: 0.92,
-      maxIteration: 12,
-      preserveExif: true,
+      initialQuality: 0.82,
+      maxIteration: 3,
+      preserveExif: false,
       useWebWorker: true,
       fileType: file.type,
       onProgress,
     })
 
-    if (optimizedFile.size > MAX_OUTPUT_SIZE_MB * BYTES_PER_MB) {
-      throw new Error('Could not optimize image below 1 MB without reducing quality too much.')
-    }
-
     return optimizedFile
   } catch (err) {
-    throw new Error(err.message || 'Could not optimize image. Please try another image.')
+    console.warn('[imageCompression] Falling back to original image due to error:', err)
+    return file
   }
 }

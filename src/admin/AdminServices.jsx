@@ -20,10 +20,25 @@ const getCroppedImg = async (imageSrc, pixelCrop, fileName) => {
   image.src = imageSrc
   await new Promise(resolve => (image.onload = resolve))
 
+  const maxDim = 1000
+  let targetWidth = pixelCrop.width
+  let targetHeight = pixelCrop.height
+  if (targetWidth > maxDim || targetHeight > maxDim) {
+    if (targetWidth >= targetHeight) {
+      targetHeight = Math.round((targetHeight * maxDim) / targetWidth)
+      targetWidth = maxDim
+    } else {
+      targetWidth = Math.round((targetWidth * maxDim) / targetHeight)
+      targetHeight = maxDim
+    }
+  }
+
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
-  canvas.width = pixelCrop.width
-  canvas.height = pixelCrop.height
+  canvas.width = targetWidth
+  canvas.height = targetHeight
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
 
   ctx.drawImage(
     image,
@@ -33,15 +48,15 @@ const getCroppedImg = async (imageSrc, pixelCrop, fileName) => {
     pixelCrop.height,
     0,
     0,
-    pixelCrop.width,
-    pixelCrop.height
+    targetWidth,
+    targetHeight
   )
 
   return new Promise((resolve) => {
     canvas.toBlob((blob) => {
       blob.name = fileName
       resolve(new File([blob], fileName, { type: 'image/jpeg' }))
-    }, 'image/jpeg')
+    }, 'image/jpeg', 0.82)
   })
 }
 

@@ -1,6 +1,6 @@
 // src/pages/BookBoarding.jsx
 import { useState, useEffect, useRef } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc } from 'firebase/firestore'
 import { format, addDays, startOfToday } from 'date-fns'
 import boardingHeroPets from '../assets/boarding-hero-pets.png'
@@ -28,14 +28,17 @@ import {
   PawPrint,
   Phone,
   Plus,
+  RotateCcw,
   ShieldCheck,
   Sparkles,
+  Tag,
   User,
   Utensils,
   X,
 } from 'lucide-react'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { fetchActiveOffers, calculateDiscount } from '../utils/offers'
 import { CAT_BREEDS, DOG_BREEDS, PET_TYPES } from '../utils/services'
 import {
   BOARDING_STATUS,
@@ -69,7 +72,25 @@ function formatReviewDate(dateStr, timeStr) {
 export default function BookBoarding() {
   const { user, isBlocked } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const bookingTopRef = useRef(null)
+  const [searchParams] = useSearchParams()
+  const rebookId = searchParams.get('rebookId') || searchParams.get('rebook')
+  const prePetName = searchParams.get('petName') || ''
+  const prePetType = searchParams.get('petType') || 'Dog'
+  const prePetBreed = searchParams.get('petBreed') || ''
+  const prePhone = searchParams.get('phone') || ''
+  const preOwnerName = searchParams.get('ownerName') || ''
+
+  const preBreedList = prePetType === 'Dog' ? DOG_BREEDS : prePetType === 'Cat' ? CAT_BREEDS : []
+  const preMatchedStandard = prePetBreed ? preBreedList.find(b => b.toLowerCase() === prePetBreed.toLowerCase()) : ''
+  const isPreStandard = Boolean(preMatchedStandard)
+
+  const [couponInput, setCouponInput] = useState('')
+  const [appliedOffer, setAppliedOffer] = useState(null)
+  const [couponError, setCouponError] = useState('')
+  const [availableOffers, setAvailableOffers] = useState([])
+  const [showOffersList, setShowOffersList] = useState(false)
 
   const [step, setStep] = useState(1)
   const [pets, setPets] = useState([])
@@ -92,12 +113,12 @@ export default function BookBoarding() {
 
   const [form, setForm] = useState({
     // Step 1: Pet Details
-    ownerName: user?.displayName || '',
-    phone: '',
-    petName: '',
-    petType: 'Dog',
-    petBreed: '',
-    customBreed: '',
+    ownerName: preOwnerName || user?.displayName || '',
+    phone: prePhone,
+    petName: prePetName,
+    petType: prePetType,
+    petBreed: isPreStandard ? preMatchedStandard : (prePetBreed ? 'other' : ''),
+    customBreed: isPreStandard ? '' : prePetBreed,
     petDob: '',
     petWeight: '',
     petGender: 'Male',
@@ -160,6 +181,105 @@ export default function BookBoarding() {
     init()
   }, [])
 
+  const applyBookingData = (booking, petList = pets) => {
+    if (!booking) return
+    const pType = booking.petType || 'Dog'
+    const breedList = pType === 'Dog' ? DOG_BREEDS : pType === 'Cat' ? CAT_BREEDS : []
+    const rawBreed = (booking.petBreed || booking.customBreed || '').trim()
+    const matchedStandard = breedList.find(b => b.toLowerCase() === rawBreed.toLowerCase())
+    const isStandard = Boolean(matchedStandard)
+
+    // Check if there is a matching pet in user's saved pets
+    const targetPetId = booking.petId
+    const targetPetName = (booking.petName || '').trim().toLowerCase()
+    if (petList && petList.length > 0) {
+      const match = petList.find(p =>
+        (targetPetId && p.id === targetPetId) ||
+        (p.name && targetPetName && p.name.trim().toLowerCase() === targetPetName)
+      )
+      if (match) {
+        setSelectedPetId(match.id)
+      } else if (targetPetId) {
+        setSelectedPetId(targetPetId)
+      }
+    } else if (targetPetId) {
+      setSelectedPetId(targetPetId)
+    }
+
+    setForm(prev => ({
+      ...prev,
+      ownerName: booking.ownerName || prev.ownerName || '',
+      phone: booking.phone || prev.phone || '',
+      petName: booking.petName || prev.petName || '',
+      petType: pType,
+      petBreed: isStandard ? matchedStandard : (rawBreed ? 'other' : ''),
+      customBreed: isStandard ? '' : rawBreed,
+      petDob: booking.petDob || prev.petDob || '',
+      petWeight: booking.petWeight || prev.petWeight || '',
+      petGender: booking.petGender || prev.petGender || 'Male',
+      vaccinationStatus: booking.vaccinationStatus || prev.vaccinationStatus || 'Fully Vaccinated',
+      vaccinationNotes: booking.vaccinationNotes || prev.vaccinationNotes || '',
+      medicalConditions: booking.medicalConditions || prev.medicalConditions || '',
+      allergies: booking.foodAllergies || booking.allergies || prev.allergies || '',
+      medicines: booking.medicines || prev.medicines || '',
+
+      // Emergency Contact
+      emergencyContactName: booking.emergencyContactName || prev.emergencyContactName || '',
+      emergencyContactPhone: booking.emergencyContactPhone || prev.emergencyContactPhone || '',
+
+      // Food & Feeding
+      regularFoodIncluded: booking.regularFoodIncluded !== undefined ? booking.regularFoodIncluded : true,
+      specialFoodRequired: Boolean(booking.specialFoodRequired),
+      specialFoodProvider: booking.specialFoodProvider || 'customer',
+      foodType: booking.foodType || (booking.specialFoodRequired ? 'Regular Food + Special Food' : 'Regular Food (Included)'),
+      foodProvider: booking.foodProvider || (booking.specialFoodRequired ? (booking.specialFoodProvider === 'pawpaw' ? 'Paw Paw will provide it' : 'Customer will provide the food') : 'Paw Paw (Regular Food Included)'),
+      feedingSchedule: booking.feedingSchedule || 'Twice a day (Morning & Evening)',
+      specialDietInstructions: booking.specialDietInstructions || '',
+      waterInstructions: booking.waterInstructions || '',
+
+      // Daily Care & Behavior
+      walkingFrequency: booking.walkingFrequency || '2 walks per day (Standard)',
+      sleepingHabits: booking.sleepingHabits || '',
+      toiletHabits: booking.toiletHabits || 'Outdoor breaks',
+      behaviorNotes: booking.behaviorNotes || '',
+      separationAnxiety: booking.separationAnxiety || 'None / Mild',
+      additionalInstructions: booking.additionalInstructions || '',
+    }))
+
+    setToastType('success')
+    setToastMessage(`Details from previous stay for ${booking.petName || 'your pet'} have been auto-filled!`)
+  }
+
+  const rebookHandledRef = useRef(false)
+  useEffect(() => {
+    if (rebookHandledRef.current) return
+    let active = true
+
+    async function loadRebook() {
+      const stateBooking = location.state?.rebookBooking
+      if (stateBooking) {
+        rebookHandledRef.current = true
+        applyBookingData(stateBooking)
+        return
+      }
+
+      if (rebookId) {
+        try {
+          const snap = await getDoc(doc(db, 'boardingBookings', rebookId))
+          if (active && snap.exists()) {
+            rebookHandledRef.current = true
+            applyBookingData({ id: snap.id, ...snap.data() })
+          }
+        } catch (e) {
+          console.error('Failed to load rebook booking:', e)
+        }
+      }
+    }
+
+    loadRebook()
+    return () => { active = false }
+  }, [rebookId, location.state])
+
   useEffect(() => {
     async function loadPets() {
       if (!user?.uid) return
@@ -169,10 +289,23 @@ export default function BookBoarding() {
         const petList = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         petList.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
         setPets(petList)
+
+        // If rebooking or petName provided, auto-match the saved pet card
+        const targetPetName = (location.state?.rebookBooking?.petName || prePetName || '').trim().toLowerCase()
+        const targetPetId = location.state?.rebookBooking?.petId
+        if (targetPetId || targetPetName) {
+          const matched = petList.find(p =>
+            (targetPetId && p.id === targetPetId) ||
+            (p.name && targetPetName && p.name.trim().toLowerCase() === targetPetName)
+          )
+          if (matched) {
+            setSelectedPetId(matched.id)
+          }
+        }
       } catch { }
     }
     loadPets()
-  }, [user])
+  }, [user, location.state, prePetName])
 
   useEffect(() => {
     async function loadProfile() {
@@ -220,6 +353,55 @@ export default function BookBoarding() {
     form.petType,
     boardingSettings
   )
+
+  const rawBoardingTotal = Number(stayCalculation?.estimatedTotal || 0)
+  const discountCalc = appliedOffer ? calculateDiscount(appliedOffer, rawBoardingTotal) : { valid: false, discountAmount: 0 }
+  const currentDiscount = discountCalc.valid ? discountCalc.discountAmount : 0
+  const finalBoardingTotal = Math.max(0, rawBoardingTotal - currentDiscount)
+
+  useEffect(() => {
+    let ignore = false
+    fetchActiveOffers(db).then(offers => {
+      if (!ignore) {
+        const list = Array.isArray(offers) ? offers : []
+        setAvailableOffers(list)
+        const preCoupon = searchParams.get('coupon') || ''
+        if (preCoupon && list.length) {
+          const match = list.find(o => o.code.toUpperCase() === preCoupon.toUpperCase())
+          if (match) {
+            setAppliedOffer(match)
+            setCouponInput(match.code)
+          }
+        }
+      }
+    }).catch(() => { })
+    return () => { ignore = true }
+  }, [searchParams])
+
+  const handleApplyCoupon = (offerToApply = null) => {
+    const target = offerToApply || availableOffers.find(o => o.code.toUpperCase() === couponInput.trim().toUpperCase())
+    if (!target) {
+      setCouponError('Invalid or expired coupon code')
+      setAppliedOffer(null)
+      return
+    }
+    const res = calculateDiscount(target, rawBoardingTotal)
+    if (!res.valid) {
+      setCouponError(res.error || 'Coupon cannot be applied to this stay')
+      setAppliedOffer(null)
+      return
+    }
+    setAppliedOffer(target)
+    setCouponInput(target.code)
+    setCouponError('')
+    setShowOffersList(false)
+  }
+
+  const handleRemoveCoupon = () => {
+    setAppliedOffer(null)
+    setCouponInput('')
+    setCouponError('')
+  }
 
   const handleSubmit = async () => {
     if (boardingSettings?.acceptBookings === false) {
@@ -291,7 +473,10 @@ export default function BookBoarding() {
         stayDays: stayCalculation.days,
         stayNights: stayCalculation.nights,
         dailyRate: stayCalculation.dailyRate,
-        estimatedTotal: stayCalculation.estimatedTotal,
+        originalSubtotal: rawBoardingTotal,
+        couponCode: appliedOffer ? appliedOffer.code : null,
+        discountAmount: currentDiscount,
+        estimatedTotal: finalBoardingTotal,
         hostelAddress: (hostelAddress || '').trim() || 'Paw Paw Pet Boarding Facility, Pune',
 
         // Food & Diet
@@ -361,7 +546,7 @@ export default function BookBoarding() {
             bookingId: ref.id,
             actionUrl: `/admin/boarding`,
           }),
-        }).catch(() => {})
+        }).catch(() => { })
 
         if (user?.uid) {
           const userNotifTitle = 'Boarding Request Received'
@@ -390,7 +575,7 @@ export default function BookBoarding() {
               bookingId: ref.id,
               actionUrl: '/my-bookings',
             }),
-          }).catch(() => {})
+          }).catch(() => { })
         }
       } catch { }
 
@@ -549,6 +734,19 @@ export default function BookBoarding() {
             </div>
 
             {/* 6. Estimated Total */}
+            {currentDiscount > 0 && (
+              <div className="boarding-summary-row">
+                <div className="boarding-row-left">
+                  <div className="boarding-row-icon-wrap">
+                    <Tag size={15} color="#16a34a" />
+                  </div>
+                  <span className="boarding-row-label">Discount ({appliedOffer?.code})</span>
+                </div>
+                <span className="boarding-row-value" style={{ color: '#16a34a', fontWeight: 700 }}>
+                  -₹{currentDiscount}
+                </span>
+              </div>
+            )}
             <div className="boarding-summary-row">
               <div className="boarding-row-left">
                 <div className="boarding-row-icon-wrap">
@@ -557,7 +755,7 @@ export default function BookBoarding() {
                 <span className="boarding-row-label">Estimated Total</span>
               </div>
               <span className="boarding-row-value estimated-total">
-                ₹{stayCalculation.estimatedTotal}
+                ₹{finalBoardingTotal}
               </span>
             </div>
 
@@ -633,1142 +831,1287 @@ export default function BookBoarding() {
         <div ref={bookingTopRef} className="boarding-flow-container">
           {/* Top Suite Badge */}
           <div className="suite-tag-row">
-          <span className="suite-gold-tag">PAW PAW SUITES</span>
-        </div>
-
-        {/* Dynamic Step Title */}
-        <h1 className="boarding-heading">
-          {step === 5 ? 'Review Boarding Request' : 'Pet Boarding Reservation'}
-        </h1>
-        <p className="boarding-subheading">
-          {step === 5
-            ? 'Please verify your pet\'s stay details before submitting.'
-            : 'Your pet\'s cozy home away from home. Complete the care profile below to request a stay.'}
-        </p>
-
-        {boardingSettings?.acceptBookings === false && (
-          <div className="boarding-notice-warn">
-            <Info size={16} /> Boarding reservations are temporarily closed. You may view care and diet details, but new requests cannot be submitted at this time.
+            <span className="suite-gold-tag">PAW PAW SUITES</span>
           </div>
-        )}
 
-        {isBlocked && (
-          <div className="boarding-notice-error">
-            Your account is currently blocked from making bookings. Please contact Paw Paw support.
+          {/* Dynamic Step Title */}
+          <h1 className="boarding-heading">
+            {step === 5 ? 'Review Boarding Request' : 'Pet Boarding Reservation'}
+          </h1>
+          <p className="boarding-subheading">
+            {step === 5
+              ? 'Please verify your pet\'s stay details before submitting.'
+              : 'Your pet\'s cozy home away from home. Complete the care profile below to request a stay.'}
+          </p>
+
+          {boardingSettings?.acceptBookings === false && (
+            <div className="boarding-notice-warn">
+              <Info size={16} /> Boarding reservations are temporarily closed. You may view care and diet details, but new requests cannot be submitted at this time.
+            </div>
+          )}
+
+          {isBlocked && (
+            <div className="boarding-notice-error">
+              Your account is currently blocked from making bookings. Please contact Paw Paw support.
+            </div>
+          )}
+
+          {/* Compact 5-step progress tracker */}
+          <div className="boarding-stepper" role="navigation" aria-label="Booking steps">
+            {[
+              { n: 1, label: 'Pet Details' },
+              { n: 2, label: 'Stay Dates' },
+              { n: 3, label: 'Food & Diet' },
+              { n: 4, label: 'Daily Care' },
+              { n: 5, label: 'Review' },
+            ].map((s, idx, arr) => {
+              const isCompleted = step > s.n
+              const isActive = step === s.n
+              return (
+                <div key={s.n} className="stepper-item-wrap">
+                  <button
+                    type="button"
+                    className={`stepper-circle ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}
+                    onClick={() => {
+                      if (s.n < step) setStep(s.n)
+                    }}
+                    aria-label={`Step ${s.n}: ${s.label}`}
+                  >
+                    {isCompleted ? <Check size={13} strokeWidth={3} /> : s.n}
+                  </button>
+                  <span className={`stepper-label ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}>
+                    {s.label}
+                  </span>
+                  {idx < arr.length - 1 && (
+                    <div className={`stepper-connector ${step > s.n ? 'completed' : ''}`} />
+                  )}
+                </div>
+              )
+            })}
           </div>
-        )}
 
-        {/* Compact 5-step progress tracker */}
-        <div className="boarding-stepper" role="navigation" aria-label="Booking steps">
-          {[
-            { n: 1, label: 'Pet Details' },
-            { n: 2, label: 'Stay Dates' },
-            { n: 3, label: 'Food & Diet' },
-            { n: 4, label: 'Daily Care' },
-            { n: 5, label: 'Review' },
-          ].map((s, idx, arr) => {
-            const isCompleted = step > s.n
-            const isActive = step === s.n
-            return (
-              <div key={s.n} className="stepper-item-wrap">
-                <button
-                  type="button"
-                  className={`stepper-circle ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}
-                  onClick={() => {
-                    if (s.n < step) setStep(s.n)
-                  }}
-                  aria-label={`Step ${s.n}: ${s.label}`}
-                >
-                  {isCompleted ? <Check size={13} strokeWidth={3} /> : s.n}
-                </button>
-                <span className={`stepper-label ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}>
-                  {s.label}
-                </span>
-                {idx < arr.length - 1 && (
-                  <div className={`stepper-connector ${step > s.n ? 'completed' : ''}`} />
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* MAIN FORM CARD */}
-        <div className="boarding-card">
-          {/* ==========================================================
+          {/* MAIN FORM CARD */}
+          <div className="boarding-card">
+            {/* ==========================================================
               SCREEN 1: PET DETAILS
               ========================================================== */}
-          {step === 1 && (
-            <div>
-              <div className="card-header-row">
-                <div className="card-header-icon-box">
-                  <img
-                    src={boardingHeroPets}
-                    alt="Dog and Cat"
-                    className="card-header-pet-img"
-                    onError={e => {
-                      e.currentTarget.onerror = null;
-                      e.currentTarget.src = boardingHeroPets;
-                    }}
-                  />
-                </div>
-                <div>
-                  <h2 className="card-title">Pet & Owner Information</h2>
-                  <p className="card-subtitle single-line-sub">Choose a pet or enter details below.</p>
-                </div>
-              </div>
-
-              {/* Saved pets section */}
-              <div className="form-section">
-                <div className="section-head-split">
-                  <label className="section-sublabel">SAVED PETS</label>
-                  <Link to="/my-pets" className="manage-pets-link">+ Add or manage pets</Link>
-                </div>
-
-                {pets.length > 0 ? (
-                  <div className="saved-pets-list">
-                    {pets.map(pet => {
-                      const sel = selectedPetId === pet.id
-                      return (
-                        <div
-                          key={pet.id}
-                          onClick={() => applyPet(pet)}
-                          className={`saved-pet-card ${sel ? 'selected' : ''}`}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') applyPet(pet) }}
-                        >
-                          <div className={`custom-radio ${sel ? 'checked' : ''}`}>
-                            {sel && <div className="radio-dot" />}
-                          </div>
-
-                          {pet.photoUrl ? (
-                            <img src={pet.photoUrl} alt={pet.name} className="pet-thumb-img" />
-                          ) : (
-                            <div className="pet-thumb-placeholder">
-                              <PawPrint size={18} color="#C08820" />
-                            </div>
-                          )}
-
-                          <div className="pet-card-text">
-                            <div className="pet-card-name">{pet.name}</div>
-                            <div className="pet-card-meta">
-                              {pet.type} {pet.breed ? `• ${pet.breed}` : ''}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
+            {step === 1 && (
+              <div>
+                <div className="card-header-row">
+                  <div className="card-header-icon-box">
+                    <img
+                      src={boardingHeroPets}
+                      alt="Dog and Cat"
+                      className="card-header-pet-img"
+                      onError={e => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = boardingHeroPets;
+                      }}
+                    />
                   </div>
-                ) : (
-                  <div className="empty-saved-pets">
-                    No saved pet profiles yet. Fill in details below to continue.
+                  <div>
+                    <h2 className="card-title">Pet & Owner Information</h2>
+                    <p className="card-subtitle single-line-sub">Choose a pet or enter details below.</p>
+                  </div>
+                </div>
+
+                {(location.state?.rebookBooking || rebookId) && (
+                  <div style={{
+                    background: 'rgba(212, 175, 55, 0.1)',
+                    border: '1px solid rgba(212, 175, 55, 0.3)',
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    margin: '14px 0 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    fontSize: '13px',
+                    color: 'var(--text)',
+                  }}>
+                    <RotateCcw size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                    <span>
+                      <strong>Re-booking Stay:</strong> Details from your previous stay have been auto-filled! You can review them below or proceed to pick your stay dates.
+                    </span>
                   </div>
                 )}
-              </div>
 
-              {/* Owner details */}
-              <div className="field-grid-2">
-                <div className="form-group">
-                  <label className="field-label">YOUR NAME *</label>
-                  <input
-                    className="boarding-input"
-                    placeholder="Prem Tandalekar"
-                    value={form.ownerName}
-                    onChange={e => update('ownerName', e.target.value)}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="field-label">PHONE NUMBER *</label>
-                  <input
-                    className="boarding-input"
-                    placeholder="9021459467"
-                    value={form.phone}
-                    maxLength={10}
-                    onChange={e => update('phone', e.target.value)}
-                  />
-                </div>
-              </div>
+                {/* Saved pets section */}
+                <div className="form-section">
+                  <div className="section-head-split">
+                    <label className="section-sublabel">SAVED PETS</label>
+                    <Link to="/my-pets" className="manage-pets-link">+ Add or manage pets</Link>
+                  </div>
 
-              {/* Pet basic info */}
-              <div className="field-grid-2">
-                <div className="form-group">
-                  <label className="field-label">PET NAME *</label>
-                  <input
-                    className="boarding-input"
-                    placeholder="Bruno"
-                    value={form.petName}
-                    onChange={e => { setSelectedPetId(''); update('petName', e.target.value) }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="field-label">PET TYPE *</label>
-                  <select
-                    className="boarding-select"
-                    value={form.petType}
-                    onChange={e => {
-                      setSelectedPetId('')
-                      update('petType', e.target.value)
-                      update('petBreed', '')
-                      update('customBreed', '')
-                    }}
-                  >
-                    {PET_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-              </div>
+                  {pets.length > 0 ? (
+                    <div className="saved-pets-list">
+                      {pets.map(pet => {
+                        const sel = selectedPetId === pet.id
+                        return (
+                          <div
+                            key={pet.id}
+                            onClick={() => applyPet(pet)}
+                            className={`saved-pet-card ${sel ? 'selected' : ''}`}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') applyPet(pet) }}
+                          >
+                            <div className={`custom-radio ${sel ? 'checked' : ''}`}>
+                              {sel && <div className="radio-dot" />}
+                            </div>
 
-              {/* Pet Breed & Date of Birth in single line */}
-              <div className="field-grid-2">
-                <div className="form-group">
-                  <label className="field-label">BREED</label>
-                  {breedOptions.length > 0 ? (
-                    <div>
-                      <select
-                        className="boarding-select"
-                        value={form.petBreed}
-                        onChange={e => { setSelectedPetId(''); update('petBreed', e.target.value) }}
-                      >
-                        <option value="">Select breed</option>
-                        {breedOptions.map(b => <option key={b} value={b}>{b}</option>)}
-                        <option value="other">Other / Mixed</option>
-                      </select>
-                      {form.petBreed === 'other' && (
-                        <input
-                          className="boarding-input"
-                          placeholder="Type breed name..."
-                          value={form.customBreed}
-                          onChange={e => update('customBreed', e.target.value)}
-                          style={{ marginTop: '6px' }}
-                        />
-                      )}
+                            {pet.photoUrl ? (
+                              <img src={pet.photoUrl} alt={pet.name} className="pet-thumb-img" />
+                            ) : (
+                              <div className="pet-thumb-placeholder">
+                                <PawPrint size={18} color="#C08820" />
+                              </div>
+                            )}
+
+                            <div className="pet-card-text">
+                              <div className="pet-card-name">{pet.name}</div>
+                              <div className="pet-card-meta">
+                                {pet.type} {pet.breed ? `• ${pet.breed}` : ''}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   ) : (
-                    <input
-                      className="boarding-input"
-                      placeholder="German Shepherd"
-                      value={form.customBreed}
-                      onChange={e => update('customBreed', e.target.value)}
-                    />
+                    <div className="empty-saved-pets">
+                      No saved pet profiles yet. Fill in details below to continue.
+                    </div>
                   )}
                 </div>
 
-                <div className="form-group">
-                  <label className="field-label">DATE OF BIRTH / AGE</label>
-                  <input
-                    type="date"
-                    className="boarding-input"
-                    value={form.petDob}
-                    onChange={e => update('petDob', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Weight & Gender in single line */}
-              <div className="field-grid-2">
-                <div className="form-group">
-                  <label className="field-label">WEIGHT (KG)</label>
-                  <input
-                    className="boarding-input"
-                    placeholder="12"
-                    value={form.petWeight}
-                    onChange={e => update('petWeight', e.target.value)}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="field-label">GENDER</label>
-                  <select
-                    className="boarding-select"
-                    value={form.petGender}
-                    onChange={e => update('petGender', e.target.value)}
-                  >
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Health & Vaccination Safety subcard */}
-              <div className="sub-group-card">
-                <div className="sub-group-header">
-                  <ShieldCheck size={16} color="#C08820" />
-                  <span>Health & Vaccination Safety</span>
-                </div>
-
+                {/* Owner details */}
                 <div className="field-grid-2">
                   <div className="form-group">
-                    <label className="field-label">VACCINATION STATUS *</label>
-                    <select
-                      className="boarding-select"
-                      value={form.vaccinationStatus}
-                      onChange={e => update('vaccinationStatus', e.target.value)}
-                    >
-                      <option value="Fully Vaccinated">Fully Vaccinated</option>
-                      <option value="Partially Vaccinated">Partially Vaccinated</option>
-                      <option value="Due Soon / Needs Verification">Due Soon / Needs Verification</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="field-label">LAST VACCINATION</label>
+                    <label className="field-label">YOUR NAME *</label>
                     <input
                       className="boarding-input"
-                      placeholder="e.g. Rabies 2025"
-                      value={form.vaccinationNotes}
-                      onChange={e => update('vaccinationNotes', e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="field-label">EXISTING MEDICAL CONDITIONS OR REGULAR MEDICINES (IF ANY)</label>
-                  <input
-                    className="boarding-input"
-                    placeholder="e.g. Arthritis, skin allergy, ear drops, etc."
-                    value={form.medicalConditions}
-                    onChange={e => update('medicalConditions', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                disabled={!form.ownerName.trim() || !form.phone.trim() || !form.petName.trim()}
-                className="boarding-primary-btn"
-              >
-                Continue to Stay Dates <ArrowRight size={16} />
-              </button>
-            </div>
-          )}
-
-          {/* ==========================================================
-              SCREEN 2: STAY DATES
-              ========================================================== */}
-          {step === 2 && (
-            <div>
-              <div className="card-header-row">
-                <div className="card-header-icon-box">
-                  <Calendar size={18} color="#C08820" />
-                </div>
-                <div>
-                  <h2 className="card-title">Stay Duration & Schedule</h2>
-                  <p className="card-subtitle">Choose check-in and check-out dates for your pet's boarding stay.</p>
-                </div>
-              </div>
-
-              {/* Rate Card (Screenshot 2 Match) */}
-              <div className="rate-highlight-card">
-                <div className="rate-icon-badge">
-                  <PawPrint size={20} color="#C08820" />
-                </div>
-                <div className="rate-content">
-                  <div className="rate-main-text">
-                    {form.petType} Boarding Rate: ₹{stayCalculation.dailyRate} / day
-                  </div>
-                  <div className="rate-sub-text">
-                    Cats: ₹600/day • 24/7 care included
-                  </div>
-                </div>
-              </div>
-
-              {/* Check-in Schedule */}
-              <div className="schedule-box">
-                <div className="schedule-header-label">
-                  <Calendar size={14} color="#C08820" />
-                  <span>CHECK-IN SCHEDULE *</span>
-                </div>
-                <div className="field-grid-2">
-                  <div className="form-group">
-                    <label className="field-label">DATE</label>
-                    <input
-                      type="date"
-                      className="boarding-input"
-                      min={todayStr}
-                      value={form.checkInDate}
-                      onChange={e => {
-                        update('checkInDate', e.target.value)
-                        if (e.target.value > form.checkOutDate) update('checkOutDate', e.target.value)
-                      }}
+                      placeholder="Prem Tandalekar"
+                      value={form.ownerName}
+                      onChange={e => update('ownerName', e.target.value)}
                     />
                   </div>
                   <div className="form-group">
-                    <label className="field-label">APPROX. TIME</label>
-                    <select
-                      className="boarding-select"
-                      value={form.checkInTime}
-                      onChange={e => update('checkInTime', e.target.value)}
-                    >
-                      {TIME_SLOT_OPTIONS.map(slot => (
-                        <option key={`in-${slot}`} value={slot}>{slot}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Check-out Schedule */}
-              <div className="schedule-box">
-                <div className="schedule-header-label">
-                  <Calendar size={14} color="#C08820" />
-                  <span>CHECK-OUT SCHEDULE *</span>
-                </div>
-                <div className="field-grid-2">
-                  <div className="form-group">
-                    <label className="field-label">DATE</label>
-                    <input
-                      type="date"
-                      className="boarding-input"
-                      min={form.checkInDate || todayStr}
-                      value={form.checkOutDate}
-                      onChange={e => update('checkOutDate', e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="field-label">APPROX. TIME</label>
-                    <select
-                      className="boarding-select"
-                      value={form.checkOutTime}
-                      onChange={e => update('checkOutTime', e.target.value)}
-                    >
-                      {TIME_SLOT_OPTIONS.map(slot => (
-                        <option key={`out-${slot}`} value={slot}>{slot}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Late Check-out Policy Notice */}
-                <div style={{
-                  marginTop: '10px',
-                  background: '#FFFBEB',
-                  border: '1px solid #FDE68A',
-                  borderRadius: '9px',
-                  padding: '9px 12px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '8px',
-                  fontSize: '11.5px',
-                  lineHeight: 1.45,
-                  color: '#92400E',
-                }}>
-                  <Info size={15} style={{ flexShrink: 0, marginTop: '2px', color: '#D97706' }} />
-                  <div>
-                    Standard check-out time: <strong>{boardingSettings?.checkOutTimeDefault || '11:00 PM'}</strong>. An additional late check-out fee of <strong>₹{boardingSettings?.lateCheckOutFee ?? 400}</strong> may apply if your pet is picked up after {boardingSettings?.checkOutTimeDefault || '11:00 PM'}.
-                  </div>
-                </div>
-
-                {/* Hostel Drop-off & Pick-up Location */}
-                <div style={{
-                  marginTop: '10px',
-                  background: '#F9FAFB',
-                  border: '1px solid #E5E7EB',
-                  borderRadius: '9px',
-                  padding: '11px 13px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '9px',
-                }}>
-                  <MapPin size={16} style={{ flexShrink: 0, marginTop: '2px', color: '#C08820' }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#1F2937', marginBottom: '2px' }}>
-                      Hostel Drop-off & Pick-up Location
-                    </div>
-                    <div style={{ fontSize: '11.5px', color: '#4B5563', lineHeight: 1.45, marginBottom: '6px' }}>
-                      {hostelAddress || 'Paw Paw Pet Boarding Facility, Pune'}
-                    </div>
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(hostelAddress || 'Paw Paw Pet Boarding Facility, Pune')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        fontSize: '11.5px',
-                        color: '#C08820',
-                        fontWeight: 600,
-                        textDecoration: 'none',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
-                      onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
-                    >
-                      Get Directions / View on Google Maps →
-                    </a>
-                  </div>
-                </div>
-              </div>
-
-              {/* Duration & Estimated Total Card */}
-              {!stayCalculation.valid ? (
-                <div className="boarding-notice-error" style={{ marginBottom: '18px' }}>
-                  {stayCalculation.error}
-                </div>
-              ) : (
-                <div className="stay-summary-card">
-                  <div className="summary-line">
-                    <span className="summary-label">
-                      <Calendar size={14} color="#C08820" /> Calculated Duration
-                    </span>
-                    <strong className="summary-value">
-                      {stayCalculation.days} Day(s) {stayCalculation.nights > 0 ? `(${stayCalculation.nights} Night${stayCalculation.nights > 1 ? 's' : ''})` : '(Day Stay)'}
-                    </strong>
-                  </div>
-                  <div className="summary-line">
-                    <span className="summary-label">Rate per day</span>
-                    <span className="summary-value">₹{stayCalculation.dailyRate}</span>
-                  </div>
-                  <div className="summary-line total-line">
-                    <strong className="summary-total-label">Estimated Boarding Total</strong>
-                    <strong className="summary-total-value">₹{stayCalculation.estimatedTotal}</strong>
-                  </div>
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                disabled={!stayCalculation.valid}
-                className="boarding-primary-btn"
-              >
-                Continue to Food & Diet <ArrowRight size={16} />
-              </button>
-
-              <button type="button" onClick={() => setStep(1)} className="boarding-back-btn">
-                ← Back
-              </button>
-            </div>
-          )}
-
-          {/* ==========================================================
-              SCREEN 3: FOOD & DIET
-              ========================================================== */}
-          {step === 3 && (
-            <div>
-              <div className="card-header-row">
-                <div className="card-header-icon-box">
-                  <Utensils size={18} color="#C08820" />
-                </div>
-                <div>
-                  <h2 className="card-title">Food & Dietary Preferences</h2>
-                  <p className="card-subtitle">Tell us about your pet's food needs.</p>
-                </div>
-              </div>
-
-              {/* A. Regular Food — Always Selected and Locked */}
-              <div className="regular-food-card">
-                <div className="food-bowl-icon-wrap">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C08820" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 11c0 5 4 9 9 9s9-4 9-9H3z" />
-                    <path d="M7 11V8a5 5 0 0 1 10 0v3" />
-                    <circle cx="12" cy="15" r="1.5" fill="#C08820" stroke="none" />
-                  </svg>
-                </div>
-                <div className="regular-food-text">
-                  <strong className="regular-food-title">Regular food (Included)</strong>
-                  <p className="regular-food-desc">Nutritious and balanced food is provided by Paw Paw and is included in the boarding price.</p>
-                </div>
-                <div className="regular-food-check">
-                  <Check size={14} color="#FFFFFF" strokeWidth={3} />
-                </div>
-              </div>
-
-              {/* B. Ask Whether Special Food Is Needed */}
-              <div className="special-food-section">
-                <label className="field-label-prominent">Does your pet need special food?</label>
-                <p className="field-subtext">e.g. prescription diet, specific brand, homemade diet, or any other special requirements.</p>
-
-                <div className="special-food-choice-grid">
-                  <div
-                    onClick={() => {
-                      update('specialFoodRequired', false)
-                      update('foodType', 'Regular Food (Included)')
-                      update('foodProvider', 'Paw Paw (Regular Food Included)')
-                    }}
-                    className={`special-choice-card ${!form.specialFoodRequired ? 'selected' : ''}`}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') {
-                      update('specialFoodRequired', false)
-                      update('foodType', 'Regular Food (Included)')
-                      update('foodProvider', 'Paw Paw (Regular Food Included)')
-                    } }}
-                  >
-                    <div className={`choice-radio ${!form.specialFoodRequired ? 'checked' : ''}`}>
-                      {!form.specialFoodRequired && <Check size={11} color="#FFF" strokeWidth={3.5} />}
-                    </div>
-                    <div className="choice-text">
-                      <strong className="choice-title">No</strong>
-                      <span className="choice-desc">Regular food is fine</span>
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => {
-                      update('specialFoodRequired', true)
-                      const provider = form.specialFoodProvider || 'customer'
-                      update('specialFoodProvider', provider)
-                      update('foodType', 'Regular Food + Special Food')
-                      update('foodProvider', provider === 'pawpaw' ? 'Paw Paw will provide it' : 'Customer will provide the food')
-                    }}
-                    className={`special-choice-card ${form.specialFoodRequired ? 'selected' : ''}`}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') {
-                      update('specialFoodRequired', true)
-                      const provider = form.specialFoodProvider || 'customer'
-                      update('specialFoodProvider', provider)
-                      update('foodType', 'Regular Food + Special Food')
-                      update('foodProvider', provider === 'pawpaw' ? 'Paw Paw will provide it' : 'Customer will provide the food')
-                    } }}
-                  >
-                    <div className={`choice-radio ${form.specialFoodRequired ? 'checked' : ''}`}>
-                      {form.specialFoodRequired && <Check size={11} color="#FFF" strokeWidth={3.5} />}
-                    </div>
-                    <div className="choice-text">
-                      <strong className="choice-title">Yes</strong>
-                      <span className="choice-desc">My pet needs special food</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* C. Special-Food Provider Choices (Revealed when Yes) */}
-              {form.specialFoodRequired && (
-                <div className="special-provider-section">
-                  <label className="field-label-prominent">Who will provide the special food?</label>
-
-                  <div className="special-provider-grid">
-                    {/* Option 1: Customer provides */}
-                    <div
-                      onClick={() => {
-                        update('specialFoodProvider', 'customer')
-                        update('foodProvider', 'Customer will provide the food')
-                      }}
-                      className={`provider-card ${form.specialFoodProvider === 'customer' ? 'selected' : ''}`}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') {
-                        update('specialFoodProvider', 'customer')
-                        update('foodProvider', 'Customer will provide the food')
-                      } }}
-                    >
-                      <div className="provider-card-head">
-                        <div className="provider-icon-circle">
-                          <PawPrint size={14} color="#C08820" />
-                        </div>
-                        <strong className="provider-title">I will provide the special food</strong>
-                      </div>
-                      <p className="provider-desc">
-                        I will bring my pet's food for the entire stay. <strong>No extra food charge.</strong>
-                      </p>
-                    </div>
-
-                    {/* Option 2: Paw Paw provides */}
-                    <div
-                      onClick={() => {
-                        update('specialFoodProvider', 'pawpaw')
-                        update('foodProvider', 'Paw Paw will provide it')
-                      }}
-                      className={`provider-card ${form.specialFoodProvider === 'pawpaw' ? 'selected' : ''}`}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') {
-                        update('specialFoodProvider', 'pawpaw')
-                        update('foodProvider', 'Paw Paw will provide it')
-                      } }}
-                    >
-                      <div className="provider-card-head">
-                        <div className="provider-icon-circle">
-                          <Building2 size={14} color="#C08820" />
-                        </div>
-                        <strong className="provider-title">Paw Paw will provide it</strong>
-                      </div>
-                      <p className="provider-desc">
-                        Any extra charge will be confirmed by the hostel and collected at check-in or checkout (as per hostel).
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Info alert banner */}
-                  <div className="food-policy-alert">
-                    <Info size={16} color="#0284C7" className="food-alert-icon" />
-                    <span>
-                      If Paw Paw provides the special food, the extra charge will be decided by the hostel and collected at check-in or checkout depending on their policy.
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Feeding Schedule & Times */}
-              <div className="form-group" style={{ marginTop: '18px' }}>
-                <label className="field-label">FEEDING SCHEDULE & TIMES *</label>
-                <select
-                  className="boarding-select"
-                  value={form.feedingSchedule}
-                  onChange={e => update('feedingSchedule', e.target.value)}
-                >
-                  {FEEDING_FREQUENCIES.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
-              </div>
-
-              {/* Food allergies */}
-              <div className="form-group">
-                <label className="field-label">FOOD ALLERGIES OR DISLIKES (OPTIONAL)</label>
-                <input
-                  className="boarding-input"
-                  placeholder="e.g. Allergic to chicken, avoids beef, loves vegetables..."
-                  value={form.allergies}
-                  onChange={e => update('allergies', e.target.value)}
-                />
-              </div>
-
-              {/* Diet & drinking water */}
-              <div className="form-group">
-                <label className="field-label">DIET & DRINKING WATER INSTRUCTIONS (OPTIONAL)</label>
-                <textarea
-                  className="boarding-textarea"
-                  rows={3}
-                  placeholder="Any meal portions, preparation, or water instructions..."
-                  value={form.specialDietInstructions}
-                  onChange={e => update('specialDietInstructions', e.target.value)}
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setStep(4)}
-                className="boarding-primary-btn"
-              >
-                Continue to Daily Care <ArrowRight size={16} />
-              </button>
-
-              <button type="button" onClick={() => setStep(2)} className="boarding-back-btn">
-                ← Back
-              </button>
-            </div>
-          )}
-
-          {/* ==========================================================
-              SCREEN 4: DAILY CARE
-              ========================================================== */}
-          {step === 4 && (
-            <div>
-              <div className="card-header-row">
-                <div className="card-header-icon-box">
-                  <Heart size={18} color="#C08820" />
-                </div>
-                <div>
-                  <h2 className="card-title">Care Habits & Safety</h2>
-                  <p className="card-subtitle">Ensure your pet feels secure, active, and happy throughout their stay.</p>
-                </div>
-              </div>
-
-              {/* Walking Schedule (if Dog) */}
-              {form.petType === 'Dog' && (
-                <div className="form-group">
-                  <label className="field-label">WALKING SCHEDULE</label>
-                  <select
-                    className="boarding-select"
-                    value={form.walkingFrequency}
-                    onChange={e => update('walkingFrequency', e.target.value)}
-                  >
-                    {WALKING_FREQUENCIES.map(w => <option key={w} value={w}>{w}</option>)}
-                  </select>
-                </div>
-              )}
-
-              {/* Sleeping & Toilet Habits */}
-              <div className="field-grid-2">
-                <div className="form-group">
-                  <label className="field-label">SLEEPING HABITS</label>
-                  <input
-                    className="boarding-input"
-                    placeholder="e.g. Needs own blanket"
-                    value={form.sleepingHabits}
-                    onChange={e => update('sleepingHabits', e.target.value)}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="field-label">TOILET HABITS</label>
-                  <input
-                    className="boarding-input"
-                    placeholder="Outdoor breaks"
-                    value={form.toiletHabits}
-                    onChange={e => update('toiletHabits', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Behaviour & Anxiety */}
-              <div className="field-grid-2 behaviour-separation-row">
-                <div className="form-group">
-                  <label className="field-label">BEHAVIOUR AROUND OTHER PETS</label>
-                  <input
-                    className="boarding-input"
-                    placeholder="e.g. Friendly, shy, etc."
-                    value={form.behaviorNotes}
-                    onChange={e => update('behaviorNotes', e.target.value)}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="field-label">SEPARATION ANXIETY</label>
-                  <select
-                    className="boarding-select"
-                    value={form.separationAnxiety}
-                    onChange={e => update('separationAnxiety', e.target.value)}
-                  >
-                    <option value="None / Mild">None / Mild</option>
-                    <option value="Moderate (needs extra cuddles)">Moderate (needs extra cuddles)</option>
-                    <option value="High (gets vocal or anxious)">High (gets vocal or anxious)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Emergency Contact */}
-              <div className="sub-group-card">
-                <div className="sub-group-header">
-                  <Phone size={15} color="#C08820" />
-                  <span>Emergency Contact (Relative / Friend)</span>
-                </div>
-                <div className="field-grid-2">
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="field-label">CONTACT NAME *</label>
-                    <input
-                      className="boarding-input"
-                      placeholder="e.g. John Doe (Relative / Friend)"
-                      value={form.emergencyContactName}
-                      onChange={e => update('emergencyContactName', e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="field-label">PHONE NUMBER *</label>
                     <input
                       className="boarding-input"
-                      placeholder="9876543210"
+                      placeholder="9021442233"
+                      value={form.phone}
                       maxLength={10}
-                      value={form.emergencyContactPhone}
-                      onChange={e => update('emergencyContactPhone', e.target.value)}
+                      onChange={e => update('phone', e.target.value)}
                     />
                   </div>
                 </div>
+
+                {/* Pet basic info */}
+                <div className="field-grid-2">
+                  <div className="form-group">
+                    <label className="field-label">PET NAME *</label>
+                    <input
+                      className="boarding-input"
+                      placeholder="Bruno"
+                      value={form.petName}
+                      onChange={e => { setSelectedPetId(''); update('petName', e.target.value) }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">PET TYPE *</label>
+                    <select
+                      className="boarding-select"
+                      value={form.petType}
+                      onChange={e => {
+                        setSelectedPetId('')
+                        update('petType', e.target.value)
+                        update('petBreed', '')
+                        update('customBreed', '')
+                      }}
+                    >
+                      {PET_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Pet Breed & Date of Birth in single line */}
+                <div className="field-grid-2">
+                  <div className="form-group">
+                    <label className="field-label">BREED</label>
+                    {breedOptions.length > 0 ? (
+                      <div>
+                        <select
+                          className="boarding-select"
+                          value={form.petBreed}
+                          onChange={e => { setSelectedPetId(''); update('petBreed', e.target.value) }}
+                        >
+                          <option value="">Select breed</option>
+                          {breedOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                          <option value="other">Other / Mixed</option>
+                        </select>
+                        {form.petBreed === 'other' && (
+                          <input
+                            className="boarding-input"
+                            placeholder="Type breed name..."
+                            value={form.customBreed}
+                            onChange={e => update('customBreed', e.target.value)}
+                            style={{ marginTop: '6px' }}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <input
+                        className="boarding-input"
+                        placeholder="German Shepherd"
+                        value={form.customBreed}
+                        onChange={e => update('customBreed', e.target.value)}
+                      />
+                    )}
+                  </div>
+
+                  <div className="form-group">
+                    <label className="field-label">DATE OF BIRTH / AGE</label>
+                    <input
+                      type="date"
+                      className="boarding-input"
+                      value={form.petDob}
+                      onChange={e => update('petDob', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Weight & Gender in single line */}
+                <div className="field-grid-2">
+                  <div className="form-group">
+                    <label className="field-label">WEIGHT (KG)</label>
+                    <input
+                      className="boarding-input"
+                      placeholder="12"
+                      value={form.petWeight}
+                      onChange={e => update('petWeight', e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">GENDER</label>
+                    <select
+                      className="boarding-select"
+                      value={form.petGender}
+                      onChange={e => update('petGender', e.target.value)}
+                    >
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Health & Vaccination Safety subcard */}
+                <div className="sub-group-card">
+                  <div className="sub-group-header">
+                    <ShieldCheck size={16} color="#C08820" />
+                    <span>Health & Vaccination Safety</span>
+                  </div>
+
+                  <div className="field-grid-2">
+                    <div className="form-group">
+                      <label className="field-label">VACCINATION STATUS *</label>
+                      <select
+                        className="boarding-select"
+                        value={form.vaccinationStatus}
+                        onChange={e => update('vaccinationStatus', e.target.value)}
+                      >
+                        <option value="Fully Vaccinated">Fully Vaccinated</option>
+                        <option value="Partially Vaccinated">Partially Vaccinated</option>
+                        <option value="Due Soon / Needs Verification">Due Soon / Needs Verification</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="field-label">LAST VACCINATION</label>
+                      <input
+                        className="boarding-input"
+                        placeholder="e.g. Rabies 2025"
+                        value={form.vaccinationNotes}
+                        onChange={e => update('vaccinationNotes', e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="field-label">EXISTING MEDICAL CONDITIONS OR REGULAR MEDICINES (IF ANY)</label>
+                    <input
+                      className="boarding-input"
+                      placeholder="e.g. Arthritis, skin allergy, ear drops, etc."
+                      value={form.medicalConditions}
+                      onChange={e => update('medicalConditions', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  disabled={!form.ownerName.trim() || !form.phone.trim() || !form.petName.trim()}
+                  className="boarding-primary-btn"
+                >
+                  Continue to Stay Dates <ArrowRight size={16} />
+                </button>
               </div>
+            )}
 
-              {/* Additional instructions */}
-              <div className="form-group">
-                <label className="field-label">ADDITIONAL INSTRUCTIONS OR FAVORITE TOYS/TREATS</label>
-                <textarea
-                  className="boarding-textarea"
-                  rows={2}
-                  placeholder="Anything else we should know to make your pet feel at home..."
-                  value={form.additionalInstructions}
-                  onChange={e => update('additionalInstructions', e.target.value)}
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setStep(5)}
-                className="boarding-primary-btn"
-              >
-                Continue to Review <ArrowRight size={16} />
-              </button>
-
-              <button type="button" onClick={() => setStep(3)} className="boarding-back-btn">
-                ← Back
-              </button>
-            </div>
-          )}
-
-          {/* ==========================================================
-              SCREEN 5: REVIEW BOARDING REQUEST
+            {/* ==========================================================
+              SCREEN 2: STAY DATES
               ========================================================== */}
-          {step === 5 && (
-            <div>
-              {/* Pet & Owner Header Pill (Matches Screen 5) */}
-              <div className="review-pet-header-pill">
-                {selectedPet?.photoUrl ? (
-                  <img src={selectedPet.photoUrl} alt={form.petName} className="review-pet-avatar" />
+            {step === 2 && (
+              <div>
+                <div className="card-header-row">
+                  <div className="card-header-icon-box">
+                    <Calendar size={18} color="#C08820" />
+                  </div>
+                  <div>
+                    <h2 className="card-title">Stay Duration & Schedule</h2>
+                    <p className="card-subtitle">Choose check-in and check-out dates for your pet's boarding stay.</p>
+                  </div>
+                </div>
+
+                {/* Rate Card (Screenshot 2 Match) */}
+                <div className="rate-highlight-card">
+                  <div className="rate-icon-badge">
+                    <PawPrint size={20} color="#C08820" />
+                  </div>
+                  <div className="rate-content">
+                    <div className="rate-main-text">
+                      {form.petType} Boarding Rate: ₹{stayCalculation.dailyRate} / day
+                    </div>
+                    <div className="rate-sub-text">
+                      Cats: ₹600/day • 24/7 care included
+                    </div>
+                  </div>
+                </div>
+
+                {/* Check-in Schedule */}
+                <div className="schedule-box">
+                  <div className="schedule-header-label">
+                    <Calendar size={14} color="#C08820" />
+                    <span>CHECK-IN SCHEDULE *</span>
+                  </div>
+                  <div className="field-grid-2">
+                    <div className="form-group">
+                      <label className="field-label">DATE</label>
+                      <input
+                        type="date"
+                        className="boarding-input"
+                        min={todayStr}
+                        value={form.checkInDate}
+                        onChange={e => {
+                          update('checkInDate', e.target.value)
+                          if (e.target.value > form.checkOutDate) update('checkOutDate', e.target.value)
+                        }}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="field-label">APPROX. TIME</label>
+                      <select
+                        className="boarding-select"
+                        value={form.checkInTime}
+                        onChange={e => update('checkInTime', e.target.value)}
+                      >
+                        {TIME_SLOT_OPTIONS.map(slot => (
+                          <option key={`in-${slot}`} value={slot}>{slot}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Check-out Schedule */}
+                <div className="schedule-box">
+                  <div className="schedule-header-label">
+                    <Calendar size={14} color="#C08820" />
+                    <span>CHECK-OUT SCHEDULE *</span>
+                  </div>
+                  <div className="field-grid-2">
+                    <div className="form-group">
+                      <label className="field-label">DATE</label>
+                      <input
+                        type="date"
+                        className="boarding-input"
+                        min={form.checkInDate || todayStr}
+                        value={form.checkOutDate}
+                        onChange={e => update('checkOutDate', e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="field-label">APPROX. TIME</label>
+                      <select
+                        className="boarding-select"
+                        value={form.checkOutTime}
+                        onChange={e => update('checkOutTime', e.target.value)}
+                      >
+                        {TIME_SLOT_OPTIONS.map(slot => (
+                          <option key={`out-${slot}`} value={slot}>{slot}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Late Check-out Policy Notice */}
+                  <div style={{
+                    marginTop: '10px',
+                    background: '#FFFBEB',
+                    border: '1px solid #FDE68A',
+                    borderRadius: '9px',
+                    padding: '9px 12px',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    fontSize: '11.5px',
+                    lineHeight: 1.45,
+                    color: '#92400E',
+                  }}>
+                    <Info size={15} style={{ flexShrink: 0, marginTop: '2px', color: '#D97706' }} />
+                    <div>
+                      Standard check-out time: <strong>{boardingSettings?.checkOutTimeDefault || '11:00 PM'}</strong>. An additional late check-out fee of <strong>₹{boardingSettings?.lateCheckOutFee ?? 400}</strong> may apply if your pet is picked up after {boardingSettings?.checkOutTimeDefault || '11:00 PM'}.
+                    </div>
+                  </div>
+
+                  {/* Hostel Drop-off & Pick-up Location */}
+                  <div style={{
+                    marginTop: '10px',
+                    background: '#F9FAFB',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: '9px',
+                    padding: '11px 13px',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '9px',
+                  }}>
+                    <MapPin size={16} style={{ flexShrink: 0, marginTop: '2px', color: '#C08820' }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: '#1F2937', marginBottom: '2px' }}>
+                        Hostel Drop-off & Pick-up Location
+                      </div>
+                      <div style={{ fontSize: '11.5px', color: '#4B5563', lineHeight: 1.45, marginBottom: '6px' }}>
+                        {hostelAddress || 'Paw Paw Pet Boarding Facility, Pune'}
+                      </div>
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(hostelAddress || 'Paw Paw Pet Boarding Facility, Pune')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          fontSize: '11.5px',
+                          color: '#C08820',
+                          fontWeight: 600,
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                        onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                      >
+                        Get Directions / View on Google Maps →
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Duration & Estimated Total Card */}
+                {!stayCalculation.valid ? (
+                  <div className="boarding-notice-error" style={{ marginBottom: '18px' }}>
+                    {stayCalculation.error}
+                  </div>
                 ) : (
-                  <div className="review-pet-avatar placeholder">
-                    <PawPrint size={22} color="#C08820" />
+                  <div className="stay-summary-card">
+                    <div className="summary-line">
+                      <span className="summary-label">
+                        <Calendar size={14} color="#C08820" /> Calculated Duration
+                      </span>
+                      <strong className="summary-value">
+                        {stayCalculation.days} Day(s) {stayCalculation.nights > 0 ? `(${stayCalculation.nights} Night${stayCalculation.nights > 1 ? 's' : ''})` : '(Day Stay)'}
+                      </strong>
+                    </div>
+                    <div className="summary-line">
+                      <span className="summary-label">Rate per day</span>
+                      <span className="summary-value">₹{stayCalculation.dailyRate}</span>
+                    </div>
+                    <div className="summary-line total-line">
+                      <strong className="summary-total-label">Estimated Boarding Total</strong>
+                      <strong className="summary-total-value">₹{stayCalculation.estimatedTotal}</strong>
+                    </div>
                   </div>
                 )}
-                <div className="review-pet-info">
-                  <h3 className="review-pet-title">
-                    {form.petName} <span className="review-pet-breed">({form.petType}{displayBreed ? ` · ${displayBreed}` : ''})</span>
-                  </h3>
-                  <div className="review-owner-line">
-                    Owner: {form.ownerName}
-                  </div>
-                  <div className="review-owner-phone">
-                    <Phone size={11} color="#C08820" /> {form.phone}
-                  </div>
-                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setStep(3)}
+                  disabled={!stayCalculation.valid}
+                  className="boarding-primary-btn"
+                >
+                  Continue to Food & Diet <ArrowRight size={16} />
+                </button>
+
+                <button type="button" onClick={() => setStep(1)} className="boarding-back-btn">
+                  ← Back
+                </button>
               </div>
+            )}
 
-              {/* 1. Stay Schedule Card */}
-              <div className="review-section-card">
-                <div className="review-card-head">
-                  <Calendar size={16} color="#C08820" />
-                  <h4>Stay Schedule</h4>
-                </div>
-                <div className="review-grid">
-                  <div className="review-spec-row">
-                    <span className="spec-label">Check-In:</span>
-                    <strong className="spec-val">{formatReviewDate(form.checkInDate, form.checkInTime)}</strong>
+            {/* ==========================================================
+              SCREEN 3: FOOD & DIET
+              ========================================================== */}
+            {step === 3 && (
+              <div>
+                <div className="card-header-row">
+                  <div className="card-header-icon-box">
+                    <Utensils size={18} color="#C08820" />
                   </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Check-Out:</span>
-                    <strong className="spec-val">{formatReviewDate(form.checkOutDate, form.checkOutTime)}</strong>
-                  </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Duration:</span>
-                    <span className="spec-val">{stayCalculation.days} Day(s) ({stayCalculation.nights} Night{stayCalculation.nights === 1 ? '' : 's'})</span>
-                  </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Daily Rate:</span>
-                    <span className="spec-val">₹{stayCalculation.dailyRate}</span>
-                  </div>
-                  <div className="review-spec-row total-highlight">
-                    <strong className="spec-label">Estimated Total:</strong>
-                    <strong className="spec-val gold">₹{stayCalculation.estimatedTotal}</strong>
+                  <div>
+                    <h2 className="card-title">Food & Dietary Preferences</h2>
+                    <p className="card-subtitle">Tell us about your pet's food needs.</p>
                   </div>
                 </div>
-              </div>
 
-              {/* 2. Food & Diet Card */}
-              <div className="review-section-card">
-                <div className="review-card-head">
-                  <Utensils size={16} color="#C08820" />
-                  <h4>Food & Diet</h4>
+                {/* A. Regular Food — Always Selected and Locked */}
+                <div className="regular-food-card">
+                  <div className="food-bowl-icon-wrap">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C08820" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 11c0 5 4 9 9 9s9-4 9-9H3z" />
+                      <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                      <circle cx="12" cy="15" r="1.5" fill="#C08820" stroke="none" />
+                    </svg>
+                  </div>
+                  <div className="regular-food-text">
+                    <strong className="regular-food-title">Regular food (Included)</strong>
+                    <p className="regular-food-desc">Nutritious and balanced food is provided by Paw Paw and is included in the boarding price.</p>
+                  </div>
+                  <div className="regular-food-check">
+                    <Check size={14} color="#FFFFFF" strokeWidth={3} />
+                  </div>
                 </div>
-                <div className="review-grid">
-                  <div className="review-spec-row">
-                    <span className="spec-label">Regular Food:</span>
-                    <span className="spec-val">Included (Paw Paw)</span>
-                  </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Special Food:</span>
-                    <span className="spec-val">
-                      {form.specialFoodRequired
-                        ? `Yes (${form.specialFoodProvider === 'pawpaw' ? 'Paw Paw provides' : 'Customer provides'})`
-                        : 'No (Regular food fine)'}
-                    </span>
-                  </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Feeding:</span>
-                    <span className="spec-val">{form.feedingSchedule}</span>
-                  </div>
-                  {(form.allergies || form.specialDietInstructions) && (
-                    <div className="review-spec-row">
-                      <span className="spec-label">Diet Notes:</span>
-                      <span className="spec-val">
-                        {[form.allergies ? `Allergies: ${form.allergies}` : null, form.specialDietInstructions].filter(Boolean).join(' • ')}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
 
-              {/* 3. Care & Safety Card */}
-              <div className="review-section-card">
-                <div className="review-card-head">
-                  <PawPrint size={16} color="#C08820" />
-                  <h4>Care & Safety</h4>
-                </div>
-                <div className="review-grid">
-                  {form.petType === 'Dog' && (
-                    <div className="review-spec-row">
-                      <span className="spec-label">Walking:</span>
-                      <span className="spec-val">{form.walkingFrequency}</span>
-                    </div>
-                  )}
-                  <div className="review-spec-row">
-                    <span className="spec-label">Sleeping:</span>
-                    <span className="spec-val">{form.sleepingHabits || 'Needs own blanket'}</span>
-                  </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Toilet:</span>
-                    <span className="spec-val">{form.toiletHabits || 'Outdoor breaks'}</span>
-                  </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Behaviour:</span>
-                    <span className="spec-val">{form.behaviorNotes || 'Friendly'}</span>
-                  </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Separation Anxiety:</span>
-                    <span className="spec-val">{form.separationAnxiety}</span>
-                  </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Emergency Contact:</span>
-                    <span className="spec-val">{form.emergencyContactPhone || '9876543210'}</span>
-                  </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Additional Notes:</span>
-                    <span className="spec-val">{form.additionalInstructions || '-'}</span>
-                  </div>
-                </div>
-              </div>
+                {/* B. Ask Whether Special Food Is Needed */}
+                <div className="special-food-section">
+                  <label className="field-label-prominent">Does your pet need special food?</label>
+                  <p className="field-subtext">e.g. prescription diet, specific brand, homemade diet, or any other special requirements.</p>
 
-              {/* 4. Health & Vaccinations Card */}
-              <div className="review-section-card">
-                <div className="review-card-head">
-                  <ShieldCheck size={16} color="#C08820" />
-                  <h4>Health & Vaccinations</h4>
-                </div>
-                <div className="review-grid">
-                  <div className="review-spec-row">
-                    <span className="spec-label">Vaccination:</span>
-                    <span className="spec-val">{form.vaccinationStatus}</span>
-                  </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Last Vaccination:</span>
-                    <span className="spec-val">{form.vaccinationNotes || 'Rabies 2025'}</span>
-                  </div>
-                  <div className="review-spec-row">
-                    <span className="spec-label">Medical Conditions:</span>
-                    <span className="spec-val">{form.medicalConditions || '-'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* No advance payment notice (Screen 5 Match) */}
-              <div className="payment-notice-card">
-                <div className="notice-icon-box">
-                  <Info size={17} color="#0D9488" />
-                </div>
-                <div className="notice-text">
-                  <strong>No advance payment required.</strong>
-                  <p>Your request will be reviewed by our team to ensure suite availability. Payment is settled directly during pet check-in / check-out.</p>
-                </div>
-              </div>
-
-              {/* Pet Boarding Terms & Conditions (Collapsible Preview + Full Modal) */}
-              {(() => {
-                const activeTerms = (boardingSettings?.terms && boardingSettings.terms.length > 0)
-                  ? boardingSettings.terms
-                  : DEFAULT_BOARDING_TERMS
-                const activeClosingMessage = boardingSettings?.termsClosingMessage || DEFAULT_BOARDING_TERMS_CLOSING
-
-                return (
-                  <div className="review-terms-card">
+                  <div className="special-food-choice-grid">
                     <div
-                      className="review-terms-header"
-                      onClick={() => setTermsExpanded(p => !p)}
+                      onClick={() => {
+                        update('specialFoodRequired', false)
+                        update('foodType', 'Regular Food (Included)')
+                        update('foodProvider', 'Paw Paw (Regular Food Included)')
+                      }}
+                      className={`special-choice-card ${!form.specialFoodRequired ? 'selected' : ''}`}
                       role="button"
                       tabIndex={0}
-                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setTermsExpanded(p => !p) }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          update('specialFoodRequired', false)
+                          update('foodType', 'Regular Food (Included)')
+                          update('foodProvider', 'Paw Paw (Regular Food Included)')
+                        }
+                      }}
                     >
-                      <div className="terms-header-left">
-                        <div className="terms-icon-circle">
-                          <FileText size={16} color="#C08820" />
-                        </div>
-                        <div>
-                          <h4 className="terms-card-title">Pet Boarding Terms & Conditions</h4>
-                          <span className="terms-card-subtitle">
-                            {termsExpanded ? 'Click to collapse terms preview' : `${activeTerms.length} conditions · Click to preview`}
-                          </span>
-                        </div>
+                      <div className={`choice-radio ${!form.specialFoodRequired ? 'checked' : ''}`}>
+                        {!form.specialFoodRequired && <Check size={11} color="#FFF" strokeWidth={3.5} />}
                       </div>
-                      <div className={`terms-expand-btn ${termsExpanded ? 'expanded' : ''}`}>
-                        <ChevronDown size={18} />
+                      <div className="choice-text">
+                        <strong className="choice-title">No</strong>
+                        <span className="choice-desc">Regular food is fine</span>
                       </div>
                     </div>
 
-                    <div className="review-terms-content">
-                      <ul className="terms-preview-list">
-                        {(termsExpanded ? activeTerms : activeTerms.slice(0, 3)).map((term, idx) => (
-                          <li key={idx} className="terms-preview-item">
-                            <span className="terms-bullet-num">{idx + 1}.</span>
-                            <span className="terms-bullet-text">{term}</span>
-                          </li>
-                        ))}
-                      </ul>
-
-                      {!termsExpanded && activeTerms.length > 3 && (
-                        <div className="terms-more-indicator">
-                          + {activeTerms.length - 3} more condition{activeTerms.length - 3 > 1 ? 's' : ''}...
-                        </div>
-                      )}
-
-                      {termsExpanded && activeClosingMessage && (
-                        <div className="terms-closing-banner">
-                          {activeClosingMessage}
-                        </div>
-                      )}
-
-                      <div style={{ marginTop: '10px' }}>
-                        <button
-                          type="button"
-                          className="view-all-terms-btn"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setShowTermsModal(true)
-                          }}
-                        >
-                          <span>View All Terms & Conditions</span>
-                          <ArrowRight size={13} />
-                        </button>
+                    <div
+                      onClick={() => {
+                        update('specialFoodRequired', true)
+                        const provider = form.specialFoodProvider || 'customer'
+                        update('specialFoodProvider', provider)
+                        update('foodType', 'Regular Food + Special Food')
+                        update('foodProvider', provider === 'pawpaw' ? 'Paw Paw will provide it' : 'Customer will provide the food')
+                      }}
+                      className={`special-choice-card ${form.specialFoodRequired ? 'selected' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          update('specialFoodRequired', true)
+                          const provider = form.specialFoodProvider || 'customer'
+                          update('specialFoodProvider', provider)
+                          update('foodType', 'Regular Food + Special Food')
+                          update('foodProvider', provider === 'pawpaw' ? 'Paw Paw will provide it' : 'Customer will provide the food')
+                        }
+                      }}
+                    >
+                      <div className={`choice-radio ${form.specialFoodRequired ? 'checked' : ''}`}>
+                        {form.specialFoodRequired && <Check size={11} color="#FFF" strokeWidth={3.5} />}
                       </div>
-                    </div>
-
-                    {/* Mandatory Customer Acceptance Checkbox */}
-                    <div className="terms-acceptance-row">
-                      <label className="terms-accept-label" htmlFor="petBoardingAcceptTerms">
-                        <input
-                          type="checkbox"
-                          checked={termsAccepted}
-                          onChange={e => setTermsAccepted(e.target.checked)}
-                          className="terms-accept-checkbox"
-                          id="petBoardingAcceptTerms"
-                        />
-                        <span className="terms-accept-text">
-                          I have read and agree to the <strong>Pet Boarding Terms & Conditions</strong>.
-                        </span>
-                      </label>
-
-                      {!termsAccepted && (
-                        <div className="terms-validation-hint">
-                          <AlertCircle size={14} color="#B45309" />
-                          <span>Please accept the terms and conditions above to submit your booking.</span>
-                        </div>
-                      )}
+                      <div className="choice-text">
+                        <strong className="choice-title">Yes</strong>
+                        <span className="choice-desc">My pet needs special food</span>
+                      </div>
                     </div>
                   </div>
-                )
-              })()}
-
-              {boardingSettings?.acceptBookings === false ? (
-                <div className="boarding-notice-warn text-center">
-                  Boarding Bookings Temporarily Closed
                 </div>
-              ) : (
-                <div
-                  className="submit-btn-wrap"
-                  onClick={() => {
-                    if (!termsAccepted && !loading && !isBlocked) {
-                      setToastType('error')
-                      setToastMessage('Please read and agree to the Pet Boarding Terms & Conditions to submit your request.')
-                    }
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={handleSubmit}
-                    disabled={loading || isBlocked || !termsAccepted}
-                    className={`boarding-primary-btn ${!termsAccepted ? 'disabled-terms' : ''}`}
+
+                {/* C. Special-Food Provider Choices (Revealed when Yes) */}
+                {form.specialFoodRequired && (
+                  <div className="special-provider-section">
+                    <label className="field-label-prominent">Who will provide the special food?</label>
+
+                    <div className="special-provider-grid">
+                      {/* Option 1: Customer provides */}
+                      <div
+                        onClick={() => {
+                          update('specialFoodProvider', 'customer')
+                          update('foodProvider', 'Customer will provide the food')
+                        }}
+                        className={`provider-card ${form.specialFoodProvider === 'customer' ? 'selected' : ''}`}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            update('specialFoodProvider', 'customer')
+                            update('foodProvider', 'Customer will provide the food')
+                          }
+                        }}
+                      >
+                        <div className="provider-card-head">
+                          <div className="provider-icon-circle">
+                            <PawPrint size={14} color="#C08820" />
+                          </div>
+                          <strong className="provider-title">I will provide the special food</strong>
+                        </div>
+                        <p className="provider-desc">
+                          I will bring my pet's food for the entire stay. <strong>No extra food charge.</strong>
+                        </p>
+                      </div>
+
+                      {/* Option 2: Paw Paw provides */}
+                      <div
+                        onClick={() => {
+                          update('specialFoodProvider', 'pawpaw')
+                          update('foodProvider', 'Paw Paw will provide it')
+                        }}
+                        className={`provider-card ${form.specialFoodProvider === 'pawpaw' ? 'selected' : ''}`}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            update('specialFoodProvider', 'pawpaw')
+                            update('foodProvider', 'Paw Paw will provide it')
+                          }
+                        }}
+                      >
+                        <div className="provider-card-head">
+                          <div className="provider-icon-circle">
+                            <Building2 size={14} color="#C08820" />
+                          </div>
+                          <strong className="provider-title">Paw Paw will provide it</strong>
+                        </div>
+                        <p className="provider-desc">
+                          Any extra charge will be confirmed by the hostel and collected at check-in or checkout (as per hostel).
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Info alert banner */}
+                    <div className="food-policy-alert">
+                      <Info size={16} color="#0284C7" className="food-alert-icon" />
+                      <span>
+                        If Paw Paw provides the special food, the extra charge will be decided by the hostel and collected at check-in or checkout depending on their policy.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Feeding Schedule & Times */}
+                <div className="form-group" style={{ marginTop: '18px' }}>
+                  <label className="field-label">FEEDING SCHEDULE & TIMES *</label>
+                  <select
+                    className="boarding-select"
+                    value={form.feedingSchedule}
+                    onChange={e => update('feedingSchedule', e.target.value)}
                   >
-                    {loading ? 'Submitting Boarding Request...' : 'Submit Boarding Request →'}
-                  </button>
+                    {FEEDING_FREQUENCIES.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
                 </div>
-              )}
 
-              <button type="button" onClick={() => setStep(4)} className="boarding-back-btn">
-                ← Back
-              </button>
-            </div>
-          )}
+                {/* Food allergies */}
+                <div className="form-group">
+                  <label className="field-label">FOOD ALLERGIES OR DISLIKES (OPTIONAL)</label>
+                  <input
+                    className="boarding-input"
+                    placeholder="e.g. Allergic to chicken, avoids beef, loves vegetables..."
+                    value={form.allergies}
+                    onChange={e => update('allergies', e.target.value)}
+                  />
+                </div>
+
+                {/* Diet & drinking water */}
+                <div className="form-group">
+                  <label className="field-label">DIET & DRINKING WATER INSTRUCTIONS (OPTIONAL)</label>
+                  <textarea
+                    className="boarding-textarea"
+                    rows={3}
+                    placeholder="Any meal portions, preparation, or water instructions..."
+                    value={form.specialDietInstructions}
+                    onChange={e => update('specialDietInstructions', e.target.value)}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setStep(4)}
+                  className="boarding-primary-btn"
+                >
+                  Continue to Daily Care <ArrowRight size={16} />
+                </button>
+
+                <button type="button" onClick={() => setStep(2)} className="boarding-back-btn">
+                  ← Back
+                </button>
+              </div>
+            )}
+
+            {/* ==========================================================
+              SCREEN 4: DAILY CARE
+              ========================================================== */}
+            {step === 4 && (
+              <div>
+                <div className="card-header-row">
+                  <div className="card-header-icon-box">
+                    <Heart size={18} color="#C08820" />
+                  </div>
+                  <div>
+                    <h2 className="card-title">Care Habits & Safety</h2>
+                    <p className="card-subtitle">Ensure your pet feels secure, active, and happy throughout their stay.</p>
+                  </div>
+                </div>
+
+                {/* Walking Schedule (if Dog) */}
+                {form.petType === 'Dog' && (
+                  <div className="form-group">
+                    <label className="field-label">WALKING SCHEDULE</label>
+                    <select
+                      className="boarding-select"
+                      value={form.walkingFrequency}
+                      onChange={e => update('walkingFrequency', e.target.value)}
+                    >
+                      {WALKING_FREQUENCIES.map(w => <option key={w} value={w}>{w}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {/* Sleeping & Toilet Habits */}
+                <div className="field-grid-2">
+                  <div className="form-group">
+                    <label className="field-label">SLEEPING HABITS</label>
+                    <input
+                      className="boarding-input"
+                      placeholder="e.g. Needs own blanket"
+                      value={form.sleepingHabits}
+                      onChange={e => update('sleepingHabits', e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">TOILET HABITS</label>
+                    <input
+                      className="boarding-input"
+                      placeholder="Outdoor breaks"
+                      value={form.toiletHabits}
+                      onChange={e => update('toiletHabits', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Behaviour & Anxiety */}
+                <div className="field-grid-2 behaviour-separation-row">
+                  <div className="form-group">
+                    <label className="field-label">BEHAVIOUR AROUND OTHER PETS</label>
+                    <input
+                      className="boarding-input"
+                      placeholder="e.g. Friendly, shy, etc."
+                      value={form.behaviorNotes}
+                      onChange={e => update('behaviorNotes', e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">SEPARATION ANXIETY</label>
+                    <select
+                      className="boarding-select"
+                      value={form.separationAnxiety}
+                      onChange={e => update('separationAnxiety', e.target.value)}
+                    >
+                      <option value="None / Mild">None / Mild</option>
+                      <option value="Moderate (needs extra cuddles)">Moderate (needs extra cuddles)</option>
+                      <option value="High (gets vocal or anxious)">High (gets vocal or anxious)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Emergency Contact */}
+                <div className="sub-group-card">
+                  <div className="sub-group-header">
+                    <Phone size={15} color="#C08820" />
+                    <span>Emergency Contact (Relative / Friend)</span>
+                  </div>
+                  <div className="field-grid-2">
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="field-label">CONTACT NAME *</label>
+                      <input
+                        className="boarding-input"
+                        placeholder="e.g. John Doe (Relative / Friend)"
+                        value={form.emergencyContactName}
+                        onChange={e => update('emergencyContactName', e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="field-label">PHONE NUMBER *</label>
+                      <input
+                        className="boarding-input"
+                        placeholder="9876543210"
+                        maxLength={10}
+                        value={form.emergencyContactPhone}
+                        onChange={e => update('emergencyContactPhone', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional instructions */}
+                <div className="form-group">
+                  <label className="field-label">ADDITIONAL INSTRUCTIONS OR FAVORITE TOYS/TREATS</label>
+                  <textarea
+                    className="boarding-textarea"
+                    rows={2}
+                    placeholder="Anything else we should know to make your pet feel at home..."
+                    value={form.additionalInstructions}
+                    onChange={e => update('additionalInstructions', e.target.value)}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setStep(5)}
+                  className="boarding-primary-btn"
+                >
+                  Continue to Review <ArrowRight size={16} />
+                </button>
+
+                <button type="button" onClick={() => setStep(3)} className="boarding-back-btn">
+                  ← Back
+                </button>
+              </div>
+            )}
+
+            {/* ==========================================================
+              SCREEN 5: REVIEW BOARDING REQUEST
+              ========================================================== */}
+            {step === 5 && (
+              <div>
+                {/* Pet & Owner Header Pill (Matches Screen 5) */}
+                <div className="review-pet-header-pill">
+                  {selectedPet?.photoUrl ? (
+                    <img src={selectedPet.photoUrl} alt={form.petName} className="review-pet-avatar" />
+                  ) : (
+                    <div className="review-pet-avatar placeholder">
+                      <PawPrint size={22} color="#C08820" />
+                    </div>
+                  )}
+                  <div className="review-pet-info">
+                    <h3 className="review-pet-title">
+                      {form.petName} <span className="review-pet-breed">({form.petType}{displayBreed ? ` · ${displayBreed}` : ''})</span>
+                    </h3>
+                    <div className="review-owner-line">
+                      Owner: {form.ownerName}
+                    </div>
+                    <div className="review-owner-phone">
+                      <Phone size={11} color="#C08820" /> {form.phone}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 1. Stay Schedule Card */}
+                <div className="review-section-card">
+                  <div className="review-card-head">
+                    <Calendar size={16} color="#C08820" />
+                    <h4>Stay Schedule</h4>
+                  </div>
+                  <div className="review-grid">
+                    <div className="review-spec-row">
+                      <span className="spec-label">Check-In:</span>
+                      <strong className="spec-val">{formatReviewDate(form.checkInDate, form.checkInTime)}</strong>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Check-Out:</span>
+                      <strong className="spec-val">{formatReviewDate(form.checkOutDate, form.checkOutTime)}</strong>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Duration:</span>
+                      <span className="spec-val">{stayCalculation.days} Day(s) ({stayCalculation.nights} Night{stayCalculation.nights === 1 ? '' : 's'})</span>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Daily Rate:</span>
+                      <span className="spec-val">₹{stayCalculation.dailyRate}</span>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Subtotal:</span>
+                      <span className="spec-val">₹{rawBoardingTotal}</span>
+                    </div>
+                    {currentDiscount > 0 && (
+                      <div className="review-spec-row">
+                        <span className="spec-label">Discount ({appliedOffer?.code}):</span>
+                        <span className="spec-val" style={{ color: '#16a34a', fontWeight: 700 }}>-₹{currentDiscount}</span>
+                      </div>
+                    )}
+                    <div className="review-spec-row total-highlight">
+                      <strong className="spec-label">Estimated Total:</strong>
+                      <strong className="spec-val gold">₹{finalBoardingTotal}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Promo Code / Coupon Section */}
+                <div className="review-section-card" style={{ padding: '16px', boxSizing: 'border-box', width: '100%', overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <Tag size={13} style={{ color: 'var(--accent)' }} /> HAVE A PROMO CODE?
+                    </label>
+                    {availableOffers.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowOffersList(prev => !prev)}
+                        style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                      >
+                        {showOffersList ? 'Hide Offers' : `View Offers (${availableOffers.length})`}
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', width: '100%', boxSizing: 'border-box', alignItems: 'stretch' }}>
+                    <input
+                      type="text"
+                      placeholder="ENTER COUPON CODE"
+                      value={couponInput}
+                      disabled={Boolean(appliedOffer)}
+                      onChange={e => { setCouponInput(e.target.value.toUpperCase().replace(/\s+/g, '')); setCouponError('') }}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        height: '42px',
+                        padding: '0 12px',
+                        borderRadius: '10px',
+                        border: '1px solid var(--border)',
+                        background: 'var(--card)',
+                        color: 'var(--text)',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.6px',
+                        outline: 'none',
+                      }}
+                    />
+                    {appliedOffer ? (
+                      <button
+                        type="button"
+                        onClick={handleRemoveCoupon}
+                        className="btn btn-secondary"
+                        style={{ height: '42px', padding: '0 16px', fontSize: '13px', flexShrink: 0, whiteSpace: 'nowrap', boxSizing: 'border-box' }}
+                      >
+                        Remove
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleApplyCoupon()}
+                        disabled={!couponInput.trim()}
+                        className="btn btn-primary"
+                        style={{ height: '42px', padding: '0 18px', fontSize: '13px', flexShrink: 0, whiteSpace: 'nowrap', boxSizing: 'border-box' }}
+                      >
+                        Apply
+                      </button>
+                    )}
+                  </div>
+
+                  {couponError && (
+                    <p style={{ color: '#ef4444', fontSize: '12px', margin: '8px 0 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <X size={13} /> {couponError}
+                    </p>
+                  )}
+
+                  {appliedOffer && (
+                    <div style={{ marginTop: '10px', padding: '8px 12px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '8px', color: '#10b981', fontSize: '12.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Check size={14} /> Coupon {appliedOffer.code} applied! You save ₹{currentDiscount}
+                    </div>
+                  )}
+
+                  {/* Available Offers Accordion */}
+                  {showOffersList && availableOffers.length > 0 && (
+                    <div style={{ display: 'grid', gap: '8px', marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--border)' }}>
+                      {availableOffers.map(off => {
+                        const isPercent = off.discountType === 'percentage'
+                        const isSel = appliedOffer?.id === off.id
+                        return (
+                          <div key={off.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '10px', background: 'var(--card)', border: '1px solid var(--border)' }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <strong style={{ fontSize: '13px', color: 'var(--accent)', letterSpacing: '0.6px' }}>{off.code}</strong>
+                                <span style={{ fontSize: '11px', color: 'var(--muted)' }}>• {isPercent ? `${off.discountValue}% OFF` : `₹${off.discountValue} OFF`}</span>
+                              </div>
+                              <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: 'var(--muted)' }}>{off.title}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleApplyCoupon(off)}
+                              disabled={isSel}
+                              className="btn btn-secondary"
+                              style={{ height: '32px', padding: '0 12px', fontSize: '11.5px', fontWeight: 700 }}
+                            >
+                              {isSel ? 'Applied' : 'Apply'}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Food & Diet Card */}
+                <div className="review-section-card">
+                  <div className="review-card-head">
+                    <Utensils size={16} color="#C08820" />
+                    <h4>Food & Diet</h4>
+                  </div>
+                  <div className="review-grid">
+                    <div className="review-spec-row">
+                      <span className="spec-label">Regular Food:</span>
+                      <span className="spec-val">Included (Paw Paw)</span>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Special Food:</span>
+                      <span className="spec-val">
+                        {form.specialFoodRequired
+                          ? `Yes (${form.specialFoodProvider === 'pawpaw' ? 'Paw Paw provides' : 'Customer provides'})`
+                          : 'No (Regular food fine)'}
+                      </span>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Feeding:</span>
+                      <span className="spec-val">{form.feedingSchedule}</span>
+                    </div>
+                    {(form.allergies || form.specialDietInstructions) && (
+                      <div className="review-spec-row">
+                        <span className="spec-label">Diet Notes:</span>
+                        <span className="spec-val">
+                          {[form.allergies ? `Allergies: ${form.allergies}` : null, form.specialDietInstructions].filter(Boolean).join(' • ')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. Care & Safety Card */}
+                <div className="review-section-card">
+                  <div className="review-card-head">
+                    <PawPrint size={16} color="#C08820" />
+                    <h4>Care & Safety</h4>
+                  </div>
+                  <div className="review-grid">
+                    {form.petType === 'Dog' && (
+                      <div className="review-spec-row">
+                        <span className="spec-label">Walking:</span>
+                        <span className="spec-val">{form.walkingFrequency}</span>
+                      </div>
+                    )}
+                    <div className="review-spec-row">
+                      <span className="spec-label">Sleeping:</span>
+                      <span className="spec-val">{form.sleepingHabits || 'Needs own blanket'}</span>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Toilet:</span>
+                      <span className="spec-val">{form.toiletHabits || 'Outdoor breaks'}</span>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Behaviour:</span>
+                      <span className="spec-val">{form.behaviorNotes || 'Friendly'}</span>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Separation Anxiety:</span>
+                      <span className="spec-val">{form.separationAnxiety}</span>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Emergency Contact:</span>
+                      <span className="spec-val">{form.emergencyContactPhone || '9876543210'}</span>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Additional Notes:</span>
+                      <span className="spec-val">{form.additionalInstructions || '-'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Health & Vaccinations Card */}
+                <div className="review-section-card">
+                  <div className="review-card-head">
+                    <ShieldCheck size={16} color="#C08820" />
+                    <h4>Health & Vaccinations</h4>
+                  </div>
+                  <div className="review-grid">
+                    <div className="review-spec-row">
+                      <span className="spec-label">Vaccination:</span>
+                      <span className="spec-val">{form.vaccinationStatus}</span>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Last Vaccination:</span>
+                      <span className="spec-val">{form.vaccinationNotes || 'Rabies 2025'}</span>
+                    </div>
+                    <div className="review-spec-row">
+                      <span className="spec-label">Medical Conditions:</span>
+                      <span className="spec-val">{form.medicalConditions || '-'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* No advance payment notice (Screen 5 Match) */}
+                <div className="payment-notice-card">
+                  <div className="notice-icon-box">
+                    <Info size={17} color="#0D9488" />
+                  </div>
+                  <div className="notice-text">
+                    <strong>No advance payment required.</strong>
+                    <p>Your request will be reviewed by our team to ensure suite availability. Payment is settled directly during pet check-in / check-out.</p>
+                  </div>
+                </div>
+
+                {/* Pet Boarding Terms & Conditions (Collapsible Preview + Full Modal) */}
+                {(() => {
+                  const activeTerms = (boardingSettings?.terms && boardingSettings.terms.length > 0)
+                    ? boardingSettings.terms
+                    : DEFAULT_BOARDING_TERMS
+                  const activeClosingMessage = boardingSettings?.termsClosingMessage || DEFAULT_BOARDING_TERMS_CLOSING
+
+                  return (
+                    <div className="review-terms-card">
+                      <div
+                        className="review-terms-header"
+                        onClick={() => setTermsExpanded(p => !p)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setTermsExpanded(p => !p) }}
+                      >
+                        <div className="terms-header-left">
+                          <div className="terms-icon-circle">
+                            <FileText size={16} color="#C08820" />
+                          </div>
+                          <div>
+                            <h4 className="terms-card-title">Pet Boarding Terms & Conditions</h4>
+                            <span className="terms-card-subtitle">
+                              {termsExpanded ? 'Click to collapse terms preview' : `${activeTerms.length} conditions · Click to preview`}
+                            </span>
+                          </div>
+                        </div>
+                        <div className={`terms-expand-btn ${termsExpanded ? 'expanded' : ''}`}>
+                          <ChevronDown size={18} />
+                        </div>
+                      </div>
+
+                      <div className="review-terms-content">
+                        <ul className="terms-preview-list">
+                          {(termsExpanded ? activeTerms : activeTerms.slice(0, 3)).map((term, idx) => (
+                            <li key={idx} className="terms-preview-item">
+                              <span className="terms-bullet-num">{idx + 1}.</span>
+                              <span className="terms-bullet-text">{term}</span>
+                            </li>
+                          ))}
+                        </ul>
+
+                        {!termsExpanded && activeTerms.length > 3 && (
+                          <div className="terms-more-indicator">
+                            + {activeTerms.length - 3} more condition{activeTerms.length - 3 > 1 ? 's' : ''}...
+                          </div>
+                        )}
+
+                        {termsExpanded && activeClosingMessage && (
+                          <div className="terms-closing-banner">
+                            {activeClosingMessage}
+                          </div>
+                        )}
+
+                        <div style={{ marginTop: '10px' }}>
+                          <button
+                            type="button"
+                            className="view-all-terms-btn"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setShowTermsModal(true)
+                            }}
+                          >
+                            <span>View All Terms & Conditions</span>
+                            <ArrowRight size={13} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Mandatory Customer Acceptance Checkbox */}
+                      <div className="terms-acceptance-row">
+                        <label className="terms-accept-label" htmlFor="petBoardingAcceptTerms">
+                          <input
+                            type="checkbox"
+                            checked={termsAccepted}
+                            onChange={e => setTermsAccepted(e.target.checked)}
+                            className="terms-accept-checkbox"
+                            id="petBoardingAcceptTerms"
+                          />
+                          <span className="terms-accept-text">
+                            I have read and agree to the <strong>Pet Boarding Terms & Conditions</strong>.
+                          </span>
+                        </label>
+
+                        {!termsAccepted && (
+                          <div className="terms-validation-hint">
+                            <AlertCircle size={14} color="#B45309" />
+                            <span>Please accept the terms and conditions above to submit your booking.</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {boardingSettings?.acceptBookings === false ? (
+                  <div className="boarding-notice-warn text-center">
+                    Boarding Bookings Temporarily Closed
+                  </div>
+                ) : (
+                  <div
+                    className="submit-btn-wrap"
+                    onClick={() => {
+                      if (!termsAccepted && !loading && !isBlocked) {
+                        setToastType('error')
+                        setToastMessage('Please read and agree to the Pet Boarding Terms & Conditions to submit your request.')
+                      }
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={handleSubmit}
+                      disabled={loading || isBlocked || !termsAccepted}
+                      className={`boarding-primary-btn ${!termsAccepted ? 'disabled-terms' : ''}`}
+                    >
+                      {loading ? 'Submitting Boarding Request...' : 'Submit Boarding Request →'}
+                    </button>
+                  </div>
+                )}
+
+                <button type="button" onClick={() => setStep(4)} className="boarding-back-btn">
+                  ← Back
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* Full Terms & Conditions Modal */}

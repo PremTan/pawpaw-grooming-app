@@ -15,7 +15,7 @@ function Stars({ value, onChange, readonly = false }) {
   const [hover, setHover] = useState(0)
   return (
     <div style={{ display: 'flex', gap: '4px' }}>
-      {[1,2,3,4,5].map(n => (
+      {[1, 2, 3, 4, 5].map(n => (
         <button key={n} type="button" disabled={readonly} onClick={() => !readonly && onChange?.(n)}
           onMouseEnter={() => !readonly && setHover(n)} onMouseLeave={() => !readonly && setHover(0)}
           style={{ fontSize: '24px', background: 'none', border: 'none', cursor: readonly ? 'default' : 'pointer', color: (hover || value) >= n ? 'var(--accent)' : 'var(--border)', transition: 'all 0.1s', transform: !readonly && hover === n ? 'scale(1.2)' : 'scale(1)' }}
@@ -27,13 +27,13 @@ function Stars({ value, onChange, readonly = false }) {
 
 export default function Reviews() {
   const { user, isBlocked } = useAuth()
-  const [reviews, setReviews]   = useState([])
-  const [loading, setLoading]   = useState(true)
+  const [reviews, setReviews] = useState([])
+  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [showReviewForm, setShowReviewForm] = useState(false)
-  const [form, setForm]         = useState({ rating: 5, comment: '', petName: '' })
+  const [form, setForm] = useState({ rating: 5, comment: '', petName: '' })
   const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted]   = useState(false)
+  const [submitted, setSubmitted] = useState(false)
   const [reviewToast, setReviewToast] = useState('')
   const [selectedImages, setSelectedImages] = useState([])
   const [imageError, setImageError] = useState('')
@@ -68,7 +68,7 @@ export default function Reviews() {
         createdAt: item.createdAt,
       }))
       setReviews(normalized)
-    } catch {}
+    } catch { }
     setLoading(false)
   }
   useEffect(() => { fetchReviews() }, [])
@@ -93,7 +93,7 @@ export default function Reviews() {
     })
   }, [filter, reviews])
   const avgRating = reviews.length ? (reviews.reduce((s, r) => s + (r.rating || 5), 0) / reviews.length).toFixed(1) : '5.0'
-  const dist = [5,4,3,2,1].map(n => ({ n, count: reviews.filter(r => r.rating === n).length, pct: reviews.length ? Math.round((reviews.filter(r => r.rating === n).length / reviews.length) * 100) : 0 }))
+  const dist = [5, 4, 3, 2, 1].map(n => ({ n, count: reviews.filter(r => r.rating === n).length, pct: reviews.length ? Math.round((reviews.filter(r => r.rating === n).length / reviews.length) * 100) : 0 }))
 
   const openCropModalForFile = (file) => {
     const previewUrl = URL.createObjectURL(file)
@@ -237,13 +237,13 @@ export default function Reviews() {
   const L = { fontSize: '11px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '6px' }
 
   return (
-    <div style={{ background: 'var(--bg)', paddingTop: '80px', minHeight: '100vh' }}>
+    <div className="reviews-page" style={{ background: 'var(--bg)', paddingTop: 'var(--navbar-height, 98px)', minHeight: '100vh', transition: 'padding-top 0.25s ease' }}>
       {reviewToast && (
         <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
           <Toast message={reviewToast} type="success" onClose={() => setReviewToast('')} />
         </div>
       )}
-      <div style={{ maxWidth: '860px', margin: '0 auto', padding: '48px 20px 80px' }}>
+      <div style={{ maxWidth: '860px', margin: '0 auto', padding: '24px 20px 80px' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '48px' }}>

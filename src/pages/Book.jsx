@@ -5,13 +5,14 @@ import { collection, addDoc, getDocs, onSnapshot, query, where, serverTimestamp,
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
-import { ArrowRight, Calendar, Clock, CheckCircle, ChevronLeft, Home, MessageCircle, Package as PackageIcon, PawPrint, Plus, Store } from 'lucide-react'
+import { ArrowRight, Calendar, Clock, CheckCircle, ChevronLeft, Home, MessageCircle, Package as PackageIcon, PawPrint, Plus, Store, Tag, X, Check } from 'lucide-react'
 import { format, addDays, startOfToday } from 'date-fns'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel } from '../utils/bookingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { renderServiceIcon } from '../utils/serviceIcons.jsx'
 import Toast from '../components/Toast'
+import { fetchActiveOffers, calculateDiscount } from '../utils/offers'
 
 const parseSlotStart = (dateString, slotLabel) => {
   const match = String(slotLabel || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
@@ -60,14 +61,25 @@ export default function Book() {
   const prePetBreed = searchParams.get('petBreed') || ''
   const preCustomBreed = searchParams.get('customBreed') || ''
   const preAddress = searchParams.get('address') || ''
+  const preCoupon = searchParams.get('coupon') || ''
+  const prePhone = searchParams.get('phone') || ''
+  const preOwnerName = searchParams.get('ownerName') || ''
+  const preStep = searchParams.get('step') ? Number(searchParams.get('step')) : 1
 
   const bookingTopRef = useRef(null)
 
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(
+    preStep === 3 && (preServices.length > 0 || prePackage) && prePetName ? 3 : 1
+  )
   const [packages, setPackages] = useState([])
   const [pets, setPets] = useState([])
   const [serviceDetails, setServiceDetails] = useState({})
   const [selectedPetId, setSelectedPetId] = useState('')
+  const [couponInput, setCouponInput] = useState(preCoupon)
+  const [appliedOffer, setAppliedOffer] = useState(null)
+  const [couponError, setCouponError] = useState('')
+  const [availableOffers, setAvailableOffers] = useState([])
+  const [showOffersList, setShowOffersList] = useState(false)
   const [selectedServices, setSelectedServices] = useState(preServices.length ? preServices : preService ? [preService] : [])
   const [selectedPackages, setSelectedPackages] = useState([])
   const [profileAddresses, setProfileAddresses] = useState([])
@@ -78,8 +90,8 @@ export default function Book() {
     petType: prePetType || 'Dog',
     petBreed: prePetBreed,
     customBreed: preCustomBreed,
-    ownerName: user?.displayName || '',
-    phone: '',
+    ownerName: preOwnerName || user?.displayName || '',
+    phone: prePhone,
     date: preDate || format(addDays(startOfToday(), 1), 'yyyy-MM-dd'),
     slot: '',
     bookingType: preVisit === 'home' ? 'home' : 'store',
@@ -168,6 +180,27 @@ export default function Book() {
     }
     fetchProfile()
   }, [user])
+
+  // Fetch active promotional offers
+  useEffect(() => {
+    let ignore = false
+    fetchActiveOffers(db).then(offers => {
+      if (!ignore) {
+        const list = Array.isArray(offers) ? offers : []
+        setAvailableOffers(list)
+        if (preCoupon && list.length) {
+          const matched = list.find(o => o.code.toUpperCase() === preCoupon.toUpperCase())
+          if (matched) {
+            setAppliedOffer(matched)
+            setCouponInput(matched.code)
+          }
+        }
+      }
+    }).catch(err => {
+      console.warn('[Book] Failed to fetch offers:', err)
+    })
+    return () => { ignore = true }
+  }, [preCoupon])
 
   // Fetch booked slots
   useEffect(() => {
@@ -301,15 +334,45 @@ export default function Book() {
     return Number(raw || 0) || 0
   }
 
-  const totalAmount = () => serviceTotal() + visitCharge()
+  const rawTotalAmount = () => serviceTotal() + visitCharge()
+  const rawTotalAmountMax = () => servicePriceRange().max + packagePriceRange().max + visitCharge()
 
-  const totalAmountMax = () => servicePriceRange().max + packagePriceRange().max + visitCharge()
+  const discountCalc = appliedOffer ? calculateDiscount(appliedOffer, rawTotalAmount()) : { valid: false, discountAmount: 0 }
+  const currentDiscount = discountCalc.valid ? discountCalc.discountAmount : 0
+
+  const totalAmount = () => Math.max(0, rawTotalAmount() - currentDiscount)
+  const totalAmountMax = () => Math.max(0, rawTotalAmountMax() - currentDiscount)
 
   const totalPrice = () => {
     const min = totalAmount()
     const max = totalAmountMax()
     if (min > 0 && max > min) return `Rs ${min} - Rs ${max}+`
     return min > 0 ? `Rs ${min}+` : selectedService?.price || ''
+  }
+
+  const handleApplyCoupon = (offerToApply = null) => {
+    const target = offerToApply || availableOffers.find(o => o.code.toUpperCase() === couponInput.trim().toUpperCase())
+    if (!target) {
+      setCouponError('Invalid or expired coupon code')
+      setAppliedOffer(null)
+      return
+    }
+    const res = calculateDiscount(target, rawTotalAmount())
+    if (!res.valid) {
+      setCouponError(res.error || 'Coupon cannot be applied to this booking')
+      setAppliedOffer(null)
+      return
+    }
+    setAppliedOffer(target)
+    setCouponInput(target.code)
+    setCouponError('')
+    setShowOffersList(false)
+  }
+
+  const handleRemoveCoupon = () => {
+    setAppliedOffer(null)
+    setCouponInput('')
+    setCouponError('')
   }
 
   const checkSlotCapacity = async (slotLabel) => {
@@ -367,6 +430,9 @@ export default function Book() {
         serviceName: bookingLabel,
         serviceTotal: serviceTotal(),
         visitCharge: visitCharge(),
+        originalSubtotal: rawTotalAmount(),
+        couponCode: appliedOffer ? appliedOffer.code : null,
+        discountAmount: currentDiscount,
         estimatedTotal: totalAmount(),
         estimatedTotalMax: totalAmountMax(),
         paymentMode,
@@ -452,8 +518,8 @@ export default function Book() {
   const maxDate = format(addDays(startOfToday(), 30), 'yyyy-MM-dd')
 
   const S = {
-    page:  { background: 'var(--bg)', paddingTop: '80px', minHeight: '100vh' },
-    wrap:  { maxWidth: '680px', margin: '0 auto', padding: '40px 20px 80px' },
+    page:  { background: 'var(--bg)', paddingTop: 'var(--navbar-height, 98px)', minHeight: '100vh', transition: 'padding-top 0.25s ease' },
+    wrap:  { maxWidth: '680px', margin: '0 auto', padding: '24px 20px 80px' },
     card:  { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '32px' },
     label: { fontSize: '11px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '6px' },
     back:  { display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', marginBottom: '20px', padding: 0 },
@@ -861,6 +927,113 @@ export default function Book() {
                 <div style={{ color: 'var(--text)', fontSize: '14px', fontWeight: 800, marginBottom: '4px' }}>Owner accepts {getPaymentModeLabel(paymentMode)}</div>
                 <p style={{ color: 'var(--muted)', fontSize: '12px', lineHeight: 1.5 }}>Payment is handled directly with the owner.</p>
               </div>
+              {/* Coupon / Promo Code Section */}
+              <div style={{ marginBottom: '20px', padding: '16px', borderRadius: '14px', background: 'var(--surface)', border: '1px solid var(--border)', boxSizing: 'border-box', width: '100%', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <label style={{ ...S.label, marginBottom: 0, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <Tag size={13} style={{ color: 'var(--accent)' }} /> HAVE A PROMO CODE?
+                  </label>
+                  {availableOffers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowOffersList(prev => !prev)}
+                      style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                    >
+                      {showOffersList ? 'Hide Offers' : `View Offers (${availableOffers.length})`}
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', width: '100%', boxSizing: 'border-box', alignItems: 'stretch' }}>
+                  <input
+                    type="text"
+                    placeholder="ENTER COUPON CODE"
+                    value={couponInput}
+                    disabled={Boolean(appliedOffer)}
+                    onChange={e => { setCouponInput(e.target.value.toUpperCase().replace(/\s+/g, '')); setCouponError('') }}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      height: '42px',
+                      padding: '0 12px',
+                      borderRadius: '10px',
+                      border: '1px solid var(--border)',
+                      background: 'var(--card)',
+                      color: 'var(--text)',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.6px',
+                      outline: 'none',
+                    }}
+                  />
+                  {appliedOffer ? (
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      className="btn btn-secondary"
+                      style={{ height: '42px', padding: '0 16px', fontSize: '13px', flexShrink: 0, whiteSpace: 'nowrap', boxSizing: 'border-box' }}
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleApplyCoupon()}
+                      disabled={!couponInput.trim()}
+                      className="btn btn-primary"
+                      style={{ height: '42px', padding: '0 18px', fontSize: '13px', flexShrink: 0, whiteSpace: 'nowrap', boxSizing: 'border-box' }}
+                    >
+                      Apply
+                    </button>
+                  )}
+                </div>
+
+                {couponError && (
+                  <p style={{ color: '#ef4444', fontSize: '12px', margin: '8px 0 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <X size={13} /> {couponError}
+                  </p>
+                )}
+
+                {appliedOffer && (
+                  <div style={{ marginTop: '10px', padding: '8px 12px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '8px', color: '#10b981', fontSize: '12.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Check size={14} /> Coupon {appliedOffer.code} applied! You save ₹{currentDiscount}
+                  </div>
+                )}
+
+                {/* Available Offers Accordion */}
+                {showOffersList && availableOffers.length > 0 && (
+                  <div style={{ display: 'grid', gap: '8px', marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--border)' }}>
+                    {availableOffers.map(off => {
+                      const isPercent = off.discountType === 'percentage'
+                      const isSel = appliedOffer?.id === off.id
+                      return (
+                        <div key={off.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '10px', background: 'var(--card)', border: '1px solid var(--border)' }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <strong style={{ fontSize: '13px', color: 'var(--accent)', letterSpacing: '0.6px' }}>{off.code}</strong>
+                              <span style={{ fontSize: '11px', color: 'var(--muted)' }}>• {isPercent ? `${off.discountValue}% OFF` : `₹${off.discountValue} OFF`}</span>
+                            </div>
+                            <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: 'var(--muted)' }}>{off.title}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleApplyCoupon(off)}
+                            disabled={isSel}
+                            className="btn btn-secondary"
+                            style={{ height: '32px', padding: '0 12px', fontSize: '11.5px', fontWeight: 700 }}
+                          >
+                            {isSel ? 'Applied' : 'Apply'}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
               {form.slot && (
                 <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '14px', padding: '16px', marginBottom: '20px' }}>
                   <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '13px', marginBottom: '12px' }}>Booking Summary</p>
@@ -873,6 +1046,8 @@ export default function Book() {
                     { k: 'Date',    v: form.date },
                     { k: 'Time',    v: form.slot },
                     { k: 'Address', v: form.bookingType === 'home' ? form.address : null },
+                    { k: 'Subtotal', v: rawTotalAmount() > 0 ? `Rs ${rawTotalAmount()}` : null },
+                    { k: `Discount (${appliedOffer?.code || 'Coupon'})`, v: currentDiscount > 0 ? `-Rs ${currentDiscount}` : null },
                     { k: 'Visit Charge', v: visitCharge() > 0 ? `Rs ${visitCharge()}` : null },
                     { k: 'Est. Total', v: totalPrice() },
                     { k: 'Payment', v: getPaymentModeLabel(paymentMode) },
