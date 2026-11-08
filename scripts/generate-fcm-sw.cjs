@@ -52,22 +52,22 @@ firebase.initializeApp(${JSON.stringify(config, null, 2)});
 const messaging = firebase.messaging();
 
 const PUSH_ICON = 'https://res.cloudinary.com/doawldbnh/image/upload/w_192,h_192,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png';
-const PUSH_IMAGE = 'https://res.cloudinary.com/doawldbnh/image/upload/w_512,h_512,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png';
 
 messaging.onBackgroundMessage((payload) => {
   const data = payload.data || {};
-  if (!data.title && !data.body) return;
+  const notification = payload.notification || {};
 
-  const title = data.title || 'Paw Paw Pet Grooming';
+  const title = notification.title || data.title || 'Paw Paw Pet Grooming';
+  const body = notification.body || data.body || '';
+  if (!title && !body) return;
+
   const tag = data.tag || data.bookingId || 'pawpaw-alert';
   const targetUrl = data.actionUrl || data.link || '/';
   const actionTitle = data.actionTitle || (targetUrl.includes('boarding') ? '🐾 View Boarding' : '📅 View Booking');
 
   const options = {
-    body: data.body || '',
+    body: body,
     icon: data.icon || PUSH_ICON,
-    image: data.image || PUSH_IMAGE,
-    badge: PUSH_ICON,
     tag: tag,
     renotify: true,
     vibrate: [200, 100, 200],
@@ -81,7 +81,7 @@ messaging.onBackgroundMessage((payload) => {
     ],
   };
 
-  self.registration.showNotification(title, options);
+  return self.registration.showNotification(title, options);
 });
 
 self.addEventListener('install', (event) => {

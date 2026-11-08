@@ -63,7 +63,7 @@ function getNotificationVisual(n) {
 }
 
 export default function NotificationBell() {
-  const { notifications, unreadCount, markAllRead, markRead, requestBrowserPermission, notificationError, fcmStatus } = useNotifications()
+  const { notifications, unreadCount, markAllRead, markRead, requestBrowserPermission, browserPermission, notificationError, fcmStatus } = useNotifications()
   const { isAdmin } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -128,9 +128,33 @@ export default function NotificationBell() {
             </div>
           </div>
 
+          {browserPermission !== 'granted' && (
+            <div style={{ padding: '8px 16px', background: 'var(--accent-bg)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text)', fontWeight: 500 }}>
+                Allow notifications for instant updates
+              </div>
+              <button
+                type="button"
+                onClick={async () => { await requestBrowserPermission?.() }}
+                className="px-2.5 py-1 rounded-md text-xs font-semibold shadow-sm hover:opacity-90 transition-all cursor-pointer"
+                style={{ background: 'var(--accent)', color: '#fff' }}
+              >
+                Enable
+              </button>
+            </div>
+          )}
+
           {fcmStatus && !['idle', 'registered'].includes(fcmStatus) && (
-            <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', color: '#ef4444', fontSize: '11px', lineHeight: 1.4 }}>
-              Push not active: {fcmStatus}
+            <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', color: '#ef4444', fontSize: '11px', lineHeight: 1.4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Push alerts: {fcmStatus}</span>
+              <button
+                type="button"
+                onClick={async () => { await requestBrowserPermission?.() }}
+                className="px-2 py-0.5 rounded text-xs font-semibold cursor-pointer"
+                style={{ background: '#ef4444', color: '#fff' }}
+              >
+                Retry
+              </button>
             </div>
           )}
 

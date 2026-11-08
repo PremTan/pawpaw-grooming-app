@@ -362,6 +362,36 @@ export default function BookBoarding() {
             actionUrl: `/admin/boarding`,
           }),
         }).catch(() => {})
+
+        if (user?.uid) {
+          const userNotifTitle = 'Boarding Request Received'
+          const userNotifMsg = `Your boarding request for ${form.petName} (${stayCalculation.days} days from ${form.checkInDate} to ${form.checkOutDate}) has been received!`
+          await addDoc(collection(db, 'notifications'), {
+            userId: user.uid,
+            userEmail: user.email || '',
+            title: userNotifTitle,
+            message: userNotifMsg,
+            type: 'boarding_request',
+            bookingId: ref.id,
+            actionUrl: '/my-bookings',
+            read: false,
+            createdAt: serverTimestamp(),
+          })
+
+          fetch('/api/send-push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: user.uid,
+              userEmail: user.email || '',
+              toAdmin: false,
+              title: userNotifTitle,
+              body: userNotifMsg,
+              bookingId: ref.id,
+              actionUrl: '/my-bookings',
+            }),
+          }).catch(() => {})
+        }
       } catch { }
 
       setToastMessage('Boarding request sent successfully!')
@@ -3634,6 +3664,278 @@ export default function BookBoarding() {
           .boarding-flow-page {
             padding: 132px 16px 32px;
           }
+        }
+      
+        /* ============================================================
+           Non-light Theme Overrides (Dark, Ocean, Royal, Rose)
+           ============================================================ */
+        :root:not(.theme-light) .boarding-flow-page {
+          background-color: var(--bg);
+          color: var(--text);
+        }
+
+        :root:not(.theme-light) .boarding-card,
+        :root:not(.theme-light) .boarding-summary-card,
+        :root:not(.theme-light) .review-section-card,
+        :root:not(.theme-light) .review-pet-header-pill,
+        :root:not(.theme-light) .review-terms-card,
+        :root:not(.theme-light) .terms-full-modal-card {
+          background: var(--card);
+          border-color: var(--border);
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+          color: var(--text);
+        }
+
+        :root:not(.theme-light) .boarding-heading,
+        :root:not(.theme-light) .card-title,
+        :root:not(.theme-light) .boarding-success-title,
+        :root:not(.theme-light) .boarding-row-value,
+        :root:not(.theme-light) .pet-card-name,
+        :root:not(.theme-light) .regular-food-title,
+        :root:not(.theme-light) .choice-title,
+        :root:not(.theme-light) .provider-title,
+        :root:not(.theme-light) .field-label-prominent,
+        :root:not(.theme-light) .summary-value,
+        :root:not(.theme-light) .summary-total-label,
+        :root:not(.theme-light) .review-card-head h4,
+        :root:not(.theme-light) .spec-val,
+        :root:not(.theme-light) .terms-card-title,
+        :root:not(.theme-light) .terms-accept-text,
+        :root:not(.theme-light) .terms-modal-title,
+        :root:not(.theme-light) .terms-modal-item,
+        :root:not(.theme-light) .sub-group-header,
+        :root:not(.theme-light) .rate-main-text,
+        :root:not(.theme-light) .boarding-food-plan-title,
+        :root:not(.theme-light) .review-owner-phone {
+          color: var(--text);
+        }
+
+        :root:not(.theme-light) .boarding-subheading,
+        :root:not(.theme-light) .card-subtitle,
+        :root:not(.theme-light) .boarding-success-subtitle,
+        :root:not(.theme-light) .boarding-row-label,
+        :root:not(.theme-light) .pet-card-meta,
+        :root:not(.theme-light) .field-label,
+        :root:not(.theme-light) .section-sublabel,
+        :root:not(.theme-light) .regular-food-desc,
+        :root:not(.theme-light) .choice-desc,
+        :root:not(.theme-light) .provider-desc,
+        :root:not(.theme-light) .field-subtext,
+        :root:not(.theme-light) .summary-label,
+        :root:not(.theme-light) .spec-label,
+        :root:not(.theme-light) .terms-card-subtitle,
+        :root:not(.theme-light) .terms-expand-btn,
+        :root:not(.theme-light) .schedule-header-label,
+        :root:not(.theme-light) .boarding-back-btn,
+        :root:not(.theme-light) .boarding-food-plan-sub,
+        :root:not(.theme-light) .rate-sub-text,
+        :root:not(.theme-light) .review-owner-line,
+        :root:not(.theme-light) .empty-saved-pets {
+          color: var(--muted);
+        }
+
+        :root:not(.theme-light) .boarding-input,
+        :root:not(.theme-light) .boarding-select,
+        :root:not(.theme-light) .boarding-textarea {
+          background: var(--surface);
+          border-color: var(--border);
+          color: var(--text);
+        }
+
+        :root:not(.theme-light) .boarding-input:focus,
+        :root:not(.theme-light) .boarding-select:focus,
+        :root:not(.theme-light) .boarding-textarea:focus {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 2px var(--accent-bg);
+        }
+
+        :root:not(.theme-light) .sub-group-card,
+        :root:not(.theme-light) .stay-summary-card,
+        :root:not(.theme-light) .regular-food-card,
+        :root:not(.theme-light) .special-choice-card,
+        :root:not(.theme-light) .provider-card,
+        :root:not(.theme-light) .provider-option-card,
+        :root:not(.theme-light) .saved-pet-card,
+        :root:not(.theme-light) .empty-saved-pets {
+          background: var(--surface);
+          border-color: var(--border);
+          color: var(--text);
+        }
+
+        :root:not(.theme-light) .saved-pet-card.selected,
+        :root:not(.theme-light) .special-choice-card.selected,
+        :root:not(.theme-light) .provider-card.selected,
+        :root:not(.theme-light) .provider-option-card.selected {
+          background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+          border-color: var(--accent);
+        }
+
+        :root:not(.theme-light) .provider-option-card.selected .provider-option-text {
+          color: var(--accent);
+        }
+
+        :root:not(.theme-light) .custom-radio,
+        :root:not(.theme-light) .choice-radio {
+          background: var(--surface);
+          border-color: var(--border);
+        }
+
+        :root:not(.theme-light) .custom-radio.checked,
+        :root:not(.theme-light) .choice-radio.checked {
+          border-color: var(--accent);
+          background: var(--accent);
+        }
+
+        :root:not(.theme-light) .stepper-circle {
+          background: var(--surface);
+          border-color: var(--border);
+          color: var(--muted);
+        }
+
+        :root:not(.theme-light) .stepper-circle.active,
+        :root:not(.theme-light) .stepper-circle.completed {
+          background: var(--gradient);
+          border-color: var(--accent);
+          color: #ffffff;
+        }
+
+        :root:not(.theme-light) .stepper-label {
+          color: var(--muted);
+        }
+
+        :root:not(.theme-light) .stepper-label.active,
+        :root:not(.theme-light) .stepper-label.completed {
+          color: var(--text);
+        }
+
+        :root:not(.theme-light) .stepper-connector {
+          background: var(--border);
+        }
+
+        :root:not(.theme-light) .stepper-connector.completed {
+          background: var(--accent);
+        }
+
+        :root:not(.theme-light) .card-header-icon-box,
+        :root:not(.theme-light) .suite-gold-tag,
+        :root:not(.theme-light) .pet-thumb-placeholder,
+        :root:not(.theme-light) .rate-icon-badge,
+        :root:not(.theme-light) .food-bowl-icon-wrap,
+        :root:not(.theme-light) .provider-icon-circle,
+        :root:not(.theme-light) .boarding-summary-header-icon,
+        :root:not(.theme-light) .boarding-row-icon-wrap,
+        :root:not(.theme-light) .review-pet-avatar.placeholder,
+        :root:not(.theme-light) .terms-icon-circle {
+          background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+          border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+          color: var(--accent);
+        }
+
+        :root:not(.theme-light) .suite-gold-tag {
+          color: var(--accent);
+        }
+
+        :root:not(.theme-light) .rate-highlight-card {
+          background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+          border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+        }
+
+        :root:not(.theme-light) .boarding-summary-card-header,
+        :root:not(.theme-light) .boarding-summary-row,
+        :root:not(.theme-light) .summary-line.total-line,
+        :root:not(.theme-light) .review-card-head,
+        :root:not(.theme-light) .review-spec-row.total-highlight,
+        :root:not(.theme-light) .review-terms-header,
+        :root:not(.theme-light) .terms-acceptance-row,
+        :root:not(.theme-light) .terms-modal-header,
+        :root:not(.theme-light) .terms-modal-footer {
+          border-color: var(--border);
+        }
+
+        :root:not(.theme-light) .boarding-summary-badge-id,
+        :root:not(.theme-light) .boarding-status-pill {
+          background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+          border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+          color: var(--accent);
+        }
+
+        :root:not(.theme-light) .boarding-summary-header-title,
+        :root:not(.theme-light) .boarding-row-value.estimated-total,
+        :root:not(.theme-light) .summary-total-value,
+        :root:not(.theme-light) .spec-val.highlight,
+        :root:not(.theme-light) .spec-val.gold,
+        :root:not(.theme-light) .review-pet-breed,
+        :root:not(.theme-light) .manage-pets-link {
+          color: var(--accent);
+        }
+
+        :root:not(.theme-light) .boarding-btn-secondary-bookings {
+          background: var(--surface);
+          border-color: var(--accent);
+          color: var(--accent);
+        }
+
+        :root:not(.theme-light) .boarding-btn-tertiary-link {
+          color: var(--accent);
+        }
+
+        :root:not(.theme-light) .review-terms-header {
+          background: var(--surface);
+        }
+
+        :root:not(.theme-light) .review-terms-header:hover {
+          background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+        }
+
+        :root:not(.theme-light) .terms-preview-item {
+          color: color-mix(in srgb, var(--text) 82%, var(--muted));
+        }
+
+        :root:not(.theme-light) .terms-bullet-num,
+        :root:not(.theme-light) .terms-modal-index {
+          color: var(--accent);
+          background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+          border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+        }
+
+        :root:not(.theme-light) .terms-closing-banner,
+        :root:not(.theme-light) .terms-modal-closing {
+          background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+          border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+          color: var(--text);
+        }
+
+        :root:not(.theme-light) .view-all-terms-btn {
+          border-color: var(--accent);
+          color: var(--accent);
+        }
+
+        :root:not(.theme-light) .terms-acceptance-row {
+          background: var(--card);
+        }
+
+        :root:not(.theme-light) .terms-accept-text strong {
+          color: var(--accent);
+        }
+
+        :root:not(.theme-light) .terms-modal-header,
+        :root:not(.theme-light) .terms-modal-footer {
+          background: var(--surface);
+        }
+
+        :root:not(.theme-light) .terms-modal-body {
+          background: var(--card);
+        }
+
+        :root:not(.theme-light) .payment-notice-card {
+          background: color-mix(in srgb, #166534 18%, var(--surface));
+          border-color: color-mix(in srgb, #22c55e 30%, var(--border));
+        }
+        :root:not(.theme-light) .notice-text strong {
+          color: #4ade80;
+        }
+        :root:not(.theme-light) .notice-text p {
+          color: #86efac;
         }
       `}</style>
     </div>

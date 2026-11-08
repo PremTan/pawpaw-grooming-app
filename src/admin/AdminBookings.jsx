@@ -117,6 +117,13 @@ export default function AdminBookings() {
   const [serviceF, setServiceF] = useState('all')
   const [dateFrom, setDateFrom] = useState(requestedDate)
   const [dateTo, setDateTo] = useState(requestedDate)
+
+  useEffect(() => {
+    if (requestedDate) {
+      setDateFrom(requestedDate)
+      setDateTo(requestedDate)
+    }
+  }, [requestedDate])
   const [page, setPage] = useState(1)
   const [updating, setUpdating] = useState(null)
   const [cashModal, setCashModal] = useState(null)
@@ -417,6 +424,7 @@ export default function AdminBookings() {
       patchBooking(rescheduleTarget.id, { ...patch, rescheduledAt: new Date(), bookingStartAt: newBookingStart ? { toDate: () => newBookingStart } : null })
       if (rescheduleTarget.userId && rescheduleTarget.userId !== 'walkin') {
         await sendNotification(rescheduleTarget.userId, {
+          userEmail: rescheduleTarget.userEmail || rescheduleTarget.customerEmail || rescheduleTarget.email || '',
           title: 'Appointment rescheduled',
           message: `Your appointment was rescheduled by admin from ${previousDate} at ${formatSlot(previousSlot)} to ${rescheduleDate} at ${formatSlot(rescheduleSlot)}.`,
           type: 'rescheduled',
@@ -467,6 +475,7 @@ export default function AdminBookings() {
         }
         if (msgs[status]) {
           await sendNotification(b.userId, {
+            userEmail: b.userEmail || b.customerEmail || b.email || '',
             title: status === 'confirmed' ? 'Booking approved' : 'Booking cancelled',
             message: `${b.serviceName} on ${b.date} at ${b.slot} - ${msgs[status]}`,
             type: status,
@@ -577,6 +586,7 @@ export default function AdminBookings() {
       setToastMessage('Appointment marked completed successfully.')
       if (cashModal.userId && cashModal.userId !== 'walkin') {
         await sendNotification(cashModal.userId, {
+          userEmail: cashModal.userEmail || cashModal.customerEmail || cashModal.email || '',
           title: 'Appointment completed',
           message: `${cashModal.serviceName} for ${cashModal.petName} completed. Thank you!`,
           type: 'completed',

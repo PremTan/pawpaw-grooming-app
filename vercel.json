@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/daily-summary",
+      "schedule": "30 15 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/((?!api/).*)",

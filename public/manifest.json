@@ -1,0 +1,24 @@
+{
+  "name": "Paw Paw Pet Grooming",
+  "short_name": "Paw Paw",
+  "description": "Premium Pet Grooming & Boarding Services in Pune",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF7F2",
+  "theme_color": "#C08820",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/notification-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
+
