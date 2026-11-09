@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore'
-import { Download, Eye, MessageCircle, ReceiptText, Search, Share2, X } from 'lucide-react'
+import { Download, Eye, Info, MessageCircle, Phone, ReceiptText, Search, Share2, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import { db } from '../firebase'
 import { PET_TYPES } from '../utils/services'
 import { fetchBusinessInfo } from '../utils/businessInfo'
-import { buildCustomerInvoiceWhatsAppMessage, downloadInvoicePdf, shareInvoicePdfFile, viewInvoicePdf } from '../utils/invoicePdf'
+import { buildCustomerInvoiceWhatsAppMessage, createInvoicePdfFile, downloadInvoicePdf, shareInvoicePdfFile, viewInvoicePdf } from '../utils/invoicePdf'
 import { getBookingTypeLabel } from '../utils/bookingSettings'
 
 const blankCustom = {
@@ -481,6 +481,31 @@ export default function AdminInvoices() {
     const cleanPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone
 
     setBusy('whatsapp-customer')
+
+    // 1. On mobile devices (Android / iOS) where Web Share supports files, attach PDF directly!
+    try {
+      const file = await createInvoicePdfFile(booking, invoiceInfo)
+      if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          title: `Invoice - ${booking.ownerName || 'Customer'}`,
+          text: decodeURIComponent(buildCustomerInvoiceWhatsAppMessage(booking, invoiceInfo)),
+          files: [file],
+        })
+        setToastType('success')
+        setToastMessage('Invoice PDF shared to WhatsApp!')
+        setBusy('')
+        return
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        // User closed the share sheet
+        setBusy('')
+        return
+      }
+    }
+
+    // 2. Desktop fallback: WhatsApp URLs (wa.me) cannot attach local files automatically.
+    // Download the PDF file to Downloads and open WhatsApp chat with prefilled summary.
     try {
       await downloadInvoicePdf(booking, invoiceInfo)
     } catch {}
@@ -491,7 +516,7 @@ export default function AdminInvoices() {
     window.open(waUrl, '_blank', 'noopener,noreferrer')
 
     setToastType('success')
-    setToastMessage('PDF downloaded & customer WhatsApp opened!')
+    setToastMessage('PDF downloaded! In WhatsApp, click 📎 (Document) or drag the PDF into the chat.')
   }
 
   if (loading) return <div style={{ padding: '28px' }}><Spinner text="Loading invoices..." /></div>
@@ -506,22 +531,22 @@ export default function AdminInvoices() {
       <div className="admin-page-header">
         <div>
           <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '28px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>Invoices</h1>
-          <p style={{ color: 'var(--muted)', fontSize: '13px' }}>Generate invoices from completed appointments or create a custom invoice manually.</p>
+          <p style={{ color: 'var(--muted)', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Generate and share customer invoices.</p>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '18px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '18px' }}>
         {[
-          ['appointment', 'Grooming Appointment'],
-          ['boarding', 'Pet Boarding Stay'],
-          ['custom', 'Custom Invoice'],
+          ['appointment', 'Grooming'],
+          ['boarding', 'Boarding'],
+          ['custom', 'Custom'],
         ].map(([value, label]) => (
           <button
             key={value}
             type="button"
             onClick={() => { setMode(value); setGenerated(null); setError('') }}
             className={mode === value ? 'btn btn-primary' : 'btn btn-secondary'}
-            style={{ fontSize: '13px' }}
+            style={{ fontSize: '13px', padding: '9px 4px', textAlign: 'center', justifyContent: 'center', whiteSpace: 'nowrap' }}
           >
             {label}
           </button>
@@ -574,23 +599,133 @@ export default function AdminInvoices() {
               </div>
 
               {selectedBooking ? (
-                <div style={{ marginTop: '16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
-                  <div className="admin-detail-kv-grid">
-                    {[
-                      ['Booking ID', shortId(selectedBooking.id)],
-                      ['Customer', selectedBooking.ownerName || '-'],
-                      ['Phone', selectedBooking.phone || '-'],
-                      ['Pet', `${selectedBooking.petName || '-'}${selectedBooking.petType ? ` (${selectedBooking.petType})` : ''}`],
-                      ['Service', selectedBooking.serviceName || '-'],
-                      ['Visit Type', getBookingTypeLabel(selectedBooking.bookingType || 'store')],
-                      ['Date & Time', `${selectedBooking.date || '-'} ${selectedBooking.slot || ''}`],
-                      ['Amount', `Rs ${money(selectedBooking.amountCollected || selectedBooking.estimatedTotal)}`],
-                    ].map(([label, value]) => (
-                      <div key={label} className="admin-detail-kv-item">
-                        <span className="admin-detail-kv-label">{label}</span>
-                        <span className="admin-detail-kv-value">{value}</span>
+                <div style={{
+                  marginTop: '16px',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '14px',
+                  overflow: 'hidden',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+                }}>
+                  {/* Card Top: Customer identity + Booking ID */}
+                  <div style={{
+                    padding: '12px 14px',
+                    borderBottom: '1px solid var(--border)',
+                    background: 'rgba(212,175,55,0.04)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    flexWrap: 'wrap'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'var(--accent)',
+                        color: '#ffffff',
+                        fontWeight: 800,
+                        fontSize: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        {selectedBooking.ownerName?.[0]?.toUpperCase() || 'C'}
                       </div>
-                    ))}
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '14.5px', color: 'var(--text)', lineHeight: 1.2 }}>
+                          {selectedBooking.ownerName || 'Customer'}
+                        </div>
+                        {selectedBooking.phone && (
+                          <div style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                            <Phone size={11} /> {selectedBooking.phone}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{
+                        fontFamily: 'monospace',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '3px 7px',
+                        borderRadius: '6px',
+                        background: 'var(--card)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--muted)'
+                      }}>
+                        {shortId(selectedBooking.id)}
+                      </span>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        background: (selectedBooking.bookingType || 'store') === 'home' ? 'rgba(59,130,246,0.1)' : 'rgba(212,175,55,0.12)',
+                        color: (selectedBooking.bookingType || 'store') === 'home' ? '#3b82f6' : 'var(--accent)',
+                        border: (selectedBooking.bookingType || 'store') === 'home' ? '1px solid rgba(59,130,246,0.25)' : '1px solid var(--accent-border)'
+                      }}>
+                        {getBookingTypeLabel(selectedBooking.bookingType || 'store')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Card Body: Pet, Date & Service details */}
+                  <div style={{ padding: '12px 14px', display: 'grid', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+                      <div style={{ background: 'var(--card)', padding: '9px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
+                          Pet
+                        </span>
+                        <strong style={{ fontSize: '13px', color: 'var(--text)', display: 'block' }}>
+                          🐾 {selectedBooking.petName || 'Pet'}{selectedBooking.petType ? ` (${selectedBooking.petType})` : ''}
+                        </strong>
+                      </div>
+
+                      <div style={{ background: 'var(--card)', padding: '9px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
+                          Date & Slot
+                        </span>
+                        <strong style={{ fontSize: '13px', color: 'var(--text)', display: 'block' }}>
+                          📅 {selectedBooking.date || '-'} {selectedBooking.slot ? `• ${selectedBooking.slot}` : ''}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'var(--card)', padding: '9px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
+                        Service / Packages
+                      </span>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', lineHeight: 1.35 }}>
+                        ✂️ {selectedBooking.serviceName || 'Grooming Service'}
+                      </div>
+                      {selectedBooking.packageNames?.length > 0 && (
+                        <div style={{ fontSize: '11px', color: 'var(--accent)', marginTop: '3px', fontWeight: 600 }}>
+                          + {selectedBooking.packageNames.join(', ')}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bottom Amount Highlight */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      background: 'var(--accent-bg)',
+                      border: '1px solid var(--accent-border)',
+                      marginTop: '2px'
+                    }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>
+                        Total Paid Amount
+                      </span>
+                      <strong style={{ fontSize: '16px', fontWeight: 900, color: 'var(--accent)' }}>
+                        Rs {money(selectedBooking.amountCollected || selectedBooking.estimatedTotal)}
+                      </strong>
+                    </div>
                   </div>
                 </div>
               ) : <p style={{ color: 'var(--muted)', marginTop: '14px', fontSize: '13px' }}>No completed appointment selected.</p>}
@@ -641,27 +776,128 @@ export default function AdminInvoices() {
               </div>
 
               {selectedBoarding ? (
-                <div style={{ marginTop: '16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
-                  <div className="admin-detail-kv-grid">
-                    {[
-                      ['Stay ID', shortId(selectedBoarding.id)],
-                      ['Customer', selectedBoarding.ownerName || '-'],
-                      ['Phone', selectedBoarding.phone || '-'],
-                      ['Pet', `${selectedBoarding.petName || '-'}${selectedBoarding.petType ? ` (${selectedBoarding.petType}${selectedBoarding.petBreed ? `, ${selectedBoarding.petBreed}` : ''})` : ''}`],
-                      ['Stay Dates', `${selectedBoarding.checkInDate || '-'} to ${selectedBoarding.checkOutDate || '-'}`],
-                      ['Check-in / Out Time', `${selectedBoarding.checkInTime || '10:00 AM'} / ${selectedBoarding.checkOutTime || '11:00 PM'}`],
-                      ['Duration', `${selectedBoarding.stayDays || 1} Days (${selectedBoarding.stayNights || 1} Nights)`],
-                      ['Daily Rate', `Rs ${money(selectedBoarding.dailyRate || 0)}`],
-                      ...(Number(selectedBoarding.specialFoodCharge || 0) > 0 ? [['Special Food Charge', `Rs ${money(selectedBoarding.specialFoodCharge)}`]] : []),
-                      ...(Number(selectedBoarding.lateCheckOutCharge || 0) > 0 ? [['Late Check-out Fee', `Rs ${money(selectedBoarding.lateCheckOutCharge)}`]] : []),
-                      ['Total Stay Amount', `Rs ${money(selectedBoarding.totalAmount || (Number(selectedBoarding.estimatedTotal || 0) + Number(selectedBoarding.specialFoodCharge || 0) + Number(selectedBoarding.lateCheckOutCharge || 0)))}`],
-                      ['Amount Collected', `Rs ${money(selectedBoarding.amountCollected || selectedBoarding.totalAmount || selectedBoarding.estimatedTotal || 0)}`],
-                    ].map(([label, value]) => (
-                      <div key={label} className="admin-detail-kv-item">
-                        <span className="admin-detail-kv-label">{label}</span>
-                        <span className="admin-detail-kv-value">{value}</span>
+                <div style={{
+                  marginTop: '16px',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '14px',
+                  overflow: 'hidden',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+                }}>
+                  {/* Card Top: Customer identity + Stay ID */}
+                  <div style={{
+                    padding: '12px 14px',
+                    borderBottom: '1px solid var(--border)',
+                    background: 'rgba(212,175,55,0.04)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    flexWrap: 'wrap'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'var(--accent)',
+                        color: '#ffffff',
+                        fontWeight: 800,
+                        fontSize: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        {selectedBoarding.ownerName?.[0]?.toUpperCase() || 'C'}
                       </div>
-                    ))}
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '14.5px', color: 'var(--text)', lineHeight: 1.2 }}>
+                          {selectedBoarding.ownerName || 'Customer'}
+                        </div>
+                        {selectedBoarding.phone && (
+                          <div style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                            <Phone size={11} /> {selectedBoarding.phone}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{
+                        fontFamily: 'monospace',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '3px 7px',
+                        borderRadius: '6px',
+                        background: 'var(--card)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--muted)'
+                      }}>
+                        {shortId(selectedBoarding.id)}
+                      </span>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        background: 'rgba(16,185,129,0.12)',
+                        color: '#10b981',
+                        border: '1px solid rgba(16,185,129,0.25)'
+                      }}>
+                        Boarding Stay
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Card Body: Pet, Duration & Stay Dates */}
+                  <div style={{ padding: '12px 14px', display: 'grid', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+                      <div style={{ background: 'var(--card)', padding: '9px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
+                          Pet
+                        </span>
+                        <strong style={{ fontSize: '13px', color: 'var(--text)', display: 'block' }}>
+                          🐾 {selectedBoarding.petName || 'Pet'}{selectedBoarding.petType ? ` (${selectedBoarding.petType}${selectedBoarding.petBreed ? `, ${selectedBoarding.petBreed}` : ''})` : ''}
+                        </strong>
+                      </div>
+
+                      <div style={{ background: 'var(--card)', padding: '9px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
+                          Duration
+                        </span>
+                        <strong style={{ fontSize: '13px', color: 'var(--text)', display: 'block' }}>
+                          ⏳ {selectedBoarding.stayDays || 1} Day{(selectedBoarding.stayDays || 1) > 1 ? 's' : ''} ({selectedBoarding.stayNights || 1} Night{(selectedBoarding.stayNights || 1) > 1 ? 's' : ''})
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'var(--card)', padding: '9px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
+                        Stay Dates
+                      </span>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', lineHeight: 1.35 }}>
+                        🏨 {selectedBoarding.checkInDate || '-'} ({selectedBoarding.checkInTime || '10:00 AM'}) → {selectedBoarding.checkOutDate || '-'} ({selectedBoarding.checkOutTime || '11:00 PM'})
+                      </div>
+                    </div>
+
+                    {/* Bottom Amount Highlight */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      background: 'var(--accent-bg)',
+                      border: '1px solid var(--accent-border)',
+                      marginTop: '2px'
+                    }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>
+                        Total Stay Amount
+                      </span>
+                      <strong style={{ fontSize: '16px', fontWeight: 900, color: 'var(--accent)' }}>
+                        Rs {money(selectedBoarding.amountCollected || selectedBoarding.totalAmount || selectedBoarding.estimatedTotal || 0)}
+                      </strong>
+                    </div>
                   </div>
                 </div>
               ) : <p style={{ color: 'var(--muted)', marginTop: '14px', fontSize: '13px' }}>No completed boarding stay selected.</p>}
@@ -716,6 +952,25 @@ export default function AdminInvoices() {
                 <button type="button" className="btn btn-secondary" disabled={busy === 'view'} onClick={() => run('view', viewInvoicePdf)}><Eye size={15} /> View PDF</button>
                 <button type="button" className="btn btn-secondary" disabled={busy === 'download'} onClick={() => run('download', downloadInvoicePdf)}><Download size={15} /> Download PDF</button>
                 <button type="button" className="btn btn-secondary" disabled={busy === 'whatsapp'} onClick={() => sharePdf('whatsapp')}><Share2 size={15} /> Share PDF</button>
+              </div>
+
+              <div style={{
+                marginTop: '12px',
+                padding: '10px 12px',
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                fontSize: '11.5px',
+                color: 'var(--muted)',
+                lineHeight: 1.5,
+                display: 'flex',
+                gap: '8px',
+                alignItems: 'flex-start'
+              }}>
+                <Info size={14} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: '2px' }} />
+                <span>
+                  <strong>Tip:</strong> On phones, the PDF attaches directly to WhatsApp. On desktop/PC, WhatsApp web links only support text, so the PDF is saved to your Downloads—simply click <strong>📎 (Document)</strong> or drag & drop the PDF into the WhatsApp chat.
+                </span>
               </div>
             </div>
           ) : (

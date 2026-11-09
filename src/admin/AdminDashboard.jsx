@@ -1,7 +1,7 @@
 // src/admin/AdminDashboard.jsx
 import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs, addDoc, serverTimestamp, doc, setDoc, orderBy, query } from 'firebase/firestore'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
 import { ArrowRight, BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Search, Store, UserCheck, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
@@ -115,6 +115,18 @@ export default function AdminDashboard() {
   const [chartMode, setChartMode] = useState('weekly')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('action') === 'walkin') {
+      setShowModal(true)
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev)
+        next.delete('action')
+        return next
+      }, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
   const [walkin, setWalkin] = useState(EMPTY)
   const [walkinCustomerSearch, setWalkinCustomerSearch] = useState('')
   const [showWalkinDropdown, setShowWalkinDropdown] = useState(false)

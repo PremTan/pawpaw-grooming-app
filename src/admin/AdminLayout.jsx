@@ -8,6 +8,7 @@ import { Award, Ban, Building2, LayoutDashboard, CalendarCheck, CalendarClock, H
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import NotificationBell from '../components/NotificationBell'
 import BrandLogo from '../components/BrandLogo'
+import AdminRadialMenu from './AdminRadialMenu'
 
 const LINKS = [
   { to:'/admin',           label:'Dashboard',  icon:<LayoutDashboard size={17}/>, end:true },
@@ -113,6 +114,7 @@ export default function AdminLayout() {
         <main className="admin-content">
           <Outlet />
         </main>
+        <AdminRadialMenu />
       </div>
     </div>
   )

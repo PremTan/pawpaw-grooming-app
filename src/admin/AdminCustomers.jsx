@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { collection, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore'
-import { Ban, CalendarDays, ChevronRight, Phone, Search, ShieldCheck, X } from 'lucide-react'
+import { Ban, CalendarDays, Check, ChevronRight, Clock, Phone, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
@@ -22,6 +22,19 @@ const buildCustomerIdentityKey = (booking) => {
   return booking?.id || 'walkin:unknown'
 }
 const customerKey = (booking) => buildCustomerIdentityKey(booking)
+const getBookingTimestamp = (b) => {
+  if (b?.date) {
+    const t = new Date(b.date).getTime()
+    if (!Number.isNaN(t)) return t
+  }
+  if (b?.createdAt?.toMillis) return b.createdAt.toMillis()
+  if (b?.createdAt?.toDate) return b.createdAt.toDate().getTime()
+  if (b?.createdAt) {
+    const t = new Date(b.createdAt).getTime()
+    if (!Number.isNaN(t)) return t
+  }
+  return 0
+}
 const profilePhoto = (data) => data ? (
   data.photoURL ||
   data.photoUrl ||
@@ -56,6 +69,15 @@ export default function AdminCustomers() {
   const [blockError, setBlockError] = useState('')
   const [toastMessage, setToastMessage] = useState('')
   const [toastType, setToastType] = useState('success')
+
+  // Customer Filter & Sort State
+  const [quickFilter, setQuickFilter] = useState('all')
+  const [showFilterModal, setShowFilterModal] = useState(false)
+  const [frequencyF, setFrequencyF] = useState('all')
+  const [channelF, setChannelF] = useState('all')
+  const [petTypeF, setPetTypeF] = useState('all')
+  const [minSpendF, setMinSpendF] = useState('all')
+  const [sortBy, setSortBy] = useState('bookings')
 
   const openCustomerImage = () => {
     if (selected?.photoURL) {
@@ -122,6 +144,9 @@ export default function AdminCustomers() {
           bookings: [],
           pets: new Set(),
           totalSpent: 0,
+          hasDog: false,
+          hasCat: false,
+          lastVisitTime: 0,
         }
       }
       map[key].bookings.push(booking)
@@ -133,6 +158,19 @@ export default function AdminCustomers() {
       if (profilePhoto(profile) || profilePhoto(booking)) map[key].photoURL = profilePhoto(profile) || profilePhoto(booking)
       if (profile?.blocked === true) map[key].blocked = true
       if (!booking.isWalkIn) map[key].isWalkIn = false
+
+      // Pet type tracking
+      const pt = String(booking.petType || '').toLowerCase()
+      const sn = String(booking.serviceName || '').toLowerCase()
+      const pn = String(booking.petName || '').toLowerCase()
+      if (pt.includes('dog') || sn.includes('dog') || pt === 'puppy' || pn.includes('dog')) map[key].hasDog = true
+      if (pt.includes('cat') || sn.includes('cat') || pt === 'kitten' || pn.includes('cat')) map[key].hasCat = true
+
+      // Booking date tracking
+      const bookingTime = getBookingTimestamp(booking)
+      if (bookingTime > map[key].lastVisitTime) {
+        map[key].lastVisitTime = bookingTime
+      }
     })
 
     Object.values(profiles).forEach(profile => {
@@ -149,18 +187,112 @@ export default function AdminCustomers() {
         bookings: [],
         pets: new Set(),
         totalSpent: 0,
+        hasDog: false,
+        hasCat: false,
+        lastVisitTime: 0,
       }
     })
 
-    let rows = Object.values(map).sort((a, b) => b.bookings.length - a.bookings.length)
-    if (search.trim()) {
-      const term = search.toLowerCase()
-      rows = rows.filter(c => c.ownerName.toLowerCase().includes(term) || c.phone.includes(term) || c.userEmail.toLowerCase().includes(term))
-    }
-    return rows
-  }, [bookings, profiles, search])
+    Object.values(map).forEach(customer => {
+      if (customer.lastVisitTime > 0) {
+        customer.daysSinceLastVisit = Math.floor((Date.now() - customer.lastVisitTime) / (1000 * 60 * 60 * 24))
+      } else {
+        customer.daysSinceLastVisit = null
+      }
+    })
 
-  const activeCustomers = customers.filter(customer => !customer.blocked)
+    return Object.values(map)
+  }, [bookings, profiles])
+
+  const activeCustomers = useMemo(() => customers.filter(customer => !customer.blocked), [customers])
+
+  // Dynamic counts for quick filter pills
+  const pillCounts = useMemo(() => ({
+    all: activeCustomers.length,
+    repeat: activeCustomers.filter(c => c.bookings.length >= 2).length,
+    new: activeCustomers.filter(c => c.bookings.length === 1).length,
+    inactive: activeCustomers.filter(c => c.bookings.length > 0 && c.daysSinceLastVisit !== null && c.daysSinceLastVisit >= 60).length,
+    top: activeCustomers.filter(c => c.totalSpent >= 3000).length,
+  }), [activeCustomers])
+
+  // Filter and sort customer list
+  const filteredCustomers = useMemo(() => {
+    let list = activeCustomers
+
+    // 1. Search filter
+    if (search.trim()) {
+      const term = search.trim().toLowerCase()
+      list = list.filter(c =>
+        c.ownerName.toLowerCase().includes(term) ||
+        c.phone.includes(term) ||
+        c.userEmail.toLowerCase().includes(term) ||
+        [...c.pets].some(p => p.toLowerCase().includes(term))
+      )
+    }
+
+    // 2. Frequency / Stage Filter
+    if (frequencyF === 'repeat') {
+      list = list.filter(c => c.bookings.length >= 2)
+    } else if (frequencyF === 'new') {
+      list = list.filter(c => c.bookings.length === 1)
+    } else if (frequencyF === 'inactive') {
+      list = list.filter(c => c.bookings.length > 0 && c.daysSinceLastVisit !== null && c.daysSinceLastVisit >= 60)
+    } else if (frequencyF === 'zero') {
+      list = list.filter(c => c.bookings.length === 0)
+    }
+
+    // 3. Channel Filter
+    if (channelF === 'online') {
+      list = list.filter(c => c.isWalkIn === false)
+    } else if (channelF === 'walkin') {
+      list = list.filter(c => c.isWalkIn !== false)
+    }
+
+    // 4. Pet Type Filter
+    if (petTypeF === 'dog') {
+      list = list.filter(c => c.hasDog || [...c.pets].some(p => p.toLowerCase().includes('dog') || p.toLowerCase().includes('puppy')))
+    } else if (petTypeF === 'cat') {
+      list = list.filter(c => c.hasCat || [...c.pets].some(p => p.toLowerCase().includes('cat') || p.toLowerCase().includes('kitten')))
+    }
+
+    // 5. Min Spend Filter
+    if (minSpendF !== 'all') {
+      const threshold = Number(minSpendF) || 0
+      list = list.filter(c => c.totalSpent >= threshold)
+    }
+
+    // 6. Sorting
+    const sorted = [...list]
+    if (sortBy === 'spent') {
+      sorted.sort((a, b) => (b.totalSpent - a.totalSpent) || (b.bookings.length - a.bookings.length))
+    } else if (sortBy === 'recent') {
+      sorted.sort((a, b) => (b.lastVisitTime || 0) - (a.lastVisitTime || 0))
+    } else if (sortBy === 'name') {
+      sorted.sort((a, b) => (a.ownerName || '').localeCompare(b.ownerName || ''))
+    } else {
+      // Default: most bookings
+      sorted.sort((a, b) => (b.bookings.length - a.bookings.length) || (b.totalSpent - a.totalSpent))
+    }
+
+    return sorted
+  }, [activeCustomers, search, frequencyF, channelF, petTypeF, minSpendF, sortBy])
+
+  const activeFilterCount = (frequencyF !== 'all' ? 1 : 0)
+    + (channelF !== 'all' ? 1 : 0)
+    + (petTypeF !== 'all' ? 1 : 0)
+    + (minSpendF !== 'all' ? 1 : 0)
+    + (sortBy !== 'bookings' ? 1 : 0)
+  const hasActiveFilters = activeFilterCount > 0
+
+  const clearAllFilters = () => {
+    setQuickFilter('all')
+    setFrequencyF('all')
+    setChannelF('all')
+    setPetTypeF('all')
+    setMinSpendF('all')
+    setSortBy('bookings')
+  }
+
   const selected = selectedKey ? customers.find(customer => customer.key === selectedKey) : null
   const sortedBookings = selected ? [...selected.bookings].sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)) : []
 
@@ -233,6 +365,11 @@ export default function AdminCustomers() {
       <div className="admin-customer-count">
         <strong>{customer.bookings.length}</strong>
         <span>Bookings</span>
+        {customer.totalSpent > 0 && (
+          <small style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 700, marginTop: '2px', display: 'block' }}>
+            ₹{money(customer.totalSpent)}
+          </small>
+        )}
       </div>
       <ChevronRight size={18} className="admin-customer-chevron" />
     </button>
@@ -248,20 +385,438 @@ export default function AdminCustomers() {
       )}
       <div className="admin-customers-head">
         <h1>Customers</h1>
-        <p>{activeCustomers.length} active customers</p>
+        <p>
+          {filteredCustomers.length} of {activeCustomers.length} active customer{activeCustomers.length === 1 ? '' : 's'}
+          {hasActiveFilters ? ' (filtered)' : ''}
+        </p>
       </div>
 
-      <div className="admin-customer-search">
-        <Search size={15} />
-        <input className="input" placeholder="Search by name, phone or email..." value={search} onChange={e => setSearch(e.target.value)} />
+      {/* Search & Filter Bar: Search input with Clear (X) + Filter button beside it */}
+      <div className="admin-booking-search-row">
+        <div className="admin-booking-search">
+          <Search size={15} />
+          <input
+            placeholder="Search by name, phone or email..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              className="admin-search-clear-btn"
+              onClick={() => setSearch('')}
+              aria-label="Clear search"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        <button
+          type="button"
+          className={`admin-booking-filter-btn ${hasActiveFilters ? 'active' : ''}`}
+          onClick={() => setShowFilterModal(true)}
+        >
+          <SlidersHorizontal size={15} />
+          <span>Filters</span>
+          {hasActiveFilters && (
+            <span className="admin-filter-count-badge">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
       </div>
+
+      {/* Quick Customer Segment Pills */}
+      <div className="admin-quick-filter-scroll" role="tablist" aria-label="Quick customer segment filters">
+        <button
+          type="button"
+          className={`admin-quick-pill ${quickFilter === 'all' && frequencyF === 'all' && minSpendF === 'all' ? 'active' : ''}`}
+          onClick={() => {
+            setQuickFilter('all')
+            setFrequencyF('all')
+            setMinSpendF('all')
+          }}
+        >
+          All Customers
+          <span className="admin-quick-pill-count">{pillCounts.all}</span>
+        </button>
+        <button
+          type="button"
+          className={`admin-quick-pill ${quickFilter === 'repeat' ? 'active' : ''}`}
+          onClick={() => {
+            if (quickFilter === 'repeat') {
+              setQuickFilter('all')
+              setFrequencyF('all')
+            } else {
+              setQuickFilter('repeat')
+              setFrequencyF('repeat')
+            }
+          }}
+        >
+          <Sparkles size={13} />
+          <span>Repeat (2+)</span>
+          <span className="admin-quick-pill-count">{pillCounts.repeat}</span>
+        </button>
+        <button
+          type="button"
+          className={`admin-quick-pill ${quickFilter === 'new' ? 'active' : ''}`}
+          onClick={() => {
+            if (quickFilter === 'new') {
+              setQuickFilter('all')
+              setFrequencyF('all')
+            } else {
+              setQuickFilter('new')
+              setFrequencyF('new')
+            }
+          }}
+        >
+          <span>New (1)</span>
+          <span className="admin-quick-pill-count">{pillCounts.new}</span>
+        </button>
+        <button
+          type="button"
+          className={`admin-quick-pill ${quickFilter === 'inactive' ? 'active' : ''}`}
+          onClick={() => {
+            if (quickFilter === 'inactive') {
+              setQuickFilter('all')
+              setFrequencyF('all')
+            } else {
+              setQuickFilter('inactive')
+              setFrequencyF('inactive')
+            }
+          }}
+        >
+          <Clock size={13} />
+          <span>Inactive (60d+)</span>
+          <span className="admin-quick-pill-count">{pillCounts.inactive}</span>
+        </button>
+        <button
+          type="button"
+          className={`admin-quick-pill ${quickFilter === 'top' ? 'active' : ''}`}
+          onClick={() => {
+            if (quickFilter === 'top') {
+              setQuickFilter('all')
+              setMinSpendF('all')
+            } else {
+              setQuickFilter('top')
+              setMinSpendF('3000')
+            }
+          }}
+        >
+          <span>Top Spenders (₹3k+)</span>
+          <span className="admin-quick-pill-count">{pillCounts.top}</span>
+        </button>
+      </div>
+
+      {/* Active filters pill summary if any active */}
+      {hasActiveFilters && (
+        <div className="admin-active-filters-bar" style={{ marginBottom: '14px' }}>
+          <span style={{ fontSize: '11.5px', color: 'var(--muted)', fontWeight: 600 }}>Active filters:</span>
+          {frequencyF !== 'all' && (
+            <span className="admin-filter-pill-tag">
+              Frequency: {frequencyF === 'repeat' ? 'Repeat (2+)' : frequencyF === 'new' ? 'New (1)' : frequencyF === 'inactive' ? 'Inactive (60d+)' : '0 Bookings'}
+              <button
+                type="button"
+                onClick={() => {
+                  setFrequencyF('all')
+                  if (quickFilter !== 'top') setQuickFilter('all')
+                }}
+                aria-label="Clear frequency filter"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          )}
+          {channelF !== 'all' && (
+            <span className="admin-filter-pill-tag">
+              Channel: {channelF === 'online' ? 'Online Users' : 'Walk-in Only'}
+              <button type="button" onClick={() => setChannelF('all')} aria-label="Clear channel filter"><X size={11} /></button>
+            </span>
+          )}
+          {petTypeF !== 'all' && (
+            <span className="admin-filter-pill-tag">
+              Pet: {petTypeF === 'dog' ? 'Dog Parents' : 'Cat Parents'}
+              <button type="button" onClick={() => setPetTypeF('all')} aria-label="Clear pet filter"><X size={11} /></button>
+            </span>
+          )}
+          {minSpendF !== 'all' && (
+            <span className="admin-filter-pill-tag">
+              Min Spend: ₹{money(minSpendF)}+
+              <button
+                type="button"
+                onClick={() => {
+                  setMinSpendF('all')
+                  if (quickFilter === 'top') setQuickFilter('all')
+                }}
+                aria-label="Clear min spend filter"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          )}
+          {sortBy !== 'bookings' && (
+            <span className="admin-filter-pill-tag">
+              Sort: {sortBy === 'spent' ? 'Top Spent' : sortBy === 'recent' ? 'Recent Visit' : 'A - Z'}
+              <button type="button" onClick={() => setSortBy('bookings')} aria-label="Reset sort"><X size={11} /></button>
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--accent)',
+              fontSize: '11.5px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              padding: '2px 6px',
+              textDecoration: 'underline'
+            }}
+          >
+            Clear all
+          </button>
+        </div>
+      )}
 
       {blockError && <div className="admin-customer-error">{blockError}</div>}
 
-      {loading ? <Spinner text="Loading customers..." /> : activeCustomers.length === 0 ? (
-        <div className="admin-customer-empty">No active customers found.</div>
+      {loading ? (
+        <Spinner text="Loading customers..." />
+      ) : filteredCustomers.length === 0 ? (
+        <div className="admin-customer-empty">
+          <p style={{ margin: '0 0 10px 0', fontSize: '15px', fontWeight: 600 }}>No customers match your criteria.</p>
+          {(hasActiveFilters || search) && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setSearch('')
+                clearAllFilters()
+              }}
+              style={{ fontSize: '12.5px', padding: '6px 14px' }}
+            >
+              Reset all filters
+            </button>
+          )}
+        </div>
       ) : (
-        <div className="admin-customer-list">{activeCustomers.map(renderCustomerCard)}</div>
+        <div className="admin-customer-list">{filteredCustomers.map(renderCustomerCard)}</div>
+      )}
+
+      {/* CUSTOMER FILTERS MODAL / BOTTOM SHEET */}
+      {showFilterModal && (
+        <div className="admin-filter-modal-overlay" onClick={() => setShowFilterModal(false)}>
+          <div className="admin-filter-bottom-sheet" onClick={e => e.stopPropagation()}>
+            <div className="admin-filter-sheet-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <SlidersHorizontal size={18} color="var(--accent)" />
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: 'var(--text)' }}>Customer Filters</h3>
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setShowFilterModal(false)}
+                aria-label="Close filters"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', alignItems: 'center' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="admin-filter-sheet-body">
+              {/* Visit Frequency / Stage */}
+              <div className="admin-filter-field">
+                <label>Visit Frequency / Stage</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {[
+                    { id: 'all', label: 'All Customers' },
+                    { id: 'repeat', label: 'Repeat (2+ visits)' },
+                    { id: 'new', label: 'New (1 visit)' },
+                    { id: 'inactive', label: 'Inactive (60d+)' },
+                    { id: 'zero', label: 'Registered (0 visits)' },
+                  ].map(opt => {
+                    const active = frequencyF === opt.id
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          setFrequencyF(opt.id)
+                          if (['repeat', 'new', 'inactive'].includes(opt.id)) {
+                            setQuickFilter(opt.id)
+                          } else {
+                            if (quickFilter !== 'top') setQuickFilter('all')
+                          }
+                        }}
+                        style={{
+                          padding: '7px 12px',
+                          borderRadius: '8px',
+                          border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                          background: active ? 'var(--accent-bg)' : 'var(--surface)',
+                          color: active ? 'var(--accent)' : 'var(--text)',
+                          fontSize: '12.5px',
+                          fontWeight: active ? 700 : 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Channel / Source */}
+              <div className="admin-filter-field">
+                <label>Channel / Account</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {[
+                    { id: 'all', label: 'All Channels' },
+                    { id: 'online', label: 'Online App Users' },
+                    { id: 'walkin', label: 'Walk-in Only' },
+                  ].map(opt => {
+                    const active = channelF === opt.id
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setChannelF(opt.id)}
+                        style={{
+                          padding: '7px 12px',
+                          borderRadius: '8px',
+                          border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                          background: active ? 'var(--accent-bg)' : 'var(--surface)',
+                          color: active ? 'var(--accent)' : 'var(--text)',
+                          fontSize: '12.5px',
+                          fontWeight: active ? 700 : 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Pet Type */}
+              <div className="admin-filter-field">
+                <label>Pet Type</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {[
+                    { id: 'all', label: 'All Pets' },
+                    { id: 'dog', label: 'Dog Parents 🐶' },
+                    { id: 'cat', label: 'Cat Parents 🐱' },
+                  ].map(opt => {
+                    const active = petTypeF === opt.id
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setPetTypeF(opt.id)}
+                        style={{
+                          padding: '7px 12px',
+                          borderRadius: '8px',
+                          border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                          background: active ? 'var(--accent-bg)' : 'var(--surface)',
+                          color: active ? 'var(--accent)' : 'var(--text)',
+                          fontSize: '12.5px',
+                          fontWeight: active ? 700 : 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Minimum Spend */}
+              <div className="admin-filter-field">
+                <label>Minimum Total Spent</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {[
+                    { id: 'all', label: 'Any Amount' },
+                    { id: '1000', label: '₹1,000+' },
+                    { id: '3000', label: '₹3,000+' },
+                    { id: '5000', label: '₹5,000+' },
+                    { id: '10000', label: '₹10,000+' },
+                  ].map(opt => {
+                    const active = minSpendF === opt.id
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          setMinSpendF(opt.id)
+                          if (opt.id === '3000') {
+                            setQuickFilter('top')
+                          } else if (quickFilter === 'top') {
+                            setQuickFilter('all')
+                          }
+                        }}
+                        style={{
+                          padding: '7px 12px',
+                          borderRadius: '8px',
+                          border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                          background: active ? 'var(--accent-bg)' : 'var(--surface)',
+                          color: active ? 'var(--accent)' : 'var(--text)',
+                          fontSize: '12.5px',
+                          fontWeight: active ? 700 : 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Sort Order */}
+              <div className="admin-filter-field">
+                <label>Sort Customers By</label>
+                <select
+                  className="input"
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '10px' }}
+                >
+                  <option value="bookings">Most Bookings (Default)</option>
+                  <option value="spent">Highest Total Spent</option>
+                  <option value="recent">Most Recent Visit</option>
+                  <option value="name">Alphabetical (A - Z)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="admin-filter-sheet-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={clearAllFilters}
+                style={{ fontSize: '13px', padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <RotateCcw size={14} /> Reset
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setShowFilterModal(false)}
+                style={{ fontSize: '13px', padding: '8px 18px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Check size={14} /> Apply Filters
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {selected && (
@@ -354,4 +909,5 @@ export default function AdminCustomers() {
     </div>
   )
 }
+
 

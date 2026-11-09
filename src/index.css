@@ -2138,7 +2138,7 @@
   min-width: 0;
 }
 
-.admin-booking-search svg {
+.admin-booking-search > svg {
   position: absolute;
   left: 12px;
   top: 50%;
@@ -2167,7 +2167,7 @@
 
 .admin-search-clear-btn {
   position: absolute;
-  right: 10px;
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
   background: none;
@@ -2179,7 +2179,17 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
+  z-index: 2;
 }
+
+.admin-search-clear-btn svg {
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
+  pointer-events: auto;
+}
+
 .admin-search-clear-btn:hover {
   color: var(--text);
 }
@@ -3837,6 +3847,169 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ── Admin Radial FAB Menu (Arc Speed Dial) ── */
+.admin-radial-fab-wrapper {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+@media (min-width: 1025px) {
+  .admin-radial-fab-wrapper {
+    display: none; /* Full sidebar is permanently visible on desktop */
+  }
+}
+
+@media (max-width: 1024px) {
+  .admin-content {
+    padding-bottom: 74px !important;
+  }
+}
+
+.admin-radial-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 1040;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.admin-radial-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.admin-radial-center-btn {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #D4AF37 0%, #F0D060 50%, #B8960C 100%);
+  border: 2.5px solid var(--card, #ffffff);
+  color: #111111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(212, 175, 55, 0.4), 0 2px 6px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 1052;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, background 0.2s ease;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.admin-radial-center-btn:active {
+  transform: scale(0.92);
+}
+
+.admin-radial-center-btn.open {
+  background: var(--surface, #1a1a1a);
+  border-color: var(--accent, #D4AF37);
+  color: var(--accent, #D4AF37);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.admin-radial-items-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 1051;
+}
+
+.admin-radial-arc-svg {
+  position: absolute;
+  bottom: -23px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  height: 130px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.admin-radial-arc-svg.open {
+  opacity: 1;
+}
+
+.admin-radial-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.3);
+  transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.22s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.admin-radial-item.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.admin-radial-item-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--card, #ffffff);
+  border: 1.5px solid var(--accent-border, rgba(212, 175, 55, 0.3));
+  color: var(--accent, #D4AF37);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(212, 175, 55, 0.12);
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.admin-radial-item:active .admin-radial-item-icon,
+.admin-radial-item:hover .admin-radial-item-icon {
+  transform: scale(1.1);
+  border-color: var(--accent, #D4AF37);
+  background: var(--accent-bg, rgba(212, 175, 55, 0.15));
+}
+
+.admin-radial-item.active .admin-radial-item-icon {
+  background: var(--accent, #D4AF37);
+  color: #ffffff;
+  border-color: var(--accent, #D4AF37);
+  box-shadow: 0 4px 14px rgba(212, 175, 55, 0.45);
+}
+
+.admin-radial-item-label {
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text, #ffffff);
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+
 
 /* Walk-in/offline appointment modal */
 .walkin-modal {
