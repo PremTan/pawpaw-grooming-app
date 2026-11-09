@@ -13,7 +13,6 @@ import { BOOKING_STATUS, CAT_BREEDS, DOG_BREEDS, PET_TYPES } from '../utils/serv
 import { fetchBookingSettings } from '../utils/bookingSettings'
 import { OWNER_ASSIGNEE_ID, buildAssigneePatch, getAssigneeLabel, getOwnerAssignee } from '../utils/teamMembers'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
-import { safeGetDocs } from '../utils/firestoreSafe'
 
 const EMPTY = { ownerName: '', phone: '', petName: '', petType: 'Dog', petBreed: '', serviceIds: [], serviceId: '', assignedTeamMemberId: OWNER_ASSIGNEE_ID, date: format(startOfToday(), 'yyyy-MM-dd'), slot: '', bookingType: 'store', address: '', visitCharge: '', notes: '', amountCollected: '', userId: '', userEmail: '' }
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -163,11 +162,11 @@ export default function AdminDashboard() {
       if (user?.uid) {
         setDoc(doc(db, 'settings', 'general'), { adminUid: user.uid }, { merge: true }).catch(() => {})
       }
-      // Fetch only dashboard data with safe fallback so mobile sleep does not hang the UI
+      // Fetch only dashboard data; reviews is moved to background
       const [bSnap, settings, serviceSnap] = await Promise.all([
-        safeGetDocs(collection(db, 'bookings')),
+        getDocs(collection(db, 'bookings')),
         fetchBookingSettings(db),
-        safeGetDocs(collection(db, 'serviceDetails')),
+        getDocs(collection(db, 'serviceDetails')),
       ])
 
       setBookingSettings(settings)

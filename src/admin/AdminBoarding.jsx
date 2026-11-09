@@ -68,7 +68,6 @@ import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
-import { safeGetDocs } from '../utils/firestoreSafe'
 import defaultBoardingHeroImg from '../assets/boarding-hero-pets.png'
 import {
   BOARDING_STATUS,
@@ -284,11 +283,11 @@ export default function AdminBoarding() {
     setLoading(true)
     try {
       const q = query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'))
-      const snap = await safeGetDocs(q)
+      const snap = await getDocs(q)
       setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     } catch {
       try {
-        const snap2 = await safeGetDocs(collection(db, 'boardingBookings'))
+        const snap2 = await getDocs(collection(db, 'boardingBookings'))
         const r = snap2.docs.map(d => ({ id: d.id, ...d.data() }))
         r.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
         setBookings(r)

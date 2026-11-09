@@ -1,19 +1,20 @@
 // src/pages/PublicInvoice.jsx
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { doc, getDoc } from 'firebase/firestore'
 import { CheckCircle2, Download, Eye, FileText, Home, MessageCircle, Phone, Sparkles } from 'lucide-react'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 import BrandLogo from '../components/BrandLogo'
 import { fetchBusinessInfo } from '../utils/businessInfo'
-import { downloadInvoicePdf, getInvoiceNumber, viewInvoicePdf } from '../utils/invoicePdf'
+import { decodeInvoicePayload, downloadInvoicePdf, getInvoiceNumber, viewInvoicePdf } from '../utils/invoicePdf'
 import { getBookingTypeLabel } from '../utils/bookingSettings'
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
 
 export default function PublicInvoice() {
   const { invoiceId } = useParams()
+  const [searchParams] = useSearchParams()
   const [booking, setBooking] = useState(null)
   const [businessInfo, setBusinessInfo] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -22,6 +23,20 @@ export default function PublicInvoice() {
 
   useEffect(() => {
     async function loadInvoice() {
+      // 1. First, check if payload is encoded in ?d=... parameter (Instant, offline-proof, 0 permission issues!)
+      const dParam = searchParams.get('d')
+      if (dParam) {
+        const decoded = decodeInvoicePayload(dParam)
+        if (decoded && (decoded.id || decoded.ownerName || decoded.invoiceNumber)) {
+          setBooking(decoded)
+          setLoading(false)
+          document.title = `Invoice ${decoded.invoiceNumber || getInvoiceNumber(decoded)} | Paw Paw Pet Grooming`
+          // Quietly fetch business info in background for logo & contact details
+          fetchBusinessInfo().then(setBusinessInfo).catch(() => {})
+          return
+        }
+      }
+
       if (!invoiceId) {
         setError('Invoice ID is missing.')
         setLoading(false)
@@ -30,23 +45,33 @@ export default function PublicInvoice() {
 
       setLoading(true)
       try {
-        const info = await fetchBusinessInfo()
-        setBusinessInfo(info)
+        const info = await fetchBusinessInfo().catch(() => null)
+        if (info) setBusinessInfo(info)
 
-        // 1. Try 'bookings' collection
-        let snap = await getDoc(doc(db, 'bookings', invoiceId))
+        // 2. Try settings/inv_{id} (Guaranteed public read in live Firestore rules!)
+        let snap = await getDoc(doc(db, 'settings', `inv_${invoiceId}`)).catch(() => null)
 
-        // 2. Try 'boarding_bookings' collection if not in grooming
-        if (!snap.exists()) {
-          snap = await getDoc(doc(db, 'boarding_bookings', invoiceId))
+        // 3. Try publicInvoices collection
+        if (!snap || !snap.exists()) {
+          snap = await getDoc(doc(db, 'publicInvoices', invoiceId)).catch(() => null)
         }
 
-        // 3. Try custom 'invoices' collection
-        if (!snap.exists()) {
-          snap = await getDoc(doc(db, 'invoices', invoiceId))
+        // 4. Try custom invoices collection
+        if (!snap || !snap.exists()) {
+          snap = await getDoc(doc(db, 'invoices', invoiceId)).catch(() => null)
         }
 
-        if (snap.exists()) {
+        // 5. Try bookings collection (if user is authenticated)
+        if (!snap || !snap.exists()) {
+          snap = await getDoc(doc(db, 'bookings', invoiceId)).catch(() => null)
+        }
+
+        // 6. Try boardingBookings collection (if user is authenticated)
+        if (!snap || !snap.exists()) {
+          snap = await getDoc(doc(db, 'boardingBookings', invoiceId)).catch(() => null)
+        }
+
+        if (snap && snap.exists()) {
           const data = { id: snap.id, ...snap.data() }
           setBooking(data)
           document.title = `Invoice ${getInvoiceNumber(data)} | Paw Paw Pet Grooming`
@@ -62,7 +87,7 @@ export default function PublicInvoice() {
     }
 
     loadInvoice()
-  }, [invoiceId])
+  }, [invoiceId, searchParams])
 
   const handleDownload = async () => {
     if (!booking) return

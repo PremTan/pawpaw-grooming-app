@@ -9,7 +9,6 @@ import { PET_TYPES } from '../utils/services'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { buildCustomerInvoiceWhatsAppMessage, downloadInvoicePdf, shareInvoicePdfFile, viewInvoicePdf } from '../utils/invoicePdf'
 import { getBookingTypeLabel } from '../utils/bookingSettings'
-import { safeGetDocs } from '../utils/firestoreSafe'
 
 const blankCustom = {
   ownerName: '', phone: '', userEmail: '', petName: '', petType: 'Dog', petBreed: '',
@@ -67,8 +66,8 @@ export default function AdminInvoices() {
       setLoading(true)
       try {
         const [snap, boardingSnap, info] = await Promise.all([
-          safeGetDocs(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150))),
-          safeGetDocs(query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'), limit(150))),
+          getDocs(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150))),
+          getDocs(query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'), limit(150))),
           fetchBusinessInfo(db),
         ])
         const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
@@ -494,16 +493,19 @@ export default function AdminInvoices() {
 
     setBusy('whatsapp-customer')
 
-    // If it's a custom invoice, ensure it's saved/synced to Firestore for the link
-    if (booking.id?.startsWith('custom-')) {
-      try {
-        await setDoc(doc(db, 'invoices', booking.id), {
-          ...booking,
-          updatedAt: serverTimestamp(),
-        }, { merge: true })
-      } catch (saveErr) {
-        console.warn('Could not sync custom invoice to Firestore:', saveErr)
+    // Save public invoice record to settings/inv_{id} which has guaranteed public read in live rules
+    try {
+      const publicInvoiceData = {
+        ...booking,
+        updatedAt: serverTimestamp(),
       }
+      await setDoc(doc(db, 'settings', `inv_${booking.id}`), publicInvoiceData, { merge: true })
+      await setDoc(doc(db, 'publicInvoices', booking.id), publicInvoiceData, { merge: true }).catch(() => {})
+      if (booking.id?.startsWith('custom-')) {
+        await setDoc(doc(db, 'invoices', booking.id), publicInvoiceData, { merge: true }).catch(() => {})
+      }
+    } catch (saveErr) {
+      console.warn('Could not save public invoice to Firestore:', saveErr)
     }
 
     const msg = buildCustomerInvoiceWhatsAppMessage(booking, invoiceInfo)

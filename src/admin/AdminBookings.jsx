@@ -18,7 +18,6 @@ import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { OWNER_ASSIGNEE_ID, buildAssigneePatch, getAssigneeLabel, getBookingAssignee, getOwnerAssignee } from '../utils/teamMembers'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, cropImageFile, validateImageFile } from '../utils/imageCompression'
-import { safeGetDocs } from '../utils/firestoreSafe'
 
 const STATUS_OPTS = ['all', 'pending', 'confirmed', 'completed', 'cancelled']
 const BADGE = { pending: 'badge-pending', confirmed: 'badge-confirmed', completed: 'badge-completed', cancelled: 'badge-cancelled' }
@@ -171,7 +170,7 @@ export default function AdminBookings() {
 
     try {
       const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'))
-      const [snap, serviceSnap] = await Promise.all([safeGetDocs(q), safeGetDocs(collection(db, 'serviceDetails'))])
+      const [snap, serviceSnap] = await Promise.all([getDocs(q), getDocs(collection(db, 'serviceDetails'))])
       const nextServiceDetails = {}
       serviceSnap.docs.forEach(d => { nextServiceDetails[d.id] = { id: d.id, ...d.data() } })
       setServiceDetails(nextServiceDetails)
@@ -184,7 +183,7 @@ export default function AdminBookings() {
       syncPublicStats(db).catch(() => {})
     } catch {
       try {
-        const [snap, serviceSnap] = await Promise.all([safeGetDocs(collection(db, 'bookings')), safeGetDocs(collection(db, 'serviceDetails'))])
+        const [snap, serviceSnap] = await Promise.all([getDocs(collection(db, 'bookings')), getDocs(collection(db, 'serviceDetails'))])
         const nextServiceDetails = {}
         serviceSnap.docs.forEach(d => { nextServiceDetails[d.id] = { id: d.id, ...d.data() } })
         setServiceDetails(nextServiceDetails)

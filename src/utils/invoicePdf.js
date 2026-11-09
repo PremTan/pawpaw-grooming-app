@@ -54,6 +54,66 @@ export const getInvoiceSummary = (booking, businessInfo = {}) => {
   ].join('\n')
 }
 
+export function encodeInvoicePayload(booking) {
+  try {
+    if (!booking) return ''
+    const payload = {
+      id: booking.id || '',
+      ownerName: booking.ownerName || '',
+      phone: booking.phone || '',
+      userEmail: booking.userEmail || '',
+      petName: booking.petName || '',
+      petType: booking.petType || 'Dog',
+      petBreed: booking.petBreed || '',
+      serviceName: booking.serviceName || '',
+      serviceNames: Array.isArray(booking.serviceNames) ? booking.serviceNames : [],
+      date: booking.date || '',
+      slot: booking.slot || '',
+      bookingType: booking.bookingType || 'store',
+      address: booking.address || '',
+      amountCollected: booking.amountCollected ?? booking.totalAmount ?? booking.serviceTotal ?? 0,
+      totalAmount: booking.totalAmount ?? booking.amountCollected ?? 0,
+      serviceTotal: booking.serviceTotal || 0,
+      visitCharge: booking.visitCharge || 0,
+      gstAmount: booking.gstAmount || 0,
+      isBoarding: !!booking.isBoarding,
+      checkInDate: booking.checkInDate || '',
+      checkInTime: booking.checkInTime || '',
+      checkOutDate: booking.checkOutDate || '',
+      checkOutTime: booking.checkOutTime || '',
+      actualCheckOutDate: booking.actualCheckOutDate || '',
+      stayDays: booking.stayDays || 1,
+      stayNights: booking.stayNights || 0,
+      dailyRate: booking.dailyRate || 0,
+      specialFoodCharge: booking.specialFoodCharge || 0,
+      lateCheckOutCharge: booking.lateCheckOutCharge || 0,
+      invoiceItems: Array.isArray(booking.invoiceItems) ? booking.invoiceItems : [],
+      invoiceNumber: getInvoiceNumber(booking),
+    }
+    const json = JSON.stringify(payload)
+    return btoa(unescape(encodeURIComponent(json)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
+  } catch {
+    return ''
+  }
+}
+
+export function decodeInvoicePayload(str) {
+  try {
+    if (!str) return null
+    let base64 = str.replace(/-/g, '+').replace(/_/g, '/')
+    while (base64.length % 4) {
+      base64 += '='
+    }
+    const json = decodeURIComponent(escape(atob(base64)))
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
 export const buildCustomerInvoiceWhatsAppMessage = (booking, businessInfo = {}) => {
   const shopName = businessInfo.contact?.shopName || 'Paw Paw Pet Grooming'
   const invoiceNo = getInvoiceNumber(booking)
@@ -83,7 +143,11 @@ export const buildCustomerInvoiceWhatsAppMessage = (booking, businessInfo = {}) 
   const baseUrl = (typeof window !== 'undefined' && window.location?.origin)
     ? window.location.origin
     : 'https://pawpawpetgrooming.com'
-  const invoiceLink = booking?.id ? `${baseUrl}/invoice/${encodeURIComponent(booking.id)}` : ''
+  const token = encodeInvoicePayload(booking)
+  const invoiceId = booking?.id || ''
+  const invoiceLink = invoiceId
+    ? `${baseUrl}/invoice/${encodeURIComponent(invoiceId)}${token ? `?d=${token}` : ''}`
+    : ''
 
   const lines = [
     `*Invoice from ${shopName}* 🐾`,

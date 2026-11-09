@@ -153,6 +153,11 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    match /publicInvoices/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }
 

@@ -4,13 +4,7 @@
 
 import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider } from 'firebase/auth'
-import {
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-  getFirestore,
-  enableNetwork,
-} from 'firebase/firestore'
+import { getFirestore } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
@@ -25,50 +19,9 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig)
 
 export const auth = getAuth(app)
-
-// Robust multi-tab persistent cache so data loads instantly from phone storage
-let firestoreDb
-try {
-  firestoreDb = initializeFirestore(app, {
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager(),
-    }),
-  })
-} catch {
-  firestoreDb = getFirestore(app)
-}
-
-export const db   = firestoreDb
+export const db   = getFirestore(app)
 export const storage = getStorage(app)
 export const googleProvider = new GoogleAuthProvider()
-
-// Auto-reconnect when user returns to app/tab from background or after phone unlock
-if (typeof window !== 'undefined') {
-  let isReviving = false
-
-  const handleWakeUp = async () => {
-    if (isReviving) return
-    isReviving = true
-    try {
-      await enableNetwork(db).catch(() => {})
-      if (auth.currentUser) {
-        auth.currentUser.getIdToken(false).catch(() => {})
-      }
-    } catch {
-      // safe no-op
-    } finally {
-      setTimeout(() => { isReviving = false }, 1500)
-    }
-  }
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      handleWakeUp()
-    }
-  })
-
-  window.addEventListener('online', handleWakeUp)
-}
 
 if (typeof window !== 'undefined') {
   window.__PAWPAW_FIREBASE_DEBUG__ = {
