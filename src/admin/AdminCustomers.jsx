@@ -6,6 +6,7 @@ import { Ban, CalendarDays, Check, ChevronRight, Clock, Phone, RotateCcw, Search
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
+import { safeGetDocs } from '../utils/firestoreSafe'
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN')
 const statusClass = (status = 'pending') => status === 'confirmed' ? 'badge-confirmed' : status === 'completed' ? 'badge-completed' : status === 'cancelled' ? 'badge-cancelled' : 'badge-pending'
@@ -101,8 +102,8 @@ export default function AdminCustomers() {
     setLoading(true)
     try {
       const [bookingSnap, profileSnap] = await Promise.all([
-        getDocs(collection(db, 'bookings')),
-        getDocs(collection(db, 'profiles')),
+        safeGetDocs(collection(db, 'bookings')),
+        safeGetDocs(collection(db, 'profiles')),
       ])
       const profileMap = {}
       profileSnap.docs.forEach(item => { profileMap[item.id] = { id: item.id, ...item.data() } })

@@ -20,6 +20,7 @@ import Login       from './pages/Login'
 // Lazy-loaded secondary pages
 const Gallery = lazy(() => import('./pages/Gallery'))
 const ServiceDetail = lazy(() => import('./pages/ServiceDetail'))
+const PublicInvoice = lazy(() => import('./pages/PublicInvoice'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 // Lazy-loaded Admin modules (prevents bundling heavy admin code into initial user load)
@@ -139,6 +140,7 @@ export default function App() {
         <Route path="profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="my-pets" element={<ProtectedRoute><MyPets /></ProtectedRoute>} />
         <Route path="my-bookings" element={<ProtectedRoute><MyBookings /></ProtectedRoute>} />
+        <Route path="invoice/:invoiceId" element={<PublicInvoice />} />
         <Route path="*" element={<NotFound />} />
       </Route>
         </Routes>

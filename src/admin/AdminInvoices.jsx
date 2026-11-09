@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore'
+import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore'
 import { Download, Eye, Info, MessageCircle, Phone, ReceiptText, Search, Share2, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import { db } from '../firebase'
 import { PET_TYPES } from '../utils/services'
 import { fetchBusinessInfo } from '../utils/businessInfo'
-import { buildCustomerInvoiceWhatsAppMessage, createInvoicePdfFile, downloadInvoicePdf, shareInvoicePdfFile, viewInvoicePdf } from '../utils/invoicePdf'
+import { buildCustomerInvoiceWhatsAppMessage, downloadInvoicePdf, shareInvoicePdfFile, viewInvoicePdf } from '../utils/invoicePdf'
 import { getBookingTypeLabel } from '../utils/bookingSettings'
+import { safeGetDocs } from '../utils/firestoreSafe'
 
 const blankCustom = {
   ownerName: '', phone: '', userEmail: '', petName: '', petType: 'Dog', petBreed: '',
@@ -66,8 +67,8 @@ export default function AdminInvoices() {
       setLoading(true)
       try {
         const [snap, boardingSnap, info] = await Promise.all([
-          getDocs(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150))),
-          getDocs(query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'), limit(150))),
+          safeGetDocs(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150))),
+          safeGetDocs(query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'), limit(150))),
           fetchBusinessInfo(db),
         ])
         const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
@@ -438,7 +439,18 @@ export default function AdminInvoices() {
     setError('')
     setToastType('success')
     setToastMessage('Invoice generated successfully.')
-    setGenerated({ booking: makeCustomBooking(), label: `${custom.ownerName} - custom invoice` })
+    const customBooking = makeCustomBooking()
+    setGenerated({ booking: customBooking, label: `${custom.ownerName} - custom invoice` })
+    // Ensure custom invoice is in Firestore so public 1-click link works immediately
+    try {
+      setDoc(doc(db, 'invoices', customBooking.id), {
+        ...customBooking,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
+    } catch (saveErr) {
+      console.warn('Could not auto-save custom invoice to Firestore:', saveErr)
+    }
   }
 
   const run = async (key, task) => {
@@ -482,41 +494,25 @@ export default function AdminInvoices() {
 
     setBusy('whatsapp-customer')
 
-    // 1. On mobile devices (Android / iOS) where Web Share supports files, attach PDF directly!
-    try {
-      const file = await createInvoicePdfFile(booking, invoiceInfo)
-      if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          title: `Invoice - ${booking.ownerName || 'Customer'}`,
-          text: decodeURIComponent(buildCustomerInvoiceWhatsAppMessage(booking, invoiceInfo)),
-          files: [file],
-        })
-        setToastType('success')
-        setToastMessage('Invoice PDF shared to WhatsApp!')
-        setBusy('')
-        return
-      }
-    } catch (err) {
-      if (err?.name === 'AbortError') {
-        // User closed the share sheet
-        setBusy('')
-        return
+    // If it's a custom invoice, ensure it's saved/synced to Firestore for the link
+    if (booking.id?.startsWith('custom-')) {
+      try {
+        await setDoc(doc(db, 'invoices', booking.id), {
+          ...booking,
+          updatedAt: serverTimestamp(),
+        }, { merge: true })
+      } catch (saveErr) {
+        console.warn('Could not sync custom invoice to Firestore:', saveErr)
       }
     }
-
-    // 2. Desktop fallback: WhatsApp URLs (wa.me) cannot attach local files automatically.
-    // Download the PDF file to Downloads and open WhatsApp chat with prefilled summary.
-    try {
-      await downloadInvoicePdf(booking, invoiceInfo)
-    } catch {}
-    setBusy('')
 
     const msg = buildCustomerInvoiceWhatsAppMessage(booking, invoiceInfo)
     const waUrl = `https://wa.me/${cleanPhone}?text=${msg}`
     window.open(waUrl, '_blank', 'noopener,noreferrer')
 
     setToastType('success')
-    setToastMessage('PDF downloaded! In WhatsApp, click 📎 (Document) or drag the PDF into the chat.')
+    setToastMessage('WhatsApp opened with invoice summary & 1-click customer link!')
+    setBusy('')
   }
 
   if (loading) return <div style={{ padding: '28px' }}><Spinner text="Loading invoices..." /></div>

@@ -80,6 +80,11 @@ export const buildCustomerInvoiceWhatsAppMessage = (booking, businessInfo = {}) 
     ].join('\n')
   }
 
+  const baseUrl = (typeof window !== 'undefined' && window.location?.origin)
+    ? window.location.origin
+    : 'https://pawpawpetgrooming.com'
+  const invoiceLink = booking?.id ? `${baseUrl}/invoice/${encodeURIComponent(booking.id)}` : ''
+
   const lines = [
     `*Invoice from ${shopName}* 🐾`,
     ``,
@@ -90,7 +95,12 @@ export const buildCustomerInvoiceWhatsAppMessage = (booking, businessInfo = {}) 
     detailsText,
     `💰 *Amount Paid:* Rs ${amountPaid}`,
     ``,
-    `Your detailed PDF invoice has been generated. Please find it attached below. Have a pawsome day! 🐾`,
+    ...(invoiceLink ? [
+      `📥 *View & Download Official PDF Invoice:*`,
+      `${invoiceLink}`,
+      ``,
+    ] : []),
+    `Have a pawsome day! 🐾`,
   ]
 
   return encodeURIComponent(lines.join('\n'))
