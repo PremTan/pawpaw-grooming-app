@@ -338,6 +338,15 @@ export default function AdminInvoices() {
     setToastType('success')
     setToastMessage('Invoice generated successfully.')
     setGenerated({ booking: selectedBooking, label: `${selectedBooking.ownerName || 'Customer'} - ${shortId(selectedBooking.id)}` })
+    try {
+      const pubData = {
+        ...selectedBooking,
+        invoiceNumber: getInvoiceNumber(selectedBooking),
+        updatedAt: serverTimestamp(),
+      }
+      setDoc(doc(db, 'settings', `inv_${selectedBooking.id}`), pubData, { merge: true }).catch(() => {})
+      setDoc(doc(db, 'publicInvoices', selectedBooking.id), pubData, { merge: true }).catch(() => {})
+    } catch {}
   }
 
   const generateFromBoarding = () => {
@@ -418,6 +427,15 @@ export default function AdminInvoices() {
       booking: invoiceObj,
       label: `${selectedBoarding.ownerName || 'Customer'} - Pet Boarding (${shortId(selectedBoarding.id)})`,
     })
+    try {
+      const pubData = {
+        ...invoiceObj,
+        invoiceNumber: getInvoiceNumber(invoiceObj),
+        updatedAt: serverTimestamp(),
+      }
+      setDoc(doc(db, 'settings', `inv_${invoiceObj.id}`), pubData, { merge: true }).catch(() => {})
+      setDoc(doc(db, 'publicInvoices', invoiceObj.id), pubData, { merge: true }).catch(() => {})
+    } catch {}
   }
 
   const generateCustom = () => {
@@ -440,13 +458,15 @@ export default function AdminInvoices() {
     setToastMessage('Invoice generated successfully.')
     const customBooking = makeCustomBooking()
     setGenerated({ booking: customBooking, label: `${custom.ownerName} - custom invoice` })
-    // Ensure custom invoice is in Firestore so public 1-click link works immediately
     try {
-      setDoc(doc(db, 'invoices', customBooking.id), {
+      const pubData = {
         ...customBooking,
-        createdAt: serverTimestamp(),
+        invoiceNumber: getInvoiceNumber(customBooking),
         updatedAt: serverTimestamp(),
-      }, { merge: true })
+      }
+      setDoc(doc(db, 'settings', `inv_${customBooking.id}`), pubData, { merge: true }).catch(() => {})
+      setDoc(doc(db, 'publicInvoices', customBooking.id), pubData, { merge: true }).catch(() => {})
+      setDoc(doc(db, 'invoices', customBooking.id), pubData, { merge: true }).catch(() => {})
     } catch (saveErr) {
       console.warn('Could not auto-save custom invoice to Firestore:', saveErr)
     }

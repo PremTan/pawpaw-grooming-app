@@ -143,11 +143,8 @@ export const buildCustomerInvoiceWhatsAppMessage = (booking, businessInfo = {}) 
   const baseUrl = (typeof window !== 'undefined' && window.location?.origin)
     ? window.location.origin
     : 'https://pawpawpetgrooming.com'
-  const token = encodeInvoicePayload(booking)
   const invoiceId = booking?.id || ''
-  const invoiceLink = invoiceId
-    ? `${baseUrl}/invoice/${encodeURIComponent(invoiceId)}${token ? `?d=${token}` : ''}`
-    : ''
+  const invoiceLink = invoiceId ? `${baseUrl}/invoice/${encodeURIComponent(invoiceId)}` : ''
 
   const lines = [
     `*Invoice from ${shopName}* 🐾`,

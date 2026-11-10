@@ -1,5 +1,5 @@
 // src/pages/PublicInvoice.jsx
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { doc, getDoc } from 'firebase/firestore'
 import { CheckCircle2, Download, Eye, FileText, Home, MessageCircle, Phone, Sparkles } from 'lucide-react'
@@ -19,11 +19,13 @@ export default function PublicInvoice() {
   const [businessInfo, setBusinessInfo] = useState(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
+  const [downloadState, setDownloadState] = useState('idle') // 'idle' | 'downloading' | 'completed' | 'blocked'
   const [error, setError] = useState('')
+  const hasAutoDownloaded = useRef(false)
 
   useEffect(() => {
     async function loadInvoice() {
-      // 1. First, check if payload is encoded in ?d=... parameter (Instant, offline-proof, 0 permission issues!)
+      // 1. Check if payload is in ?d= parameter (for backwards compatibility with previously sent links)
       const dParam = searchParams.get('d')
       if (dParam) {
         const decoded = decodeInvoicePayload(dParam)
@@ -31,7 +33,6 @@ export default function PublicInvoice() {
           setBooking(decoded)
           setLoading(false)
           document.title = `Invoice ${decoded.invoiceNumber || getInvoiceNumber(decoded)} | Paw Paw Pet Grooming`
-          // Quietly fetch business info in background for logo & contact details
           fetchBusinessInfo().then(setBusinessInfo).catch(() => {})
           return
         }
@@ -48,8 +49,14 @@ export default function PublicInvoice() {
         const info = await fetchBusinessInfo().catch(() => null)
         if (info) setBusinessInfo(info)
 
-        // 2. Try settings/inv_{id} (Guaranteed public read in live Firestore rules!)
+        // 2. Try settings/inv_{id} (Guaranteed public read in live Firestore rules)
         let snap = await getDoc(doc(db, 'settings', `inv_${invoiceId}`)).catch(() => null)
+        if (!snap || !snap.exists()) {
+          snap = await getDoc(doc(db, 'settings', `inv_${invoiceId.toLowerCase()}`)).catch(() => null)
+        }
+        if (!snap || !snap.exists()) {
+          snap = await getDoc(doc(db, 'settings', `inv_${invoiceId.toUpperCase()}`)).catch(() => null)
+        }
 
         // 3. Try publicInvoices collection
         if (!snap || !snap.exists()) {
@@ -61,12 +68,12 @@ export default function PublicInvoice() {
           snap = await getDoc(doc(db, 'invoices', invoiceId)).catch(() => null)
         }
 
-        // 5. Try bookings collection (if user is authenticated)
+        // 5. Try bookings collection (if authenticated)
         if (!snap || !snap.exists()) {
           snap = await getDoc(doc(db, 'bookings', invoiceId)).catch(() => null)
         }
 
-        // 6. Try boardingBookings collection (if user is authenticated)
+        // 6. Try boardingBookings collection (if authenticated)
         if (!snap || !snap.exists()) {
           snap = await getDoc(doc(db, 'boardingBookings', invoiceId)).catch(() => null)
         }
@@ -89,11 +96,26 @@ export default function PublicInvoice() {
     loadInvoice()
   }, [invoiceId, searchParams])
 
+  // Automatically trigger PDF download as soon as invoice details are ready!
+  useEffect(() => {
+    if (booking && businessInfo && !hasAutoDownloaded.current) {
+      hasAutoDownloaded.current = true
+      setDownloadState('downloading')
+      downloadInvoicePdf(booking, businessInfo)
+        .then(() => setDownloadState('completed'))
+        .catch((err) => {
+          console.warn('Direct PDF download blocked or canceled:', err)
+          setDownloadState('blocked')
+        })
+    }
+  }, [booking, businessInfo])
+
   const handleDownload = async () => {
     if (!booking) return
     setDownloading(true)
     try {
       await downloadInvoicePdf(booking, businessInfo || {})
+      setDownloadState('completed')
     } catch (err) {
       console.error('Failed to download PDF:', err)
     } finally {
@@ -113,7 +135,7 @@ export default function PublicInvoice() {
   if (loading) {
     return (
       <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 20px' }}>
-        <Spinner text="Loading your official invoice..." />
+        <Spinner text="Preparing your official PDF invoice..." />
       </div>
     )
   }
@@ -143,46 +165,94 @@ export default function PublicInvoice() {
   const shopPhone = businessInfo?.contact?.phone || businessInfo?.contact?.whatsappNumber || '9021459467'
 
   return (
-    <div style={{ maxWidth: '680px', margin: '0 auto', padding: '24px 16px 48px' }}>
-      {/* Top Floating Action Bar */}
+    <div style={{ maxWidth: '680px', margin: '0 auto', padding: '20px 16px 48px' }}>
+      {/* Prominent Instant Download Status Banner */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(240,208,96,0.08) 100%)',
-        border: '1px solid var(--accent-border)',
+        background: downloadState === 'completed'
+          ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
+          : 'var(--gradient)',
+        color: '#ffffff',
         borderRadius: '16px',
-        padding: '16px 20px',
-        marginBottom: '20px',
+        padding: '14px 18px',
+        marginBottom: '18px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: '14px',
+        gap: '12px',
         flexWrap: 'wrap',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
       }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent)', fontWeight: 800, fontSize: '13px' }}>
-            <Sparkles size={15} /> Official Digital Invoice
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '34px',
+            height: '34px',
+            borderRadius: '50%',
+            background: 'rgba(255,255,255,0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            {downloadState === 'completed' ? <CheckCircle2 size={19} /> : <Download size={19} />}
           </div>
-          <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-            Generated for {booking.ownerName || 'Customer'}
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '14px', lineHeight: 1.2 }}>
+              {downloadState === 'completed'
+                ? 'Official PDF Downloaded!'
+                : downloadState === 'downloading'
+                  ? 'Downloading Official PDF...'
+                  : 'Official PDF Ready'}
+            </div>
+            <div style={{ fontSize: '12px', opacity: 0.95, marginTop: '2px' }}>
+              {downloadState === 'completed'
+                ? 'Saved to your Downloads folder'
+                : 'Direct download started automatically'}
+            </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
             type="button"
-            className="btn btn-primary"
             onClick={handleDownload}
             disabled={downloading}
-            style={{ fontSize: '13px', padding: '9px 16px', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+            style={{
+              background: '#ffffff',
+              color: '#1a1208',
+              border: 'none',
+              borderRadius: '999px',
+              padding: '7px 15px',
+              fontSize: '12px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              whiteSpace: 'nowrap'
+            }}
           >
-            <Download size={15} /> {downloading ? 'Preparing PDF...' : 'Download PDF'}
+            <Download size={13} /> {downloadState === 'completed' ? 'Download Again' : 'Download PDF'}
           </button>
           <button
             type="button"
-            className="btn btn-secondary"
             onClick={handleView}
-            style={{ fontSize: '13px', padding: '9px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              color: '#ffffff',
+              border: '1px solid rgba(255,255,255,0.4)',
+              borderRadius: '999px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              whiteSpace: 'nowrap'
+            }}
           >
-            <Eye size={15} /> View
+            <Eye size={13} /> View
           </button>
         </div>
       </div>
