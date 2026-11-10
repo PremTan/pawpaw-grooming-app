@@ -38,7 +38,7 @@ import {
 } from 'lucide-react'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
-import { fetchActiveOffers, calculateDiscount } from '../utils/offers'
+import { fetchActiveOffers, calculateDiscount, checkCouponUsage, checkFirstTimeCustomer } from '../utils/offers'
 import { CAT_BREEDS, DOG_BREEDS, PET_TYPES } from '../utils/services'
 import {
   BOARDING_STATUS,
@@ -363,7 +363,7 @@ export default function BookBoarding() {
     let ignore = false
     fetchActiveOffers(db).then(offers => {
       if (!ignore) {
-        const list = Array.isArray(offers) ? offers : []
+        const list = (Array.isArray(offers) ? offers : []).filter(o => o.applicableService !== 'grooming')
         setAvailableOffers(list)
         const preCoupon = searchParams.get('coupon') || ''
         if (preCoupon && list.length) {
@@ -378,19 +378,45 @@ export default function BookBoarding() {
     return () => { ignore = true }
   }, [searchParams])
 
-  const handleApplyCoupon = (offerToApply = null) => {
+  const handleApplyCoupon = async (offerToApply = null) => {
     const target = offerToApply || availableOffers.find(o => o.code.toUpperCase() === couponInput.trim().toUpperCase())
     if (!target) {
       setCouponError('Invalid or expired coupon code')
       setAppliedOffer(null)
       return
     }
-    const res = calculateDiscount(target, rawBoardingTotal)
+    const res = calculateDiscount(target, rawBoardingTotal, { serviceType: 'boarding' })
     if (!res.valid) {
       setCouponError(res.error || 'Coupon cannot be applied to this stay')
       setAppliedOffer(null)
       return
     }
+
+    if (target.customerEligibility === 'first_time') {
+      const isFirst = await checkFirstTimeCustomer(db, {
+        userId: user?.uid,
+        phone: form.phone,
+        serviceType: target.applicableService || 'boarding',
+      })
+      if (!isFirst) {
+        setCouponError('This coupon is valid for first-time customers only.')
+        setAppliedOffer(null)
+        return
+      }
+    }
+
+    if (target.usageLimit === 'once') {
+      const alreadyUsed = await checkCouponUsage(db, target.code, {
+        userId: user?.uid,
+        phone: form.phone,
+      })
+      if (alreadyUsed) {
+        setCouponError('You have already used this coupon code.')
+        setAppliedOffer(null)
+        return
+      }
+    }
+
     setAppliedOffer(target)
     setCouponInput(target.code)
     setCouponError('')

@@ -13963,6 +13963,8 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   width: 100%;
   box-sizing: border-box;
+  overflow: hidden;
+  position: relative;
 }
 
 .festive-ribbon-content {
@@ -13971,17 +13973,66 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
 }
 
-.festive-ribbon-text {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+/* Continuous News-style Ticker Track */
+.festive-ticker-container {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  position: relative;
+  display: flex;
+  align-items: center;
+  mask-image: linear-gradient(to right, transparent 0, black 14px, black calc(100% - 18px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, black 14px, black calc(100% - 18px), transparent 100%);
+}
+
+.festive-ticker-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 28px;
+  width: max-content;
   white-space: nowrap;
+  will-change: transform;
+  animation: festiveNewsMarquee 26s linear infinite;
+}
+
+@media (hover: hover) {
+  .festive-ticker-container:hover .festive-ticker-track {
+    animation-play-state: paused;
+  }
+}
+
+@keyframes festiveNewsMarquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.festive-ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+}
+
+.festive-ticker-message {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.festive-ticker-bullet {
+  opacity: 0.55;
+  font-size: 16px;
+  margin-left: 6px;
+  user-select: none;
 }
 
 .festive-sparkle-pill {
@@ -13995,13 +14046,6 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   font-weight: 800;
   letter-spacing: 0.6px;
   flex-shrink: 0;
-}
-
-.festive-message {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12.5px;
 }
 
 .festive-code-pill {
@@ -14041,118 +14085,12 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   margin-left: auto;
 }
 
-.festive-book-btn {
-  background: #ffffff;
-  color: #1a1208;
-  border: none;
-  border-radius: 999px;
-  padding: 4px 12px;
-  font-size: 11.5px;
-  font-weight: 800;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  transition: transform 0.15s ease, background 0.15s ease;
-  white-space: nowrap;
-}
-
-.festive-book-btn:hover {
-  transform: translateY(-1px);
-  background: #fef8ee;
-}
-
-.festive-close-btn {
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.85);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px;
-  border-radius: 50%;
-  transition: color 0.15s, background 0.15s;
-}
-
-.festive-close-btn:hover {
-  color: #ffffff;
-  background: rgba(0, 0, 0, 0.15);
-}
-
-@media (max-width: 600px) {
-  .festive-sparkle-pill {
-    display: none;
-  }
-  .festive-ribbon {
-    padding: 6px 10px;
-  }
-  .festive-message {
-    font-size: 11.5px;
-    flex: 1;
-    min-width: 0;
-  }
-  .festive-code-pill {
-    font-size: 10.5px;
-    padding: 2.5px 7px;
-    flex-shrink: 0;
-  }
-}
-
-/* ============================================================
-   Multi-Offer Festive Banner & Modal
-   ============================================================ */
-.festive-slider-track {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-  animation: festiveSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes festiveSlideUp {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.festive-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  margin-left: 4px;
-}
-
-.festive-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.45);
-  transition: all 0.2s ease;
-  cursor: pointer;
-  border: none;
-  padding: 0;
-}
-
-.festive-dot.active {
-  background: #ffffff;
-  width: 12px;
-  border-radius: 999px;
-}
-
 .festive-all-offers-btn {
   background: rgba(255, 255, 255, 0.18);
   border: 1px solid rgba(255, 255, 255, 0.45);
   color: #ffffff;
   border-radius: 999px;
-  padding: 3px 10px;
+  padding: 3px 11px;
   font-size: 11px;
   font-weight: 700;
   display: inline-flex;
@@ -14169,12 +14107,22 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 }
 
 @media (max-width: 600px) {
-  .festive-dots {
+  .festive-ribbon {
+    padding: 6px 8px;
+  }
+  .festive-sparkle-pill {
     display: none;
   }
+  .festive-ticker-message {
+    font-size: 11.5px;
+  }
+  .festive-code-pill {
+    font-size: 10.5px;
+    padding: 2.5px 7px;
+  }
   .festive-all-offers-btn {
-    padding: 2px 6px;
-    font-size: 10px;
+    padding: 2.5px 8px;
+    font-size: 10.5px;
   }
   .festive-all-offers-btn .festive-btn-label-long {
     display: none;

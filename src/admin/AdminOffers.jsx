@@ -28,6 +28,7 @@ import {
   Percent,
   IndianRupee,
   ShoppingBag,
+  Settings,
 } from 'lucide-react'
 import Toast from '../components/Toast'
 
@@ -40,6 +41,7 @@ export default function AdminOffers() {
   const [toastMessage, setToastMessage] = useState('')
   const [toastType, setToastType] = useState('success')
   const [copiedCode, setCopiedCode] = useState('')
+  const [activeMenuId, setActiveMenuId] = useState(null)
 
   const todayStr = new Date().toISOString().slice(0, 10)
 
@@ -54,24 +56,91 @@ export default function AdminOffers() {
     validFrom: todayStr,
     validUntil: '',
     isActive: true,
-    showBanner: true,
-    bannerText: '',
+    applicableService: 'all', // 'all' | 'grooming' | 'boarding'
+    customerEligibility: 'all', // 'all' | 'first_time'
+    usageLimit: 'unlimited', // 'unlimited' | 'once'
     sendPush: false,
   })
+
+  useEffect(() => {
+    const handleOutsideClick = () => setActiveMenuId(null)
+    window.addEventListener('click', handleOutsideClick)
+    return () => window.removeEventListener('click', handleOutsideClick)
+  }, [])
 
   const fetchOffers = async () => {
     try {
       setLoading(true)
       // 1. Try reading from settings/offers (guaranteed allowed for admin)
+      let list = []
       const snap = await getDoc(doc(db, 'settings', 'offers'))
       if (snap.exists() && Array.isArray(snap.data()?.list)) {
-        setOffers(snap.data().list)
-        return
+        list = [...snap.data().list]
+      } else {
+        // 2. Fallback to /offers collection if settings/offers not yet populated
+        const colSnap = await getDocs(query(collection(db, 'offers'), orderBy('createdAt', 'desc')))
+        list = colSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       }
 
-      // 2. Fallback to /offers collection if settings/offers not yet populated
-      const colSnap = await getDocs(query(collection(db, 'offers'), orderBy('createdAt', 'desc')))
-      const list = colSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      // Automatically seed default 1st-time coupons FIRSTGROOM and FIRSTSTAY as Inactive if not present
+      let needSave = false
+      const hasFirstGroom = list.some(o => o.code?.toUpperCase() === 'FIRSTGROOM')
+      const hasFirstStay = list.some(o => o.code?.toUpperCase() === 'FIRSTSTAY')
+
+      if (!hasFirstGroom) {
+        list.push({
+          id: 'FIRSTGROOM',
+          code: 'FIRSTGROOM',
+          title: '1st Grooming Booking Special',
+          description: "Flat ₹100 off on your pet's first salon or home grooming session",
+          discountType: 'flat',
+          discountValue: 100,
+          minBookingAmount: 500,
+          maxDiscountAmount: null,
+          validFrom: todayStr,
+          validUntil: '',
+          isActive: false, // Inactive by default so admin can activate
+          applicableService: 'grooming',
+          customerEligibility: 'first_time',
+          usageLimit: 'once',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          usageCount: 0,
+        })
+        needSave = true
+      }
+
+      if (!hasFirstStay) {
+        list.push({
+          id: 'FIRSTSTAY',
+          code: 'FIRSTSTAY',
+          title: '1st Pet Boarding Stay Special',
+          description: "Flat ₹150 off on your pet's first overnight boarding stay",
+          discountType: 'flat',
+          discountValue: 150,
+          minBookingAmount: 800,
+          maxDiscountAmount: null,
+          validFrom: todayStr,
+          validUntil: '',
+          isActive: false, // Inactive by default so admin can activate
+          applicableService: 'boarding',
+          customerEligibility: 'first_time',
+          usageLimit: 'once',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          usageCount: 0,
+        })
+        needSave = true
+      }
+
+      if (needSave) {
+        try {
+          await setDoc(doc(db, 'settings', 'offers'), { list, updatedAt: serverTimestamp() }, { merge: true })
+        } catch (seedErr) {
+          console.warn('[AdminOffers] Seeding default coupons warning:', seedErr)
+        }
+      }
+
       setOffers(list)
     } catch (err) {
       console.error('[AdminOffers] Fetch error:', err)
@@ -99,8 +168,9 @@ export default function AdminOffers() {
       validFrom: todayStr,
       validUntil: '',
       isActive: true,
-      showBanner: true,
-      bannerText: '',
+      applicableService: 'all',
+      customerEligibility: 'all',
+      usageLimit: 'unlimited',
       sendPush: false,
     })
     setModalOpen(true)
@@ -119,8 +189,9 @@ export default function AdminOffers() {
       validFrom: offer.validFrom || todayStr,
       validUntil: offer.validUntil || '',
       isActive: offer.isActive !== false,
-      showBanner: offer.showBanner === true,
-      bannerText: offer.bannerText || '',
+      applicableService: offer.applicableService || 'all',
+      customerEligibility: offer.customerEligibility || 'all',
+      usageLimit: offer.usageLimit || 'unlimited',
       sendPush: false,
     })
     setModalOpen(true)
@@ -157,45 +228,6 @@ export default function AdminOffers() {
     } catch (err) {
       console.error('[AdminOffers] Toggle active error:', err)
       setToastMessage('Could not update offer: ' + (err?.message || 'Error'))
-      setToastType('error')
-    }
-  }
-
-  const handleToggleBanner = async (offer) => {
-    try {
-      const willShow = !offer.showBanner
-      const updatedList = offers.map(o => {
-        if (o.id === offer.id) return { ...o, showBanner: willShow, updatedAt: new Date().toISOString() }
-        if (willShow && o.showBanner) return { ...o, showBanner: false }
-        return o
-      })
-
-      // Save directly to settings/offers
-      await setDoc(doc(db, 'settings', 'offers'), {
-        list: updatedList,
-        updatedAt: serverTimestamp(),
-      }, { merge: true })
-      setOffers(updatedList)
-
-      // Best effort update to /offers/
-      try {
-        if (willShow) {
-          const batchUpdates = offers
-            .filter(o => o.showBanner && o.id !== offer.id)
-            .map(o => updateDoc(doc(db, 'offers', o.id), { showBanner: false }).catch(() => { }))
-          await Promise.all(batchUpdates)
-        }
-        await updateDoc(doc(db, 'offers', offer.id), {
-          showBanner: willShow,
-          updatedAt: serverTimestamp(),
-        })
-      } catch { }
-
-      setToastMessage(willShow ? `Featured "${offer.code}" on top home banner` : `Removed "${offer.code}" from top banner`)
-      setToastType('success')
-    } catch (err) {
-      console.error('[AdminOffers] Toggle banner error:', err)
-      setToastMessage('Could not update banner status: ' + (err?.message || 'Error'))
       setToastType('error')
     }
   }
@@ -252,21 +284,15 @@ export default function AdminOffers() {
         validFrom: form.validFrom || todayStr,
         validUntil: form.validUntil || '',
         isActive: form.isActive,
-        showBanner: form.showBanner,
-        bannerText: form.bannerText.trim(),
+        applicableService: form.applicableService || 'all',
+        customerEligibility: form.customerEligibility || 'all',
+        usageLimit: form.usageLimit || 'unlimited',
         createdAt: editingOffer?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         usageCount: editingOffer?.usageCount || 0,
       }
 
       let updatedList = [...offers]
-      if (form.showBanner) {
-        updatedList = updatedList.map(o => ({
-          ...o,
-          showBanner: o.id === docId ? true : false,
-        }))
-      }
-
       const existingIndex = updatedList.findIndex(o => o.id === docId || o.code === cleanCode)
       if (existingIndex >= 0) {
         updatedList[existingIndex] = { ...updatedList[existingIndex], ...offerData }
@@ -293,17 +319,14 @@ export default function AdminOffers() {
           validFrom: offerData.validFrom,
           validUntil: offerData.validUntil,
           isActive: offerData.isActive,
-          showBanner: offerData.showBanner,
-          bannerText: offerData.bannerText,
+          applicableService: offerData.applicableService,
+          customerEligibility: offerData.customerEligibility,
+          usageLimit: offerData.usageLimit,
           updatedAt: serverTimestamp(),
         }
         if (!editingOffer) {
           firestorePayload.createdAt = serverTimestamp()
           firestorePayload.usageCount = 0
-        }
-        if (form.showBanner) {
-          const others = offers.filter(o => o.showBanner && (!editingOffer || o.id !== editingOffer.id))
-          await Promise.all(others.map(o => updateDoc(doc(db, 'offers', o.id), { showBanner: false }).catch(() => { })))
         }
         await setDoc(doc(db, 'offers', docId), firestorePayload, { merge: true })
       } catch (collectionErr) {
@@ -314,8 +337,12 @@ export default function AdminOffers() {
       if (form.sendPush && form.isActive) {
         try {
           const discountDesc = form.discountType === 'percentage' ? `${val}% OFF` : `Flat ₹${val} OFF`
-          const pushTitle = `🎉 Festive Offer: ${offerData.title}!`
-          const pushBody = `${discountDesc} on pet grooming! Use coupon code: ${cleanCode}`
+          const pushTitle = editingOffer ? `🎉 Special Update: ${offerData.title}!` : `🎉 Festive Offer: ${offerData.title}!`
+          const targetServiceLabel = offerData.applicableService === 'boarding'
+            ? 'pet boarding'
+            : (offerData.applicableService === 'grooming' ? 'pet grooming' : 'pet grooming & boarding')
+          const pushBody = `${discountDesc} on ${targetServiceLabel}! Use coupon code: ${cleanCode}`
+          const isBoardingOnly = offerData.applicableService === 'boarding'
 
           fetch('/api/send-push', {
             method: 'POST',
@@ -325,8 +352,8 @@ export default function AdminOffers() {
               toAll: true,
               title: pushTitle,
               body: pushBody,
-              actionUrl: `/book?coupon=${cleanCode}`,
-              actionTitle: 'Book Appointment',
+              actionUrl: isBoardingOnly ? `/book-boarding?coupon=${cleanCode}` : `/book?coupon=${cleanCode}`,
+              actionTitle: isBoardingOnly ? 'Book Pet Boarding' : 'Book Appointment',
             }),
           }).catch(() => { })
         } catch (pushErr) {
@@ -411,8 +438,8 @@ export default function AdminOffers() {
               </span>
             )}
           </div>
-          <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: '13px' }}>
-            Create festival discounts, promo coupons, and homepage announcement ribbons.
+          <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            Manage discount promo codes & festival coupons.
           </p>
         </div>
 
@@ -494,14 +521,14 @@ export default function AdminOffers() {
                 key={offer.id}
                 style={{
                   background: 'var(--card)',
-                  border: offer.showBanner ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+                  border: '1px solid var(--border)',
                   borderRadius: '16px',
-                  padding: '20px',
+                  padding: '18px 20px',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
                   position: 'relative',
-                  overflow: 'hidden',
+                  overflow: 'visible',
                   boxShadow: '0 4px 18px rgba(0,0,0,0.03)',
                   opacity: offer.isActive ? 1 : 0.72,
                   transition: 'all 0.2s',
@@ -515,16 +542,13 @@ export default function AdminOffers() {
                     left: 0,
                     right: 0,
                     height: '3px',
-                    background: offer.showBanner
-                      ? 'var(--gradient)'
-                      : offer.isActive
-                        ? 'var(--accent)'
-                        : 'var(--border)',
+                    borderRadius: '16px 16px 0 0',
+                    background: offer.isActive ? 'var(--accent)' : 'var(--border)',
                   }}
                 />
 
                 <div>
-                  {/* Top Header: Coupon Code + Status Badges */}
+                  {/* Top Header: Coupon Code + Status Badge + 3-Dots Settings Menu */}
                   <div
                     style={{
                       display: 'flex',
@@ -569,26 +593,21 @@ export default function AdminOffers() {
                       </button>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      {offer.showBanner && (
-                        <span
-                          style={{
-                            fontSize: '10px',
-                            fontWeight: 800,
-                            padding: '3px 8px',
-                            borderRadius: '6px',
-                            background: 'var(--gradient)',
-                            color: '#fff',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            letterSpacing: '0.5px',
-                            textTransform: 'uppercase',
-                          }}
-                        >
-                          <Megaphone size={10} /> Banner
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {offer.applicableService === 'grooming' ? (
+                        <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 7px', borderRadius: '6px', background: 'rgba(217,119,6,0.12)', color: '#d97706', textTransform: 'uppercase' }}>
+                          Grooming
+                        </span>
+                      ) : offer.applicableService === 'boarding' ? (
+                        <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 7px', borderRadius: '6px', background: 'rgba(59,130,246,0.12)', color: '#2563eb', textTransform: 'uppercase' }}>
+                          Boarding
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--muted)', textTransform: 'uppercase' }}>
+                          All
                         </span>
                       )}
+
                       <span
                         style={{
                           fontSize: '11px',
@@ -601,6 +620,135 @@ export default function AdminOffers() {
                       >
                         {status.label}
                       </span>
+
+                      {/* Settings / 3-Dots Actions Menu */}
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setActiveMenuId(prev => prev === offer.id ? null : offer.id)
+                          }}
+                          style={{
+                            background: activeMenuId === offer.id ? 'var(--surface)' : 'transparent',
+                            border: '1px solid ' + (activeMenuId === offer.id ? 'var(--border)' : 'transparent'),
+                            borderRadius: '7px',
+                            cursor: 'pointer',
+                            padding: '4px 6px',
+                            color: 'var(--text)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.15s ease',
+                          }}
+                          title="Offer Actions"
+                          aria-label="Offer actions menu"
+                        >
+                          <Settings size={15} />
+                        </button>
+
+                        {activeMenuId === offer.id && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              position: 'absolute',
+                              top: '100%',
+                              right: 0,
+                              marginTop: '6px',
+                              background: 'var(--card)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '10px',
+                              boxShadow: '0 10px 25px rgba(0,0,0,0.22)',
+                              zIndex: 50,
+                              minWidth: '150px',
+                              overflow: 'hidden',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              padding: '4px',
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveMenuId(null)
+                                handleToggleActive(offer)
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                width: '100%',
+                                padding: '8px 12px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                background: 'none',
+                                border: 'none',
+                                borderRadius: '6px',
+                                color: offer.isActive ? '#ef4444' : '#10b981',
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                              }}
+                            >
+                              {offer.isActive ? <X size={14} /> : <Check size={14} />}
+                              <span>{offer.isActive ? 'Deactivate' : 'Activate'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveMenuId(null)
+                                openEditModal(offer)
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                width: '100%',
+                                padding: '8px 12px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                background: 'none',
+                                border: 'none',
+                                borderRadius: '6px',
+                                color: 'var(--text)',
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                              }}
+                            >
+                              <Edit2 size={14} />
+                              <span>Edit Offer</span>
+                            </button>
+
+                            <div style={{ height: '1px', background: 'var(--border)', margin: '2px 0' }} />
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveMenuId(null)
+                                handleDelete(offer)
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                width: '100%',
+                                padding: '8px 12px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                background: 'none',
+                                border: 'none',
+                                borderRadius: '6px',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                              }}
+                            >
+                              <Trash2 size={14} />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -660,13 +808,13 @@ export default function AdminOffers() {
                     </span>
                   </div>
 
-                  {/* Min Order & Dates Grid */}
+                  {/* Min Order, Validity, Usage Limit Grid */}
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
                       gap: '8px',
-                      margin: '10px 0',
+                      marginTop: '10px',
                       fontSize: '12px',
                     }}
                   >
@@ -709,125 +857,31 @@ export default function AdminOffers() {
                         {offer.validUntil || 'No Expiry'}
                       </div>
                     </div>
-                  </div>
 
-                  {/* Announcement Banner Preview */}
-                  {offer.bannerText && (
                     <div
                       style={{
-                        margin: '10px 0 4px',
-                        padding: '8px 12px',
+                        padding: '8px 10px',
                         borderRadius: '8px',
-                        background: 'var(--accent-bg)',
-                        border: '1px dashed var(--accent-border)',
-                        fontSize: '11.5px',
-                        color: 'var(--text)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
+                        background: 'var(--surface)',
+                        border: '1px solid var(--border)',
                       }}
                     >
-                      <Sparkles size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-                      <span style={{ fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        &ldquo;{offer.bannerText}&rdquo;
-                      </span>
+                      <div style={{ color: 'var(--muted)', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', marginBottom: '2px' }}>
+                        Customer Rule
+                      </div>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          color: offer.customerEligibility === 'first_time' ? '#10b981' : (offer.usageLimit === 'once' ? 'var(--accent)' : 'var(--text)'),
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                        title={offer.customerEligibility === 'first_time' ? '1st-Time Customer Only' : (offer.usageLimit === 'once' ? '1-Time Use Per User' : 'All Customers (Multiple Uses)')}
+                      >
+                        {offer.customerEligibility === 'first_time' ? '1st Booking' : (offer.usageLimit === 'once' ? '1-Time Use' : 'Unlimited')}
+                      </div>
                     </div>
-                  )}
-                </div>
-
-                {/* Card Controls with Clear Text (No Small Cryptic Icons!) */}
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px',
-                    paddingTop: '14px',
-                    marginTop: '14px',
-                    borderTop: '1px solid var(--border)',
-                  }}
-                >
-                  {/* Row 1: Status Toggle & Home Banner Toggle */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleActive(offer)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        padding: '8px 10px',
-                        borderRadius: '8px',
-                        fontSize: '11.5px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        border: `1px solid ${offer.isActive ? 'rgba(16,185,129,0.35)' : 'var(--border)'}`,
-                        background: offer.isActive ? 'rgba(16,185,129,0.1)' : 'var(--surface)',
-                        color: offer.isActive ? '#10b981' : 'var(--muted)',
-                        transition: 'all 0.15s ease',
-                      }}
-                      title="Click to activate or deactivate offer"
-                    >
-                      {offer.isActive ? <Check size={13} /> : <X size={13} />}
-                      <span>{offer.isActive ? 'Offer: Active' : 'Offer: Inactive'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleToggleBanner(offer)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        padding: '8px 10px',
-                        borderRadius: '8px',
-                        fontSize: '11.5px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        border: `1px solid ${offer.showBanner ? 'var(--accent-border)' : 'var(--border)'}`,
-                        background: offer.showBanner ? 'var(--accent-bg)' : 'var(--surface)',
-                        color: offer.showBanner ? 'var(--accent)' : 'var(--muted)',
-                        transition: 'all 0.15s ease',
-                      }}
-                      title="Click to feature on homepage top announcement banner"
-                    >
-                      <Megaphone size={13} />
-                      <span>{offer.showBanner ? 'Banner: ON' : 'Banner: OFF'}</span>
-                    </button>
-                  </div>
-
-                  {/* Row 2: Edit & Delete Buttons with Full Labels */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(offer)}
-                      className="btn btn-secondary"
-                      style={{
-                        padding: '8px 12px',
-                        fontSize: '12px',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        height: 'auto',
-                      }}
-                    >
-                      <Edit2 size={13} /> Edit Offer
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(offer)}
-                      className="btn btn-danger"
-                      style={{
-                        padding: '8px 12px',
-                        fontSize: '12px',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        height: 'auto',
-                      }}
-                    >
-                      <Trash2 size={13} /> Delete
-                    </button>
                   </div>
                 </div>
               </div>
@@ -1001,67 +1055,80 @@ export default function AdminOffers() {
                 </div>
               </div>
 
-              {/* Feature in Banner */}
+              {/* Rules: Scope, Eligibility, Usage Limit */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+                <div>
+                  <label style={L}>Applies To (Service) *</label>
+                  <select
+                    className="input"
+                    value={form.applicableService}
+                    onChange={e => setForm(f => ({ ...f, applicableService: e.target.value }))}
+                  >
+                    <option value="all">All Services</option>
+                    <option value="grooming">Grooming Only</option>
+                    <option value="boarding">Pet Boarding Only</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={L}>Customer Eligibility *</label>
+                  <select
+                    className="input"
+                    value={form.customerEligibility}
+                    onChange={e => setForm(f => ({ ...f, customerEligibility: e.target.value }))}
+                  >
+                    <option value="all">All Customers</option>
+                    <option value="first_time">1st-Time Customers Only</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={L}>Usage Limit *</label>
+                  <select
+                    className="input"
+                    value={form.usageLimit}
+                    onChange={e => setForm(f => ({ ...f, usageLimit: e.target.value }))}
+                  >
+                    <option value="unlimited">Multiple Uses</option>
+                    <option value="once">1-Time Use Only</option>
+                  </select>
+                </div>
+              </div>
+              <p style={{ margin: '-4px 0 0', fontSize: '11.5px', color: 'var(--muted)' }}>
+                {form.customerEligibility === 'first_time'
+                  ? '⭐ Reserved exclusively for first-time customers with 0 past bookings.'
+                  : form.usageLimit === 'once'
+                    ? 'Each customer can redeem this coupon code once across bookings.'
+                    : 'Customers can use this coupon code repeatedly across bookings.'}
+              </p>
+
+              {/* Broadcast Push notification (create & edit) */}
               <div
                 style={{
                   padding: '12px 14px',
-                  background: 'var(--surface)',
+                  background: 'var(--accent-bg)',
                   borderRadius: '12px',
-                  border: '1px solid var(--border)',
-                  display: 'grid',
-                  gap: '10px',
+                  border: '1px solid var(--accent-border)',
                 }}
               >
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
                   <input
                     type="checkbox"
-                    checked={form.showBanner}
-                    onChange={e => setForm(f => ({ ...f, showBanner: e.target.checked }))}
+                    checked={form.sendPush}
+                    onChange={e => setForm(f => ({ ...f, sendPush: e.target.checked }))}
                     style={{ accentColor: 'var(--accent)', width: '16px', height: '16px' }}
                   />
-                  <span>Feature in Homepage Top Announcement Ribbon</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Bell size={14} color="var(--accent)" />
+                    {editingOffer ? 'Broadcast Push Notification for updated offer now' : 'Broadcast Push Notification to customers now'}
+                  </span>
                 </label>
-
-                {form.showBanner && (
-                  <div>
-                    <label style={{ ...L, fontSize: '10.5px' }}>Custom Banner Announcement Text</label>
-                    <input
-                      type="text"
-                      placeholder={`🪔 ${form.title || 'Festival Special'}: Use code ${form.code || 'CODE'} for discount!`}
-                      className="input"
-                      value={form.bannerText}
-                      onChange={e => setForm(f => ({ ...f, bannerText: e.target.value }))}
-                    />
-                  </div>
-                )}
+                <p style={{ margin: '4px 0 0 24px', fontSize: '11.5px', color: 'var(--muted)' }}>
+                  {editingOffer
+                    ? 'Sends an instant alert to customers\' mobile notification bars about the updated offer.'
+                    : 'Sends an instant alert to customers\' mobile notification bars with "Book Appointment" action button.'}
+                </p>
               </div>
-
-              {/* Broadcast Push notification (create only) */}
-              {!editingOffer && (
-                <div
-                  style={{
-                    padding: '12px 14px',
-                    background: 'var(--accent-bg)',
-                    borderRadius: '12px',
-                    border: '1px solid var(--accent-border)',
-                  }}
-                >
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
-                    <input
-                      type="checkbox"
-                      checked={form.sendPush}
-                      onChange={e => setForm(f => ({ ...f, sendPush: e.target.checked }))}
-                      style={{ accentColor: 'var(--accent)', width: '16px', height: '16px' }}
-                    />
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Bell size={14} color="var(--accent)" /> Broadcast Push Notification to customers now
-                    </span>
-                  </label>
-                  <p style={{ margin: '4px 0 0 24px', fontSize: '11.5px', color: 'var(--muted)' }}>
-                    Sends an instant alert to customers' mobile notification bars with &ldquo;Book Appointment&rdquo; action button.
-                  </p>
-                </div>
-              )}
 
               {/* Modal Buttons */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>

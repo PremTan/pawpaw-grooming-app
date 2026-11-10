@@ -12,7 +12,7 @@ import { fetchBusinessInfo } from '../utils/businessInfo'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { renderServiceIcon } from '../utils/serviceIcons.jsx'
 import Toast from '../components/Toast'
-import { fetchActiveOffers, calculateDiscount } from '../utils/offers'
+import { fetchActiveOffers, calculateDiscount, checkCouponUsage, checkFirstTimeCustomer } from '../utils/offers'
 
 const parseSlotStart = (dateString, slotLabel) => {
   const match = String(slotLabel || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
@@ -186,7 +186,7 @@ export default function Book() {
     let ignore = false
     fetchActiveOffers(db).then(offers => {
       if (!ignore) {
-        const list = Array.isArray(offers) ? offers : []
+        const list = (Array.isArray(offers) ? offers : []).filter(o => o.applicableService !== 'boarding')
         setAvailableOffers(list)
         if (preCoupon && list.length) {
           const matched = list.find(o => o.code.toUpperCase() === preCoupon.toUpperCase())
@@ -350,19 +350,45 @@ export default function Book() {
     return min > 0 ? `Rs ${min}+` : selectedService?.price || ''
   }
 
-  const handleApplyCoupon = (offerToApply = null) => {
+  const handleApplyCoupon = async (offerToApply = null) => {
     const target = offerToApply || availableOffers.find(o => o.code.toUpperCase() === couponInput.trim().toUpperCase())
     if (!target) {
       setCouponError('Invalid or expired coupon code')
       setAppliedOffer(null)
       return
     }
-    const res = calculateDiscount(target, rawTotalAmount())
+    const res = calculateDiscount(target, rawTotalAmount(), { serviceType: 'grooming' })
     if (!res.valid) {
       setCouponError(res.error || 'Coupon cannot be applied to this booking')
       setAppliedOffer(null)
       return
     }
+
+    if (target.customerEligibility === 'first_time') {
+      const isFirst = await checkFirstTimeCustomer(db, {
+        userId: user?.uid,
+        phone: form.phone,
+        serviceType: target.applicableService || 'grooming',
+      })
+      if (!isFirst) {
+        setCouponError('This coupon is valid for first-time customers only.')
+        setAppliedOffer(null)
+        return
+      }
+    }
+
+    if (target.usageLimit === 'once') {
+      const alreadyUsed = await checkCouponUsage(db, target.code, {
+        userId: user?.uid,
+        phone: form.phone,
+      })
+      if (alreadyUsed) {
+        setCouponError('You have already used this coupon code.')
+        setAppliedOffer(null)
+        return
+      }
+    }
+
     setAppliedOffer(target)
     setCouponInput(target.code)
     setCouponError('')

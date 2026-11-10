@@ -1,5 +1,5 @@
 // src/components/FestiveBanner.jsx
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { doc, onSnapshot } from 'firebase/firestore'
@@ -7,22 +7,45 @@ import { db } from '../firebase'
 import { fetchActiveOffers } from '../utils/offers'
 import { Sparkles, Tag, ArrowRight, X, Check, Gift, Copy } from 'lucide-react'
 
+function TickerCodePill({ code }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    navigator.clipboard.writeText(code).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2200)
+  }
+
+  return (
+    <button
+      type="button"
+      className="festive-code-pill"
+      onClick={handleCopy}
+      title={`Click to copy coupon code ${code}`}
+    >
+      {copied ? (
+        <>
+          <Check size={11} color="#10b981" /> Copied!
+        </>
+      ) : (
+        <>
+          Use Code: <strong>{code}</strong> <Copy size={11} style={{ opacity: 0.85 }} />
+        </>
+      )}
+    </button>
+  )
+}
+
 export default function FestiveBanner() {
   const [bannerOffers, setBannerOffers] = useState([])
   const [allOffers, setAllOffers] = useState([])
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [dismissed, setDismissed] = useState(false)
   const [showAllModal, setShowAllModal] = useState(false)
-  const [copiedCode, setCopiedCode] = useState('')
-  const [isPaused, setIsPaused] = useState(false)
+  const [copiedModalCode, setCopiedModalCode] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
-    // Check session dismissal
-    if (sessionStorage.getItem('dismissed_festive_banner') === 'true') {
-      setDismissed(true)
-    }
-
     const unsub = onSnapshot(doc(db, 'settings', 'offers'), (snap) => {
       let list = []
       if (snap.exists()) {
@@ -46,28 +69,12 @@ export default function FestiveBanner() {
         return true
       })
 
-      // Rotate through banner offers if multiple, or all active offers so rotation always works
-      const withBanner = valid.filter(o => o.showBanner === true)
-      const finalBannerList = withBanner.length > 1 ? withBanner : valid
-
-      setBannerOffers(finalBannerList)
+      setBannerOffers(valid)
       setAllOffers(valid)
-      setCurrentIndex(0)
     }
 
     return () => unsub()
   }, [])
-
-  // Auto-rotate every 4s when multiple offers are present
-  useEffect(() => {
-    if (bannerOffers.length <= 1 || isPaused || showAllModal) return
-
-    const timer = setInterval(() => {
-      setCurrentIndex(prev => (prev + 1) % bannerOffers.length)
-    }, 4000)
-
-    return () => clearInterval(timer)
-  }, [bannerOffers.length, isPaused, showAllModal])
 
   // Body scroll lock when modal is open
   useEffect(() => {
@@ -80,30 +87,35 @@ export default function FestiveBanner() {
     }
   }, [showAllModal])
 
-  if (dismissed || bannerOffers.length === 0) return null
+  // Build continuous seamless loop sequence (first half matches second half exactly)
+  const loopItems = useMemo(() => {
+    if (bannerOffers.length === 0) return []
+    let base = [...bannerOffers]
+    while (base.length < 3) {
+      base = [...base, ...bannerOffers]
+    }
+    return [...base, ...base]
+  }, [bannerOffers])
 
-  const currentOffer = bannerOffers[currentIndex] || bannerOffers[0]
-  if (!currentOffer) return null
+  if (bannerOffers.length === 0) return null
 
-  const handleDismiss = () => {
-    setDismissed(true)
-    sessionStorage.setItem('dismissed_festive_banner', 'true')
-  }
-
-  const handleCopyCode = (code, event) => {
-    if (event) event.stopPropagation()
+  const handleModalCopyCode = (code, event) => {
+    if (event) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
     navigator.clipboard.writeText(code).catch(() => {})
-    setCopiedCode(code)
-    setTimeout(() => setCopiedCode(''), 2200)
+    setCopiedModalCode(code)
+    setTimeout(() => setCopiedModalCode(''), 2200)
   }
 
   const handleBook = (targetOffer) => {
     const code = targetOffer.code
-    handleCopyCode(code)
+    handleModalCopyCode(code)
     setShowAllModal(false)
     setTimeout(() => {
       const isBoarding = String(code).toLowerCase().includes('board') ||
-        (Array.isArray(targetOffer.applicableServices) && targetOffer.applicableServices.includes('boarding'))
+        targetOffer.applicableService === 'boarding'
       const targetUrl = isBoarding
         ? `/boarding/book?coupon=${encodeURIComponent(code)}`
         : `/book?coupon=${encodeURIComponent(code)}`
@@ -111,86 +123,63 @@ export default function FestiveBanner() {
     }, 320)
   }
 
-  const isPercentage = currentOffer.discountType === 'percentage'
-  const discountText = isPercentage ? `${currentOffer.discountValue}% OFF` : `₹${currentOffer.discountValue} FLAT OFF`
-  const bannerMessage = currentOffer.bannerText || `${currentOffer.title} - ${discountText} on pet services!`
+  // Steady, readable news crawler animation speed
+  const animDuration = Math.max(24, Math.round(loopItems.length * 7.5)) + 's'
 
   return (
     <>
       <aside
         className="festive-ribbon"
-        aria-label="Special promotion"
-        onMouseEnter={() => setIsPaused(true)}
-        onMouseLeave={() => setIsPaused(false)}
+        aria-label="Special promotions ticker"
       >
         <div className="festive-ribbon-content">
-          <div className="festive-ribbon-text">
-            <span className="festive-sparkle-pill">
-              <Sparkles size={12} />
-              {bannerOffers.length > 1 ? `OFFER ${currentIndex + 1}/${bannerOffers.length}` : 'SPECIAL OFFER'}
-            </span>
+          {/* Continuous News Marquee Ticker */}
+          <div className="festive-ticker-container">
+            <div
+              className="festive-ticker-track"
+              style={{ animationDuration: animDuration }}
+            >
+              {loopItems.map((offer, idx) => {
+                const isPercentage = offer.discountType === 'percentage'
+                const discountText = isPercentage ? `${offer.discountValue}% OFF` : `₹${offer.discountValue} FLAT OFF`
+                const bannerMessage = offer.bannerText || `${offer.title} - ${discountText}`
 
-            <div className="festive-slider-track" key={currentOffer.id || currentOffer.code}>
-              <span className="festive-message" title={bannerMessage}>
-                {bannerMessage}
-              </span>
+                return (
+                  <div className="festive-ticker-item" key={`${offer.id || offer.code}-${idx}`}>
+                    <span className="festive-sparkle-pill">
+                      <Sparkles size={11} />
+                      {offer.applicableService === 'boarding'
+                        ? 'BOARDING'
+                        : offer.applicableService === 'grooming'
+                          ? 'GROOMING'
+                          : 'OFFER'}
+                    </span>
 
-              <button
-                type="button"
-                className="festive-code-pill"
-                onClick={() => handleCopyCode(currentOffer.code)}
-                title="Click to copy coupon code"
-              >
-                {copiedCode === currentOffer.code ? (
-                  <>
-                    <Check size={11} /> Copied!
-                  </>
-                ) : (
-                  <>
-                    Use Code: <strong>{currentOffer.code}</strong> <Copy size={11} style={{ opacity: 0.85 }} />
-                  </>
-                )}
-              </button>
+                    <span className="festive-ticker-message">
+                      {bannerMessage}
+                    </span>
+
+                    <TickerCodePill code={offer.code} />
+
+                    <span className="festive-ticker-bullet" aria-hidden="true">•</span>
+                  </div>
+                )
+              })}
             </div>
-
-            {bannerOffers.length > 1 && (
-              <div className="festive-dots" aria-hidden="true">
-                {bannerOffers.map((bOffer, idx) => (
-                  <button
-                    key={bOffer.id || bOffer.code || idx}
-                    type="button"
-                    className={`festive-dot${idx === currentIndex ? ' active' : ''}`}
-                    onClick={() => setCurrentIndex(idx)}
-                    aria-label={`Show offer ${idx + 1}`}
-                  />
-                ))}
-              </div>
-            )}
           </div>
 
+          {/* Fixed Right Action: Offers (X) Button (no cross button) */}
           <div className="festive-ribbon-actions">
-            {allOffers.length > 1 && (
-              <button
-                type="button"
-                className="festive-all-offers-btn"
-                onClick={() => setShowAllModal(true)}
-                title="View all active deals & coupons"
-              >
-                <Gift size={12} />
-                <span>
-                  <span className="festive-btn-label-long">All </span>Offers ({allOffers.length})
-                </span>
-              </button>
-            )}
-
             <button
               type="button"
-              className="festive-close-btn"
-              onClick={handleDismiss}
-              aria-label="Dismiss offer banner"
-              title="Dismiss offer"
+              className="festive-all-offers-btn"
+              onClick={() => setShowAllModal(true)}
+              title="View all active deals & coupons"
             >
-              <X size={15} />
+              <Gift size={13} />
+              <span>
+                <span className="festive-btn-label-long">All </span>Offers ({allOffers.length})
+              </span>
             </button>
           </div>
         </div>
@@ -252,7 +241,7 @@ export default function FestiveBanner() {
                 const itemIsPct = item.discountType === 'percentage'
                 const itemDiscountVal = itemIsPct ? `${item.discountValue}%` : `₹${item.discountValue}`
                 const itemDiscountLabel = itemIsPct ? 'OFF' : 'FLAT OFF'
-                const isCopied = copiedCode === item.code
+                const isCopied = copiedModalCode === item.code
 
                 return (
                   <div key={item.id || item.code} className="offer-ticket-item">
@@ -270,7 +259,7 @@ export default function FestiveBanner() {
                           <button
                             type="button"
                             className="offer-ticket-code-pill"
-                            onClick={(e) => handleCopyCode(item.code, e)}
+                            onClick={(e) => handleModalCopyCode(item.code, e)}
                             title="Click to copy code"
                           >
                             <Tag size={11} /> {item.code} {isCopied ? <Check size={11} /> : <Copy size={11} />}
