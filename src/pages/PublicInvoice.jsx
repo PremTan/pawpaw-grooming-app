@@ -33,7 +33,7 @@ export default function PublicInvoice() {
           setBooking(decoded)
           setLoading(false)
           document.title = `Invoice ${decoded.invoiceNumber || getInvoiceNumber(decoded)} | Paw Paw Pet Grooming`
-          fetchBusinessInfo().then(setBusinessInfo).catch(() => {})
+          fetchBusinessInfo(db).then(info => setBusinessInfo(info || {})).catch(() => setBusinessInfo({}))
           return
         }
       }
@@ -46,8 +46,8 @@ export default function PublicInvoice() {
 
       setLoading(true)
       try {
-        const info = await fetchBusinessInfo().catch(() => null)
-        if (info) setBusinessInfo(info)
+        const info = await fetchBusinessInfo(db).catch(() => ({}))
+        setBusinessInfo(info || {})
 
         // 2. Try settings/inv_{id} (Guaranteed public read in live Firestore rules)
         let snap = await getDoc(doc(db, 'settings', `inv_${invoiceId}`)).catch(() => null)
@@ -98,10 +98,10 @@ export default function PublicInvoice() {
 
   // Automatically trigger PDF download as soon as invoice details are ready!
   useEffect(() => {
-    if (booking && businessInfo && !hasAutoDownloaded.current) {
+    if (booking && !hasAutoDownloaded.current) {
       hasAutoDownloaded.current = true
       setDownloadState('downloading')
-      downloadInvoicePdf(booking, businessInfo)
+      downloadInvoicePdf(booking, businessInfo || {})
         .then(() => setDownloadState('completed'))
         .catch((err) => {
           console.warn('Direct PDF download blocked or canceled:', err)
