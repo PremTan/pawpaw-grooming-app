@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, startAfter, Timestamp, updateDoc, where } from 'firebase/firestore'
 import Cropper from 'react-easy-crop'
-import { Calendar, Camera, Check, CheckCircle2, Clock, Edit3, IndianRupee, MapPin, MessageCircle, Phone, ReceiptText, RotateCcw, Scissors, Search, ShieldAlert, SlidersHorizontal, Sparkles, Tag, Upload, User, UserRound, X } from 'lucide-react'
+import { Calendar, CalendarDays, Camera, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Edit3, IndianRupee, List, MapPin, MessageCircle, Phone, Plus, ReceiptText, RotateCcw, Scissors, Search, ShieldAlert, SlidersHorizontal, Sparkles, Tag, Upload, User, UserRound, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import Toast from '../components/Toast'
@@ -75,6 +75,36 @@ const formatAppointmentStart = (booking) => formatDateTime(parseAppointmentStart
 
 const dateKeyLocal = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
+const addDaysLocal = (dateKey, days) => {
+  if (!dateKey) return dateKeyLocal()
+  const parts = dateKey.split('-').map(Number)
+  const dt = new Date(parts[0], parts[1] - 1, parts[2])
+  dt.setDate(dt.getDate() + days)
+  return dateKeyLocal(dt)
+}
+
+const formatDateNice = (dateKey) => {
+  if (!dateKey) return ''
+  const parts = dateKey.split('-').map(Number)
+  const dt = new Date(parts[0], parts[1] - 1, parts[2])
+  return dt.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+const TIMELINE_HOURS = [
+  { hour24: 9, label: '09:00 AM' },
+  { hour24: 10, label: '10:00 AM' },
+  { hour24: 11, label: '11:00 AM' },
+  { hour24: 12, label: '12:00 PM' },
+  { hour24: 13, label: '01:00 PM' },
+  { hour24: 14, label: '02:00 PM' },
+  { hour24: 15, label: '03:00 PM' },
+  { hour24: 16, label: '04:00 PM' },
+  { hour24: 17, label: '05:00 PM' },
+  { hour24: 18, label: '06:00 PM' },
+  { hour24: 19, label: '07:00 PM' },
+  { hour24: 20, label: '08:00 PM' },
+]
+
 const isFutureSlotForDate = (dateString, slotLabel) => {
   const match = String(slotLabel || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
   if (!dateString || !match) return false
@@ -116,6 +146,9 @@ export default function AdminBookings() {
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [lastVisibleDoc, setLastVisibleDoc] = useState(null)
+  const [viewMode, setViewMode] = useState('list') // 'list' | 'timeline'
+  const [timelineDate, setTimelineDate] = useState(() => requestedDate || dateKeyLocal(new Date()))
+  const [timelineStaffFilter, setTimelineStaffFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [statusF, setStatusF] = useState('all')
   const [serviceF, setServiceF] = useState('all')
@@ -430,6 +463,36 @@ export default function AdminBookings() {
     }
     return r
   }, [bookings, quickFilter, todayKey, serviceF, statusF, search, dateFrom, dateTo])
+
+  const timelineDayBookings = useMemo(() => {
+    let r = bookings.filter(b => b.date === timelineDate)
+    if (timelineStaffFilter !== 'all') {
+      if (timelineStaffFilter === 'unassigned') {
+        r = r.filter(b => !b.assignedTeamMemberId)
+      } else {
+        r = r.filter(b => (b.assignedTeamMemberId || OWNER_ASSIGNEE_ID) === timelineStaffFilter)
+      }
+    }
+    r.sort((a, b) => {
+      const timeA = parseAppointmentStart(a)?.getTime() || 0
+      const timeB = parseAppointmentStart(b)?.getTime() || 0
+      return timeA - timeB
+    })
+    return r
+  }, [bookings, timelineDate, timelineStaffFilter])
+
+  const getBookingHour24 = (b) => {
+    const dt = parseAppointmentStart(b)
+    if (dt) return dt.getHours()
+    const match = String(b.slot || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+    if (match) {
+      let h = Number(match[1])
+      if (match[3].toUpperCase() === 'PM' && h !== 12) h += 12
+      if (match[3].toUpperCase() === 'AM' && h === 12) h = 0
+      return h
+    }
+    return null
+  }
 
   useEffect(() => { setPage(1) }, [quickFilter, serviceF, statusF, search, dateFrom, dateTo])
 
@@ -760,15 +823,45 @@ export default function AdminBookings() {
       {toastMessage && <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}><Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} /></div>}
       <div className="admin-bookings-header">
         <div>
-          <h1>Bookings</h1>
-          <p>
-            {filtered.length} of {bookings.length} bookings � showing {filtered.length ? pageStart + 1 : 0}-{Math.min(pageStart + PAGE_SIZE, filtered.length)}
-            {totalEarnings > 0 && <span>Total Collected: Rs {money(totalEarnings)}</span>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'nowrap' }}>
+            <h1 style={{ margin: 0, whiteSpace: 'nowrap' }}>Bookings</h1>
+            <div className="admin-view-toggle">
+              <button
+                type="button"
+                className={viewMode === 'list' ? 'active' : ''}
+                onClick={() => setViewMode('list')}
+              >
+                <List size={13} />
+                <span>List</span>
+              </button>
+              <button
+                type="button"
+                className={viewMode === 'timeline' ? 'active' : ''}
+                onClick={() => setViewMode('timeline')}
+              >
+                <CalendarDays size={13} />
+                <span>Timeline</span>
+              </button>
+            </div>
+          </div>
+          <p style={{ marginTop: '6px' }}>
+            {viewMode === 'list' ? (
+              <>
+                {filtered.length} of {bookings.length} bookings • showing {filtered.length ? pageStart + 1 : 0}-{Math.min(pageStart + PAGE_SIZE, filtered.length)}
+              </>
+            ) : (
+              <>
+                Floor Schedule • {formatDateNice(timelineDate)}
+                {timelineDayBookings.length > 0 && <span>{timelineDayBookings.length} Bookings ({timelineDayBookings.filter(b => b.status === 'completed').length} Done)</span>}
+              </>
+            )}
           </p>
         </div>
       </div>
 
-      {/* Search & Filter Bar: Single row with Search and Filter button beside it */}
+      {viewMode === 'list' && (
+        <>
+          {/* Search & Filter Bar: Single row with Search and Filter button beside it */}
       <div className="admin-booking-search-row">
         <div className="admin-booking-search">
           <Search size={15} />
@@ -1035,6 +1128,290 @@ export default function AdminBookings() {
               </>
             )}
           </button>
+        </div>
+      )}
+
+              </>
+      )}
+
+      {viewMode === 'timeline' && (
+        <div className="admin-timeline-wrapper">
+          {/* Timeline Toolbar: Date Navigator + Staff Filter */}
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: '14px',
+              padding: '12px 16px',
+              marginBottom: '16px',
+            }}
+          >
+            {/* Date Navigator: keep < [ Date ] > grouped together */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ padding: '6px 10px', borderRadius: '8px', minWidth: '34px', height: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                  onClick={() => setTimelineDate(prev => addDaysLocal(prev, -1))}
+                  title="Previous Day"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type="date"
+                    value={timelineDate}
+                    onChange={e => e.target.value && setTimelineDate(e.target.value)}
+                    style={{
+                      opacity: 0,
+                      position: 'absolute',
+                      inset: 0,
+                      width: '100%',
+                      height: '100%',
+                      cursor: 'pointer',
+                      zIndex: 2,
+                    }}
+                  />
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid var(--border)',
+                      fontWeight: '700',
+                      fontSize: '13px',
+                      color: 'var(--text)',
+                      cursor: 'pointer',
+                      height: '36px',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Calendar size={14} style={{ color: 'var(--accent)' }} />
+                    <span>{formatDateNice(timelineDate)}</span>
+                    {timelineDate === todayKey && (
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          background: 'rgba(52, 211, 153, 0.15)',
+                          color: '#34d399',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          fontWeight: '800',
+                        }}
+                      >
+                        TODAY
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ padding: '6px 10px', borderRadius: '8px', minWidth: '34px', height: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                  onClick={() => setTimelineDate(prev => addDaysLocal(prev, 1))}
+                  title="Next Day"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+
+              {timelineDate !== todayKey && (
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', height: '36px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => setTimelineDate(todayKey)}
+                >
+                  <RotateCcw size={13} /> Jump to Today
+                </button>
+              )}
+            </div>
+
+            {/* Staff Filter */}
+            {assigneeOptions.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>Floor Staff:</span>
+                <select
+                  value={timelineStaffFilter}
+                  onChange={e => setTimelineStaffFilter(e.target.value)}
+                  className="admin-select"
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text)',
+                    fontWeight: 600,
+                  }}
+                >
+                  <option value="all">All Staff & Stations ({timelineDayBookings.length})</option>
+                  {assigneeOptions.map(member => (
+                    <option key={member.id} value={member.id}>
+                      {getAssigneeLabel(member)}
+                    </option>
+                  ))}
+                  <option value="unassigned">Unassigned</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Day Metrics Quick Bar: 4 small boxes in a single line */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+              gap: '6px',
+              marginBottom: '16px',
+            }}
+          >
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 4px', textAlign: 'center' }}>
+              <span style={{ fontSize: '9.5px', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Total</span>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)', marginTop: '2px' }}>{timelineDayBookings.length}</div>
+            </div>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 4px', textAlign: 'center' }}>
+              <span style={{ fontSize: '9.5px', color: '#60a5fa', textTransform: 'uppercase', fontWeight: 700, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>On Floor</span>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: '#60a5fa', marginTop: '2px' }}>
+                {timelineDayBookings.filter(b => b.status === 'confirmed').length}
+              </div>
+            </div>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 4px', textAlign: 'center' }}>
+              <span style={{ fontSize: '9.5px', color: '#34d399', textTransform: 'uppercase', fontWeight: 700, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Completed</span>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: '#34d399', marginTop: '2px' }}>
+                {timelineDayBookings.filter(b => b.status === 'completed').length}
+              </div>
+            </div>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 4px', textAlign: 'center' }}>
+              <span style={{ fontSize: '9.5px', color: '#fbbf24', textTransform: 'uppercase', fontWeight: 700, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Pending</span>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: '#fbbf24', marginTop: '2px' }}>
+                {timelineDayBookings.filter(b => b.status === 'pending').length}
+              </div>
+            </div>
+          </div>
+
+          {/* Timeline Grid */}
+          {loading ? (
+            <Spinner text="Loading floor schedule..." />
+          ) : (
+            <div className="admin-timeline-container">
+              {TIMELINE_HOURS.map(({ hour24, label }) => {
+                const hourBookings = timelineDayBookings.filter(b => getBookingHour24(b) === hour24)
+                const isNow = timelineDate === todayKey && new Date().getHours() === hour24
+
+                return (
+                  <div key={hour24} className={`admin-timeline-slot-row ${isNow ? 'active-now' : ''}`}>
+                    {/* Time Column */}
+                    <div className="admin-timeline-time-col">
+                      <span className="admin-timeline-time-label">{label}</span>
+                    </div>
+
+                    {/* Content Column */}
+                    <div className="admin-timeline-content-col">
+                      {isNow && <div className="admin-timeline-now-pill">● LIVE NOW</div>}
+
+                      {hourBookings.length > 0 ? (
+                        hourBookings.map(b => {
+                          const assignee = assigneeFor(b)
+                          const petIcon = b.petType?.toLowerCase() === 'cat' ? '🐱' : '🐶'
+                          return (
+                            <div
+                              key={b.id}
+                              className={`admin-timeline-card status-${b.status}`}
+                              onClick={() => setSelectedBooking(b)}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontSize: '18px' }}>{petIcon}</span>
+                                  <div>
+                                    <div style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text)' }}>
+                                      {b.petName || 'Pet'}
+                                      {b.petBreed ? <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 500, marginLeft: '6px' }}>({b.petBreed})</span> : null}
+                                    </div>
+                                    <div style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+                                      Parent: <strong style={{ color: 'var(--text)' }}>{b.ownerName || 'Customer'}</strong>
+                                      {b.phone ? ` • ${b.phone}` : ''}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  {b.slot && (
+                                    <span style={{ fontSize: '11.5px', fontFamily: 'DM Mono, monospace', background: 'rgba(255,255,255,0.06)', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                                      {b.slot}
+                                    </span>
+                                  )}
+                                  <span className={`badge ${BADGE[b.status] || 'badge-pending'}`}>
+                                    {statusLabel(b.status)}
+                                  </span>
+                                  {b.isWalkIn && <span className="badge badge-walkin">Walk-in</span>}
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px' }}>
+                                  <span style={{ fontWeight: 600, color: 'var(--text)' }}>
+                                    ✂️ {b.serviceName || 'Pet Grooming'}
+                                  </span>
+                                  <span style={{ color: 'var(--muted)' }}>
+                                    {b.bookingType === 'home' ? '🏠 Home Visit' : '🏬 In-Store'}
+                                  </span>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                                  <span style={{
+                                    fontSize: '11.5px',
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    background: 'var(--surface-2, rgba(255,255,255,0.04))',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--text)',
+                                    fontWeight: 600,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}>
+                                    <User size={12} style={{ color: 'var(--accent)' }} />
+                                    {assignee ? getAssigneeLabel(assignee) : 'Unassigned'}
+                                  </span>
+                                  <span style={{ fontWeight: 800, color: '#34d399', fontFamily: 'DM Mono, monospace' }}>
+                                    Rs {money(b.amountCollected || b.estimatedTotal)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <div className="admin-timeline-empty-slot">
+                          <span>Slot open • No appointments booked</span>
+                          <button
+                            type="button"
+                            onClick={() => navigate('/admin/dashboard?action=walkin')}
+                            className="btn btn-outline"
+                            style={{ fontSize: '11.5px', padding: '4px 10px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <Plus size={12} /> Walk-in
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
