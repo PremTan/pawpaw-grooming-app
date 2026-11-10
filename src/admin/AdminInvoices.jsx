@@ -21,7 +21,7 @@ const shortId = id => `#${String(id || '').slice(0, 8).toUpperCase()}`
 
 let cachedInvoicesData = null
 let cachedInvoicesTimestamp = 0
-const INVOICES_CACHE_TTL = 60 * 1000
+const INVOICES_CACHE_TTL = 3 * 60 * 1000
 
 export default function AdminInvoices() {
   const [searchParams] = useSearchParams()

@@ -57,6 +57,10 @@ const profilePhoto = (data) => data ? (
   ''
 ) : ''
 
+let cachedCustomersState = null
+let cachedCustomersTime = 0
+const CUSTOMERS_CACHE_TTL = 3 * 60 * 1000
+
 export default function AdminCustomers() {
   const navigate = useNavigate()
   const [bookings, setBookings] = useState([])
@@ -97,8 +101,20 @@ export default function AdminCustomers() {
     return () => window.clearTimeout(t)
   }, [toastMessage])
 
-  async function fetchCustomers() {
-    setLoading(true)
+  async function fetchCustomers(isBackground = false) {
+    const isFresh = cachedCustomersState && (Date.now() - cachedCustomersTime < CUSTOMERS_CACHE_TTL)
+    if (isFresh && !isBackground) {
+      setBookings(cachedCustomersState.bookings)
+      setProfiles(cachedCustomersState.profiles)
+      setLoading(false)
+      fetchCustomers(true)
+      return
+    }
+
+    if (!isBackground && !cachedCustomersState) {
+      setLoading(true)
+    }
+
     try {
       const [bookingSnap, profileSnap] = await Promise.all([
         getDocs(collection(db, 'bookings')),
@@ -106,8 +122,11 @@ export default function AdminCustomers() {
       ])
       const profileMap = {}
       profileSnap.docs.forEach(item => { profileMap[item.id] = { id: item.id, ...item.data() } })
-      setBookings(bookingSnap.docs.map(d => ({ id: d.id, ...d.data() })))
+      const bRows = bookingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      setBookings(bRows)
       setProfiles(profileMap)
+      cachedCustomersState = { bookings: bRows, profiles: profileMap }
+      cachedCustomersTime = Date.now()
     } catch {}
     setLoading(false)
   }

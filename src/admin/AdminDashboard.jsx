@@ -85,7 +85,7 @@ function summarizePeriod(id, key, rows, label) {
 
 let cachedDashboardState = null
 let cachedDashboardTime = 0
-const DASHBOARD_CACHE_TTL = 45 * 1000
+const DASHBOARD_CACHE_TTL = 3 * 60 * 1000
 
 let cachedTeamMembers = null
 let cachedPackages = null

@@ -196,6 +196,10 @@ function formatPetAge(dob) {
   return dob
 }
 
+let cachedBoardingData = null
+let cachedBoardingTime = 0
+const BOARDING_CACHE_TTL = 3 * 60 * 1000
+
 export default function AdminBoarding() {
   const { user } = useAuth()
   const { sendNotification } = useNotifications()
@@ -279,18 +283,34 @@ export default function AdminBoarding() {
     }
   }, [selectedBooking, showFilterDrawer, checkInModal, checkoutModal, cancelTarget, showSettingsModal])
 
-  const fetchBoardings = async () => {
-    setLoading(true)
+  const fetchBoardings = async (isBackground = false) => {
+    const isFresh = cachedBoardingData && (Date.now() - cachedBoardingTime < BOARDING_CACHE_TTL)
+    if (isFresh && !isBackground) {
+      setBookings(cachedBoardingData)
+      setLoading(false)
+      fetchBoardings(true)
+      return
+    }
+
+    if (!isBackground && !cachedBoardingData) {
+      setLoading(true)
+    }
+
     try {
       const q = query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'))
       const snap = await getDocs(q)
-      setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      setBookings(rows)
+      cachedBoardingData = rows
+      cachedBoardingTime = Date.now()
     } catch {
       try {
         const snap2 = await getDocs(collection(db, 'boardingBookings'))
         const r = snap2.docs.map(d => ({ id: d.id, ...d.data() }))
         r.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
         setBookings(r)
+        cachedBoardingData = r
+        cachedBoardingTime = Date.now()
       } catch (err) {
         console.error('Fetch boarding error:', err)
       }
@@ -315,7 +335,11 @@ export default function AdminBoarding() {
   }, [toastMessage])
 
   const patchLocal = (id, patch) => {
-    setBookings(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b))
+    setBookings(prev => {
+      const next = prev.map(b => b.id === id ? { ...b, ...patch } : b)
+      cachedBoardingData = next
+      return next
+    })
     setSelectedBooking(prev => prev?.id === id ? { ...prev, ...patch } : prev)
   }
 

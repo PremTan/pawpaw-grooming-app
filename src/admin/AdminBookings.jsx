@@ -1,7 +1,7 @@
 // src/admin/AdminBookings.jsx
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { collection, doc, getDocs, orderBy, query, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore'
+import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, startAfter, Timestamp, updateDoc, where } from 'firebase/firestore'
 import Cropper from 'react-easy-crop'
 import { Calendar, Camera, Check, CheckCircle2, Clock, Edit3, IndianRupee, MapPin, MessageCircle, Phone, ReceiptText, RotateCcw, Scissors, Search, ShieldAlert, SlidersHorizontal, Sparkles, Tag, Upload, User, UserRound, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
@@ -96,7 +96,8 @@ const canRescheduleBooking = (booking) => {
 
 let cachedBookingsData = null
 let cachedBookingsTime = 0
-const BOOKINGS_CACHE_TTL = 45 * 1000
+const BOOKINGS_CACHE_TTL = 3 * 60 * 1000
+const INITIAL_FETCH_LIMIT = 120
 
 let cachedTeamMembers = null
 let cachedPackages = null
@@ -112,6 +113,9 @@ export default function AdminBookings() {
   const requestedDate = searchParams.get('date') || ''
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [lastVisibleDoc, setLastVisibleDoc] = useState(null)
   const [search, setSearch] = useState('')
   const [statusF, setStatusF] = useState('all')
   const [serviceF, setServiceF] = useState('all')
@@ -158,6 +162,8 @@ export default function AdminBookings() {
     if (isFresh && !isBackground) {
       setBookings(cachedBookingsData.bookings)
       setServiceDetails(cachedBookingsData.serviceDetails)
+      setHasMore(Boolean(cachedBookingsData.hasMore))
+      setLastVisibleDoc(cachedBookingsData.lastVisibleDoc || null)
       setLoading(false)
       // Background revalidation
       fetchBookings(true)
@@ -169,34 +175,91 @@ export default function AdminBookings() {
     }
 
     try {
-      const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'))
+      const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(INITIAL_FETCH_LIMIT))
       const [snap, serviceSnap] = await Promise.all([getDocs(q), getDocs(collection(db, 'serviceDetails'))])
       const nextServiceDetails = {}
       serviceSnap.docs.forEach(d => { nextServiceDetails[d.id] = { id: d.id, ...d.data() } })
       setServiceDetails(nextServiceDetails)
       const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null
+      const moreAvailable = snap.docs.length === INITIAL_FETCH_LIMIT
       setBookings(rows)
-      cachedBookingsData = { bookings: rows, serviceDetails: nextServiceDetails }
+      setLastVisibleDoc(lastDoc)
+      setHasMore(moreAvailable)
+      cachedBookingsData = {
+        bookings: rows,
+        serviceDetails: nextServiceDetails,
+        lastVisibleDoc: lastDoc,
+        hasMore: moreAvailable,
+      }
       cachedBookingsTime = Date.now()
       setLoading(false)
       // Sync public stats in the background without blocking the UI
       syncPublicStats(db).catch(() => {})
     } catch {
       try {
-        const [snap, serviceSnap] = await Promise.all([getDocs(collection(db, 'bookings')), getDocs(collection(db, 'serviceDetails'))])
+        const [snap, serviceSnap] = await Promise.all([
+          getDocs(query(collection(db, 'bookings'), limit(INITIAL_FETCH_LIMIT))),
+          getDocs(collection(db, 'serviceDetails'))
+        ])
         const nextServiceDetails = {}
         serviceSnap.docs.forEach(d => { nextServiceDetails[d.id] = { id: d.id, ...d.data() } })
         setServiceDetails(nextServiceDetails)
         const r = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         r.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
+        const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null
+        const moreAvailable = snap.docs.length === INITIAL_FETCH_LIMIT
         setBookings(r)
-        cachedBookingsData = { bookings: r, serviceDetails: nextServiceDetails }
+        setLastVisibleDoc(lastDoc)
+        setHasMore(moreAvailable)
+        cachedBookingsData = {
+          bookings: r,
+          serviceDetails: nextServiceDetails,
+          lastVisibleDoc: lastDoc,
+          hasMore: moreAvailable,
+        }
         cachedBookingsTime = Date.now()
         setLoading(false)
         syncPublicStats(db).catch(() => {})
       } catch {
         setLoading(false)
       }
+    }
+  }
+
+  const loadMoreBookings = async () => {
+    if (!lastVisibleDoc || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const q = query(
+        collection(db, 'bookings'),
+        orderBy('createdAt', 'desc'),
+        startAfter(lastVisibleDoc),
+        limit(60)
+      )
+      const snap = await getDocs(q)
+      if (snap.empty) {
+        setHasMore(false)
+      } else {
+        const moreRows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        const updated = [...bookings, ...moreRows]
+        const newLastDoc = snap.docs[snap.docs.length - 1]
+        const moreAvailable = snap.docs.length === 60
+        setBookings(updated)
+        setLastVisibleDoc(newLastDoc)
+        setHasMore(moreAvailable)
+        cachedBookingsData = {
+          bookings: updated,
+          serviceDetails,
+          lastVisibleDoc: newLastDoc,
+          hasMore: moreAvailable,
+        }
+        cachedBookingsTime = Date.now()
+      }
+    } catch (err) {
+      console.error('Error loading more bookings:', err)
+    } finally {
+      setLoadingMore(false)
     }
   }
 
@@ -941,6 +1004,37 @@ export default function AdminBookings() {
           <button type="button" onClick={() => setPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>Prev</button>
           <span>Page {currentPage} of {pageCount}</span>
           <button type="button" onClick={() => setPage(prev => Math.min(pageCount, prev + 1))} disabled={currentPage === pageCount}>Next</button>
+        </div>
+      )}
+
+      {!loading && hasMore && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '14px', marginBottom: '14px' }}>
+          <button
+            type="button"
+            onClick={loadMoreBookings}
+            disabled={loadingMore}
+            className="btn btn-outline"
+            style={{
+              fontSize: '13px',
+              padding: '8px 18px',
+              borderRadius: '10px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontWeight: '600',
+              cursor: loadingMore ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {loadingMore ? (
+              <>
+                <RotateCcw size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> Loading older bookings...
+              </>
+            ) : (
+              <>
+                <Clock size={15} /> Load Older Bookings (+60)
+              </>
+            )}
+          </button>
         </div>
       )}
 
