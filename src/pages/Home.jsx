@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs, query, orderBy, limit, where, updateDoc, serverTimestamp, Timestamp, getCountFromServer } from 'firebase/firestore'
 import { format } from 'date-fns'
-import { db } from '../firebase'
+import { ADMIN_EMAIL, db } from '../firebase'
 import BrandLogo from '../components/BrandLogo'
 import Toast from '../components/Toast'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
@@ -13,6 +13,7 @@ import { fetchBoardingSettings } from '../utils/boardingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
 import { optimizeCloudinary } from '../utils/imageOptimizer'
 import { useAuth } from '../context/AuthContext'
+import { useNotifications } from '../context/NotificationContext'
 import { BOOKING_STATUS } from '../utils/services'
 import boardingHeroPets from '../assets/boarding-hero-pets.png'
 import boardingDogAvatar from '../assets/boarding-dog-avatar.png'
@@ -233,6 +234,7 @@ const HERO_CACHE_TTL = 3 * 60 * 1000
 
 function HeroSlider() {
   const { user } = useAuth()
+  const { sendNotification } = useNotifications() || {}
   const [current, setCurrent] = useState(0)
   const [heroImages, setHeroImages] = useState(cachedHeroImages)
   const [loadedMap, setLoadedMap] = useState({})
@@ -531,6 +533,17 @@ function HeroSlider() {
       }
       await updateDoc(doc(db, 'bookings', rescheduleTarget.id), patch)
       setUpcomingAppointment(current => current?.id === rescheduleTarget.id ? { ...current, ...patch, bookingStartAt: newBookingStart ? { toDate: () => newBookingStart } : current.bookingStartAt } : current)
+      if (sendNotification) {
+        await sendNotification('', {
+          userEmail: ADMIN_EMAIL || '',
+          toAdmin: true,
+          title: 'Appointment rescheduled',
+          message: `${rescheduleTarget.petName || 'Pet'} (${rescheduleTarget.serviceName || 'Grooming'}) was moved from ${previousDate} at ${previousSlot} to ${rescheduleDate} at ${rescheduleSlot}.`,
+          type: 'rescheduled',
+          bookingId: rescheduleTarget.id,
+          actionUrl: `/admin/bookings/${rescheduleTarget.id}`,
+        })
+      }
       setRescheduleTarget(null)
       setRescheduleDate('')
       setRescheduleSlot('')

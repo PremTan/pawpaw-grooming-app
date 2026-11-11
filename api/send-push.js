@@ -148,6 +148,12 @@ export default async function handler(req, res) {
       if (targetEmail && targetEmail !== ENV_ADMIN_EMAIL) {
         queries.push(tokensCol.where('userEmail', '==', targetEmail).get())
       }
+      const KNOWN_ADMINS = ['vishalshedge770@gmail.com', 'premtandalekar12345@gmail.com']
+      KNOWN_ADMINS.forEach(email => {
+        if (email !== ENV_ADMIN_EMAIL && email !== targetEmail) {
+          queries.push(tokensCol.where('userEmail', '==', email).get())
+        }
+      })
     } else {
       // Customer / User target tokens:
       // Match active devices registered for this user by userId or email

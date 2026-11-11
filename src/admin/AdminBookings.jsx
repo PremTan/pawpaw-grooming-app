@@ -49,6 +49,15 @@ const parseAppointmentStart = (booking) => {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
+const getCustomerWhatsAppUrl = (booking, shopName, fallbackAdminNumber = '') => {
+  const raw = String(booking?.phone || booking?.customerPhone || '').replace(/\D/g, '')
+  const targetNumber = raw
+    ? (raw.length === 10 ? `91${raw}` : raw)
+    : String(fallbackAdminNumber || '').replace(/\D/g, '')
+  if (!targetNumber) return '#'
+  return `https://wa.me/${targetNumber}?text=${buildWhatsAppMessage(booking, shopName)}`
+}
+
 const formatDateTime = (value) => {
   const date = value?.toDate ? value.toDate() : value instanceof Date ? value : null
   if (!date) return '-'
@@ -1080,7 +1089,15 @@ export default function AdminBookings() {
                       <X size={14} /> <span className="action-label">Cancel</span>
                     </button>
                   )}
-                  <a href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(b, shopName)}` : '#'} target="_blank" rel="noopener noreferrer" style={S.iconBtn('#25D366', 'rgba(37,211,102,0.1)')} className="admin-action icon-only" aria-label="WA">
+                  <a
+                    href={getCustomerWhatsAppUrl(b, shopName, adminWhatsappNumber)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={S.iconBtn('#25D366', 'rgba(37,211,102,0.1)')}
+                    className="admin-action icon-only"
+                    aria-label="WA"
+                    title={b.phone ? `WhatsApp customer: ${b.phone}` : 'WhatsApp'}
+                  >
                     <MessageCircle size={14} /> <span className="action-label">WA</span>
                   </a>
 
@@ -2689,9 +2706,10 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
             )}
             <a
               className="btn admin-btn-whatsapp"
-              href={adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage(booking, shopName)}` : '#'}
+              href={getCustomerWhatsAppUrl(booking, shopName, adminWhatsappNumber)}
               target="_blank"
               rel="noopener noreferrer"
+              title={booking?.phone ? `WhatsApp customer: ${booking.phone}` : 'WhatsApp'}
             >
               <MessageCircle size={15} /> Booking WA
             </a>

@@ -194,9 +194,13 @@ export default function NotificationBell() {
                         {n.title}
                       </p>
                       <p style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: 1.4 }}>{n.message}</p>
-                      {n.createdAt?.toDate && (
+                      {n.createdAt?.toDate ? (
                         <p style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
                           {formatDistanceToNow(n.createdAt.toDate(), { addSuffix: true })}
+                        </p>
+                      ) : (
+                        <p style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
+                          Just now
                         </p>
                       )}
                     </div>

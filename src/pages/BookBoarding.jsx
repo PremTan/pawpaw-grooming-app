@@ -1,7 +1,7 @@
 // src/pages/BookBoarding.jsx
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
-import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc } from 'firebase/firestore'
+import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore'
 import { format, addDays, startOfToday } from 'date-fns'
 import boardingHeroPets from '../assets/boarding-hero-pets.png'
 import {
@@ -107,6 +107,8 @@ export default function BookBoarding() {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [termsExpanded, setTermsExpanded] = useState(false)
   const [showTermsModal, setShowTermsModal] = useState(false)
+  const [hasProfilePhone, setHasProfilePhone] = useState(true)
+  const [savePhoneToProfile, setSavePhoneToProfile] = useState(true)
 
   const todayStr = format(startOfToday(), 'yyyy-MM-dd')
   const tomorrowStr = format(addDays(startOfToday(), 1), 'yyyy-MM-dd')
@@ -314,10 +316,12 @@ export default function BookBoarding() {
         const snap = await getDoc(doc(db, 'profiles', user.uid))
         if (!snap.exists()) return
         const data = snap.data()
+        const existingPhone = String(data.phone || '').trim()
+        setHasProfilePhone(Boolean(existingPhone))
         setForm(prev => ({
           ...prev,
           ownerName: prev.ownerName || data.name || '',
-          phone: prev.phone || data.phone || '',
+          phone: prev.phone || existingPhone,
         }))
       } catch { }
     }
@@ -542,6 +546,15 @@ export default function BookBoarding() {
       const savedDoc = { id: ref.id, ...boardingData }
       setBookingRef(savedDoc)
 
+      if (savePhoneToProfile && user?.uid && form.phone.trim()) {
+        const cleanPhone = form.phone.replace(/\D/g, '').slice(0, 10)
+        setDoc(doc(db, 'profiles', user.uid), {
+          phone: cleanPhone,
+          updatedAt: serverTimestamp(),
+        }, { merge: true }).catch(err => console.warn('Could not save phone to profile:', err))
+        setHasProfilePhone(true)
+      }
+
       // Notify Admin via notifications collection and push notification
       try {
         const settingsSnap = await getDoc(doc(db, 'settings', 'general'))
@@ -573,36 +586,6 @@ export default function BookBoarding() {
             actionUrl: `/admin/boarding`,
           }),
         }).catch(() => { })
-
-        if (user?.uid) {
-          const userNotifTitle = 'Boarding Request Received'
-          const userNotifMsg = `Your boarding request for ${form.petName} (${stayCalculation.days} days from ${form.checkInDate} to ${form.checkOutDate}) has been received!`
-          await addDoc(collection(db, 'notifications'), {
-            userId: user.uid,
-            userEmail: user.email || '',
-            title: userNotifTitle,
-            message: userNotifMsg,
-            type: 'boarding_request',
-            bookingId: ref.id,
-            actionUrl: '/my-bookings',
-            read: false,
-            createdAt: serverTimestamp(),
-          })
-
-          fetch('/api/send-push', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: user.uid,
-              userEmail: user.email || '',
-              toAdmin: false,
-              title: userNotifTitle,
-              body: userNotifMsg,
-              bookingId: ref.id,
-              actionUrl: '/my-bookings',
-            }),
-          }).catch(() => { })
-        }
       } catch { }
 
       setToastMessage('Boarding request sent successfully!')
@@ -1028,8 +1011,19 @@ export default function BookBoarding() {
                       placeholder="9021442233"
                       value={form.phone}
                       maxLength={10}
-                      onChange={e => update('phone', e.target.value)}
+                      onChange={e => update('phone', e.target.value.replace(/\D/g, ''))}
                     />
+                    {!hasProfilePhone && user?.uid && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', fontSize: '11.5px', color: 'var(--muted)', cursor: 'pointer', userSelect: 'none' }}>
+                        <input
+                          type="checkbox"
+                          checked={savePhoneToProfile}
+                          onChange={e => setSavePhoneToProfile(e.target.checked)}
+                          style={{ accentColor: '#C08820', cursor: 'pointer', width: '14px', height: '14px' }}
+                        />
+                        <span>Save to profile</span>
+                      </label>
+                    )}
                   </div>
                 </div>
 
@@ -1175,7 +1169,16 @@ export default function BookBoarding() {
 
                 <button
                   type="button"
-                  onClick={() => setStep(2)}
+                  onClick={() => {
+                    if (savePhoneToProfile && user?.uid && form.phone.trim()) {
+                      const cleanPhone = form.phone.replace(/\D/g, '').slice(0, 10)
+                      setDoc(doc(db, 'profiles', user.uid), {
+                        phone: cleanPhone,
+                        updatedAt: serverTimestamp(),
+                      }, { merge: true }).catch(err => console.warn('Could not save phone to profile:', err))
+                    }
+                    setStep(2)
+                  }}
                   disabled={!form.ownerName.trim() || !form.phone.trim() || !form.petName.trim()}
                   className="boarding-primary-btn"
                 >

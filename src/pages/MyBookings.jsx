@@ -495,16 +495,15 @@ export default function MyBookings() {
       }
       await setDoc(doc(db, 'boardingBookings', boardingCancelTarget.id), patch, { merge: true })
       setBoardings(prev => prev.map(b => b.id === boardingCancelTarget.id ? { ...b, ...patch, cancelledAt: new Date(), updatedAt: new Date() } : b))
-      if (ADMIN_EMAIL) {
-        await sendNotification('', {
-          userEmail: ADMIN_EMAIL,
-          title: 'Pet Boarding Cancelled by Customer',
-          message: `Boarding request for ${boardingCancelTarget.petName} was cancelled by ${boardingCancelTarget.ownerName}. Reason: ${boardingCancelReason.trim()}`,
-          type: 'boarding_cancelled',
-          bookingId: boardingCancelTarget.id,
-          actionUrl: '/admin/boarding',
-        })
-      }
+      await sendNotification('', {
+        userEmail: ADMIN_EMAIL || '',
+        toAdmin: true,
+        title: 'Pet Boarding Cancelled by Customer',
+        message: `Boarding request for ${boardingCancelTarget.petName} was cancelled by ${boardingCancelTarget.ownerName}. Reason: ${boardingCancelReason.trim()}`,
+        type: 'boarding_cancelled',
+        bookingId: boardingCancelTarget.id,
+        actionUrl: '/admin/boarding',
+      })
       setCancelToast('Boarding reservation cancelled successfully.')
       setBoardingCancelTarget(null)
       setBoardingCancelReason('')
@@ -824,16 +823,15 @@ export default function MyBookings() {
       }
       setBookings(prev => prev.map(item => item.id === rescheduleTarget.id ? { ...item, ...localPatch } : item))
       setSelectedBooking(prev => prev?.id === rescheduleTarget.id ? { ...prev, ...localPatch } : prev)
-      if (ADMIN_EMAIL) {
-        await sendNotification('', {
-          userEmail: ADMIN_EMAIL,
-          title: 'Appointment rescheduled',
-          message: `${appointmentTitle(rescheduleTarget)} was moved from ${previousDate} at ${formatSlot(previousSlot)} to ${rescheduleDate} at ${formatSlot(rescheduleSlot)}.`,
-          type: 'rescheduled',
-          bookingId: rescheduleTarget.id,
-          actionUrl: `/admin/bookings/${rescheduleTarget.id}`,
-        })
-      }
+      await sendNotification('', {
+        userEmail: ADMIN_EMAIL || '',
+        toAdmin: true,
+        title: 'Appointment rescheduled',
+        message: `${appointmentTitle(rescheduleTarget)} was moved from ${previousDate} at ${formatSlot(previousSlot)} to ${rescheduleDate} at ${formatSlot(rescheduleSlot)}.`,
+        type: 'rescheduled',
+        bookingId: rescheduleTarget.id,
+        actionUrl: `/admin/bookings/${rescheduleTarget.id}`,
+      })
       setRescheduleTarget(null)
       setRescheduleDate('')
       setRescheduleSlot('')
@@ -860,16 +858,15 @@ export default function MyBookings() {
       const patch = { status: 'cancelled', cancelledBy: 'user', cancelledAt: new Date(), cancellationReason: cleanReason, updatedAt: new Date() }
       setBookings(prev => prev.map(item => item.id === booking.id ? { ...item, ...patch } : item))
       setSelectedBooking(prev => prev?.id === booking.id ? { ...prev, ...patch } : prev)
-      if (ADMIN_EMAIL) {
-        await sendNotification('', {
-          userEmail: ADMIN_EMAIL,
-          title: 'Appointment cancelled',
-          message: `${appointmentTitle(booking)} on ${booking.date} at ${formatSlot(booking.slot)} - Appointment cancelled by user. Reason: ${cleanReason}`,
-          type: 'cancelled',
-          bookingId: booking.id,
-          actionUrl: `/admin/bookings/${booking.id}`,
-        })
-      }
+      await sendNotification('', {
+        userEmail: ADMIN_EMAIL || '',
+        toAdmin: true,
+        title: 'Appointment cancelled',
+        message: `${appointmentTitle(booking)} on ${booking.date} at ${formatSlot(booking.slot)} - Appointment cancelled by user. Reason: ${cleanReason}`,
+        type: 'cancelled',
+        bookingId: booking.id,
+        actionUrl: `/admin/bookings/${booking.id}`,
+      })
       setCancelTarget(null)
       setCancelReason('')
       setCancelToast('Appointment cancelled successfully.')

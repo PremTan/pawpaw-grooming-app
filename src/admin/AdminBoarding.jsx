@@ -103,6 +103,15 @@ const statusLabel = (st = 'pending') => {
 const money = (val) => Number(val || 0).toLocaleString('en-IN')
 const shortId = (id = '') => `#${id.slice(0, 8).toUpperCase()}`
 
+const getCustomerBoardingWhatsAppUrl = (booking, shopName, fallbackAdminNumber = '') => {
+  const raw = String(booking?.phone || booking?.customerPhone || '').replace(/\D/g, '')
+  const targetNumber = raw
+    ? (raw.length === 10 ? `91${raw}` : raw)
+    : String(fallbackAdminNumber || '').replace(/\D/g, '')
+  if (!targetNumber) return '#'
+  return `https://wa.me/${targetNumber}?text=${buildBoardingWhatsAppMessage(booking, shopName)}`
+}
+
 function formatTime12Hour(timeStr) {
   if (!timeStr) return ''
   if (/am|pm/i.test(timeStr)) return timeStr
@@ -1457,12 +1466,13 @@ export default function AdminBoarding() {
                           <span>Invoice</span>
                         </button>
                       )}
-                      {adminWhatsappNumber && (
+                      {(b.phone || adminWhatsappNumber) && (
                         <a
-                          href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(b, shopName)}`}
+                          href={getCustomerBoardingWhatsAppUrl(b, shopName, adminWhatsappNumber)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="card-action-btn whatsapp"
+                          title={b.phone ? `WhatsApp customer: ${b.phone}` : 'Send details to WhatsApp'}
                         >
                           <MessageCircle size={15} />
                           <span>WhatsApp</span>
@@ -1658,13 +1668,14 @@ export default function AdminBoarding() {
                       <ReceiptText size={14} /> <span>Invoice</span>
                     </button>
                   )}
-                  {!isEditing && adminWhatsappNumber && (
+                  {!isEditing && (selectedBooking.phone || adminWhatsappNumber) && (
                     <a
-                      href={`https://wa.me/${adminWhatsappNumber}?text=${buildBoardingWhatsAppMessage(selectedBooking, shopName)}`}
+                      href={getCustomerBoardingWhatsAppUrl(selectedBooking, shopName, adminWhatsappNumber)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="details-header-btn whatsapp"
                       aria-label="Send details to WhatsApp"
+                      title={selectedBooking.phone ? `WhatsApp customer: ${selectedBooking.phone}` : 'Send details to WhatsApp'}
                     >
                       <MessageCircle size={14} /> <span>WhatsApp</span>
                     </a>

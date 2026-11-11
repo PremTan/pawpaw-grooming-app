@@ -10,7 +10,10 @@ import { listenForForegroundMessages, registerFcmToken } from '../utils/fcm'
 
 const NotifContext = createContext(null)
 const canUseBrowserNotifications = () => typeof window !== 'undefined' && 'Notification' in window
-const createdAtMs = (notification) => notification.createdAt?.toMillis?.() || notification.createdAt?.toDate?.()?.getTime?.() || 0
+const createdAtMs = (notification) =>
+  notification.createdAt?.toMillis?.() ||
+  notification.createdAt?.toDate?.()?.getTime?.() ||
+  (notification.createdAt ? new Date(notification.createdAt).getTime() : Date.now())
 
 export function NotificationProvider({ children }) {
   const { user, isAdmin } = useAuth()
@@ -110,11 +113,21 @@ export function NotificationProvider({ children }) {
       return
     }
 
-    const sources = { uid: [], email: [] }
+    const sources = { uid: [], email: [], admin: [] }
     const mergeSources = () => {
       const map = new Map()
       Object.values(sources).flat().forEach(notification => map.set(notification.id, notification))
       const rows = Array.from(map.values()).sort((a, b) => createdAtMs(b) - createdAtMs(a))
+      
+      // Notify active browser if a brand new unread notification arrived while session is open
+      if (initializedRef.current && seenIdsRef.current.size > 0) {
+        rows.forEach(n => {
+          if (!seenIdsRef.current.has(n.id) && !n.read) {
+            showBrowserNotification(n)
+          }
+        })
+      }
+
       setNotifications(rows)
       seenIdsRef.current = new Set(rows.map(n => n.id))
     }
@@ -133,7 +146,12 @@ export function NotificationProvider({ children }) {
     )
 
     const unsubs = [listen('uid', 'userId', user.uid)]
-    if (user.email) unsubs.push(listen('email', 'userEmail', user.email))
+    if (user.email) {
+      unsubs.push(listen('email', 'userEmail', user.email.toLowerCase().trim()))
+    }
+    if (isAdmin) {
+      unsubs.push(listen('admin', 'toAdmin', true))
+    }
 
     const bootTimer = window.setTimeout(() => { initializedRef.current = true }, 1200)
     return () => {
@@ -141,7 +159,7 @@ export function NotificationProvider({ children }) {
       unsubs.forEach(unsub => unsub())
       initializedRef.current = false
     }
-  }, [user])
+  }, [user, isAdmin])
 
   const requestBrowserPermission = async () => {
     if (!canUseBrowserNotifications()) {
@@ -185,10 +203,12 @@ export function NotificationProvider({ children }) {
 
   const sendNotification = async (userId, { userEmail = '', title, message, type = 'info', bookingId = '', actionUrl = '', toAdmin = false }) => {
     if (!userId && !userEmail && !toAdmin) return false
+    const cleanEmail = (userEmail || '').trim().toLowerCase()
     try {
       await addDoc(collection(db, 'notifications'), {
         userId: userId || '',
-        userEmail: userEmail || '',
+        userEmail: cleanEmail,
+        toAdmin: Boolean(toAdmin),
         title,
         message,
         type,
@@ -204,7 +224,7 @@ export function NotificationProvider({ children }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: userId || '',
-          userEmail: userEmail || '',
+          userEmail: cleanEmail,
           toAdmin: Boolean(toAdmin),
           title,
           body: message,

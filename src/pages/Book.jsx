@@ -106,6 +106,8 @@ export default function Book() {
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
   const [bookingSettings, setBookingSettings] = useState(null)
   const [bookingToast, setBookingToast] = useState('')
+  const [hasProfilePhone, setHasProfilePhone] = useState(true)
+  const [savePhoneToProfile, setSavePhoneToProfile] = useState(true)
 
   useEffect(() => {
     bookingTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -129,7 +131,7 @@ export default function Book() {
         dSnap.docs.forEach(d => { details[d.id] = { id: d.id, ...d.data() } })
         setServiceDetails(details)
         setPackages(pSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.active !== false))
-      } catch {}
+      } catch { }
     }
     init()
     if (prePackage) setSelectedPackages([prePackage])
@@ -155,7 +157,7 @@ export default function Book() {
         const results = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         results.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
         setPets(results)
-      } catch {}
+      } catch { }
     }
     fetchPets()
   }, [user])
@@ -169,14 +171,16 @@ export default function Book() {
         const profileAddresses = Array.isArray(data.addresses) && data.addresses.length ? data.addresses : []
         const normalizedAddresses = profileAddresses.length ? profileAddresses : data.address ? [{ id: `address-${Date.now()}`, type: 'Home', address: data.address, isDefault: true }] : []
         const defaultProfileAddress = normalizedAddresses.find(item => item.isDefault) || normalizedAddresses[0] || null
+        const existingPhone = String(data.phone || '').trim()
+        setHasProfilePhone(Boolean(existingPhone))
         setProfileAddresses(normalizedAddresses)
         setForm(prev => ({
           ...prev,
           ownerName: prev.ownerName || data.name || '',
-          phone: prev.phone || data.phone || '',
+          phone: prev.phone || existingPhone,
           address: prev.address || defaultProfileAddress?.address || data.address || '',
         }))
-      } catch {}
+      } catch { }
     }
     fetchProfile()
   }, [user])
@@ -470,6 +474,15 @@ export default function Book() {
       const ref = await addDoc(collection(db, 'bookings'), bookingData)
       setBookingRef({ id: ref.id, ...bookingData })
 
+      if (savePhoneToProfile && user?.uid && form.phone.trim()) {
+        const cleanPhone = form.phone.replace(/\D/g, '').slice(0, 10)
+        setDoc(doc(db, 'profiles', user.uid), {
+          phone: cleanPhone,
+          updatedAt: serverTimestamp(),
+        }, { merge: true }).catch(err => console.warn('Could not save phone to profile:', err))
+        setHasProfilePhone(true)
+      }
+
       // Notify Admin via notifications collection and push notification
       try {
         const notifTitle = `New Appointment Request: ${form.petName}`
@@ -497,37 +510,7 @@ export default function Book() {
             bookingId: ref.id,
             actionUrl: `/admin/bookings`,
           }),
-        }).catch(() => {})
-
-        if (user?.uid) {
-          const userNotifTitle = 'Booking Request Received'
-          const userNotifMsg = `Your appointment for ${form.petName} (${bookingLabel}) on ${form.date} at ${form.slot} has been received. We will confirm shortly!`
-          await addDoc(collection(db, 'notifications'), {
-            userId: user.uid,
-            userEmail: user.email || '',
-            title: userNotifTitle,
-            message: userNotifMsg,
-            type: 'booking_request',
-            bookingId: ref.id,
-            actionUrl: '/my-bookings',
-            read: false,
-            createdAt: serverTimestamp(),
-          })
-
-          fetch('/api/send-push', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: user.uid,
-              userEmail: user.email || '',
-              toAdmin: false,
-              title: userNotifTitle,
-              body: userNotifMsg,
-              bookingId: ref.id,
-              actionUrl: '/my-bookings',
-            }),
-          }).catch(() => {})
-        }
+        }).catch(() => { })
       } catch { }
 
       setBookingToast('Thank you! Your appointment request has been submitted successfully.')
@@ -540,15 +523,15 @@ export default function Book() {
     ? (adminWhatsappNumber ? `https://wa.me/${adminWhatsappNumber}?text=${buildWhatsAppMessage({ ...bookingRef, id: bookingRef.id }, shopName)}` : '#')
     : '#'
 
-  const today  = format(startOfToday(), 'yyyy-MM-dd')
+  const today = format(startOfToday(), 'yyyy-MM-dd')
   const maxDate = format(addDays(startOfToday(), 30), 'yyyy-MM-dd')
 
   const S = {
-    page:  { background: 'var(--bg)', paddingTop: 'var(--navbar-height, 98px)', minHeight: '100vh', transition: 'padding-top 0.25s ease' },
-    wrap:  { maxWidth: '680px', margin: '0 auto', padding: '24px 20px 80px' },
-    card:  { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '32px' },
+    page: { background: 'var(--bg)', paddingTop: 'var(--navbar-height, 98px)', minHeight: '100vh', transition: 'padding-top 0.25s ease' },
+    wrap: { maxWidth: '680px', margin: '0 auto', padding: '24px 20px 80px' },
+    card: { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '32px' },
     label: { fontSize: '11px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '6px' },
-    back:  { display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', marginBottom: '20px', padding: 0 },
+    back: { display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', marginBottom: '20px', padding: 0 },
     stepNum: (s) => ({
       width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: '13px', fontWeight: 700,
@@ -575,15 +558,15 @@ export default function Book() {
         <div style={{ ...S.card, textAlign: 'left', marginBottom: '20px' }}>
           {[
             { label: 'Booking ID', value: `#${bookingRef.id.slice(0, 8).toUpperCase()}`, gold: true },
-            { label: 'Service',    value: bookingLabel },
-            { label: 'Pet',        value: `${form.petName} (${form.petType})` },
+            { label: 'Service', value: bookingLabel },
+            { label: 'Pet', value: `${form.petName} (${form.petType})` },
             { label: 'Visit Type', value: getBookingTypeLabel(form.bookingType) },
-            { label: 'Date',       value: form.date },
-            { label: 'Time',       value: form.slot },
+            { label: 'Date', value: form.date },
+            { label: 'Time', value: form.slot },
             { label: 'Visit Charge', value: visitCharge() > 0 ? `Rs ${visitCharge()}` : null },
             { label: 'Est. Total', value: totalPrice() },
-            { label: 'Payment',    value: getPaymentModeLabel(bookingRef.paymentMode || paymentMode) },
-            { label: 'Address',    value: form.bookingType === 'home' ? form.address : null },
+            { label: 'Payment', value: getPaymentModeLabel(bookingRef.paymentMode || paymentMode) },
+            { label: 'Address', value: form.bookingType === 'home' ? form.address : null },
           ].filter(row => row.value).map(row => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
               <span style={{ color: 'var(--muted)', fontSize: '13px' }}>{row.label}</span>
@@ -794,7 +777,18 @@ export default function Book() {
                   </div>
                   <div>
                     <label style={S.label}>Phone *</label>
-                    <input className="input" placeholder="10-digit number" value={form.phone} maxLength={10} onChange={e => update('phone', e.target.value)} />
+                    <input className="input" placeholder="10-digit number" value={form.phone} maxLength={10} onChange={e => update('phone', e.target.value.replace(/\D/g, ''))} />
+                    {!hasProfilePhone && user?.uid && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', fontSize: '11.5px', color: 'var(--muted)', cursor: 'pointer', userSelect: 'none' }}>
+                        <input
+                          type="checkbox"
+                          checked={savePhoneToProfile}
+                          onChange={e => setSavePhoneToProfile(e.target.checked)}
+                          style={{ accentColor: 'var(--accent)', cursor: 'pointer', width: '14px', height: '14px' }}
+                        />
+                        <span>Save to profile</span>
+                      </label>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -834,7 +828,23 @@ export default function Book() {
                   <textarea className="input" style={{ resize: 'none' }} rows={3} placeholder="Allergies, behaviour notes, special requests..." value={form.notes} onChange={e => update('notes', e.target.value)} />
                 </div>
               </div>
-              <button onClick={() => setStep(3)} disabled={!form.ownerName || !form.phone || !form.petName} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: '20px' }}>Continue</button>
+              <button
+                onClick={() => {
+                  if (savePhoneToProfile && user?.uid && form.phone.trim()) {
+                    const cleanPhone = form.phone.replace(/\D/g, '').slice(0, 10)
+                    setDoc(doc(db, 'profiles', user.uid), {
+                      phone: cleanPhone,
+                      updatedAt: serverTimestamp(),
+                    }, { merge: true }).catch(err => console.warn('Could not save phone to profile:', err))
+                  }
+                  setStep(3)
+                }}
+                disabled={!form.ownerName || !form.phone || !form.petName}
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center', marginTop: '20px' }}
+              >
+                Continue
+              </button>
             </div>
           )}
 
@@ -1067,10 +1077,10 @@ export default function Book() {
                     { k: 'Service', v: serviceLabel },
                     { k: 'Package', v: !serviceLabel && selectedPkgs.length > 0 ? selectedPkgs.map(p => p.name).join(', ') : null },
                     { k: 'Add-ons', v: serviceLabel && selectedPkgs.length > 0 ? selectedPkgs.map(p => p.name).join(', ') : null },
-                    { k: 'Pet',     v: `${form.petName} (${form.petType})` },
+                    { k: 'Pet', v: `${form.petName} (${form.petType})` },
                     { k: 'Visit Type', v: getBookingTypeLabel(form.bookingType) },
-                    { k: 'Date',    v: form.date },
-                    { k: 'Time',    v: form.slot },
+                    { k: 'Date', v: form.date },
+                    { k: 'Time', v: form.slot },
                     { k: 'Address', v: form.bookingType === 'home' ? form.address : null },
                     { k: 'Subtotal', v: rawTotalAmount() > 0 ? `Rs ${rawTotalAmount()}` : null },
                     { k: `Discount (${appliedOffer?.code || 'Coupon'})`, v: currentDiscount > 0 ? `-Rs ${currentDiscount}` : null },
