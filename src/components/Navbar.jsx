@@ -7,6 +7,7 @@ import {
   Calendar,
   ChevronDown,
   Download,
+  Footprints,
   Home,
   Image,
   KeyRound,
@@ -113,6 +114,7 @@ export default function Navbar() {
     { path: '/', label: 'Home', icon: <Home size={14} /> },
     { path: '/services', label: 'Services', icon: <Scissors size={14} /> },
     { path: '/boarding', label: 'Pet Boarding', icon: <Building2 size={14} /> },
+    { path: '/walking', label: 'Pet Walking', icon: <Footprints size={14} /> },
     { path: '/gallery', label: 'Gallery', icon: <Image size={14} /> },
     { path: '/reviews', label: 'Reviews', icon: <MessageSquare size={14} /> },
     { path: '/?view=public#contact', label: 'Contact Us', icon: <Phone size={14} /> },
@@ -328,6 +330,11 @@ export default function Navbar() {
               {/* 3. Pet Boarding */}
               <Link to="/boarding" onClick={() => setMenuOpen(false)} style={mobileLinkStyle(isActive('/boarding'))}>
                 <Building2 size={15} /> Pet Boarding
+              </Link>
+
+              {/* 4. Pet Walking */}
+              <Link to="/walking" onClick={() => setMenuOpen(false)} style={mobileLinkStyle(isActive('/walking'))}>
+                <Footprints size={15} /> Pet Walking
               </Link>
 
               {/* 4. Book Grooming */}

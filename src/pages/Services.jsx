@@ -2,12 +2,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore'
-import { ArrowRight, Calendar, Clock, Flame, Package, PawPrint, Phone, Star, TrendingUp } from 'lucide-react'
+import { ArrowRight, Calendar, Clock, Flame, Package, PawPrint, Phone, Star, TrendingUp, Footprints, CheckCircle2, MapPin, X, MessageCircle } from 'lucide-react'
 import { db } from '../firebase'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import Spinner from '../components/Spinner'
 import { fetchBusinessInfo } from '../utils/businessInfo'
+import { fetchWalkingSettings } from '../utils/walkingSettings'
 import { useAuth } from '../context/AuthContext'
+import petWalkingHero from '../assets/pet-walking-hero.jpg'
 
 const cleanPrice = (value) => String(value || 'Price TBD').replace(/Ã¢â€šÂ¹/g, 'Rs ').replace(/Ã¢â‚¬â€œ/g, '-')
 const badgeFor = (index, bookingCount, maxBookings, isPackage = false) => {
@@ -24,15 +26,18 @@ export default function Services() {
   const [serviceDetails, setServiceDetails] = useState({})
   const [loading, setLoading] = useState(true)
   const [adminPhone, setAdminPhone] = useState('')
+  const [walkingSettings, setWalkingSettings] = useState(null)
+  const [showWalkingModal, setShowWalkingModal] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [statsSnap, pSnap, dSnap, businessInfo] = await Promise.all([
+        const [statsSnap, pSnap, dSnap, businessInfo, walkingSet] = await Promise.all([
           getDoc(doc(db, 'settings', 'homeStats')),
           getDocs(collection(db, 'packages')),
           getDocs(collection(db, 'serviceDetails')),
           fetchBusinessInfo(db),
+          fetchWalkingSettings(db),
         ])
         const c = statsSnap.exists() && statsSnap.data().perServiceBookings ? statsSnap.data().perServiceBookings : {}
         const details = {}
@@ -41,6 +46,7 @@ export default function Services() {
         setServiceDetails(details)
         setPackages(pSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.active !== false))
         setAdminPhone(businessInfo.whatsappNumber || '')
+        setWalkingSettings(walkingSet)
       } catch { }
       setLoading(false)
     }
@@ -126,6 +132,50 @@ export default function Services() {
           <>
             <div className="services-list-redesign">
               {publicServices.map(renderCard)}
+
+              {/* Pet Walking Service Card */}
+              <article className="services-list-card fade-up" style={{ animationDelay: `${publicServices.length * 0.05}s` }}>
+                <div className="services-card-media">
+                  <img
+                    src={walkingSettings?.bannerImageUrl || petWalkingHero}
+                    alt="Pet Walking Service"
+                    loading="lazy"
+                    style={{ objectFit: 'cover' }}
+                    onError={e => {
+                      e.currentTarget.onerror = null
+                      e.currentTarget.src = petWalkingHero
+                    }}
+                  />
+                  <span className="services-card-ribbon trend">NEW</span>
+                </div>
+                <div className="services-card-body">
+                  <div className="services-card-title-row">
+                    <div>
+                      <h2>Pet Walking</h2>
+                      <p>Daily walks, exercise and happy tails for your dog in Dhayari & nearby.</p>
+                    </div>
+                    <strong>From Rs {walkingSettings?.rate30Min || 199}</strong>
+                  </div>
+                  <div className="services-card-time"><Clock size={16} /> 30 / 45 / 60 Mins</div>
+                  <div className="services-card-badges">
+                    <span><Footprints size={14} /> 30m · Rs {walkingSettings?.rate30Min || 199}</span>
+                    <span><Footprints size={14} /> 45m · Rs {walkingSettings?.rate45Min || 279}</span>
+                    <span><Footprints size={14} /> 60m · Rs {walkingSettings?.rate60Min || 349}</span>
+                  </div>
+                  <div className="services-card-mobile-popularity">
+                    <small><MapPin size={12} style={{ display: 'inline', verticalAlign: '-1px' }} /> Dhayari & nearby areas</small>
+                    <i><b style={{ width: '92%' }} /></i>
+                  </div>
+                </div>
+                <div className="services-card-actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowWalkingModal(true)}>
+                    View Details
+                  </button>
+                  <Link to="/book-walking" className="btn btn-primary">
+                    Book a Walk <ArrowRight size={16} />
+                  </Link>
+                </div>
+              </article>
             </div>
 
             {packageCards.length > 0 && (
@@ -191,6 +241,87 @@ export default function Services() {
               </div>
               <a href={`tel:${adminPhone}`} className="btn btn-primary"><Phone size={16} /> Call Assistance</a>
             </div>
+
+            {/* Pet Walking Details Modal */}
+            {showWalkingModal && (
+              <div className="modal-overlay" onClick={() => setShowWalkingModal(false)}>
+                <div className="reschedule-modal-card" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
+                  <div className="reschedule-modal-header">
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Footprints size={20} style={{ color: 'var(--accent)' }} /> Paw Paw Pet Walking Guide
+                      </h3>
+                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--muted)' }}>
+                        Professional, caring dog walkers right to your doorstep in Dhayari & nearby
+                      </p>
+                    </div>
+                    <button type="button" className="icon-btn" onClick={() => setShowWalkingModal(false)}>
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: '12px', margin: '16px 0', maxHeight: '60vh', overflowY: 'auto' }}>
+                    <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                      <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Footprints size={16} /> 1. Daily Fitness, Exercise & Play
+                      </div>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                        Healthy exercise tailored to your dog's energy level, breed, and age. Energetic play, sniff walks, and proper hydration throughout.
+                      </p>
+                    </div>
+
+                    <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                      <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <MessageCircle size={16} /> 2. Real-time WhatsApp Updates
+                      </div>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                        Get pick-up confirmation, walking route photos, pee/poop updates, and drop-off notes directly on WhatsApp after every walk.
+                      </p>
+                    </div>
+
+                    <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                      <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Clock size={16} /> 3. Flexible Morning & Evening Shifts
+                      </div>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                        Choose between 30, 45, or 60-minute sessions during morning (6:30 AM – 9:30 AM) and evening (5:00 PM – 8:00 PM) slots. Custom times also available on request.
+                      </p>
+                    </div>
+
+                    <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                      <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <MapPin size={16} /> 4. Serviceable Areas
+                      </div>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                        Available in Dhayari, Vadgaon Budruk, Narhe, Sinhagad Road, and surrounding neighborhoods. Free doorstep pick-up & drop-off.
+                      </p>
+                    </div>
+
+                    <div style={{ padding: '14px', background: 'var(--accent-bg)', borderRadius: '14px', border: '1px solid var(--accent-border)' }}>
+                      <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px' }}>
+                        Dynamic Per-Session Pricing
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.6 }}>
+                        <strong>30 Minutes:</strong> ₹{walkingSettings?.rate30Min || 199} · <strong>45 Minutes:</strong> ₹{walkingSettings?.rate45Min || 279} · <strong>60 Minutes:</strong> ₹{walkingSettings?.rate60Min || 349}. Pay after booking confirmation or in person.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="reschedule-modal-footer">
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowWalkingModal(false)}>
+                      Close
+                    </button>
+                    <Link
+                      to="/book-walking"
+                      className="btn btn-primary"
+                      onClick={() => setShowWalkingModal(false)}
+                    >
+                      <Footprints size={15} /> Book a Walk
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -14,12 +14,14 @@ import {
   ChevronRight,
   ChevronDown,
   Clock,
+  Compass,
   Droplets,
   Edit,
   FileText,
   Footprints,
   Home,
   IndianRupee,
+  Info,
   LogIn,
   Mail,
   MapPin,
@@ -57,6 +59,14 @@ import { SERVICES, buildWhatsAppMessage } from '../utils/services'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { buildBoardingWhatsAppMessage } from '../utils/boardingSettings'
+import {
+  buildWalkingWhatsAppMessage,
+  fetchWalkingSettings,
+  DEFAULT_WALKING_SETTINGS,
+  DEFAULT_WALKING_SLOTS,
+  isWalkingDayOpen,
+  parseSlotTimeToMinutes,
+} from '../utils/walkingSettings'
 import { downloadInvoicePdf } from '../utils/invoicePdf'
 
 const STATUS_BADGE = {
@@ -327,11 +337,15 @@ export default function MyBookings() {
   const [searchParams] = useSearchParams()
 
   const tabFromUrl = searchParams.get('tab') || location.state?.tab || location.state?.domainTab
-  const [domainTab, setDomainTab] = useState(tabFromUrl === 'boarding' ? 'boarding' : 'grooming')
+  const [domainTab, setDomainTab] = useState(
+    tabFromUrl === 'walking' ? 'walking' : tabFromUrl === 'boarding' ? 'boarding' : 'grooming'
+  )
 
   useEffect(() => {
     const tabParam = searchParams.get('tab') || location.state?.tab || location.state?.domainTab
-    if (tabParam === 'boarding') {
+    if (tabParam === 'walking') {
+      setDomainTab('walking')
+    } else if (tabParam === 'boarding') {
       setDomainTab('boarding')
     } else if (tabParam === 'grooming') {
       setDomainTab('grooming')
@@ -343,6 +357,20 @@ export default function MyBookings() {
   const [boardingCancelTarget, setBoardingCancelTarget] = useState(null)
   const [boardingCancelReason, setBoardingCancelReason] = useState('')
   const [cancellingBoardingId, setCancellingBoardingId] = useState('')
+
+  // Pet Walking state
+  const [walkings, setWalkings] = useState([])
+  const [walkingLoading, setWalkingLoading] = useState(false)
+  const [selectedWalking, setSelectedWalking] = useState(null)
+  const [walkingCancelTarget, setWalkingCancelTarget] = useState(null)
+  const [walkingCancelReason, setWalkingCancelReason] = useState('')
+  const [cancellingWalkingId, setCancellingWalkingId] = useState('')
+  const [walkingRescheduleTarget, setWalkingRescheduleTarget] = useState(null)
+  const [walkingRescheduleDate, setWalkingRescheduleDate] = useState('')
+  const [walkingRescheduleSlot, setWalkingRescheduleSlot] = useState('')
+  const [walkingRescheduleBookedSlots, setWalkingRescheduleBookedSlots] = useState([])
+  const [reschedulingWalkingId, setReschedulingWalkingId] = useState('')
+  const [walkingSettings, setWalkingSettings] = useState(DEFAULT_WALKING_SETTINGS)
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
   const [shopAddress, setShopAddress] = useState('')
@@ -511,6 +539,149 @@ export default function MyBookings() {
       alert('Could not cancel boarding reservation. Please try again.')
     }
     setCancellingBoardingId('')
+  }
+
+  const fetchWalkings = async () => {
+    if (!user?.uid) return
+    setWalkingLoading(true)
+    try {
+      const q = query(collection(db, 'walkingBookings'), where('userId', '==', user.uid))
+      const snap = await getDocs(q)
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      list.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
+      setWalkings(list)
+    } catch {}
+    setWalkingLoading(false)
+  }
+
+  useEffect(() => {
+    if (user?.uid) {
+      fetchWalkings()
+    }
+  }, [user])
+
+  const cancelWalkingBooking = async () => {
+    if (!walkingCancelTarget || !walkingCancelReason.trim()) return
+    setCancellingWalkingId(walkingCancelTarget.id)
+    try {
+      const patch = {
+        status: 'cancelled',
+        cancelledBy: 'user',
+        cancelledAt: serverTimestamp(),
+        cancellationReason: walkingCancelReason.trim(),
+        updatedAt: serverTimestamp(),
+      }
+      await setDoc(doc(db, 'walkingBookings', walkingCancelTarget.id), patch, { merge: true })
+      setWalkings(prev => prev.map(w => w.id === walkingCancelTarget.id ? { ...w, ...patch, cancelledAt: new Date(), updatedAt: new Date() } : w))
+      await sendNotification('', {
+        userEmail: ADMIN_EMAIL || '',
+        toAdmin: true,
+        title: 'Pet Walking Cancelled by Customer',
+        message: `Walking request for ${walkingCancelTarget.petName} on ${walkingCancelTarget.walkingDate} was cancelled by ${walkingCancelTarget.ownerName}. Reason: ${walkingCancelReason.trim()}`,
+        type: 'walking_cancelled',
+        bookingId: walkingCancelTarget.id,
+        actionUrl: '/admin/walking',
+      })
+      setCancelToast('Pet walking booking cancelled successfully.')
+      setWalkingCancelTarget(null)
+      setWalkingCancelReason('')
+    } catch (err) {
+      alert('Could not cancel walking booking. Please try again.')
+    }
+    setCancellingWalkingId('')
+  }
+
+  useEffect(() => {
+    fetchWalkingSettings(db).then(setWalkingSettings).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!walkingRescheduleTarget?.id || !walkingRescheduleDate) {
+      setWalkingRescheduleBookedSlots([])
+      return
+    }
+    let ignore = false
+    async function fetchBookedWalkingSlots() {
+      try {
+        const q = query(
+          collection(db, 'walkingBookings'),
+          where('walkingDate', '==', walkingRescheduleDate)
+        )
+        const snap = await getDocs(q)
+        const counts = {}
+        snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(item => item.id !== walkingRescheduleTarget.id && (item.status || '') !== 'cancelled')
+          .forEach(item => {
+            const s = item.walkingSlot || item.slot
+            if (s) counts[s] = (counts[s] || 0) + 1
+          })
+        const cap = Math.max(1, Number(walkingSettings?.maxCapacityPerSlot || 2))
+        if (!ignore) {
+          setWalkingRescheduleBookedSlots(
+            Object.entries(counts).filter(([, count]) => count >= cap).map(([slot]) => slot)
+          )
+        }
+      } catch {
+        if (!ignore) setWalkingRescheduleBookedSlots([])
+      }
+    }
+    fetchBookedWalkingSlots()
+    return () => { ignore = true }
+  }, [walkingRescheduleTarget?.id, walkingRescheduleDate, walkingSettings?.maxCapacityPerSlot])
+
+  const openWalkingRescheduleModal = (booking) => {
+    setWalkingRescheduleTarget(booking)
+    setWalkingRescheduleDate(booking.walkingDate || booking.date || '')
+    setWalkingRescheduleSlot(booking.walkingSlot || booking.slot || '')
+    setWalkingRescheduleBookedSlots([])
+  }
+
+  const confirmWalkingReschedule = async () => {
+    if (!walkingRescheduleTarget || !walkingRescheduleDate || !walkingRescheduleSlot) return
+    const prevDate = walkingRescheduleTarget.walkingDate || walkingRescheduleTarget.date || ''
+    const prevSlot = walkingRescheduleTarget.walkingSlot || walkingRescheduleTarget.slot || ''
+    if (walkingRescheduleDate === prevDate && walkingRescheduleSlot === prevSlot) {
+      setRescheduleToast('Cannot reschedule to the same slot. Please select a different slot.')
+      return
+    }
+
+    setReschedulingWalkingId(walkingRescheduleTarget.id)
+    try {
+      const patch = {
+        date: walkingRescheduleDate,
+        walkingDate: walkingRescheduleDate,
+        slot: walkingRescheduleSlot,
+        walkingSlot: walkingRescheduleSlot,
+        customTimeRequested: '',
+        customTimeNote: '',
+        updatedAt: serverTimestamp(),
+        rescheduledAt: serverTimestamp(),
+        rescheduledBy: 'user',
+      }
+      await setDoc(doc(db, 'walkingBookings', walkingRescheduleTarget.id), patch, { merge: true })
+      setWalkings(prev => prev.map(w => w.id === walkingRescheduleTarget.id ? { ...w, ...patch, updatedAt: new Date(), rescheduledAt: new Date() } : w))
+      if (selectedWalking && selectedWalking.id === walkingRescheduleTarget.id) {
+        setSelectedWalking(prev => ({ ...prev, ...patch }))
+      }
+      await sendNotification('', {
+        userEmail: ADMIN_EMAIL || '',
+        toAdmin: true,
+        title: 'Pet Walking Rescheduled by Customer',
+        message: `Walking request for ${walkingRescheduleTarget.petName || walkingRescheduleTarget.dogName || 'Dog'} was rescheduled to ${walkingRescheduleDate} at ${walkingRescheduleSlot} by ${walkingRescheduleTarget.ownerName || 'Customer'}.`,
+        type: 'walking_rescheduled',
+        bookingId: walkingRescheduleTarget.id,
+        actionUrl: '/admin/walking',
+      })
+      setRescheduleToast('Pet walking session rescheduled successfully.')
+      setWalkingRescheduleTarget(null)
+      setWalkingRescheduleDate('')
+      setWalkingRescheduleSlot('')
+    } catch (err) {
+      alert('Could not reschedule walking appointment. Please try again.')
+    } finally {
+      setReschedulingWalkingId('')
+    }
   }
 
   useEffect(() => {
@@ -900,16 +1071,16 @@ export default function MyBookings() {
             <PawPrint size={20} className="my-bookings-paw-icon" />
             <div>
               <h1>My Bookings</h1>
-              <p>{domainTab === 'boarding' ? `${boardings.length} total boarding stay${boardings.length !== 1 ? 's' : ''}` : `${bookings.length} total appointment${bookings.length !== 1 ? 's' : ''}`}</p>
+              <p>{domainTab === 'walking' ? `${walkings.length} total dog walk${walkings.length !== 1 ? 's' : ''}` : domainTab === 'boarding' ? `${boardings.length} total boarding stay${boardings.length !== 1 ? 's' : ''}` : `${bookings.length} total appointment${bookings.length !== 1 ? 's' : ''}`}</p>
             </div>
           </div>
-          <Link to={domainTab === 'boarding' ? "/boarding" : "/book"} className="btn btn-primary my-bookings-new">
-            <Plus size={16} /> {domainTab === 'boarding' ? 'New Boarding Stay' : 'New Grooming'}
+          <Link to={domainTab === 'walking' ? "/book-walking" : domainTab === 'boarding' ? "/boarding" : "/book"} className="btn btn-primary my-bookings-new">
+            <Plus size={16} /> {domainTab === 'walking' ? 'Book a Walk' : domainTab === 'boarding' ? 'New Boarding Stay' : 'New Grooming'}
           </Link>
         </div>
 
         {/* Domain Switcher */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '22px' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '22px', flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={() => setDomainTab('grooming')}
@@ -947,6 +1118,25 @@ export default function MyBookings() {
             }}
           >
             <Building2 size={14} /> Pet Boarding ({boardings.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setDomainTab('walking')}
+            style={{
+              padding: '9px 16px',
+              borderRadius: '12px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: `1.5px solid ${domainTab === 'walking' ? 'var(--accent)' : 'var(--border)'}`,
+              background: domainTab === 'walking' ? 'var(--accent-bg)' : 'var(--surface)',
+              color: domainTab === 'walking' ? 'var(--accent)' : 'var(--muted)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <Footprints size={14} /> Dog Walking ({walkings.length})
           </button>
         </div>
 
@@ -1090,6 +1280,147 @@ export default function MyBookings() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        ) : domainTab === 'walking' ? (
+          <div>
+            {/* Walking Stats */}
+            <div className="my-bookings-stats">
+              <div className="my-bookings-stat-card">
+                <span>Total Walks</span>
+                <strong>{walkings.length}</strong>
+              </div>
+              <div className="my-bookings-stat-card">
+                <span>Pending Review</span>
+                <strong style={{ color: '#f59e0b' }}>{walkings.filter(w => w.status === 'pending').length}</strong>
+              </div>
+              <div className="my-bookings-stat-card">
+                <span>Confirmed</span>
+                <strong style={{ color: 'var(--accent)' }}>{walkings.filter(w => w.status === 'confirmed').length}</strong>
+              </div>
+              <div className="my-bookings-stat-card">
+                <span>Completed</span>
+                <strong style={{ color: '#10b981' }}>{walkings.filter(w => w.status === 'completed').length}</strong>
+              </div>
+            </div>
+
+            {walkingLoading ? (
+              <Spinner text="Loading walking appointments..." />
+            ) : walkings.length === 0 ? (
+              <div className="my-bookings-empty" style={{ padding: '48px 20px', textAlign: 'center', background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                <Footprints size={36} style={{ color: 'var(--muted)', margin: '0 auto 12px' }} />
+                <p style={{ fontWeight: 700, fontSize: '16px', color: 'var(--text)', margin: '0 0 6px' }}>No dog walks booked yet</p>
+                <span style={{ color: 'var(--muted)', fontSize: '13px', display: 'block', marginBottom: '18px' }}>Schedule daily morning or evening walks for your pooch.</span>
+                <Link to="/book-walking" className="btn btn-primary">Book a Walk</Link>
+              </div>
+            ) : (
+              <div className="my-bookings-list">
+                {walkings.map(w => {
+                  const petName = w.petName || w.dogName || 'Dog'
+                  const petBreed = w.petBreed || w.breed || 'Dog'
+                  const walkDate = w.walkingDate || w.date || ''
+                  const walkSlot = w.walkingSlot || w.slot || 'Custom Timing'
+                  const duration = w.durationMinutes || w.duration || 30
+                  const address = w.pickupAddress || w.address || ''
+                  const price = w.totalPrice || 199
+                  const customTime = w.customTimeRequested || w.customTimeNote || ''
+                  const wpMsg = buildWalkingWhatsAppMessage(w, businessInfo?.name || shopName)
+                  const wpUrl = `https://wa.me/${(adminWhatsappNumber || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(wpMsg)}`
+
+                  return (
+                    <div
+                      key={w.id}
+                      className="my-booking-row"
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        if (e.target.closest && e.target.closest('button, a')) return
+                        setSelectedWalking(w)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelectedWalking(w)
+                        }
+                      }}
+                    >
+                      <div className="my-booking-row-top">
+                        <div className="my-booking-date">
+                          <strong><Calendar size={12} /> {formatBoardingDate(walkDate)}</strong>
+                          <small><Clock size={12} /> {walkSlot}</small>
+                        </div>
+                        <div className="my-booking-badges">
+                          <span className={`badge ${STATUS_BADGE[w.status] || 'badge-pending'} my-booking-status`}>
+                            {statusLabel(w.status)}
+                          </span>
+                          <span className="badge" style={{ background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent-border)' }}>
+                            {duration}m Walk
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="my-booking-row-body">
+                        <div className="my-booking-main-row">
+                          <div className="my-booking-pet-thumb placeholder" style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}>
+                            <Footprints size={18} />
+                          </div>
+                          <div className="my-booking-main-copy">
+                            <strong>{petName} ({petBreed})</strong>
+                            <small title={address}>
+                              <MapPin size={11} style={{ display: 'inline', verticalAlign: '-1px' }} /> {address ? (address.length > 45 ? `${address.slice(0, 45)}...` : address) : (w.area || 'Dhayari')}
+                            </small>
+                            <div className="my-booking-row-meta">
+                              <span>Area: {w.area || 'Dhayari'}</span>
+                              <span style={{ color: 'var(--accent)', fontWeight: 700 }}>
+                                ₹{money(price)}
+                              </span>
+                              {customTime && (
+                                <span style={{ color: '#d97706', fontSize: '11px', fontWeight: 600 }}>
+                                  (Custom: {customTime})
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Bar */}
+                      <div className="my-booking-row-actions" onClick={e => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="my-booking-card-btn details"
+                          onClick={() => setSelectedWalking(w)}
+                        >
+                          Details
+                        </button>
+
+                        {(w.status === 'pending' || w.status === 'under_review' || !w.status) && (
+                          <button
+                            type="button"
+                            className="my-booking-card-btn reschedule"
+                            onClick={() => openWalkingRescheduleModal(w)}
+                          >
+                            <Clock size={12} /> Reschedule
+                          </button>
+                        )}
+
+                        {(w.status === 'pending' || w.status === 'confirmed') && (
+                          <button
+                            type="button"
+                            className="my-booking-card-btn cancel"
+                            onClick={() => {
+                              setWalkingCancelTarget(w)
+                              setWalkingCancelReason('')
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -2511,6 +2842,412 @@ export default function MyBookings() {
         onReasonChange={setBoardingCancelReason}
         reasonRequired
       />
+
+      {/* Pet Walking Details Modal (Native Paw Paw Theme & Layout) */}
+      {selectedWalking && (() => {
+        const petName = selectedWalking.petName || selectedWalking.dogName || 'Dog'
+        const petBreed = selectedWalking.petBreed || selectedWalking.breed || 'Dog'
+        const petAge = selectedWalking.petAge || selectedWalking.age || ''
+        const walkDate = selectedWalking.walkingDate || selectedWalking.date || ''
+        const walkSlot = selectedWalking.walkingSlot || selectedWalking.slot || 'Custom Timing'
+        const duration = selectedWalking.durationMinutes || selectedWalking.duration || 30
+        const address = selectedWalking.pickupAddress || selectedWalking.address || ''
+        const area = selectedWalking.area || 'Dhayari'
+        const landmark = selectedWalking.landmark || ''
+        const price = selectedWalking.totalPrice || 199
+        const customTime = selectedWalking.customTimeRequested || selectedWalking.customTimeNote || ''
+        const notes = selectedWalking.notes || selectedWalking.specialInstructions || selectedWalking.behaviorNotes || ''
+        const walkerInst = selectedWalking.walkerInstructions || selectedWalking.notes || ''
+        const isPendingOrConfirmed = selectedWalking.status === 'pending' || selectedWalking.status === 'confirmed'
+        const wpMsg = buildWalkingWhatsAppMessage(selectedWalking, businessInfo?.name || shopName)
+        const wpUrl = `https://wa.me/${(adminWhatsappNumber || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(wpMsg)}`
+
+        return (
+          <div className="my-booking-modal-overlay boarding-modal-overlay" onClick={() => setSelectedWalking(null)}>
+            <div className="boarding-details-modal walking-details-modal" onClick={e => e.stopPropagation()}>
+              {/* Modal Header */}
+              <div className="details-modal-header">
+                <div className="details-header-top-row">
+                  <h2 className="details-title">Dog Walking Details</h2>
+
+                  <div className="header-actions-row">
+                    {adminWhatsappNumber && (
+                      <a
+                        href={wpUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="details-header-btn whatsapp"
+                        aria-label="Send details to WhatsApp"
+                      >
+                        <MessageCircle size={14} /> <span>WhatsApp</span>
+                      </a>
+                    )}
+
+                    <button
+                      type="button"
+                      className="details-close-btn"
+                      onClick={() => setSelectedWalking(null)}
+                      aria-label="Close modal"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Row 2: Status badge and Request ID */}
+                <div className="details-header-sub-row">
+                  <span className={`boarding-status-pill ${selectedWalking.status || 'pending'}`}>
+                    {selectedWalking.status === 'completed' && <CheckCircle2 size={13} />}
+                    {selectedWalking.status === 'confirmed' && <Check size={13} />}
+                    {selectedWalking.status === 'cancelled' && <X size={13} />}
+                    <span>{statusLabel(selectedWalking.status)}</span>
+                  </span>
+                  <span className="details-ref-id">{shortId(selectedWalking.id)}</span>
+                </div>
+              </div>
+
+              {/* Modal Scrollable Body */}
+              <div className="details-modal-body">
+                {/* SECTION 1: Dog & Owner Details */}
+                <div className="boarding-section-card">
+                  <div className="section-card-header">
+                    <div className="section-icon-wrap paw">
+                      <PawPrint size={16} />
+                    </div>
+                    <h3>Dog & Owner Details</h3>
+                  </div>
+
+                  <div className="pet-hero-row">
+                    <div className="pet-avatar-large">
+                      <div className="avatar-fallback" style={{ display: 'flex' }}>
+                        <Footprints size={24} />
+                      </div>
+                    </div>
+
+                    <div className="pet-hero-info">
+                      <strong className="pet-hero-name">{petName}</strong>
+                      <div className="pet-hero-subtitle">
+                        Dog • {petBreed}
+                      </div>
+
+                      <div className="pet-pills-row">
+                        {petAge && (
+                          <span className="pet-pill">
+                            <Calendar size={12} /> {petAge}
+                          </span>
+                        )}
+                        <span className="pet-pill">
+                          <Footprints size={12} /> {duration} Mins Walk
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="detail-two-col-grid">
+                    <div className="detail-item">
+                      <span className="detail-label"><User size={14} /> Owner Name</span>
+                      <strong className="detail-val">{selectedWalking.ownerName || 'N/A'}</strong>
+                    </div>
+
+                    <div className="detail-item">
+                      <span className="detail-label"><Phone size={14} /> Contact Number</span>
+                      <strong className="detail-val">{selectedWalking.phone || 'N/A'}</strong>
+                    </div>
+
+                    {selectedWalking.whatsappNumber && (
+                      <div className="detail-item">
+                        <span className="detail-label"><MessageCircle size={14} /> WhatsApp Number</span>
+                        <strong className="detail-val">{selectedWalking.whatsappNumber}</strong>
+                      </div>
+                    )}
+
+                    {selectedWalking.emergencyContact && (
+                      <div className="detail-item">
+                        <span className="detail-label"><ShieldCheck size={14} /> Emergency Contact</span>
+                        <strong className="detail-val">{selectedWalking.emergencyContact}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* SECTION 2: Walk Schedule & Timing */}
+                <div className="boarding-section-card">
+                  <div className="section-card-header">
+                    <div className="section-icon-wrap calendar">
+                      <Calendar size={16} />
+                    </div>
+                    <h3>Walk Schedule & Timing</h3>
+                  </div>
+
+                  <div className="detail-two-col-grid">
+                    <div className="detail-item">
+                      <span className="detail-label"><Calendar size={14} /> Walking Date</span>
+                      <strong className="detail-val">{formatBoardingDate(walkDate)}</strong>
+                    </div>
+
+                    <div className="detail-item">
+                      <span className="detail-label"><Clock size={14} /> Time Slot</span>
+                      <strong className="detail-val">{walkSlot}</strong>
+                    </div>
+
+                    <div className="detail-item">
+                      <span className="detail-label"><Footprints size={14} /> Duration</span>
+                      <strong className="detail-val">{duration} Minutes Session</strong>
+                    </div>
+
+                    <div className="detail-item">
+                      <span className="detail-label"><IndianRupee size={14} /> Per-Walk Rate</span>
+                      <strong className="detail-val" style={{ color: 'var(--accent)', fontWeight: 800 }}>
+                        ₹{money(price)}
+                      </strong>
+                    </div>
+
+                    {customTime && (
+                      <div className="detail-item full">
+                        <span className="detail-label"><Sparkles size={14} /> Custom Timing Request</span>
+                        <strong className="detail-val" style={{ color: '#d97706' }}>{customTime}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* SECTION 3: Pick-up Location */}
+                <div className="boarding-section-card">
+                  <div className="section-card-header">
+                    <div className="section-icon-wrap home">
+                      <MapPin size={16} />
+                    </div>
+                    <h3>Pick-up Location</h3>
+                  </div>
+
+                  <div className="detail-two-col-grid">
+                    <div className="detail-item full">
+                      <span className="detail-label"><MapPin size={14} /> Complete Address</span>
+                      <strong className="detail-val">{address || 'No address provided'}</strong>
+                    </div>
+
+                    <div className="detail-item">
+                      <span className="detail-label"><Compass size={14} /> Locality / Area</span>
+                      <strong className="detail-val">{area}</strong>
+                    </div>
+
+                    {landmark && (
+                      <div className="detail-item">
+                        <span className="detail-label"><Store size={14} /> Landmark</span>
+                        <strong className="detail-val">{landmark}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* SECTION 4: Notes & Instructions */}
+                {(notes || walkerInst) && (
+                  <div className="boarding-section-card">
+                    <div className="section-card-header">
+                      <div className="section-icon-wrap paw">
+                        <Info size={16} />
+                      </div>
+                      <h3>Notes & Walker Instructions</h3>
+                    </div>
+
+                    <div className="detail-two-col-grid">
+                      {notes && (
+                        <div className="detail-item full">
+                          <span className="detail-label"><Info size={14} /> Pet Behavior & Habits</span>
+                          <strong className="detail-val">{notes}</strong>
+                        </div>
+                      )}
+
+                      {walkerInst && walkerInst !== notes && (
+                        <div className="detail-item full">
+                          <span className="detail-label"><Footprints size={14} /> Instructions for Walker</span>
+                          <strong className="detail-val">{walkerInst}</strong>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer Actions */}
+              {isPendingOrConfirmed && (
+                <div className="details-modal-footer boarding-modal-footer">
+                  {(selectedWalking.status === 'pending' || selectedWalking.status === 'under_review' || !selectedWalking.status) && (
+                    <button
+                      type="button"
+                      className="grooming-action-btn reschedule"
+                      onClick={() => {
+                        const target = selectedWalking
+                        setSelectedWalking(null)
+                        openWalkingRescheduleModal(target)
+                      }}
+                    >
+                      <Clock size={15} /> Reschedule Walk
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    className="grooming-action-btn cancel"
+                    onClick={() => {
+                      const target = selectedWalking
+                      setSelectedWalking(null)
+                      setWalkingCancelTarget(target)
+                      setWalkingCancelReason('')
+                    }}
+                  >
+                    <X size={15} /> Cancel Walk
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Walking Cancel Modal */}
+      <ConfirmModal
+        open={!!walkingCancelTarget}
+        title="Cancel Dog Walking Session"
+        message={walkingCancelTarget ? `Are you sure you want to cancel the walking appointment for ${walkingCancelTarget.petName || walkingCancelTarget.dogName || 'Dog'} on ${formatBoardingDate(walkingCancelTarget.walkingDate || walkingCancelTarget.date)} at ${walkingCancelTarget.walkingSlot || walkingCancelTarget.slot || 'scheduled time'}?` : ''}
+        confirmText="Yes, cancel walk"
+        cancelText="Keep walk"
+        loading={!!walkingCancelTarget && cancellingWalkingId === walkingCancelTarget.id}
+        onCancel={() => { setWalkingCancelTarget(null); setWalkingCancelReason('') }}
+        onConfirm={cancelWalkingBooking}
+        reasonLabel="Cancellation reason"
+        reasonPlaceholder="Please tell us why you are cancelling this walking appointment"
+        reasonValue={walkingCancelReason}
+        onReasonChange={setWalkingCancelReason}
+        reasonRequired
+      />
+
+      {/* Walking Reschedule Modal */}
+      {walkingRescheduleTarget && (() => {
+        const isWalkingOpen = isWalkingDayOpen(walkingSettings, walkingRescheduleDate)
+        const isToday = walkingRescheduleDate === dateKeyLocal()
+        const nowMins = new Date().getHours() * 60 + new Date().getMinutes()
+        const petName = walkingRescheduleTarget.petName || walkingRescheduleTarget.dogName || 'Dog'
+        const currentScheduleDate = walkingRescheduleTarget.walkingDate || walkingRescheduleTarget.date || '-'
+        const currentScheduleSlot = walkingRescheduleTarget.walkingSlot || walkingRescheduleTarget.slot || '-'
+
+        return (
+          <div className="my-booking-modal-overlay" onClick={() => setWalkingRescheduleTarget(null)}>
+            <section className="my-booking-modal" onClick={event => event.stopPropagation()} style={{ maxWidth: '480px' }}>
+              <div className="my-booking-modal-head">
+                <div>
+                  <h2>Reschedule Dog Walk</h2>
+                  <p>{petName} · Current: {formatBoardingDate(currentScheduleDate)} ({currentScheduleSlot})</p>
+                </div>
+                <button type="button" onClick={() => setWalkingRescheduleTarget(null)} aria-label="Close reschedule dialog">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="my-booking-detail-grid">
+                <div>
+                  <span>Current Date</span>
+                  <strong>{formatBoardingDate(currentScheduleDate)}</strong>
+                </div>
+                <div>
+                  <span>Current Time Slot</span>
+                  <strong>{currentScheduleSlot}</strong>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '16px' }}>
+                <label className="input-label" style={{ display: 'block', marginBottom: '8px' }}>Select New Date</label>
+                <input
+                  type="date"
+                  className="input"
+                  min={dateKeyLocal()}
+                  value={walkingRescheduleDate}
+                  onChange={e => {
+                    setWalkingRescheduleDate(e.target.value)
+                    setWalkingRescheduleSlot('')
+                  }}
+                />
+                {!isWalkingOpen && (
+                  <span style={{ fontSize: '12px', color: '#ef4444', marginTop: '6px', display: 'block', fontWeight: 600 }}>
+                    ⚠️ Paw Paw is closed for dog walking on this day. Please select another day.
+                  </span>
+                )}
+              </div>
+
+              {walkingRescheduleDate && isWalkingOpen && (
+                <div style={{ marginTop: '16px' }}>
+                  <label className="input-label" style={{ display: 'block', marginBottom: '8px' }}>Select New Time Slot</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
+                    {(walkingSettings?.slots || DEFAULT_WALKING_SLOTS).map(slot => {
+                      const isSelected = walkingRescheduleSlot === slot
+                      const isFull = walkingRescheduleBookedSlots.includes(slot)
+                      const slotMins = parseSlotTimeToMinutes(slot)
+                      const isPast = isToday && slotMins <= nowMins + 30
+                      const disabled = !isWalkingOpen || isFull || isPast
+
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => {
+                            if (currentScheduleDate === walkingRescheduleDate && currentScheduleSlot === slot) {
+                              setRescheduleToast('Cannot reschedule to the same slot. Please choose a different slot.')
+                              return
+                            }
+                            setWalkingRescheduleSlot(slot)
+                          }}
+                          style={{
+                            background: isSelected ? 'var(--accent)' : disabled ? 'var(--surface)' : 'var(--card)',
+                            color: isSelected ? '#ffffff' : disabled ? 'var(--muted)' : 'var(--text)',
+                            border: `1.5px solid ${isSelected ? 'var(--accent)' : disabled ? 'var(--border)' : 'var(--accent-border)'}`,
+                            borderRadius: '10px',
+                            padding: '10px 4px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            cursor: disabled ? 'not-allowed' : 'pointer',
+                            opacity: disabled ? 0.45 : 1,
+                            textAlign: 'center',
+                            position: 'relative',
+                            whiteSpace: 'nowrap',
+                            minWidth: 0,
+                            width: '100%',
+                            boxSizing: 'border-box',
+                          }}
+                        >
+                          {slot}
+                          {isFull && <span style={{ display: 'block', fontSize: '9px', fontWeight: 600, color: '#ef4444' }}>Full</span>}
+                          {isPast && <span style={{ display: 'block', fontSize: '9px', fontWeight: 600, color: 'var(--muted)' }}>Passed</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="my-booking-modal-actions" style={{ marginTop: '20px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setWalkingRescheduleTarget(null)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={confirmWalkingReschedule}
+                  disabled={
+                    !walkingRescheduleDate ||
+                    !walkingRescheduleSlot ||
+                    !isWalkingOpen ||
+                    reschedulingWalkingId === walkingRescheduleTarget.id ||
+                    walkingRescheduleBookedSlots.includes(walkingRescheduleSlot)
+                  }
+                >
+                  {reschedulingWalkingId === walkingRescheduleTarget.id ? 'Rescheduling...' : 'Confirm Reschedule'}
+                </button>
+              </div>
+            </section>
+          </div>
+        )
+      })()}
       <style>{`
         .my-bookings-page {
           background: var(--bg);
@@ -2977,15 +3714,67 @@ export default function MyBookings() {
           background: rgba(16, 185, 129, 0.12);
         }
 
+        .my-booking-card-btn.details {
+          background: rgba(184, 134, 11, 0.08);
+          border-color: rgba(184, 134, 11, 0.35);
+          color: #B8860B;
+          font-weight: 700;
+        }
+
+        .my-booking-card-btn.details:hover {
+          background: rgba(184, 134, 11, 0.16);
+          border-color: #B8860B;
+          color: #92400E;
+          transform: translateY(-1px);
+        }
+
+        .theme-dark .my-booking-card-btn.details,
+        .theme-purple .my-booking-card-btn.details {
+          color: #FBBF24;
+          border-color: rgba(251, 191, 36, 0.35);
+          background: rgba(217, 119, 6, 0.15);
+        }
+
+        .my-booking-card-btn.whatsapp {
+          background: #F0FDF4;
+          border-color: #BBF7D0;
+          color: #15803D;
+          font-weight: 700;
+        }
+
+        .my-booking-card-btn.whatsapp:hover {
+          background: #DCFCE7;
+          border-color: #86EFAC;
+          color: #166534;
+          transform: translateY(-1px);
+        }
+
+        .theme-dark .my-booking-card-btn.whatsapp,
+        .theme-purple .my-booking-card-btn.whatsapp {
+          color: #4ADE80;
+          border-color: rgba(74, 222, 128, 0.35);
+          background: rgba(34, 197, 94, 0.15);
+        }
+
         .my-booking-card-btn.cancel {
-          background: transparent;
-          border-color: rgba(239, 68, 68, 0.3);
-          color: #ef4444;
+          background: #FEF2F2;
+          border-color: #FECACA;
+          color: #DC2626;
+          font-weight: 700;
         }
 
         .my-booking-card-btn.cancel:hover {
-          background: rgba(239, 68, 68, 0.1);
-          border-color: #ef4444;
+          background: #FEE2E2;
+          border-color: #FCA5A5;
+          color: #B91C1C;
+          transform: translateY(-1px);
+        }
+
+        .theme-dark .my-booking-card-btn.cancel,
+        .theme-purple .my-booking-card-btn.cancel {
+          color: #F87171;
+          border-color: rgba(248, 113, 113, 0.35);
+          background: rgba(239, 68, 68, 0.14);
         }
 
         .my-booking-row-images {

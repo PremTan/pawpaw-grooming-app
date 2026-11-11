@@ -12,6 +12,7 @@ import Home        from './pages/Home'
 import Services    from './pages/Services'
 import Book        from './pages/Book'
 import BookBoarding from './pages/BookBoarding'
+import BookWalking  from './pages/BookWalking'
 import MyBookings  from './pages/MyBookings'
 import MyPets      from './pages/MyPets'
 import Profile     from './pages/Profile'
@@ -28,6 +29,7 @@ const AdminLayout = lazy(() => import('./admin/AdminLayout'))
 const AdminDashboard = lazy(() => import('./admin/AdminDashboard'))
 const AdminBookings = lazy(() => import('./admin/AdminBookings'))
 const AdminBoarding = lazy(() => import('./admin/AdminBoarding'))
+const AdminWalking = lazy(() => import('./admin/AdminWalking'))
 const AdminReviews = lazy(() => import('./admin/AdminReviews'))
 const AdminGoogleReviews = lazy(() => import('./admin/AdminGoogleReviews'))
 const AdminCustomers = lazy(() => import('./admin/AdminCustomers'))
@@ -108,6 +110,7 @@ export default function App() {
         <Route path="bookings"  element={<AdminBookings />} />
         <Route path="bookings/:bookingId" element={<AdminBookings />} />
         <Route path="boarding"  element={<AdminBoarding />} />
+        <Route path="walking"   element={<AdminWalking />} />
         <Route path="invoices" element={<AdminInvoices />} />
         <Route path="reviews"   element={<AdminReviews />} />
         <Route path="google-reviews" element={<AdminGoogleReviews />} />
@@ -137,6 +140,8 @@ export default function App() {
         <Route path="book" element={<ProtectedRoute><Book /></ProtectedRoute>} />
         <Route path="boarding" element={<ProtectedRoute><BookBoarding /></ProtectedRoute>} />
         <Route path="book-boarding" element={<ProtectedRoute><BookBoarding /></ProtectedRoute>} />
+        <Route path="walking" element={<ProtectedRoute><BookWalking /></ProtectedRoute>} />
+        <Route path="book-walking" element={<ProtectedRoute><BookWalking /></ProtectedRoute>} />
         <Route path="profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="my-pets" element={<ProtectedRoute><MyPets /></ProtectedRoute>} />
         <Route path="my-bookings" element={<ProtectedRoute><MyBookings /></ProtectedRoute>} />

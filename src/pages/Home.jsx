@@ -10,6 +10,7 @@ import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
 import { countOpenDays, fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
 import { fetchBoardingSettings } from '../utils/boardingSettings'
+import { fetchWalkingSettings } from '../utils/walkingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
 import { optimizeCloudinary } from '../utils/imageOptimizer'
 import { useAuth } from '../context/AuthContext'
@@ -18,7 +19,8 @@ import { BOOKING_STATUS } from '../utils/services'
 import boardingHeroPets from '../assets/boarding-hero-pets.png'
 import boardingDogAvatar from '../assets/boarding-dog-avatar.png'
 import boardingCatAvatar from '../assets/boarding-cat-avatar.png'
-import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils } from 'lucide-react'
+import petWalkingHero from '../assets/pet-walking-hero.jpg'
+import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils, Footprints } from 'lucide-react'
 
 const HERO_FALLBACK_IMAGE = '/hero-fallback.webp'
 const DEFAULT_HERO_IMAGES = [
@@ -230,6 +232,7 @@ let cachedVisitImages = null
 let cachedHeroFetchTime = 0
 let cachedBookingSettings = null
 let cachedBoardingSettings = null
+let cachedWalkingSettings = null
 const HERO_CACHE_TTL = 3 * 60 * 1000
 
 function HeroSlider() {
@@ -248,6 +251,8 @@ function HeroSlider() {
   const [bookingSettings, setBookingSettings] = useState(cachedBookingSettings)
   const [boardingSettings, setBoardingSettings] = useState(cachedBoardingSettings)
   const [showBoardingLearnMore, setShowBoardingLearnMore] = useState(false)
+  const [walkingSettings, setWalkingSettings] = useState(cachedWalkingSettings)
+  const [showWalkingLearnMore, setShowWalkingLearnMore] = useState(false)
   const [rescheduleToast, setRescheduleToast] = useState('')
   const [rescheduleTarget, setRescheduleTarget] = useState(null)
   const [rescheduleDate, setRescheduleDate] = useState('')
@@ -309,6 +314,7 @@ function HeroSlider() {
   useEffect(() => {
     fetchBookingSettings(db).then(setBookingSettings).catch(() => { })
     fetchBoardingSettings(db).then(setBoardingSettings).catch(() => { })
+    fetchWalkingSettings(db).then(setWalkingSettings).catch(() => { })
   }, [])
 
   useEffect(() => {
@@ -835,6 +841,199 @@ function HeroSlider() {
           </div>
         )}
 
+        {/* Pet Walking — Daily Walks & Exercise */}
+        <section className="home-boarding-section home-walking-section" aria-label="Pet Walking Service" style={{ marginTop: '16px' }}>
+          <div className="home-boarding-card">
+            <div className="home-boarding-content">
+              {/* Top Bar with PET WALKING pill and NEW badge */}
+              <div className="home-boarding-top-bar">
+                <div className="home-boarding-pill">
+                  <Footprints size={13} /> PET WALKING
+                </div>
+                {(walkingSettings?.showNewBadge !== false) && (
+                  <div className="home-boarding-new-badge" aria-label="New feature announcement">
+                    <Sparkles size={11} /> NEW
+                  </div>
+                )}
+              </div>
+
+              <h2 className="home-boarding-title">
+                Daily Walks & Exercise <br />
+                <span className="gold-accent">Happy Tails Every Day</span>
+              </h2>
+
+              <p className="home-boarding-desc">
+                Reliable, loving dog walkers for your pooch around Dhayari & nearby areas. Morning & evening shifts with live WhatsApp route updates.
+              </p>
+
+              {/* Pricing Cards */}
+              <div className="home-boarding-prices" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
+                <div className="home-boarding-price-card">
+                  <div className="home-boarding-avatar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-bg)', color: 'var(--accent)' }}>
+                    <Footprints size={22} />
+                  </div>
+                  <div className="home-boarding-price-info">
+                    <div className="home-boarding-price-label">30 Min Walk</div>
+                    <div className="home-boarding-price-amount">
+                      ₹{walkingSettings?.rate30Min || 199} <span className="home-boarding-price-unit">/ session</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="home-boarding-price-card">
+                  <div className="home-boarding-avatar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-bg)', color: 'var(--accent)' }}>
+                    <Footprints size={22} />
+                  </div>
+                  <div className="home-boarding-price-info">
+                    <div className="home-boarding-price-label">45 Min Walk</div>
+                    <div className="home-boarding-price-amount">
+                      ₹{walkingSettings?.rate45Min || 279} <span className="home-boarding-price-unit">/ session</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="home-boarding-price-card">
+                  <div className="home-boarding-avatar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-bg)', color: 'var(--accent)' }}>
+                    <Footprints size={22} />
+                  </div>
+                  <div className="home-boarding-price-info">
+                    <div className="home-boarding-price-label">60 Min Walk</div>
+                    <div className="home-boarding-price-amount">
+                      ₹{walkingSettings?.rate60Min || 349} <span className="home-boarding-price-unit">/ session</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className={`home-boarding-actions ${walkingSettings?.acceptBookings === false ? 'is-closed' : ''}`}>
+                {(walkingSettings?.acceptBookings !== false) ? (
+                  <Link to="/book-walking" className="home-boarding-btn-primary">
+                    <Footprints size={16} /> Book a Walk <ArrowRight size={15} />
+                  </Link>
+                ) : (
+                  <div className="home-boarding-closed-pill" title="Pet walking bookings are temporarily closed">
+                    <Clock size={15} /> Walking Bookings Temporarily Closed
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowWalkingLearnMore(true)}
+                  className="home-boarding-btn-secondary"
+                >
+                  Learn More <ArrowRight size={15} />
+                </button>
+              </div>
+            </div>
+
+            {/* Large Hero Image */}
+            <div
+              className="home-boarding-hero-wrap"
+              style={{
+                backgroundImage: `url(${petWalkingHero})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }}
+            >
+              <img
+                src={walkingSettings?.bannerImageUrl ? optimizeCloudinary(walkingSettings.bannerImageUrl, 800) : petWalkingHero}
+                alt="Happy dog enjoying daily outdoor walk"
+                className="home-boarding-pets-img"
+                loading="eager"
+                decoding="async"
+                onError={e => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = petWalkingHero;
+                }}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Pet Walking Learn More Modal */}
+        {showWalkingLearnMore && (
+          <div className="modal-overlay" onClick={() => setShowWalkingLearnMore(false)}>
+            <div className="reschedule-modal-card" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
+              <div className="reschedule-modal-header">
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Footprints size={20} style={{ color: 'var(--accent)' }} /> Paw Paw Pet Walking Guide
+                  </h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--muted)' }}>
+                    Daily energetic walks & exercise for dogs in Dhayari & nearby
+                  </p>
+                </div>
+                <button type="button" className="icon-btn" onClick={() => setShowWalkingLearnMore(false)}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gap: '12px', margin: '16px 0', maxHeight: '60vh', overflowY: 'auto' }}>
+                <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Footprints size={16} /> 1. Dedicated & Trained Dog Walkers
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    Individual attention, gentle handling, and safe leash walking adapted to your dog's size, temperament, and walking speed.
+                  </p>
+                </div>
+
+                <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Clock size={16} /> 2. Flexible Morning & Evening Shifts
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    Choose 30, 45, or 60 minutes across convenient morning (6:30 AM – 9:30 AM) and evening (5:00 PM – 8:00 PM) slots.
+                  </p>
+                </div>
+
+                <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <MessageCircle size={16} /> 3. WhatsApp Route & Photo Updates
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    Instant updates sent right to your phone so you know your dog had their pee, poop, hydration, and happy workout.
+                  </p>
+                </div>
+
+                <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <MapPin size={16} /> 4. Dhayari & Nearby Areas Covered
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    Doorstep pick-up & drop-off in Dhayari, Vadgaon Budruk, Narhe, Sinhagad Road, and nearby neighborhoods.
+                  </p>
+                </div>
+
+                <div style={{ padding: '14px', background: 'var(--accent-bg)', borderRadius: '14px', border: '1px solid var(--accent-border)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px' }}>
+                    Simple Per-Walk Pricing
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.5 }}>
+                    <strong>30 Min:</strong> ₹{walkingSettings?.rate30Min || 199} · <strong>45 Min:</strong> ₹{walkingSettings?.rate45Min || 279} · <strong>60 Min:</strong> ₹{walkingSettings?.rate60Min || 349}. Pay after confirmation or at pickup.
+                  </div>
+                </div>
+              </div>
+
+              <div className="reschedule-modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowWalkingLearnMore(false)}>
+                  Close
+                </button>
+                {(walkingSettings?.acceptBookings !== false) && (
+                  <Link
+                    to="/book-walking"
+                    className="btn btn-primary"
+                    onClick={() => setShowWalkingLearnMore(false)}
+                  >
+                    <Footprints size={15} /> Book a Walk
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {(user?.uid || user?.email) && (
           <section className="upcoming-appointment-section">
             <div className="upcoming-appointment-card">
@@ -1104,11 +1303,16 @@ export default function Home() {
   const [googleReviewUrl, setGoogleReviewUrl] = useState(() => cachedHomeSectionsData?.googleReviewUrl || '')
   const [homePetImages, setHomePetImages] = useState(() => cachedHomeSectionsData?.homePetImages || { cta: '', follow: '' })
   const [footerInfo, setFooterInfo] = useState(() => cachedHomeSectionsData?.footerInfo || { tagline: '', socials: [], phones: [], email: '' })
+  const [walkingSettings, setWalkingSettings] = useState(() => cachedWalkingSettings)
   const [reviewIndex, setReviewIndex] = useState(0)
   const [reviewCarouselHeight, setReviewCarouselHeight] = useState(0)
   const [touchStartX, setTouchStartX] = useState(null)
   const reviewCarouselRef = useRef(null)
   const reviewSlideRefs = useRef([])
+
+  useEffect(() => {
+    fetchWalkingSettings(db).then(setWalkingSettings).catch(() => {})
+  }, [])
 
   useEffect(() => {
     async function fetchStats() {
@@ -1272,8 +1476,18 @@ export default function Home() {
   }, [featuredReviews.length, reviewIndex])
 
   const shownServices = [
-    ...homeServices.slice(0, 5),
-    ...packages.slice(0, Math.max(0, 5 - homeServices.slice(0, 5).length)).map(pkg => ({
+    {
+      id: 'pet-walking',
+      name: 'Pet Walking',
+      description: 'Daily walks, exercise and happy tails for your dog in Dhayari.',
+      price: `From Rs. ${walkingSettings?.rate30Min || 199}`,
+      duration: '30 / 45 / 60 Mins',
+      icon: <Footprints size={30} />,
+      iconImageUrl: walkingSettings?.bannerImageUrl || petWalkingHero,
+      to: '/book-walking',
+    },
+    ...homeServices.slice(0, 4),
+    ...packages.slice(0, Math.max(0, 4 - homeServices.slice(0, 4).length)).map(pkg => ({
       id: pkg.id,
       name: pkg.name,
       description: pkg.description || 'Complete grooming for a clean, fresh and happy pet.',
