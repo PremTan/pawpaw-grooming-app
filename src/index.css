@@ -1102,6 +1102,11 @@
       color: #16A34A;
     }
 
+    .sheet-card-icon.walking {
+      background: #FEF3C7;
+      color: #D97706;
+    }
+
     .sheet-card-info {
       flex: 1;
       min-width: 0;

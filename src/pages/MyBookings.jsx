@@ -1362,8 +1362,12 @@ export default function MyBookings() {
 
                       <div className="my-booking-row-body">
                         <div className="my-booking-main-row">
-                          <div className="my-booking-pet-thumb placeholder" style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}>
-                            <Footprints size={18} />
+                          <div className="my-booking-pet-thumb placeholder" style={{ background: 'var(--accent-bg)', color: 'var(--accent)', overflow: 'hidden' }}>
+                            {w.petPhotoUrl || w.photoUrl ? (
+                              <img src={w.petPhotoUrl || w.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <Footprints size={18} />
+                            )}
                           </div>
                           <div className="my-booking-main-copy">
                             <strong>{petName} ({petBreed})</strong>
@@ -2918,10 +2922,14 @@ export default function MyBookings() {
                   </div>
 
                   <div className="pet-hero-row">
-                    <div className="pet-avatar-large">
-                      <div className="avatar-fallback" style={{ display: 'flex' }}>
-                        <Footprints size={24} />
-                      </div>
+                    <div className="pet-avatar-large" style={{ overflow: 'hidden' }}>
+                      {selectedWalking.petPhotoUrl || selectedWalking.photoUrl ? (
+                        <img src={selectedWalking.petPhotoUrl || selectedWalking.photoUrl} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                      ) : (
+                        <div className="avatar-fallback" style={{ display: 'flex' }}>
+                          <Footprints size={24} />
+                        </div>
+                      )}
                     </div>
 
                     <div className="pet-hero-info">
@@ -3024,6 +3032,30 @@ export default function MyBookings() {
                     <div className="detail-item full">
                       <span className="detail-label"><MapPin size={14} /> Complete Address</span>
                       <strong className="detail-val">{address || 'No address provided'}</strong>
+                      {selectedWalking.mapPinUrl && (
+                        <div style={{ marginTop: '6px' }}>
+                          <a
+                            href={selectedWalking.mapPinUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              fontSize: '11.5px',
+                              fontWeight: 700,
+                              color: '#1d4ed8',
+                              background: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: '6px',
+                              padding: '4px 10px',
+                              textDecoration: 'none',
+                            }}
+                          >
+                            <MapPin size={12} /> View Map Pin in Google Maps ↗
+                          </a>
+                        </div>
+                      )}
                     </div>
 
                     <div className="detail-item">

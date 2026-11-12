@@ -36,6 +36,12 @@ export const DEFAULT_SERVICEABLE_AREAS = [
   'Sinhagad Road (Dhayari Phata to Toll Plaza)',
 ]
 
+export const DEFAULT_WALKING_DURATIONS = [
+  { duration: 30, price: 199, label: '30 Min Walk' },
+  { duration: 45, price: 279, label: '45 Min Walk' },
+  { duration: 60, price: 349, label: '60 Min Walk' },
+]
+
 export const DEFAULT_WALKING_SETTINGS = {
   active: true,
   acceptBookings: true,
@@ -43,12 +49,13 @@ export const DEFAULT_WALKING_SETTINGS = {
   rate30Min: 199,
   rate45Min: 279,
   rate60Min: 349,
+  durations: DEFAULT_WALKING_DURATIONS,
   maxCapacityPerSlot: 2, // Max dogs scheduled concurrently in the same slot
   operatingDays: DEFAULT_WALKING_DAYS,
   slots: DEFAULT_WALKING_SLOTS,
   serviceableAreas: DEFAULT_SERVICEABLE_AREAS,
   bannerImageUrl: '',
-  description: 'Daily walks, exercise, sniffing adventures, and happy tails for your dog.',
+  description: 'Reliable, loving dog walkers around Dhayari with morning & evening shifts.',
   guidelines: [
     'Solo or small-group walks managed by verified dog handlers.',
     'Leashed at all times with real-time GPS tracking and route safety.',
@@ -86,13 +93,31 @@ export async function fetchWalkingSettings(db) {
     const snap = await getDoc(doc(db, 'settings', 'walkingSettings'))
     if (!snap.exists()) return DEFAULT_WALKING_SETTINGS
     const data = snap.data() || {}
+
+    const rate30 = Number(data.rate30Min) || DEFAULT_WALKING_SETTINGS.rate30Min
+    const rate45 = Number(data.rate45Min) || DEFAULT_WALKING_SETTINGS.rate45Min
+    const rate60 = Number(data.rate60Min) || DEFAULT_WALKING_SETTINGS.rate60Min
+
+    const durations = Array.isArray(data.durations) && data.durations.length > 0
+      ? data.durations.map(d => ({
+          duration: Number(d.duration) || 30,
+          price: Number(d.price) || 0,
+          label: String(d.label || `${d.duration} Min Walk`).trim(),
+        }))
+      : [
+          { duration: 30, price: rate30, label: '30 Min Walk' },
+          { duration: 45, price: rate45, label: '45 Min Walk' },
+          { duration: 60, price: rate60, label: '60 Min Walk' },
+        ]
+
     return {
       active: data.active !== false && data.acceptBookings !== false,
       acceptBookings: data.acceptBookings !== false,
       showNewBadge: data.showNewBadge !== false,
-      rate30Min: Number(data.rate30Min) || DEFAULT_WALKING_SETTINGS.rate30Min,
-      rate45Min: Number(data.rate45Min) || DEFAULT_WALKING_SETTINGS.rate45Min,
-      rate60Min: Number(data.rate60Min) || DEFAULT_WALKING_SETTINGS.rate60Min,
+      rate30Min: rate30,
+      rate45Min: rate45,
+      rate60Min: rate60,
+      durations,
       maxCapacityPerSlot: Math.max(1, Number(data.maxCapacityPerSlot) || DEFAULT_WALKING_SETTINGS.maxCapacityPerSlot),
       operatingDays: { ...DEFAULT_WALKING_DAYS, ...(data.operatingDays || {}) },
       slots: Array.isArray(data.slots) && data.slots.length ? data.slots : DEFAULT_WALKING_SLOTS,
@@ -108,8 +133,18 @@ export async function fetchWalkingSettings(db) {
 }
 
 export async function saveWalkingSettings(db, patch = {}) {
+  const payload = { ...patch }
+  if (Array.isArray(payload.durations) && payload.durations.length > 0) {
+    const d30 = payload.durations.find(d => Number(d.duration) === 30)?.price
+    const d45 = payload.durations.find(d => Number(d.duration) === 45)?.price
+    const d60 = payload.durations.find(d => Number(d.duration) === 60)?.price
+    if (d30 !== undefined) payload.rate30Min = Number(d30)
+    if (d45 !== undefined) payload.rate45Min = Number(d45)
+    if (d60 !== undefined) payload.rate60Min = Number(d60)
+  }
+
   await setDoc(doc(db, 'settings', 'walkingSettings'), {
-    ...patch,
+    ...payload,
     updatedAt: serverTimestamp(),
   }, { merge: true })
 }

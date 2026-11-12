@@ -26,6 +26,9 @@ import {
   WALKING_STATUS_LABELS,
   WALKING_STATUS_BADGES,
 } from '../utils/walkingSettings'
+import { uploadToCloudinary } from '../utils/cloudinary'
+import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
+import petWalkingHero from '../assets/pet-walking-hero.jpg'
 import {
   Calendar,
   Check,
@@ -43,7 +46,9 @@ import {
   Save,
   Search,
   SlidersHorizontal,
+  Sparkles,
   Trash2,
+  Upload,
   User,
   X,
   XCircle,
@@ -77,11 +82,18 @@ export default function AdminWalking() {
   // Settings State
   const [settings, setSettings] = useState(DEFAULT_WALKING_SETTINGS)
   const [savingSettings, setSavingSettings] = useState(false)
+  const [settingsTab, setSettingsTab] = useState('durations') // 'durations' | 'slots' | 'general' | 'areas'
   const [newSlotInput, setNewSlotInput] = useState('')
   const [newAreaInput, setNewAreaInput] = useState('')
+  const [newDurationMins, setNewDurationMins] = useState(30)
+  const [newDurationPrice, setNewDurationPrice] = useState(199)
+  const [newDurationLabel, setNewDurationLabel] = useState('')
   const [toastMessage, setToastMessage] = useState('')
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
+  const [uploadingBanner, setUploadingBanner] = useState(false)
+  const [optimizingBanner, setOptimizingBanner] = useState(false)
+  const [bannerUploadError, setBannerUploadError] = useState('')
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -296,6 +308,32 @@ export default function AdminWalking() {
     }
   }
 
+  // Upload Homepage Banner Image
+  const handleBannerUpload = async (file) => {
+    if (!file) return
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      setBannerUploadError(err.message)
+      return
+    }
+    setBannerUploadError('')
+    setUploadingBanner(true)
+    try {
+      const url = await uploadToCloudinary(file, {
+        onOptimizeStart: () => setOptimizingBanner(true),
+        onOptimizeEnd: () => setOptimizingBanner(false),
+      })
+      setSettings(p => ({ ...p, bannerImageUrl: url }))
+      setToastMessage('Walking banner image uploaded. Click Save Settings to persist.')
+    } catch (err) {
+      setBannerUploadError(err.message || 'Image upload failed. Please try again.')
+    } finally {
+      setUploadingBanner(false)
+      setOptimizingBanner(false)
+    }
+  }
+
   // Save Settings Handler
   const handleSaveSettings = async () => {
     setSavingSettings(true)
@@ -339,8 +377,62 @@ export default function AdminWalking() {
     setSettings(prev => ({ ...prev, serviceableAreas: prev.serviceableAreas.filter(a => a !== areaToRemove) }))
   }
 
+  const handleAddDuration = () => {
+    const mins = Number(newDurationMins)
+    const price = Number(newDurationPrice)
+    if (!mins || mins <= 0) {
+      alert('Please enter a valid duration in minutes.')
+      return
+    }
+    if (price < 0 || isNaN(price)) {
+      alert('Please enter a valid price.')
+      return
+    }
+    const currentDurations = settings.durations || []
+    if (currentDurations.some(d => Number(d.duration) === mins)) {
+      alert(`A duration tier for ${mins} minutes already exists. You can edit its price directly.`)
+      return
+    }
+    const label = newDurationLabel.trim() || `${mins} Min Walk`
+    const next = [...currentDurations, { duration: mins, price, label }]
+      .sort((a, b) => Number(a.duration) - Number(b.duration))
+    setSettings(prev => ({ ...prev, durations: next }))
+    setNewDurationLabel('')
+  }
+
+  const handleUpdateDurationPrice = (mins, newPrice) => {
+    setSettings(prev => ({
+      ...prev,
+      durations: (prev.durations || []).map(d =>
+        Number(d.duration) === Number(mins) ? { ...d, price: Math.max(0, Number(newPrice) || 0) } : d
+      )
+    }))
+  }
+
+  const handleUpdateDurationLabel = (mins, newLabel) => {
+    setSettings(prev => ({
+      ...prev,
+      durations: (prev.durations || []).map(d =>
+        Number(d.duration) === Number(mins) ? { ...d, label: newLabel } : d
+      )
+    }))
+  }
+
+  const handleRemoveDuration = (mins) => {
+    if ((settings.durations || []).length <= 1) {
+      alert('You must have at least one walking duration tier.')
+      return
+    }
+    if (window.confirm(`Delete the ${mins}-minute walking duration tier?`)) {
+      setSettings(prev => ({
+        ...prev,
+        durations: (prev.durations || []).filter(d => Number(d.duration) !== Number(mins))
+      }))
+    }
+  }
+
   return (
-    <div style={{ padding: '24px', maxWidth: '1280px', margin: '0 auto', color: 'var(--text)' }}>
+    <div className="admin-page admin-walking-page">
       {/* Toast Notification */}
       {toastMessage && (
         <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999, background: 'var(--card)', border: '1px solid var(--accent)', color: 'var(--accent)', borderRadius: '12px', padding: '12px 20px', boxShadow: '0 8px 30px rgba(0,0,0,0.25)', fontWeight: 700, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -533,11 +625,11 @@ export default function AdminWalking() {
                 return (
                   <div
                     key={b.id}
+                    className="walking-booking-card"
                     style={{
                       background: 'var(--card)',
                       border: '1px solid var(--border)',
                       borderRadius: '16px',
-                      padding: '18px 20px',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '12px',
@@ -547,8 +639,12 @@ export default function AdminWalking() {
                     {/* Top Row: Dog Info & Status Badge */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
-                          <Dog size={22} />
+                        <span style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', overflow: 'hidden', flexShrink: 0 }}>
+                          {b.petPhotoUrl || b.photoUrl ? (
+                            <img src={b.petPhotoUrl || b.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <Dog size={22} />
+                          )}
                         </span>
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -829,399 +925,684 @@ export default function AdminWalking() {
           TAB 2: WALKING SETTINGS
          ========================================================================= */}
       {activeTab === 'settings' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          {/* Top Header Card */}
-          <div
-            style={{
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: '16px',
-              padding: '18px 20px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '12px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '4px' }}>
-                <SlidersHorizontal size={13} /> Walking Configuration
-              </div>
-              <h2 style={{ fontSize: '18px', fontWeight: 900, color: 'var(--text)', margin: 0 }}>
-                Pet Walking Settings & Pricing
-              </h2>
-              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                Configure duration rates, operational days, walk slots, and serviceable areas.
-              </span>
-            </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Sub-tab navigation pills */}
+          <div className="walking-subtabs-bar" style={{ marginBottom: '2px' }}>
             <button
               type="button"
-              disabled={savingSettings}
-              onClick={handleSaveSettings}
-              className="btn btn-primary"
-              style={{ gap: '6px', padding: '9px 18px', fontSize: '13px', whiteSpace: 'nowrap' }}
+              className={`walking-subtab-btn ${settingsTab === 'durations' ? 'active' : ''}`}
+              onClick={() => setSettingsTab('durations')}
             >
-              <Save size={15} /> {savingSettings ? 'Saving...' : 'Save Settings'}
+              <IndianRupee size={14} /> Durations & Pricing ({settings.durations?.length || 3})
+            </button>
+            <button
+              type="button"
+              className={`walking-subtab-btn ${settingsTab === 'slots' ? 'active' : ''}`}
+              onClick={() => setSettingsTab('slots')}
+            >
+              <Clock size={14} /> Slots & Capacity ({settings.slots?.length || 0})
+            </button>
+            <button
+              type="button"
+              className={`walking-subtab-btn ${settingsTab === 'general' ? 'active' : ''}`}
+              onClick={() => setSettingsTab('general')}
+            >
+              <SlidersHorizontal size={14} /> General & Schedule
+            </button>
+            <button
+              type="button"
+              className={`walking-subtab-btn ${settingsTab === 'areas' ? 'active' : ''}`}
+              onClick={() => setSettingsTab('areas')}
+            >
+              <MapPin size={14} /> Serviceable Areas ({settings.serviceableAreas?.length || 0})
             </button>
           </div>
 
-          {/* Section 1: Online Bookings Status */}
-          <div
-            style={{
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: '16px',
-              padding: '18px 20px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <strong style={{ fontSize: '14.5px', color: 'var(--text)' }}>Accept Online Walking Bookings</strong>
-                  <span
-                    style={{
-                      fontSize: '10.5px',
-                      fontWeight: 700,
-                      padding: '2px 8px',
-                      borderRadius: '999px',
-                      background: settings.acceptBookings !== false ? '#dcfce7' : '#fee2e2',
-                      color: settings.acceptBookings !== false ? '#15803d' : '#b91c1c',
-                      border: `1px solid ${settings.acceptBookings !== false ? '#bbf7d0' : '#fecaca'}`,
-                    }}
-                  >
-                    {settings.acceptBookings !== false ? 'Active & Open' : 'Paused'}
+          {/* SUBTAB 1: DURATIONS & PRICING */}
+          {settingsTab === 'durations' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '18px 20px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                }}
+              >
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
+                    <IndianRupee size={15} /> Active Walking Durations & Rates
+                  </div>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                    Set custom walk session durations and their prices in ₹. Customers choose from these when booking walks.
                   </span>
                 </div>
-                <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                  Toggle off to temporarily close pet walking booking on the customer app.
-                </span>
+
+                {/* Duration Cards Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                  {(settings.durations || DEFAULT_WALKING_DURATIONS).map(d => (
+                    <div
+                      key={d.duration}
+                      style={{
+                        background: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '12px',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px',
+                        position: 'relative',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', color: 'var(--accent)', padding: '3px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 800 }}>
+                          <Clock size={12} /> {d.duration} Minutes
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDuration(d.duration)}
+                          title="Delete duration tier"
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#ef4444',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            borderRadius: '4px',
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '10.5px', color: 'var(--muted)', fontWeight: 700, display: 'block', marginBottom: '3px' }}>
+                          Display Label
+                        </label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={d.label || `${d.duration} Min Walk`}
+                          onChange={e => handleUpdateDurationLabel(d.duration, e.target.value)}
+                          placeholder="e.g. 30 Min Walk"
+                          style={{ fontSize: '12px', padding: '6px 10px' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '10.5px', color: 'var(--muted)', fontWeight: 700, display: 'block', marginBottom: '3px' }}>
+                          Price Per Session
+                        </label>
+                        <div style={{ position: 'relative' }}>
+                          <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--muted)', fontSize: '13px' }}>₹</span>
+                          <input
+                            type="number"
+                            className="input"
+                            min="0"
+                            value={d.price}
+                            onChange={e => handleUpdateDurationPrice(d.duration, e.target.value)}
+                            style={{ paddingLeft: '24px', fontWeight: 800, fontSize: '13px', padding: '6px 10px 6px 24px' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add New Duration Tier Card */}
+                <div style={{ background: 'var(--accent-bg)', border: '1.5px dashed var(--accent-border)', borderRadius: '12px', padding: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '8px' }}>
+                    <Plus size={15} /> Add New Duration Tier
+                  </div>
+
+                  {/* Preset Duration Buttons */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 700 }}>Quick Presets:</span>
+                    {[15, 20, 30, 45, 60, 75, 90, 120].map(mins => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => {
+                          setNewDurationMins(mins)
+                          if (!newDurationLabel || newDurationLabel.includes('Min Walk')) {
+                            setNewDurationLabel(`${mins} Min Walk`)
+                          }
+                        }}
+                        style={{
+                          background: Number(newDurationMins) === mins ? 'var(--accent)' : 'var(--card)',
+                          color: Number(newDurationMins) === mins ? '#ffffff' : 'var(--text)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {mins}m
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', alignItems: 'flex-end' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '3px' }}>
+                        Duration (Mins)
+                      </label>
+                      <input
+                        type="number"
+                        min="5"
+                        max="300"
+                        className="input"
+                        value={newDurationMins}
+                        onChange={e => setNewDurationMins(e.target.value)}
+                        style={{ fontSize: '12.5px' }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '3px' }}>
+                        Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        className="input"
+                        value={newDurationPrice}
+                        onChange={e => setNewDurationPrice(e.target.value)}
+                        style={{ fontSize: '12.5px' }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '3px' }}>
+                        Label (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="e.g. 30 Min Walk"
+                        value={newDurationLabel}
+                        onChange={e => setNewDurationLabel(e.target.value)}
+                        style={{ fontSize: '12.5px' }}
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleAddDuration}
+                      className="btn btn-primary"
+                      style={{ padding: '8px 16px', fontSize: '12.5px', height: '38px', gap: '6px', whiteSpace: 'nowrap' }}
+                    >
+                      <Plus size={15} /> Add Duration
+                    </button>
+                  </div>
+                </div>
               </div>
-              <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: '10px' }}>
-                <input
-                  type="checkbox"
-                  checked={settings.acceptBookings !== false}
-                  onChange={e => setSettings(prev => ({ ...prev, acceptBookings: e.target.checked }))}
-                  style={{ width: '22px', height: '22px', accentColor: 'var(--accent)', cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text)' }}>
-                  {settings.acceptBookings !== false ? 'Open for Walks' : 'Walks Paused'}
-                </span>
-              </label>
             </div>
-          </div>
+          )}
 
-          {/* Section 2: Duration Pricing & Capacity */}
-          <div
-            style={{
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: '16px',
-              padding: '18px 20px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
-                <IndianRupee size={15} /> Duration Pricing & Walker Capacity
+          {/* SUBTAB 2: SLOTS & CAPACITY */}
+          {settingsTab === 'slots' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Walker Capacity per Slot */}
+              <div
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '18px 20px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                }}
+              >
+                <div style={{ marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
+                    <Dog size={15} /> Concurrent Walker Capacity
+                  </div>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                    Maximum number of dogs that can be booked concurrently in the same walk time slot. Once reached, the slot displays as &ldquo;Full&rdquo; to customers.
+                  </span>
+                </div>
+
+                <div style={{ maxWidth: '200px' }}>
+                  <input
+                    type="number"
+                    className="input"
+                    min="1"
+                    max="10"
+                    value={settings.maxCapacityPerSlot}
+                    onChange={e => setSettings(prev => ({ ...prev, maxCapacityPerSlot: Number(e.target.value) }))}
+                    style={{ fontWeight: 800, fontSize: '14px' }}
+                  />
+                </div>
               </div>
-              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                Set the default prices charged per dog per walk session and slot limit.
-              </span>
+
+              {/* Daily Walking Slots */}
+              <div
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '18px 20px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                }}
+              >
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
+                    <Clock size={15} /> Daily Walking Slots ({settings.slots.length})
+                  </div>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                    Time slots displayed to customers when booking dog walks across morning & evening shifts.
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                  {settings.slots.map(s => (
+                    <span
+                      key={s}
+                      style={{
+                        background: 'var(--surface)',
+                        border: '1px solid var(--accent-border)',
+                        color: 'var(--text)',
+                        borderRadius: '8px',
+                        padding: '6px 10px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <Clock size={11} style={{ color: 'var(--accent)' }} />
+                      {s}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSlot(s)}
+                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+                        title="Remove slot"
+                      >
+                        <X size={13} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', maxWidth: '380px' }}>
+                  <input
+                    className="input"
+                    placeholder="e.g. 07:00 AM or 06:00 PM"
+                    value={newSlotInput}
+                    onChange={e => setNewSlotInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleAddSlot() }}
+                    style={{ fontSize: '12.5px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddSlot}
+                    className="btn btn-secondary"
+                    style={{ padding: '8px 14px', fontSize: '12px', flexShrink: 0, gap: '4px' }}
+                  >
+                    <Plus size={14} /> Add Slot
+                  </button>
+                </div>
+              </div>
             </div>
+          )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-              {/* 30 Min */}
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                  <Clock size={13} style={{ color: 'var(--accent)' }} />
-                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text)' }}>
-                    30-Min Walk
+          {/* SUBTAB 3: GENERAL & SCHEDULE */}
+          {settingsTab === 'general' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Online Bookings Status */}
+              <div
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '18px 20px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <strong style={{ fontSize: '14.5px', color: 'var(--text)' }}>Accept Online Walking Bookings</strong>
+                      <span
+                        style={{
+                          fontSize: '10.5px',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          background: settings.acceptBookings !== false ? '#dcfce7' : '#fee2e2',
+                          color: settings.acceptBookings !== false ? '#15803d' : '#b91c1c',
+                          border: `1px solid ${settings.acceptBookings !== false ? '#bbf7d0' : '#fecaca'}`,
+                        }}
+                      >
+                        {settings.acceptBookings !== false ? 'Active & Open' : 'Paused'}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                      Toggle off to temporarily close pet walking booking on the customer app.
+                    </span>
+                  </div>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: '10px' }}>
+                    <input
+                      type="checkbox"
+                      checked={settings.acceptBookings !== false}
+                      onChange={e => setSettings(prev => ({ ...prev, acceptBookings: e.target.checked }))}
+                      style={{ width: '22px', height: '22px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text)' }}>
+                      {settings.acceptBookings !== false ? 'Open for Walks' : 'Walks Paused'}
+                    </span>
                   </label>
-                </div>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--muted)', fontSize: '13px' }}>₹</span>
-                  <input
-                    type="number"
-                    className="input"
-                    min="0"
-                    value={settings.rate30Min}
-                    onChange={e => setSettings(prev => ({ ...prev, rate30Min: Number(e.target.value) }))}
-                    style={{ paddingLeft: '26px', fontWeight: 800 }}
-                  />
                 </div>
               </div>
 
-              {/* 45 Min */}
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                  <Clock size={13} style={{ color: 'var(--accent)' }} />
-                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text)' }}>
-                    45-Min Walk
+              {/* Show NEW Feature Badge */}
+              <div
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '18px 20px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <strong style={{ fontSize: '14.5px', color: 'var(--text)' }}>Show NEW Feature Badge</strong>
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 800,
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          background: 'var(--accent-bg)',
+                          color: 'var(--accent)',
+                          border: '1px solid var(--accent-border)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <Sparkles size={10} /> NEW
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                      Display the golden &ldquo;NEW&rdquo; badge on the Pet Walking section of the customer homepage.
+                    </span>
+                  </div>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: '10px' }}>
+                    <input
+                      type="checkbox"
+                      checked={settings.showNewBadge !== false}
+                      onChange={e => setSettings(prev => ({ ...prev, showNewBadge: e.target.checked }))}
+                      style={{ width: '22px', height: '22px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text)' }}>
+                      {settings.showNewBadge !== false ? 'Badge Shown' : 'Badge Hidden'}
+                    </span>
                   </label>
-                </div>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--muted)', fontSize: '13px' }}>₹</span>
-                  <input
-                    type="number"
-                    className="input"
-                    min="0"
-                    value={settings.rate45Min}
-                    onChange={e => setSettings(prev => ({ ...prev, rate45Min: Number(e.target.value) }))}
-                    style={{ paddingLeft: '26px', fontWeight: 800 }}
-                  />
                 </div>
               </div>
 
-              {/* 60 Min */}
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                  <Clock size={13} style={{ color: 'var(--accent)' }} />
-                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text)' }}>
-                    60-Min Walk
-                  </label>
+              {/* Homepage Walking Banner Image */}
+              <div
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '18px 20px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                }}
+              >
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
+                    <Upload size={14} /> Homepage Pet Walking Banner Image
+                  </div>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                    Custom photo shown in the Pet Walking card on the homepage. If removed, the default high-resolution image is displayed.
+                  </span>
                 </div>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--muted)', fontSize: '13px' }}>₹</span>
-                  <input
-                    type="number"
-                    className="input"
-                    min="0"
-                    value={settings.rate60Min}
-                    onChange={e => setSettings(prev => ({ ...prev, rate60Min: Number(e.target.value) }))}
-                    style={{ paddingLeft: '26px', fontWeight: 800 }}
-                  />
+
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div style={{ position: 'relative', width: '180px', height: '120px', borderRadius: '12px', overflow: 'hidden', border: '1.5px solid var(--border)', background: 'var(--surface)', flexShrink: 0 }}>
+                    <img
+                      src={settings.bannerImageUrl || petWalkingHero}
+                      alt="Banner Preview"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={e => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = petWalkingHero;
+                      }}
+                    />
+                    <div style={{ position: 'absolute', bottom: '6px', left: '6px', right: '6px', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', textAlign: 'center', fontWeight: 600 }}>
+                      {settings.bannerImageUrl ? 'Custom Image Active' : 'Default Photo'}
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: uploadingBanner ? 'not-allowed' : 'pointer', width: 'fit-content', fontSize: '12.5px', padding: '8px 14px' }}>
+                      <Upload size={14} />
+                      {uploadingBanner ? (optimizingBanner ? 'Optimizing...' : 'Uploading...') : 'Upload Custom Image'}
+                      <input
+                        type="file"
+                        accept={IMAGE_FILE_ACCEPT}
+                        disabled={uploadingBanner}
+                        style={{ display: 'none' }}
+                        onChange={e => {
+                          if (e.target.files?.[0]) {
+                            handleBannerUpload(e.target.files[0])
+                            e.target.value = ''
+                          }
+                        }}
+                      />
+                    </label>
+
+                    {settings.bannerImageUrl && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '6px', width: 'fit-content', fontSize: '12px', padding: '4px 8px', cursor: 'pointer' }}
+                        onClick={() => setSettings(p => ({ ...p, bannerImageUrl: '' }))}
+                      >
+                        <Trash2 size={13} /> Remove Custom Image (Use Default)
+                      </button>
+                    )}
+
+                    <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                      Supports JPG, PNG, WebP up to 10MB. Images are automatically compressed before upload.
+                    </span>
+
+                    {bannerUploadError && (
+                      <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 500 }}>
+                        {bannerUploadError}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Max Dogs / Slot */}
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                  <Dog size={13} style={{ color: 'var(--accent)' }} />
-                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text)' }}>
-                    Max Dogs / Slot
-                  </label>
+              {/* Homepage Short Description */}
+              <div
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '18px 20px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                }}
+              >
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
+                    <Info size={14} /> Homepage Short Description
+                  </div>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                    Keep it concise (1–2 lines) for optimal display on mobile screens.
+                  </span>
                 </div>
                 <input
-                  type="number"
+                  type="text"
                   className="input"
-                  min="1"
-                  max="10"
-                  value={settings.maxCapacityPerSlot}
-                  onChange={e => setSettings(prev => ({ ...prev, maxCapacityPerSlot: Number(e.target.value) }))}
-                  style={{ fontWeight: 800 }}
+                  value={settings.description || ''}
+                  placeholder="e.g. Reliable, loving dog walkers around Dhayari with morning & evening shifts."
+                  onChange={e => setSettings(prev => ({ ...prev, description: e.target.value }))}
                 />
               </div>
-            </div>
-          </div>
 
-          {/* Section 3: Operating Days */}
-          <div
-            style={{
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: '16px',
-              padding: '18px 20px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
-                <Calendar size={15} /> Weekly Operating Days
+              {/* Operating Days */}
+              <div
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '18px 20px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                }}
+              >
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
+                    <Calendar size={15} /> Weekly Operating Days
+                  </div>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                    Select which days walkers are available in Dhayari.
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(95px, 1fr))', gap: '8px' }}>
+                  {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(day => {
+                    const isOpen = settings.operatingDays?.[day] !== false
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => {
+                          const next = { ...settings.operatingDays, [day]: !isOpen }
+                          setSettings(prev => ({ ...prev, operatingDays: next }))
+                        }}
+                        style={{
+                          background: isOpen ? 'var(--accent-bg)' : 'var(--surface)',
+                          border: `1.5px solid ${isOpen ? 'var(--accent)' : 'var(--border)'}`,
+                          borderRadius: '10px',
+                          padding: '10px 8px',
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          color: isOpen ? 'var(--accent)' : 'var(--muted)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {isOpen && <Check size={13} />}
+                        <span style={{ textTransform: 'capitalize' }}>{day.slice(0, 3)}</span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                Select which days walkers are available in Dhayari.
-              </span>
             </div>
+          )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(95px, 1fr))', gap: '8px' }}>
-              {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(day => {
-                const isOpen = settings.operatingDays?.[day] !== false
-                return (
+          {/* SUBTAB 4: SERVICEABLE LOCALITIES */}
+          {settingsTab === 'areas' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '18px 20px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                }}
+              >
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
+                    <MapPin size={15} /> Serviceable Localities ({settings.serviceableAreas.length})
+                  </div>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                    Eligible locations in Dhayari, Pune where dog walking pick-up is supported.
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                  {settings.serviceableAreas.map(a => (
+                    <span
+                      key={a}
+                      style={{
+                        background: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--text)',
+                        borderRadius: '8px',
+                        padding: '6px 10px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <MapPin size={11} style={{ color: 'var(--accent)' }} />
+                      {a}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveArea(a)}
+                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+                        title="Remove locality"
+                      >
+                        <X size={13} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', maxWidth: '380px' }}>
+                  <input
+                    className="input"
+                    placeholder="e.g. Vadgaon Phata or Dhayari Gaon"
+                    value={newAreaInput}
+                    onChange={e => setNewAreaInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleAddArea() }}
+                    style={{ fontSize: '12.5px' }}
+                  />
                   <button
-                    key={day}
                     type="button"
-                    onClick={() => {
-                      const next = { ...settings.operatingDays, [day]: !isOpen }
-                      setSettings(prev => ({ ...prev, operatingDays: next }))
-                    }}
-                    style={{
-                      background: isOpen ? 'var(--accent-bg)' : 'var(--surface)',
-                      border: `1.5px solid ${isOpen ? 'var(--accent)' : 'var(--border)'}`,
-                      borderRadius: '10px',
-                      padding: '10px 8px',
-                      fontSize: '12px',
-                      fontWeight: 800,
-                      color: isOpen ? 'var(--accent)' : 'var(--muted)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                      transition: 'all 0.15s ease',
-                    }}
+                    onClick={handleAddArea}
+                    className="btn btn-secondary"
+                    style={{ padding: '8px 14px', fontSize: '12px', flexShrink: 0, gap: '4px' }}
                   >
-                    {isOpen && <Check size={13} />}
-                    <span style={{ textTransform: 'capitalize' }}>{day.slice(0, 3)}</span>
+                    <Plus size={14} /> Add Area
                   </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Section 4: Daily Walking Slots */}
-          <div
-            style={{
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: '16px',
-              padding: '18px 20px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
-                <Clock size={15} /> Daily Walking Slots ({settings.slots.length})
+                </div>
               </div>
-              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                Time slots displayed to customers when booking dog walks.
-              </span>
             </div>
+          )}
 
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-              {settings.slots.map(s => (
-                <span
-                  key={s}
-                  style={{
-                    background: 'var(--surface)',
-                    border: '1px solid var(--accent-border)',
-                    color: 'var(--text)',
-                    borderRadius: '8px',
-                    padding: '6px 10px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <Clock size={11} style={{ color: 'var(--accent)' }} />
-                  {s}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveSlot(s)}
-                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
-                    title="Remove slot"
-                  >
-                    <X size={13} />
-                  </button>
-                </span>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px', maxWidth: '380px' }}>
-              <input
-                className="input"
-                placeholder="e.g. 07:00 AM or 06:00 PM"
-                value={newSlotInput}
-                onChange={e => setNewSlotInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddSlot() }}
-                style={{ fontSize: '12.5px' }}
-              />
+          {/* Single Floating Sticky Save Bar at Bottom */}
+          <div className="walking-sticky-bar">
+            <div className="walking-sticky-bar-content">
+              <div className="walking-sticky-info">
+                <span className="walking-status-dot" />
+                <div className="walking-status-text">
+                  <strong>Walking settings ready to save</strong>
+                  <small>Changes across all sub-tabs are saved together</small>
+                </div>
+              </div>
               <button
                 type="button"
-                onClick={handleAddSlot}
-                className="btn btn-secondary"
-                style={{ padding: '8px 14px', fontSize: '12px', flexShrink: 0, gap: '4px' }}
+                disabled={savingSettings}
+                onClick={handleSaveSettings}
+                className="btn btn-primary walking-save-btn"
               >
-                <Plus size={14} /> Add Slot
+                <Save size={15} /> {savingSettings ? 'Saving...' : 'Save Settings'}
               </button>
             </div>
-          </div>
-
-          {/* Section 5: Serviceable Localities */}
-          <div
-            style={{
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: '16px',
-              padding: '18px 20px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
-                <MapPin size={15} /> Serviceable Localities ({settings.serviceableAreas.length})
-              </div>
-              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                Eligible locations in Dhayari, Pune where walking is supported.
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-              {settings.serviceableAreas.map(a => (
-                <span
-                  key={a}
-                  style={{
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text)',
-                    borderRadius: '8px',
-                    padding: '6px 10px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <MapPin size={11} style={{ color: 'var(--accent)' }} />
-                  {a}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveArea(a)}
-                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
-                    title="Remove locality"
-                  >
-                    <X size={13} />
-                  </button>
-                </span>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px', maxWidth: '380px' }}>
-              <input
-                className="input"
-                placeholder="e.g. Vadgaon Phata or Dhayari Gaon"
-                value={newAreaInput}
-                onChange={e => setNewAreaInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddArea() }}
-                style={{ fontSize: '12.5px' }}
-              />
-              <button
-                type="button"
-                onClick={handleAddArea}
-                className="btn btn-secondary"
-                style={{ padding: '8px 14px', fontSize: '12px', flexShrink: 0, gap: '4px' }}
-              >
-                <Plus size={14} /> Add Area
-              </button>
-            </div>
-          </div>
-
-          {/* Bottom Save Bar */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '8px' }}>
-            <button
-              type="button"
-              disabled={savingSettings}
-              onClick={handleSaveSettings}
-              className="btn btn-primary"
-              style={{ gap: '6px', padding: '12px 26px', fontSize: '14px', whiteSpace: 'nowrap' }}
-            >
-              <Save size={16} /> {savingSettings ? 'Saving Settings...' : 'Save All Settings'}
-            </button>
           </div>
         </div>
       )}
@@ -1251,8 +1632,12 @@ export default function AdminWalking() {
             {/* Modal Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: '14px', marginBottom: '18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '46px', height: '46px', borderRadius: '12px', background: 'var(--accent-bg)', border: '1.5px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', flexShrink: 0 }}>
-                  <Dog size={24} />
+                <div style={{ width: '46px', height: '46px', borderRadius: '12px', background: 'var(--accent-bg)', border: '1.5px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', flexShrink: 0, overflow: 'hidden' }}>
+                  {selectedBooking.petPhotoUrl || selectedBooking.photoUrl ? (
+                    <img src={selectedBooking.petPhotoUrl || selectedBooking.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <Dog size={24} />
+                  )}
                 </div>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -1399,6 +1784,30 @@ export default function AdminWalking() {
                   <div style={{ marginBottom: '4px' }}>
                     <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Complete Address</span>
                     <strong style={{ color: 'var(--text)', lineHeight: 1.4 }}>{selectedBooking.pickupAddress || selectedBooking.address || 'N/A'}</strong>
+                    {selectedBooking.mapPinUrl && (
+                      <div style={{ marginTop: '8px' }}>
+                        <a
+                          href={selectedBooking.mapPinUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            background: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            color: '#1d4ed8',
+                            borderRadius: '8px',
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                          }}
+                        >
+                          <MapPin size={13} /> Open Live GPS / Map Pin in Google Maps ↗
+                        </a>
+                      </div>
+                    )}
                   </div>
                   {selectedBooking.landmark && (
                     <div>
@@ -1675,6 +2084,134 @@ export default function AdminWalking() {
         </div>
       )}
 
+      {/* Scoped responsive styles */}
+      <style>{`
+        .admin-walking-page {
+          padding: 24px 20px 80px;
+          max-width: 1280px;
+          margin: 0 auto;
+          color: var(--text);
+          box-sizing: border-box;
+          width: 100%;
+        }
+
+        @media (max-width: 768px) {
+          .admin-walking-page {
+            padding: 12px 6px 90px !important;
+          }
+          .walking-booking-card {
+            padding: 12px 10px !important;
+          }
+        }
+
+        .walking-subtabs-bar {
+          display: flex;
+          gap: 6px;
+          overflow-x: auto;
+          padding-bottom: 4px;
+          scrollbar-width: none;
+          -webkit-overflow-scrolling: touch;
+          width: 100%;
+        }
+        .walking-subtabs-bar::-webkit-scrollbar {
+          display: none;
+        }
+
+        .walking-subtab-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 14px;
+          border-radius: 999px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--muted);
+          font-size: 12.5px;
+          font-weight: 700;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: all 0.15s ease;
+          flex-shrink: 0;
+        }
+        .walking-subtab-btn.active {
+          background: var(--accent);
+          color: #ffffff;
+          border-color: var(--accent);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+
+        .walking-sticky-bar {
+          position: sticky;
+          bottom: 14px;
+          z-index: 40;
+          display: flex;
+          justify-content: center;
+          margin-top: 24px;
+          pointer-events: none;
+        }
+        .walking-sticky-bar-content {
+          pointer-events: auto;
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          padding: 10px 18px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+          width: 100%;
+          max-width: 640px;
+          backdrop-filter: blur(12px);
+          box-sizing: border-box;
+        }
+        .walking-sticky-info {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+        }
+        .walking-status-dot {
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          background: var(--accent);
+          box-shadow: 0 0 8px var(--accent);
+          flex-shrink: 0;
+        }
+        .walking-status-text strong {
+          display: block;
+          font-size: 13px;
+          color: var(--text);
+          white-space: nowrap;
+        }
+        .walking-status-text small {
+          display: block;
+          font-size: 11px;
+          color: var(--muted);
+          white-space: nowrap;
+        }
+        @media (max-width: 600px) {
+          .walking-sticky-bar {
+            bottom: 8px;
+          }
+          .walking-sticky-bar-content {
+            padding: 8px 12px;
+            gap: 8px;
+          }
+          .walking-status-text small {
+            display: none;
+          }
+          .walking-status-text strong {
+            font-size: 12px;
+          }
+          .walking-save-btn {
+            padding: 7px 14px !important;
+            font-size: 12px !important;
+            white-space: nowrap;
+          }
+        }
+      `}</style>
     </div>
   )
 }

@@ -20,7 +20,7 @@ import boardingHeroPets from '../assets/boarding-hero-pets.png'
 import boardingDogAvatar from '../assets/boarding-dog-avatar.png'
 import boardingCatAvatar from '../assets/boarding-cat-avatar.png'
 import petWalkingHero from '../assets/pet-walking-hero.jpg'
-import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils, Footprints } from 'lucide-react'
+import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils, Footprints, Hotel } from 'lucide-react'
 
 const HERO_FALLBACK_IMAGE = '/hero-fallback.webp'
 const DEFAULT_HERO_IMAGES = [
@@ -862,47 +862,42 @@ function HeroSlider() {
                 <span className="gold-accent">Happy Tails Every Day</span>
               </h2>
 
-              <p className="home-boarding-desc">
-                Reliable, loving dog walkers for your pooch around Dhayari & nearby areas. Morning & evening shifts with live WhatsApp route updates.
+              <p
+                className="home-boarding-desc"
+                style={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                  lineHeight: '1.45',
+                  marginBottom: '16px'
+                }}
+              >
+                {walkingSettings?.description || 'Reliable, loving dog walkers around Dhayari with morning & evening shifts.'}
               </p>
 
               {/* Pricing Cards */}
               <div className="home-boarding-prices" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
-                <div className="home-boarding-price-card">
-                  <div className="home-boarding-avatar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-bg)', color: 'var(--accent)' }}>
-                    <Footprints size={22} />
-                  </div>
-                  <div className="home-boarding-price-info">
-                    <div className="home-boarding-price-label">30 Min Walk</div>
-                    <div className="home-boarding-price-amount">
-                      ₹{walkingSettings?.rate30Min || 199} <span className="home-boarding-price-unit">/ session</span>
+                {((walkingSettings?.durations && walkingSettings.durations.length > 0)
+                  ? walkingSettings.durations
+                  : [
+                      { duration: 30, price: walkingSettings?.rate30Min || 199, label: '30 Min Walk' },
+                      { duration: 45, price: walkingSettings?.rate45Min || 279, label: '45 Min Walk' },
+                      { duration: 60, price: walkingSettings?.rate60Min || 349, label: '60 Min Walk' },
+                    ]
+                ).map(tier => (
+                  <div key={tier.duration} className="home-boarding-price-card">
+                    <div className="home-boarding-avatar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-bg)', color: 'var(--accent)' }}>
+                      <Footprints size={22} />
+                    </div>
+                    <div className="home-boarding-price-info">
+                      <div className="home-boarding-price-label">{tier.label || `${tier.duration} Min Walk`}</div>
+                      <div className="home-boarding-price-amount">
+                        ₹{tier.price} <span className="home-boarding-price-unit">/ session</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-
-                <div className="home-boarding-price-card">
-                  <div className="home-boarding-avatar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-bg)', color: 'var(--accent)' }}>
-                    <Footprints size={22} />
-                  </div>
-                  <div className="home-boarding-price-info">
-                    <div className="home-boarding-price-label">45 Min Walk</div>
-                    <div className="home-boarding-price-amount">
-                      ₹{walkingSettings?.rate45Min || 279} <span className="home-boarding-price-unit">/ session</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="home-boarding-price-card">
-                  <div className="home-boarding-avatar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-bg)', color: 'var(--accent)' }}>
-                    <Footprints size={22} />
-                  </div>
-                  <div className="home-boarding-price-info">
-                    <div className="home-boarding-price-label">60 Min Walk</div>
-                    <div className="home-boarding-price-amount">
-                      ₹{walkingSettings?.rate60Min || 349} <span className="home-boarding-price-unit">/ session</span>
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
 
               {/* Actions */}
@@ -1011,7 +1006,14 @@ function HeroSlider() {
                     Simple Per-Walk Pricing
                   </div>
                   <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.5 }}>
-                    <strong>30 Min:</strong> ₹{walkingSettings?.rate30Min || 199} · <strong>45 Min:</strong> ₹{walkingSettings?.rate45Min || 279} · <strong>60 Min:</strong> ₹{walkingSettings?.rate60Min || 349}. Pay after confirmation or at pickup.
+                    {((walkingSettings?.durations && walkingSettings.durations.length > 0)
+                      ? walkingSettings.durations
+                      : [
+                          { duration: 30, price: walkingSettings?.rate30Min || 199 },
+                          { duration: 45, price: walkingSettings?.rate45Min || 279 },
+                          { duration: 60, price: walkingSettings?.rate60Min || 349 },
+                        ]
+                    ).map(d => `${d.duration} Min: ₹${d.price}`).join(' · ')}. Pay after confirmation or at pickup.
                   </div>
                 </div>
               </div>
@@ -1304,6 +1306,7 @@ export default function Home() {
   const [homePetImages, setHomePetImages] = useState(() => cachedHomeSectionsData?.homePetImages || { cta: '', follow: '' })
   const [footerInfo, setFooterInfo] = useState(() => cachedHomeSectionsData?.footerInfo || { tagline: '', socials: [], phones: [], email: '' })
   const [walkingSettings, setWalkingSettings] = useState(() => cachedWalkingSettings)
+  const [boardingSettings, setBoardingSettings] = useState(() => cachedBoardingSettings)
   const [reviewIndex, setReviewIndex] = useState(0)
   const [reviewCarouselHeight, setReviewCarouselHeight] = useState(0)
   const [touchStartX, setTouchStartX] = useState(null)
@@ -1312,6 +1315,7 @@ export default function Home() {
 
   useEffect(() => {
     fetchWalkingSettings(db).then(setWalkingSettings).catch(() => {})
+    fetchBoardingSettings(db).then(setBoardingSettings).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -1486,8 +1490,18 @@ export default function Home() {
       iconImageUrl: walkingSettings?.bannerImageUrl || petWalkingHero,
       to: '/book-walking',
     },
-    ...homeServices.slice(0, 4),
-    ...packages.slice(0, Math.max(0, 4 - homeServices.slice(0, 4).length)).map(pkg => ({
+    {
+      id: 'pet-boarding',
+      name: 'Pet Boarding',
+      description: 'Safe, cozy overnight stay and daycare with 24/7 loving care.',
+      price: `From Rs. ${boardingSettings?.catDailyRate || 600} / day`,
+      duration: 'Daycare & Overnight',
+      icon: <Hotel size={30} />,
+      iconImageUrl: boardingSettings?.bannerImageUrl || boardingHeroPets,
+      to: '/boarding',
+    },
+    ...homeServices.slice(0, 3),
+    ...packages.slice(0, Math.max(0, 3 - homeServices.slice(0, 3).length)).map(pkg => ({
       id: pkg.id,
       name: pkg.name,
       description: pkg.description || 'Complete grooming for a clean, fresh and happy pet.',

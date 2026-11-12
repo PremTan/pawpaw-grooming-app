@@ -24,13 +24,16 @@ import {
   Clock,
   Compass,
   Dog,
+  ExternalLink,
   Footprints,
   Hourglass,
   IndianRupee,
   Info,
   MapPin,
   MessageCircle,
+  Navigation,
   Phone,
+  Plus,
   ShieldAlert,
   Sparkles,
   User,
@@ -58,6 +61,11 @@ export default function BookWalking() {
   const [submitting, setSubmitting] = useState(false)
   const [submittedBooking, setSubmittedBooking] = useState(null)
   const [toastMessage, setToastMessage] = useState('')
+  const [detectingLocation, setDetectingLocation] = useState(false)
+  const [locationSuccess, setLocationSuccess] = useState('')
+  const [locationError, setLocationError] = useState('')
+  const [showMapModal, setShowMapModal] = useState(false)
+  const [customMapInput, setCustomMapInput] = useState('')
 
   const todayStr = format(startOfToday(), 'yyyy-MM-dd')
   const tomorrowStr = format(addDays(startOfToday(), 1), 'yyyy-MM-dd')
@@ -67,11 +75,15 @@ export default function BookWalking() {
     dogName: '',
     breed: '',
     age: '',
+    gender: '',
+    petPhotoUrl: '',
     behaviorNotes: '',
     // Location Info
     pickupAddress: '',
     area: 'Dhayari',
     landmark: '',
+    mapPinUrl: '',
+    locationCoords: null,
     // Booking Details
     duration: 30, // 30 | 45 | 60
     date: tomorrowStr,
@@ -85,9 +97,9 @@ export default function BookWalking() {
     emergencyContact: '',
   })
 
-  // Scroll to top on step change or submission
+  // Scroll to top on step change or submission without jumping behind fixed navbar
   useEffect(() => {
-    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [step, submittedBooking])
 
   // Fetch settings & business info
@@ -200,11 +212,128 @@ export default function BookWalking() {
       dogName: pet.name || '',
       breed: pet.breed || '',
       age: pet.dob || pet.age || '',
+      gender: pet.gender || '',
+      petPhotoUrl: pet.photoUrl || '',
       behaviorNotes: pet.notes || pet.behaviorNotes || prev.behaviorNotes || '',
     }))
   }
 
+  // Detect Live Location via GPS
+  const handleGetLiveLocation = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser.')
+      return
+    }
+    setDetectingLocation(true)
+    setLocationError('')
+    setLocationSuccess('')
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords
+        const mapUrl = `https://www.google.com/maps?q=${lat},${lng}`
+        let detectedAddress = ''
+
+        try {
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 3500)
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+            { signal: controller.signal }
+          )
+          clearTimeout(timeoutId)
+          if (res.ok) {
+            const data = await res.json()
+            if (data?.display_name) {
+              const road = data.address?.road || data.address?.suburb || data.address?.neighbourhood || ''
+              const city = data.address?.city || data.address?.county || 'Pune'
+              detectedAddress = road ? `${road}, ${city}` : data.display_name.split(',').slice(0, 3).join(',')
+            }
+          }
+        } catch {
+          // Timeout or network error, fallback to coordinates
+        }
+
+        setForm(prev => {
+          const autoArea = settings.serviceableAreas.find(a =>
+            detectedAddress.toLowerCase().includes(a.toLowerCase())
+          ) || prev.area
+
+          return {
+            ...prev,
+            area: autoArea,
+            pickupAddress: prev.pickupAddress
+              ? (prev.pickupAddress.includes('GPS') ? prev.pickupAddress : `${prev.pickupAddress} (GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)})`)
+              : (detectedAddress ? `${detectedAddress} (GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)})` : `GPS Coordinates (${lat.toFixed(4)}, ${lng.toFixed(4)})`),
+            landmark: prev.landmark || 'Live GPS Location Shared',
+            locationCoords: { lat, lng },
+            mapPinUrl: mapUrl,
+          }
+        })
+
+        setLocationSuccess(`GPS Pin captured (${lat.toFixed(4)}, ${lng.toFixed(4)})`)
+        setDetectingLocation(false)
+      },
+      (err) => {
+        console.warn('Geolocation error:', err)
+        setLocationError(err.code === 1 ? 'Location permission was denied. Please allow GPS access or choose on map.' : 'Unable to retrieve location.')
+        setDetectingLocation(false)
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+    )
+  }
+
+  // Choose landmark in Dhayari
+  const handleSelectDhayariLandmark = (landmarkName, areaName, coords) => {
+    const mapUrl = coords
+      ? `https://www.google.com/maps?q=${coords.lat},${coords.lng}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(landmarkName + ', Dhayari, Pune')}`
+
+    setForm(prev => ({
+      ...prev,
+      area: areaName || prev.area,
+      pickupAddress: prev.pickupAddress ? prev.pickupAddress : `Near ${landmarkName}, Dhayari`,
+      landmark: landmarkName,
+      locationCoords: coords || null,
+      mapPinUrl: mapUrl,
+    }))
+    setLocationSuccess(`Pinned near ${landmarkName}`)
+    setShowMapModal(false)
+  }
+
+  const handleCustomMapPinSubmit = () => {
+    const val = customMapInput.trim()
+    if (!val) return
+    let pinUrl = val
+    if (!pinUrl.startsWith('http://') && !pinUrl.startsWith('https://')) {
+      if (/^[-+]?([1-8]?\d(\.\d+)?|90(\.0+)?),\s*[-+]?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)$/.test(val)) {
+        pinUrl = `https://www.google.com/maps?q=${val.replace(/\s+/g, '')}`
+      } else {
+        pinUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(val + ', Dhayari, Pune')}`
+      }
+    }
+    setForm(prev => ({
+      ...prev,
+      mapPinUrl: pinUrl,
+      landmark: prev.landmark || 'Custom Map Pin Provided',
+      pickupAddress: prev.pickupAddress ? prev.pickupAddress : `Location Pin: ${val}`
+    }))
+    setLocationSuccess('Custom map link attached!')
+    setCustomMapInput('')
+    setShowMapModal(false)
+  }
+
+  const durationsList = (settings.durations && settings.durations.length > 0)
+    ? settings.durations
+    : [
+        { duration: 30, price: settings.rate30Min || 199, label: '30 Min Walk' },
+        { duration: 45, price: settings.rate45Min || 279, label: '45 Min Walk' },
+        { duration: 60, price: settings.rate60Min || 349, label: '60 Min Walk' },
+      ]
+
   const durationPrice = () => {
+    const match = durationsList.find(d => Number(d.duration) === Number(form.duration))
+    if (match) return Number(match.price) || 0
     if (form.duration === 60) return settings.rate60Min || 349
     if (form.duration === 45) return settings.rate45Min || 279
     return settings.rate30Min || 199
@@ -229,7 +358,7 @@ export default function BookWalking() {
         phone: cleanPhone,
         address: form.pickupAddress.trim(),
         updatedAt: serverTimestamp(),
-      }, { merge: true }).catch(() => {})
+      }, { merge: true }).catch(() => { })
     }
     setStep(2)
   }
@@ -261,6 +390,7 @@ export default function BookWalking() {
       const price = durationPrice()
       const cleanPhone = form.phone.replace(/\D/g, '').slice(0, 10)
 
+      const selectedPet = pets.find(p => p.id === selectedPetId)
       const bookingData = {
         userId: user?.uid || '',
         userEmail: user?.email || '',
@@ -275,11 +405,15 @@ export default function BookWalking() {
         age: form.age.trim(),
         petAge: form.age.trim(),
         petId: selectedPetId || '',
+        petPhotoUrl: selectedPet?.photoUrl || form.petPhotoUrl || '',
+        photoUrl: selectedPet?.photoUrl || form.petPhotoUrl || '',
         behaviorNotes: form.behaviorNotes.trim(),
         pickupAddress: form.pickupAddress.trim(),
         address: form.pickupAddress.trim(),
         area: form.area,
         landmark: form.landmark.trim(),
+        mapPinUrl: form.mapPinUrl || '',
+        locationCoords: form.locationCoords || null,
         duration: Number(form.duration),
         durationMinutes: Number(form.duration),
         date: form.date,
@@ -306,7 +440,7 @@ export default function BookWalking() {
           phone: cleanPhone,
           address: form.pickupAddress.trim(),
           updatedAt: serverTimestamp(),
-        }, { merge: true }).catch(() => {})
+        }, { merge: true }).catch(() => { })
       }
 
       // Notify Admin
@@ -348,7 +482,7 @@ export default function BookWalking() {
     return (
       <div className="page-wrapper" ref={topRef} style={{ background: 'var(--bg)', minHeight: '100vh', padding: '32px 14px 80px', overflowX: 'hidden' }}>
         <div style={{ maxWidth: '560px', margin: '0 auto', width: '100%' }}>
-          
+
           {/* Hero Section with Sunburst Radiance */}
           <div style={{ textAlign: 'center', marginBottom: '22px' }}>
             <div style={{ position: 'relative', width: '92px', height: '92px', margin: '0 auto 14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -579,146 +713,220 @@ export default function BookWalking() {
   // MAIN BOOKING FORM
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="page-wrapper" ref={topRef} style={{ background: 'var(--bg)', minHeight: '100vh', padding: '24px 12px 80px', overflowX: 'hidden' }}>
-      <div style={{ maxWidth: '640px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-
-        {/* Back Link & Header */}
-        <div style={{ marginBottom: '18px' }}>
-          <Link
-            to="/services"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--muted)', fontSize: '13px', textDecoration: 'none', marginBottom: '12px' }}
-          >
-            <ChevronLeft size={16} /> Back to Services
-          </Link>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-            <span style={{ width: '38px', height: '38px', borderRadius: '12px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
-              <Dog size={20} />
-            </span>
-            <div>
-              <h1 style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text)', margin: 0 }}>
-                Book Pet Walking
-              </h1>
-              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                📍 Dhayari & Nearby Areas · Paw Paw Pet Services
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Closed banner if service disabled */}
-        {settings.acceptBookings === false && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: '14px', padding: '14px 16px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <ShieldAlert size={18} />
-            <div style={{ fontSize: '13px' }}>
-              <strong>Pet Walking Temporarily Paused:</strong> We are currently not accepting new walk bookings online. Please contact admin on WhatsApp for enquiries.
-            </div>
-          </div>
-        )}
-
-        {/* Progress Stepper - Compact & Responsive */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: '6px',
-          marginBottom: '20px',
-          width: '100%',
+      <div
+        className="page-wrapper"
+        ref={topRef}
+        style={{
+          background: 'var(--bg)',
+          minHeight: '100vh',
+          paddingTop: 'calc(var(--navbar-height, 98px) + 16px)',
+          paddingBottom: '80px',
+          paddingLeft: '12px',
+          paddingRight: '12px',
+          overflowX: 'hidden',
           boxSizing: 'border-box'
-        }}>
-          {[
-            { num: 1, label: 'Dog & Area' },
-            { num: 2, label: 'Schedule' },
-            { num: 3, label: 'Review' },
-          ].map(s => {
-            const isActive = step === s.num
-            const isDone = step > s.num
-            return (
-              <div
-                key={s.num}
-                onClick={() => {
-                  if (s.num < step) setStep(s.num)
-                }}
-                style={{
-                  background: isActive ? 'var(--accent-bg)' : 'var(--surface)',
-                  border: `1.5px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
-                  borderRadius: '10px',
-                  padding: '7px 4px',
-                  textAlign: 'center',
-                  cursor: s.num < step ? 'pointer' : 'default',
-                  transition: 'all 0.2s ease',
-                  minWidth: 0,
-                  boxSizing: 'border-box',
-                }}
-              >
-                <div style={{
-                  fontSize: '9.5px',
-                  fontWeight: 800,
-                  letterSpacing: '0.4px',
-                  color: isActive ? 'var(--accent)' : isDone ? 'var(--text)' : 'var(--muted)',
-                  lineHeight: 1.1
-                }}>
-                  STEP {s.num}
-                </div>
-                <div style={{
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  color: isActive ? 'var(--accent)' : 'var(--text)',
-                  lineHeight: 1.25,
-                  marginTop: '2px',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}>
-                  {s.label}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        }}
+      >
+        <div style={{ maxWidth: '640px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
 
-        {/* =========================================================================
+          {/* Back Link & Header */}
+          <div style={{ marginBottom: '18px' }}>
+            <Link
+              to="/services"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--muted)', fontSize: '13px', textDecoration: 'none', marginBottom: '12px' }}
+            >
+              <ChevronLeft size={16} /> Back to Services
+            </Link>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+              <span style={{ width: '38px', height: '38px', borderRadius: '12px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
+                <Dog size={20} />
+              </span>
+              <div>
+                <h1 style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text)', margin: 0 }}>
+                  Book Pet Walking
+                </h1>
+                <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                  📍 Dhayari & Nearby Areas · Paw Paw Pet Services
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Closed banner if service disabled */}
+          {settings.acceptBookings === false && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: '14px', padding: '14px 16px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <ShieldAlert size={18} />
+              <div style={{ fontSize: '13px' }}>
+                <strong>Pet Walking Temporarily Paused:</strong> We are currently not accepting new walk bookings online. Please contact admin on WhatsApp for enquiries.
+              </div>
+            </div>
+          )}
+
+          {/* Progress Stepper - Compact & Responsive */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: '6px',
+            marginBottom: '20px',
+            width: '100%',
+          boxSizing: 'border-box',
+            scrollMarginTop: 'calc(var(--navbar-height, 98px) + 20px)'
+          }}>
+            {[
+              { num: 1, label: 'Dog & Area' },
+              { num: 2, label: 'Schedule' },
+              { num: 3, label: 'Review' },
+            ].map(s => {
+              const isActive = step === s.num
+              const isDone = step > s.num
+              return (
+                <div
+                  key={s.num}
+                  onClick={() => {
+                    if (s.num < step) setStep(s.num)
+                  }}
+                  style={{
+                    background: isActive ? 'var(--accent-bg)' : 'var(--surface)',
+                    border: `1.5px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
+                    borderRadius: '10px',
+                    padding: '7px 4px',
+                    textAlign: 'center',
+                    cursor: s.num < step ? 'pointer' : 'default',
+                    transition: 'all 0.2s ease',
+                    minWidth: 0,
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <div style={{
+                    fontSize: '9.5px',
+                    fontWeight: 800,
+                    letterSpacing: '0.4px',
+                    color: isActive ? 'var(--accent)' : isDone ? 'var(--text)' : 'var(--muted)',
+                    lineHeight: 1.1
+                  }}>
+                    STEP {s.num}
+                  </div>
+                  <div style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    color: isActive ? 'var(--accent)' : 'var(--text)',
+                    lineHeight: 1.25,
+                    marginTop: '2px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}>
+                    {s.label}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* =========================================================================
             STEP 1: DOG DETAILS & PICK-UP ADDRESS
            ========================================================================= */}
-        {step === 1 && (
+          {step === 1 && (
           <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: 'clamp(14px, 4vw, 22px)', boxShadow: '0 8px 30px rgba(0,0,0,0.08)', width: '100%', boxSizing: 'border-box' }}>
             <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Dog size={18} color="var(--accent)" /> Dog Details
             </h2>
 
-            {/* Saved Pets Quick-Select */}
-            {pets.length > 0 && (
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '8px' }}>
+            {/* Saved Pets Quick-Select with Add/Manage option */}
+            <div style={{ marginBottom: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   CHOOSE SAVED PET
-                </label>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                </span>
+                <Link
+                  to="/my-pets"
+                  style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <Plus size={13} /> Add or Manage Pets
+                </Link>
+              </div>
+
+              {pets.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '8px' }}>
                   {pets.map(p => {
                     const isSelected = selectedPetId === p.id
                     return (
-                      <button
+                      <div
                         key={p.id}
-                        type="button"
                         onClick={() => applyPet(p)}
+                        role="button"
+                        tabIndex={0}
                         style={{
                           background: isSelected ? 'var(--accent-bg)' : 'var(--surface)',
                           border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
-                          color: isSelected ? 'var(--accent)' : 'var(--text)',
-                          borderRadius: '10px',
-                          padding: '6px 12px',
-                          fontSize: '12.5px',
-                          fontWeight: 600,
+                          borderRadius: '12px',
+                          padding: '8px 10px',
                           cursor: 'pointer',
-                          display: 'inline-flex',
+                          display: 'flex',
                           alignItems: 'center',
-                          gap: '6px',
+                          gap: '10px',
+                          transition: 'all 0.15s ease',
+                          userSelect: 'none',
                         }}
                       >
-                        <Dog size={14} /> {p.name} {p.breed ? `(${p.breed})` : ''}
-                      </button>
+                        {p.photoUrl ? (
+                          <img
+                            src={p.photoUrl}
+                            alt={p.name}
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                              flexShrink: 0,
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '50%',
+                              background: 'var(--card)',
+                              border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'var(--accent)',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Dog size={18} />
+                          </div>
+                        )}
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 800, color: isSelected ? 'var(--accent)' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {p.name}
+                          </div>
+                          <div style={{ fontSize: '10.5px', color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {p.breed || p.gender || 'Dog'}
+                          </div>
+                        </div>
+                      </div>
                     )
                   })}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div style={{ background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: '12px', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                    No pet profiles saved yet.
+                  </span>
+                  <Link
+                    to="/my-pets"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '11px', padding: '5px 10px', whiteSpace: 'nowrap', textDecoration: 'none' }}
+                  >
+                    + Add Pet
+                  </Link>
+                </div>
+              )}
+            </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
               <div>
@@ -755,9 +963,80 @@ export default function BookWalking() {
 
             <hr style={{ borderColor: 'var(--border)', margin: '20px 0' }} />
 
-            <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <MapPin size={18} color="var(--accent)" /> Pick-up Location
             </h2>
+
+            {/* Location Selection Options: Live GPS, Map Landmark Pin, or Manual */}
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                <button
+                  type="button"
+                  onClick={handleGetLiveLocation}
+                  disabled={detectingLocation}
+                  style={{
+                    background: form.mapPinUrl && form.locationCoords ? '#f0fdf4' : 'var(--surface)',
+                    border: `1.5px solid ${form.mapPinUrl && form.locationCoords ? '#16a34a' : 'var(--border)'}`,
+                    color: form.mapPinUrl && form.locationCoords ? '#15803d' : 'var(--text)',
+                    borderRadius: '10px',
+                    padding: '8px 10px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: detectingLocation ? 'wait' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Navigation size={13} style={{ animation: detectingLocation ? 'spin 1s linear infinite' : 'none' }} />
+                  {detectingLocation ? 'Detecting GPS...' : '📍 Use Live GPS'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowMapModal(true)}
+                  style={{
+                    background: 'var(--surface)',
+                    border: '1.5px solid var(--border)',
+                    color: 'var(--text)',
+                    borderRadius: '10px',
+                    padding: '8px 10px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <MapPin size={13} color="var(--accent)" />
+                  🗺️ Choose on Map
+                </button>
+              </div>
+
+              {locationSuccess && (
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', borderRadius: '8px', padding: '6px 10px', fontSize: '11.5px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <CheckCircle size={13} /> {locationSuccess}
+                  </span>
+                  {form.mapPinUrl && (
+                    <a href={form.mapPinUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#16a34a', fontWeight: 700, textDecoration: 'underline' }}>
+                      View Pin ↗
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {locationError && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '8px', padding: '6px 10px', fontSize: '11.5px', marginBottom: '10px' }}>
+                  ⚠️ {locationError}
+                </div>
+              )}
+            </div>
 
             <div style={{ marginBottom: '12px' }}>
               <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>
@@ -812,316 +1091,498 @@ export default function BookWalking() {
               Continue to Duration & Timing <ArrowRight size={16} />
             </button>
           </div>
-        )}
+          )}
 
-        {/* =========================================================================
+          {/* =========================================================================
             STEP 2: DURATION, DATES & TIME SLOTS
            ========================================================================= */}
-        {step === 2 && (
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: 'clamp(14px, 4vw, 22px)', boxShadow: '0 8px 30px rgba(0,0,0,0.08)', width: '100%', boxSizing: 'border-box' }}>
-            <button
-              type="button"
-              onClick={() => setStep(1)}
-              style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: 0, marginBottom: '14px' }}
-            >
-              <ChevronLeft size={16} /> Back to Dog Info
-            </button>
+          {step === 2 && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: 'clamp(14px, 4vw, 22px)', boxShadow: '0 8px 30px rgba(0,0,0,0.08)', width: '100%', boxSizing: 'border-box' }}>
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: 0, marginBottom: '14px' }}
+              >
+                <ChevronLeft size={16} /> Back to Dog Info
+              </button>
 
-            <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Clock size={18} color="var(--accent)" /> Select Walking Duration
-            </h2>
+              <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Clock size={18} color="var(--accent)" /> Select Walking Duration
+              </h2>
 
-            {/* Duration Selector Buttons with Live Pricing */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginBottom: '22px', width: '100%', boxSizing: 'border-box' }}>
-              {[
-                { mins: 30, rate: settings.rate30Min || 199, desc: 'Quick walk' },
-                { mins: 45, rate: settings.rate45Min || 279, desc: 'Sniff walk' },
-                { mins: 60, rate: settings.rate60Min || 349, desc: 'Full workout' },
-              ].map(opt => {
-                const isSelected = form.duration === opt.mins
-                return (
-                  <button
-                    key={opt.mins}
-                    type="button"
-                    onClick={() => update('duration', opt.mins)}
-                    style={{
-                      background: isSelected ? 'var(--accent-bg)' : 'var(--surface)',
-                      border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
-                      borderRadius: '12px',
-                      padding: '10px 4px',
-                      textAlign: 'center',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      position: 'relative',
-                      minWidth: 0,
-                      boxSizing: 'border-box',
-                    }}
-                  >
-                    <div style={{ fontSize: '15px', fontWeight: 800, color: isSelected ? 'var(--accent)' : 'var(--text)', marginBottom: '2px' }}>
-                      {opt.mins} Mins
-                    </div>
-                    <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--accent)', marginBottom: '4px' }}>
-                      ₹{opt.rate}
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: 'var(--muted)', lineHeight: 1.25 }}>
-                      {opt.desc}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
+              {/* Duration Selector Buttons with Live Pricing */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(auto-fit, minmax(95px, 1fr))`,
+                gap: '8px',
+                marginBottom: '22px',
+                width: '100%',
+                boxSizing: 'border-box'
+              }}>
+                {durationsList.map(opt => {
+                  const isSelected = Number(form.duration) === Number(opt.duration)
+                  return (
+                    <button
+                      key={opt.duration}
+                      type="button"
+                      onClick={() => update('duration', Number(opt.duration))}
+                      style={{
+                        background: isSelected ? 'var(--accent-bg)' : 'var(--surface)',
+                        border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                        borderRadius: '12px',
+                        padding: '10px 6px',
+                        textAlign: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        position: 'relative',
+                        minWidth: 0,
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      <div style={{ fontSize: '15px', fontWeight: 800, color: isSelected ? 'var(--accent)' : 'var(--text)', marginBottom: '2px' }}>
+                        {opt.duration} Mins
+                      </div>
+                      <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--accent)', marginBottom: '3px' }}>
+                        ₹{opt.price}
+                      </div>
+                      <div style={{ fontSize: '10.5px', color: 'var(--muted)', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {opt.label || `${opt.duration} Min Walk`}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
 
-            <hr style={{ borderColor: 'var(--border)', margin: '20px 0' }} />
+              <hr style={{ borderColor: 'var(--border)', margin: '20px 0' }} />
 
-            {/* Preferred Walking Date */}
-            <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Calendar size={18} color="var(--accent)" /> Walking Date
-            </h2>
+              {/* Preferred Walking Date */}
+              <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Calendar size={18} color="var(--accent)" /> Walking Date
+              </h2>
 
-            <div style={{ marginBottom: '18px' }}>
-              <input
-                type="date"
-                className="input"
-                min={todayStr}
-                value={form.date}
-                onChange={e => {
-                  update('date', e.target.value)
-                  update('slot', '')
-                }}
-              />
-              {!isDayOpen && (
-                <span style={{ fontSize: '12px', color: '#ef4444', marginTop: '6px', display: 'block', fontWeight: 600 }}>
-                  ⚠️ Paw Paw is closed for dog walking on this day. Please select another day.
-                </span>
-              )}
-            </div>
-
-            {/* Time Slots Grid */}
-            <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                <Footprints size={18} color="var(--accent)" /> Available Walk Slots
-              </span>
-              <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
-                {loadingSlots ? 'Checking slots...' : `${bookedSlotsForDate.length} slot(s) full`}
-              </span>
-            </h2>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginBottom: '16px' }}>
-              {settings.slots.map(s => {
-                const isSelected = form.slot === s
-                const isFull = bookedSlotsForDate.includes(s)
-                const slotMins = parseSlotTimeToMinutes(s)
-                const isPast = isToday && slotMins <= nowMins + 30
-                const disabled = !isDayOpen || isFull || isPast
-
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => {
-                      update('slot', s)
-                      setShowCustomTimeInput(false)
-                    }}
-                    style={{
-                      background: isSelected ? 'var(--accent)' : disabled ? 'var(--surface)' : 'var(--card)',
-                      color: isSelected ? '#ffffff' : disabled ? 'var(--muted)' : 'var(--text)',
-                      border: `1.5px solid ${isSelected ? 'var(--accent)' : disabled ? 'var(--border)' : 'var(--accent-border)'}`,
-                      borderRadius: '10px',
-                      padding: '10px 4px',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      cursor: disabled ? 'not-allowed' : 'pointer',
-                      opacity: disabled ? 0.45 : 1,
-                      textAlign: 'center',
-                      position: 'relative',
-                      whiteSpace: 'nowrap',
-                      minWidth: 0,
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    {s}
-                    {isFull && (
-                      <span style={{ display: 'block', fontSize: '9px', fontWeight: 600, color: '#ef4444', marginTop: '2px' }}>Full</span>
-                    )}
-                    {isPast && (
-                      <span style={{ display: 'block', fontSize: '9px', fontWeight: 600, color: 'var(--muted)', marginTop: '2px' }}>Passed</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Custom Timing Option */}
-            <div style={{ marginBottom: '24px', background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: '12px', padding: '12px 14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 600 }}>
-                  Can't find a suitable slot?
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = !showCustomTimeInput
-                    setShowCustomTimeInput(next)
-                    if (next) update('slot', '')
+              <div style={{ marginBottom: '18px' }}>
+                <input
+                  type="date"
+                  className="input"
+                  min={todayStr}
+                  value={form.date}
+                  onChange={e => {
+                    update('date', e.target.value)
+                    update('slot', '')
                   }}
-                  style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', padding: 0 }}
-                >
-                  {showCustomTimeInput ? 'Use standard slots' : '+ Request Custom Time'}
-                </button>
-              </div>
-
-              {showCustomTimeInput && (
-                <div style={{ marginTop: '10px' }}>
-                  <input
-                    className="input"
-                    placeholder="e.g. Prefer 02:30 PM afternoon walk"
-                    value={form.customTimeRequested}
-                    onChange={e => update('customTimeRequested', e.target.value)}
-                  />
-                  <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginTop: '4px' }}>
-                    Admin will review walker availability for this custom time before confirming.
+                />
+                {!isDayOpen && (
+                  <span style={{ fontSize: '12px', color: '#ef4444', marginTop: '6px', display: 'block', fontWeight: 600 }}>
+                    ⚠️ Paw Paw is closed for dog walking on this day. Please select another day.
                   </span>
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={handleStep2Continue}
-              disabled={!isDayOpen || (!form.slot && !form.customTimeRequested.trim())}
-              className="btn btn-primary"
-              style={{ width: '100%', justifyContent: 'center', gap: '8px', padding: '12px' }}
-            >
-              Continue to Review <ArrowRight size={16} />
-            </button>
-          </div>
-        )}
-
-        {/* =========================================================================
-            STEP 3: CONTACT DETAILS & REVIEW SUBMIT
-           ========================================================================= */}
-        {step === 3 && (
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: 'clamp(14px, 4vw, 22px)', boxShadow: '0 8px 30px rgba(0,0,0,0.08)', width: '100%', boxSizing: 'border-box' }}>
-            <button
-              type="button"
-              onClick={() => setStep(2)}
-              style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: 0, marginBottom: '14px' }}
-            >
-              <ChevronLeft size={16} /> Back to Slots
-            </button>
-
-            <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <User size={18} color="var(--accent)" /> Contact Information
-            </h2>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>Your Name *</label>
-                <input
-                  className="input"
-                  placeholder="Full name"
-                  value={form.ownerName}
-                  onChange={e => update('ownerName', e.target.value)}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>Phone Number *</label>
-                <input
-                  className="input"
-                  placeholder="10-digit number"
-                  maxLength={10}
-                  value={form.phone}
-                  onChange={e => update('phone', e.target.value.replace(/\D/g, ''))}
-                />
-                {!hasProfilePhone && user?.uid && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', fontSize: '11.5px', color: 'var(--muted)', cursor: 'pointer', userSelect: 'none' }}>
-                    <input
-                      type="checkbox"
-                      checked={savePhoneToProfile}
-                      onChange={e => setSavePhoneToProfile(e.target.checked)}
-                      style={{ accentColor: 'var(--accent)', cursor: 'pointer', width: '13px', height: '13px' }}
-                    />
-                    <span>Save to profile</span>
-                  </label>
                 )}
               </div>
-            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>WhatsApp (if different)</label>
-                <input
+              {/* Time Slots Grid */}
+              <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <Footprints size={18} color="var(--accent)" /> Available Walk Slots
+                </span>
+                <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
+                  {loadingSlots ? 'Checking slots...' : `${bookedSlotsForDate.length} slot(s) full`}
+                </span>
+              </h2>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginBottom: '16px' }}>
+                {settings.slots.map(s => {
+                  const isSelected = form.slot === s
+                  const isFull = bookedSlotsForDate.includes(s)
+                  const slotMins = parseSlotTimeToMinutes(s)
+                  const isPast = isToday && slotMins <= nowMins + 30
+                  const disabled = !isDayOpen || isFull || isPast
+
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => {
+                        update('slot', s)
+                        setShowCustomTimeInput(false)
+                      }}
+                      style={{
+                        background: isFull
+                          ? '#f3f4f6'
+                          : isPast
+                            ? 'var(--surface)'
+                            : isSelected
+                              ? '#16a34a'
+                              : '#f0fdf4',
+                        color: isFull
+                          ? '#9ca3af'
+                          : isPast
+                            ? 'var(--muted)'
+                            : isSelected
+                              ? '#ffffff'
+                              : '#15803d',
+                        border: `1.5px solid ${isFull
+                            ? '#e5e7eb'
+                            : isPast
+                              ? 'var(--border)'
+                              : isSelected
+                                ? '#15803d'
+                                : '#86efac'
+                          }`,
+                        borderRadius: '10px',
+                        padding: '10px 4px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: isFull ? 0.7 : isPast ? 0.45 : 1,
+                        textAlign: 'center',
+                        position: 'relative',
+                        whiteSpace: 'nowrap',
+                        minWidth: 0,
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        transition: 'all 0.15s ease',
+                        boxShadow: isSelected ? '0 2px 8px rgba(22, 163, 74, 0.35)' : 'none',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                        {!disabled && !isSelected && (
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                        )}
+                        {isSelected && (
+                          <Check size={12} strokeWidth={3} />
+                        )}
+                        <span>{s}</span>
+                      </div>
+
+                      {isFull && (
+                      <span style={{ display: 'block', fontSize: '9px', fontWeight: 700, color: '#9ca3af', marginTop: '2px', textTransform: 'uppercase' }}>
+                        Full
+                      </span>
+                      )}
+                    {isPast && !isFull && (
+                        <span style={{ display: 'block', fontSize: '9px', fontWeight: 600, color: 'var(--muted)', marginTop: '2px' }}>
+                          Passed
+                        </span>
+                      )}
+                      {!disabled && !isSelected && (
+                        <span style={{ display: 'block', fontSize: '9px', fontWeight: 700, color: '#16a34a', marginTop: '2px' }}>
+                          Available
+                        </span>
+                      )}
+                      {isSelected && (
+                        <span style={{ display: 'block', fontSize: '9px', fontWeight: 800, color: '#ffffff', marginTop: '2px' }}>
+                          Selected
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Custom Timing Option */}
+              <div style={{ marginBottom: '24px', background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: '12px', padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 600 }}>
+                    Can't find a suitable slot?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !showCustomTimeInput
+                      setShowCustomTimeInput(next)
+                      if (next) update('slot', '')
+                    }}
+                    style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                  >
+                    {showCustomTimeInput ? 'Use standard slots' : '+ Request Custom Time'}
+                  </button>
+                </div>
+
+                {showCustomTimeInput && (
+                  <div style={{ marginTop: '10px' }}>
+                    <input
+                      className="input"
+                      placeholder="e.g. Prefer 02:30 PM afternoon walk"
+                      value={form.customTimeRequested}
+                      onChange={e => update('customTimeRequested', e.target.value)}
+                    />
+                    <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginTop: '4px' }}>
+                      Admin will review walker availability for this custom time before confirming.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleStep2Continue}
+                disabled={!isDayOpen || (!form.slot && !form.customTimeRequested.trim())}
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center', gap: '8px', padding: '12px' }}
+              >
+                Continue to Review <ArrowRight size={16} />
+              </button>
+            </div>
+          )}
+
+          {/* =========================================================================
+            STEP 3: CONTACT DETAILS & REVIEW SUBMIT
+           ========================================================================= */}
+          {step === 3 && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: 'clamp(14px, 4vw, 22px)', boxShadow: '0 8px 30px rgba(0,0,0,0.08)', width: '100%', boxSizing: 'border-box' }}>
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: 0, marginBottom: '14px' }}
+              >
+                <ChevronLeft size={16} /> Back to Slots
+              </button>
+
+              <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <User size={18} color="var(--accent)" /> Contact Information
+              </h2>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>Your Name *</label>
+                  <input
+                    className="input"
+                    placeholder="Full name"
+                    value={form.ownerName}
+                    onChange={e => update('ownerName', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>Phone Number *</label>
+                  <input
+                    className="input"
+                    placeholder="10-digit number"
+                    maxLength={10}
+                    value={form.phone}
+                    onChange={e => update('phone', e.target.value.replace(/\D/g, ''))}
+                  />
+                  {!hasProfilePhone && user?.uid && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', fontSize: '11.5px', color: 'var(--muted)', cursor: 'pointer', userSelect: 'none' }}>
+                      <input
+                        type="checkbox"
+                        checked={savePhoneToProfile}
+                        onChange={e => setSavePhoneToProfile(e.target.checked)}
+                        style={{ accentColor: 'var(--accent)', cursor: 'pointer', width: '13px', height: '13px' }}
+                      />
+                      <span>Save to profile</span>
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>WhatsApp (if different)</label>
+                  <input
+                    className="input"
+                    placeholder="Optional"
+                    maxLength={10}
+                    value={form.whatsappNumber}
+                    onChange={e => update('whatsappNumber', e.target.value.replace(/\D/g, ''))}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>Emergency Contact</label>
+                  <input
+                    className="input"
+                    placeholder="Name / number"
+                    value={form.emergencyContact}
+                    onChange={e => update('emergencyContact', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>Special Instructions for Walker (optional)</label>
+                <textarea
                   className="input"
-                  placeholder="Optional"
-                  maxLength={10}
-                  value={form.whatsappNumber}
-                  onChange={e => update('whatsappNumber', e.target.value.replace(/\D/g, ''))}
+                  rows={2}
+                  placeholder="e.g. Ring doorbell, leash is kept by the front shoe rack, please wipe paws before re-entering"
+                  value={form.notes}
+                  onChange={e => update('notes', e.target.value)}
+                  style={{ resize: 'none' }}
                 />
               </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>Emergency Contact (optional)</label>
-                <input
-                  className="input"
-                  placeholder="Name / number"
-                  value={form.emergencyContact}
-                  onChange={e => update('emergencyContact', e.target.value)}
-                />
+
+              {/* Review Summary Card */}
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--accent-border)', borderRadius: '16px', padding: '16px 18px', marginBottom: '22px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {form.petPhotoUrl ? (
+                      <img src={form.petPhotoUrl} alt="" style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : (
+                      <span>🐕</span>
+                    )}
+                    <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>
+                      {form.dogName} {form.breed ? `(${form.breed})` : ''}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '15px', fontWeight: 900, color: 'var(--accent)' }}>
+                    ₹{durationPrice()}
+                  </span>
+                </div>
+                <div style={{ fontSize: '12.5px', color: 'var(--muted)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div><strong>Duration:</strong> {form.duration} Minutes</div>
+                  <div><strong>Time:</strong> {form.slot || form.customTimeRequested}</div>
+                  <div><strong>Date:</strong> {form.date}</div>
+                  <div><strong>Area:</strong> {form.area}</div>
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '8px', borderTop: '1px dashed var(--border)', paddingTop: '6px' }}>
+                  <strong>Pick-up:</strong> {form.pickupAddress}
+                  {form.mapPinUrl && (
+                    <div style={{ marginTop: '4px' }}>
+                      <a href={form.mapPinUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#16a34a', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <MapPin size={11} /> View GPS Location on Map ↗
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting || !form.ownerName.trim() || !form.phone.trim()}
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center', gap: '8px', padding: '14px', fontSize: '15px' }}
+              >
+                {submitting ? 'Submitting Request...' : `Request Dog Walk (Pay ₹${durationPrice()} Later)`}
+              </button>
+              <span style={{ display: 'block', textAlign: 'center', fontSize: '11.5px', color: 'var(--muted)', marginTop: '8px' }}>
+                No advance payment needed. Admin will confirm your walking schedule shortly.
+              </span>
+            </div>
+          )}
+
+          {/* Modal: Choose on Map / Popular Dhayari Locations */}
+          {showMapModal && (
+            <div className="modal-overlay" onClick={() => setShowMapModal(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', boxSizing: 'border-box', zIndex: 9999 }}>
+              <div
+                className="modal-content"
+                onClick={e => e.stopPropagation()}
+                style={{
+                  maxWidth: '500px',
+                  width: '100%',
+                  maxHeight: '90vh',
+                  overflowY: 'auto',
+                  background: 'var(--card)',
+                  color: 'var(--text)',
+                  border: '1.5px solid var(--border)',
+                  borderRadius: '20px',
+                  padding: '22px',
+                  boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+                  boxSizing: 'border-box'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <MapPin size={18} color="var(--accent)" />
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Choose Map Location</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowMapModal(false)}
+                    style={{ background: 'var(--surface)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--muted)' }}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+
+                <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '0 0 14px', lineHeight: 1.45 }}>
+                  Tap a popular Dhayari landmark or enter your Google Maps location link / GPS pin to attach it directly to your dog walking appointment.
+                </p>
+
+                {/* Popular Landmarks in Dhayari */}
+                <div style={{ marginBottom: '18px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: '8px' }}>
+                    POPULAR DHAYARI SPOTS
+                  </span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '8px' }}>
+                    {[
+                      { name: 'DSK Vishwa', area: 'DSK Vishwa', coords: { lat: 18.4385, lng: 73.8055 } },
+                      { name: 'Benkar Vasti', area: 'Benkar Vasti', coords: { lat: 18.4423, lng: 73.8118 } },
+                      { name: 'Dhayari Gaon / Maruti Mandir', area: 'Dhayari', coords: { lat: 18.4485, lng: 73.8123 } },
+                      { name: 'Dhayari Phata', area: 'Sinhagad Road (Dhayari Phata to Toll Plaza)', coords: { lat: 18.4610, lng: 73.8190 } },
+                      { name: 'Vadgaon Budruk', area: 'Vadgaon Budruk', coords: { lat: 18.4680, lng: 73.8235 } },
+                      { name: 'Narhe Colony', area: 'Narhe', coords: { lat: 18.4520, lng: 73.8290 } },
+                      { name: 'Ambegaon Budruk', area: 'Ambegaon Budruk', coords: { lat: 18.4590, lng: 73.8410 } },
+                      { name: 'Sinhagad Toll Plaza', area: 'Sinhagad Road (Dhayari Phata to Toll Plaza)', coords: { lat: 18.4350, lng: 73.7990 } },
+                    ].map(spot => (
+                      <button
+                        key={spot.name}
+                        type="button"
+                        onClick={() => handleSelectDhayariLandmark(spot.name, spot.area, spot.coords)}
+                        style={{
+                          background: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '10px',
+                          padding: '8px 10px',
+                          fontSize: '11.5px',
+                          fontWeight: 600,
+                          color: 'var(--text)',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <MapPin size={12} color="var(--accent)" style={{ flexShrink: 0 }} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {spot.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Paste Google Maps link or coordinates */}
+                <div style={{ marginBottom: '14px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: '6px' }}>
+                    OR PASTE MAP LINK / GPS COORDINATES
+                  </span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      className="input"
+                      placeholder="e.g. https://maps.app.goo.gl/... or 18.4485, 73.8123"
+                      value={customMapInput}
+                      onChange={e => setCustomMapInput(e.target.value)}
+                      style={{ fontSize: '12px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCustomMapPinSubmit}
+                      className="btn btn-primary"
+                      style={{ padding: '8px 14px', fontSize: '12px', flexShrink: 0 }}
+                    >
+                      Attach
+                    </button>
+                  </div>
+                </div>
+
+                {/* Direct Open in Google Maps */}
+                <div style={{ textAlign: 'center', borderTop: '1px dashed var(--border)', paddingTop: '12px' }}>
+                  <a
+                    href="https://www.google.com/maps/search/Dhayari,+Pune"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                  >
+                    <ExternalLink size={13} /> Open Google Maps in new tab ↗
+                  </a>
+                </div>
               </div>
             </div>
+          )}
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>Special Instructions for Walker (optional)</label>
-              <textarea
-                className="input"
-                rows={2}
-                placeholder="e.g. Ring doorbell, leash is kept by the front shoe rack, please wipe paws before re-entering"
-                value={form.notes}
-                onChange={e => update('notes', e.target.value)}
-                style={{ resize: 'none' }}
-              />
-            </div>
-
-            {/* Review Summary Card */}
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--accent-border)', borderRadius: '16px', padding: '16px 18px', marginBottom: '22px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>
-                  🐕 {form.dogName} {form.breed ? `(${form.breed})` : ''}
-                </span>
-                <span style={{ fontSize: '15px', fontWeight: 900, color: 'var(--accent)' }}>
-                  ₹{durationPrice()}
-                </span>
-              </div>
-              <div style={{ fontSize: '12.5px', color: 'var(--muted)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div><strong>Duration:</strong> {form.duration} Minutes</div>
-                <div><strong>Time:</strong> {form.slot || form.customTimeRequested}</div>
-                <div><strong>Date:</strong> {form.date}</div>
-                <div><strong>Area:</strong> {form.area}</div>
-              </div>
-              <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '8px', borderTop: '1px dashed var(--border)', paddingTop: '6px' }}>
-                <strong>Pick-up:</strong> {form.pickupAddress}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={submitting || !form.ownerName.trim() || !form.phone.trim()}
-              className="btn btn-primary"
-              style={{ width: '100%', justifyContent: 'center', gap: '8px', padding: '14px', fontSize: '15px' }}
-            >
-              {submitting ? 'Submitting Request...' : `Request Dog Walk (Pay ₹${durationPrice()} Later)`}
-            </button>
-            <span style={{ display: 'block', textAlign: 'center', fontSize: '11.5px', color: 'var(--muted)', marginTop: '8px' }}>
-              No advance payment needed. Admin will confirm your walking schedule shortly.
-            </span>
-          </div>
-        )}
-
+        </div>
       </div>
-    </div>
-  )
+      )
 }
 

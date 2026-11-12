@@ -1,7 +1,7 @@
 // src/components/MobileBottomNav.jsx
 import { useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Home, Scissors, Calendar, ClipboardList, User, Hotel, ChevronRight, X } from 'lucide-react'
+import { Home, Scissors, Calendar, ClipboardList, User, Hotel, Footprints, ChevronRight, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 export default function MobileBottomNav() {
@@ -118,6 +118,25 @@ export default function MobileBottomNav() {
                     <span className="sheet-badge-new">NEW</span>
                   </div>
                   <span>Safe, cozy overnight stay & daycare</span>
+                </div>
+                <ChevronRight size={18} className="sheet-arrow" />
+              </button>
+
+              {/* Option 3: Pet Walking */}
+              <button
+                type="button"
+                className="mobile-sheet-card"
+                onClick={() => handleSelectBooking('/book-walking')}
+              >
+                <div className="sheet-card-icon walking">
+                  <Footprints size={22} />
+                </div>
+                <div className="sheet-card-info">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <strong>Pet Walking</strong>
+                    <span className="sheet-badge-new">NEW</span>
+                  </div>
+                  <span>Daily walks, exercise & route updates</span>
                 </div>
                 <ChevronRight size={18} className="sheet-arrow" />
               </button>

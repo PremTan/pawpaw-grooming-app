@@ -2,14 +2,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore'
-import { ArrowRight, Calendar, Clock, Flame, Package, PawPrint, Phone, Star, TrendingUp, Footprints, CheckCircle2, MapPin, X, MessageCircle } from 'lucide-react'
+import { ArrowRight, Calendar, Clock, Flame, Package, PawPrint, Phone, Star, TrendingUp, Footprints, CheckCircle2, MapPin, X, MessageCircle, Hotel } from 'lucide-react'
 import { db } from '../firebase'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import Spinner from '../components/Spinner'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { fetchWalkingSettings } from '../utils/walkingSettings'
+import { fetchBoardingSettings } from '../utils/boardingSettings'
 import { useAuth } from '../context/AuthContext'
 import petWalkingHero from '../assets/pet-walking-hero.jpg'
+import boardingHeroPets from '../assets/boarding-hero-pets.png'
 
 const cleanPrice = (value) => String(value || 'Price TBD').replace(/Ã¢â€šÂ¹/g, 'Rs ').replace(/Ã¢â‚¬â€œ/g, '-')
 const badgeFor = (index, bookingCount, maxBookings, isPackage = false) => {
@@ -27,17 +29,19 @@ export default function Services() {
   const [loading, setLoading] = useState(true)
   const [adminPhone, setAdminPhone] = useState('')
   const [walkingSettings, setWalkingSettings] = useState(null)
+  const [boardingSettings, setBoardingSettings] = useState(null)
   const [showWalkingModal, setShowWalkingModal] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [statsSnap, pSnap, dSnap, businessInfo, walkingSet] = await Promise.all([
+        const [statsSnap, pSnap, dSnap, businessInfo, walkingSet, boardingSet] = await Promise.all([
           getDoc(doc(db, 'settings', 'homeStats')),
           getDocs(collection(db, 'packages')),
           getDocs(collection(db, 'serviceDetails')),
           fetchBusinessInfo(db),
           fetchWalkingSettings(db),
+          fetchBoardingSettings(db),
         ])
         const c = statsSnap.exists() && statsSnap.data().perServiceBookings ? statsSnap.data().perServiceBookings : {}
         const details = {}
@@ -47,6 +51,7 @@ export default function Services() {
         setPackages(pSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.active !== false))
         setAdminPhone(businessInfo.whatsappNumber || '')
         setWalkingSettings(walkingSet)
+        setBoardingSettings(boardingSet)
       } catch { }
       setLoading(false)
     }
@@ -173,6 +178,49 @@ export default function Services() {
                   </button>
                   <Link to="/book-walking" className="btn btn-primary">
                     Book a Walk <ArrowRight size={16} />
+                  </Link>
+                </div>
+              </article>
+
+              {/* Pet Boarding Service Card */}
+              <article className="services-list-card fade-up" style={{ animationDelay: `${(publicServices.length + 1) * 0.05}s` }}>
+                <div className="services-card-media">
+                  <img
+                    src={boardingSettings?.bannerImageUrl || boardingHeroPets}
+                    alt="Pet Boarding Service"
+                    loading="lazy"
+                    style={{ objectFit: 'cover' }}
+                    onError={e => {
+                      e.currentTarget.onerror = null
+                      e.currentTarget.src = boardingHeroPets
+                    }}
+                  />
+                  <span className="services-card-ribbon trend">NEW</span>
+                </div>
+                <div className="services-card-body">
+                  <div className="services-card-title-row">
+                    <div>
+                      <h2>Pet Boarding</h2>
+                      <p>Safe, cozy overnight stay & daycare with 24/7 loving care & updates.</p>
+                    </div>
+                    <strong>From Rs {boardingSettings?.catDailyRate || 600} / day</strong>
+                  </div>
+                  <div className="services-card-time"><Clock size={16} /> Daycare & Overnight</div>
+                  <div className="services-card-badges">
+                    <span><Hotel size={14} /> Cat: Rs {boardingSettings?.catDailyRate || 600}/day</span>
+                    <span><Hotel size={14} /> Dog: Rs {boardingSettings?.dogDailyRate || 800}/day</span>
+                  </div>
+                  <div className="services-card-mobile-popularity">
+                    <small><MapPin size={12} style={{ display: 'inline', verticalAlign: '-1px' }} /> AC suites · CCTV supervision · Dhayari</small>
+                    <i><b style={{ width: '95%' }} /></i>
+                  </div>
+                </div>
+                <div className="services-card-actions">
+                  <Link to="/boarding" className="btn btn-secondary">
+                    View Details
+                  </Link>
+                  <Link to="/boarding" className="btn btn-primary">
+                    Book Boarding <ArrowRight size={16} />
                   </Link>
                 </div>
               </article>
