@@ -1,5 +1,5 @@
 // src/pages/Home.jsx
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs, query, orderBy, limit, where, updateDoc, serverTimestamp, Timestamp, getCountFromServer } from 'firebase/firestore'
 import { format } from 'date-fns'
@@ -1479,13 +1479,35 @@ export default function Home() {
     }
   }, [featuredReviews.length, reviewIndex])
 
+  const homeWalkingDurations = useMemo(() => {
+    if (Array.isArray(walkingSettings?.durations) && walkingSettings.durations.length > 0) {
+      return walkingSettings.durations
+    }
+    return [
+      { duration: 30, price: walkingSettings?.rate30Min || 199 },
+      { duration: 45, price: walkingSettings?.rate45Min || 279 },
+      { duration: 60, price: walkingSettings?.rate60Min || 349 },
+    ]
+  }, [walkingSettings])
+  const homeMinWalkingPrice = useMemo(() => Math.min(...homeWalkingDurations.map(d => Number(d.price) || 0).filter(p => p > 0)) || 199, [homeWalkingDurations])
+  const homeWalkingDurationSummary = useMemo(() => {
+    if (homeWalkingDurations.length > 2) {
+      return `${homeWalkingDurations.slice(0, 2).map(d => d.duration).join(' / ')}... Mins`
+    }
+    return `${homeWalkingDurations.map(d => d.duration).join(' / ')} Mins`
+  }, [homeWalkingDurations])
+  const homeMinBoardingPrice = useMemo(() => {
+    const list = [boardingSettings?.catDailyRate, boardingSettings?.dogDailyRate, boardingSettings?.otherDailyRate].map(Number).filter(r => r > 0)
+    return list.length ? Math.min(...list) : 600
+  }, [boardingSettings])
+
   const shownServices = [
     {
       id: 'pet-walking',
       name: 'Pet Walking',
       description: 'Daily walks, exercise and happy tails for your dog in Dhayari.',
-      price: `From Rs. ${walkingSettings?.rate30Min || 199}`,
-      duration: '30 / 45 / 60 Mins',
+      price: `From Rs. ${homeMinWalkingPrice}`,
+      duration: homeWalkingDurationSummary,
       icon: <Footprints size={30} />,
       iconImageUrl: walkingSettings?.bannerImageUrl || petWalkingHero,
       to: '/book-walking',
@@ -1494,8 +1516,8 @@ export default function Home() {
       id: 'pet-boarding',
       name: 'Pet Boarding',
       description: 'Safe, cozy overnight stay and daycare with 24/7 loving care.',
-      price: `From Rs. ${boardingSettings?.catDailyRate || 600} / day`,
-      duration: 'Daycare & Overnight',
+      price: `From Rs. ${homeMinBoardingPrice} / day`,
+      duration: 'Pet Hostelling',
       icon: <Hotel size={30} />,
       iconImageUrl: boardingSettings?.bannerImageUrl || boardingHeroPets,
       to: '/boarding',

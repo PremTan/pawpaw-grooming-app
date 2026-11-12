@@ -85,6 +85,11 @@ function AdminHomeRedirect({ children }) {
   return children
 }
 
+function DashboardRedirect() {
+  const location = useLocation()
+  return <Navigate to={`/admin${location.search}`} replace />
+}
+
 function PublicLayout() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
@@ -107,6 +112,7 @@ export default function App() {
         {/* Admin — own layout */}
         <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
         <Route index            element={<AdminDashboard />} />
+        <Route path="dashboard" element={<DashboardRedirect />} />
         <Route path="bookings"  element={<AdminBookings />} />
         <Route path="bookings/:bookingId" element={<AdminBookings />} />
         <Route path="boarding"  element={<AdminBoarding />} />

@@ -78,6 +78,11 @@ export default function PublicInvoice() {
           snap = await getDoc(doc(db, 'boardingBookings', invoiceId)).catch(() => null)
         }
 
+        // 7. Try walkingBookings collection (if authenticated)
+        if (!snap || !snap.exists()) {
+          snap = await getDoc(doc(db, 'walkingBookings', invoiceId)).catch(() => null)
+        }
+
         if (snap && snap.exists()) {
           const data = { id: snap.id, ...snap.data() }
           setBooking(data)
@@ -159,7 +164,8 @@ export default function PublicInvoice() {
 
   const invoiceNo = getInvoiceNumber(booking)
   const isBoarding = !!booking.isBoarding
-  const amountPaid = Number(booking.amountCollected || booking.totalAmount || booking.estimatedTotal || 0)
+  const isWalking = !!(booking.isWalking || booking.serviceType === 'walking')
+  const amountPaid = Number(booking.amountCollected || booking.totalPrice || booking.totalAmount || booking.estimatedTotal || 0)
   const visitCharge = Number(booking.visitCharge || 0)
   const shopName = businessInfo?.contact?.shopName || 'Paw Paw Pet Grooming'
   const shopPhone = businessInfo?.contact?.phone || businessInfo?.contact?.whatsappNumber || '9021459467'
@@ -348,7 +354,7 @@ export default function PublicInvoice() {
               </div>
             )}
             <div style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '2px', fontWeight: 600 }}>
-              {isBoarding ? '🏨 Pet Boarding Stay' : `✂️ ${getBookingTypeLabel(booking.bookingType || 'store')}`}
+              {isBoarding ? '🏨 Pet Boarding Stay' : isWalking ? `🦮 Dog Walking (${booking.duration || 30} Mins)` : `✂️ ${getBookingTypeLabel(booking.bookingType || 'store')}`}
             </div>
           </div>
         </div>
@@ -366,6 +372,23 @@ export default function PublicInvoice() {
                   <strong style={{ fontSize: '14px', color: 'var(--text)', display: 'block' }}>Pet Boarding Stay</strong>
                   <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
                     {booking.checkInDate || '-'} to {booking.checkOutDate || '-'} ({booking.stayDays || 1} Days)
+                  </span>
+                </div>
+                <div style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text)' }}>
+                  Rs {money(amountPaid)}
+                </div>
+              </div>
+            ) : isWalking ? (
+              <div style={{ background: 'var(--surface)', padding: '12px 14px', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                <div>
+                  <strong style={{ fontSize: '14px', color: 'var(--text)', display: 'block' }}>
+                    Dog Walking ({booking.duration || booking.durationMinutes || 30} Mins Session)
+                  </strong>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginTop: '2px' }}>
+                    Schedule: {booking.date || booking.walkingDate || '-'} {booking.slot ? `at ${booking.slot}` : ''}
+                  </span>
+                  <span style={{ fontSize: '11.5px', color: 'var(--muted)', display: 'block', marginTop: '2px' }}>
+                    Pickup: {booking.pickupAddress || booking.address || booking.area || 'Doorstep Pickup'}
                   </span>
                 </div>
                 <div style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text)' }}>

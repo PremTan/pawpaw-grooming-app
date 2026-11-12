@@ -116,18 +116,29 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
+  const [walkin, setWalkin] = useState(EMPTY)
 
   useEffect(() => {
     if (searchParams.get('action') === 'walkin') {
+      const dateParam = searchParams.get('date')
+      const slotParam = searchParams.get('slot')
+      if (dateParam || slotParam) {
+        setWalkin(prev => ({
+          ...prev,
+          ...(dateParam ? { date: dateParam } : {}),
+          ...(slotParam ? { slot: slotParam } : {}),
+        }))
+      }
       setShowModal(true)
       setSearchParams(prev => {
         const next = new URLSearchParams(prev)
         next.delete('action')
+        next.delete('date')
+        next.delete('slot')
         return next
       }, { replace: true })
     }
   }, [searchParams, setSearchParams])
-  const [walkin, setWalkin] = useState(EMPTY)
   const [walkinCustomerSearch, setWalkinCustomerSearch] = useState('')
   const [showWalkinDropdown, setShowWalkinDropdown] = useState(false)
   const [showServicePackageOptions, setShowServicePackageOptions] = useState(false)

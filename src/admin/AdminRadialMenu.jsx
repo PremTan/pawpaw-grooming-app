@@ -6,37 +6,37 @@ import { Building2, Calendar, Footprints, Plus, ReceiptText, ShoppingBag, X } fr
 const RADIUS = 96 // distance in px from center (+) button to shortcut items
 
 // Angles in degrees sweeping counter-clockwise across the top arc:
-// 170° (far left) -> 130° (mid left) -> 90° (top center) -> 50° (mid right) -> 10° (far right)
+// 170° (far left: Purchase) -> 130° (mid left: Bookings) -> 90° (top center: Boarding) -> 50° (mid right: Dog Walking) -> 10° (far right: Invoices)
 const SHORTCUTS = [
-  {
-    id: 'walkin',
-    label: 'Walk-in',
-    icon: Footprints,
-    to: '/admin?action=walkin',
-    angle: 170,
-    delay: 0.02,
-  },
   {
     id: 'purchase',
     label: 'Purchase',
     icon: ShoppingBag,
     to: '/admin/shop-purchases',
-    angle: 130,
-    delay: 0.04,
+    angle: 170,
+    delay: 0.02,
   },
   {
     id: 'bookings',
     label: 'Bookings',
     icon: Calendar,
     to: '/admin/bookings',
-    angle: 90,
-    delay: 0.06,
+    angle: 130,
+    delay: 0.04,
   },
   {
     id: 'boarding',
     label: 'Boarding',
     icon: Building2,
     to: '/admin/boarding',
+    angle: 90,
+    delay: 0.06,
+  },
+  {
+    id: 'walking',
+    label: 'Dog Walking',
+    icon: Footprints,
+    to: '/admin/walking',
     angle: 50,
     delay: 0.08,
   },

@@ -13,6 +13,11 @@ export const getInvoiceNumber = booking => {
     const date = clean(rawDate).replaceAll('-', '') || new Date().toISOString().slice(0, 10).replaceAll('-', '')
     return `BRD${date}${shortId(booking?.id) || 'STAY'}`
   }
+  if (booking?.isWalking || booking?.serviceType === 'walking') {
+    const rawDate = booking?.walkingDate || booking?.date
+    const date = clean(rawDate).replaceAll('-', '') || new Date().toISOString().slice(0, 10).replaceAll('-', '')
+    return `WLK${date}${shortId(booking?.id) || 'WALK'}`
+  }
   const date = clean(booking?.date).replaceAll('-', '') || new Date().toISOString().slice(0, 10).replaceAll('-', '')
   return `INV${date}${shortId(booking?.id) || 'BOOKING'}`
 }
@@ -34,6 +39,22 @@ export const getInvoiceSummary = (booking, businessInfo = {}) => {
       `Phone: ${booking?.phone || '-'}`,
       `Pet: ${buildPetLabel(booking)}`,
       `Stay: ${booking?.checkInDate || '-'} to ${booking?.actualCheckOutDate || booking?.checkOutDate || '-'} (${booking?.stayDays || 1} Days)`,
+      `Amount Paid: ${money(amountPaid)}`,
+      `GST: ${gstAmount > 0 ? money(gstAmount) : 'Not applicable'}`,
+      `Total: ${money(total)}`,
+    ].join('\n')
+  }
+
+  if (booking?.isWalking || booking?.serviceType === 'walking') {
+    return [
+      `${shopName} Dog Walking Invoice`,
+      `Invoice No: ${invoiceNo}`,
+      `Customer: ${booking?.ownerName || '-'}`,
+      `Phone: ${booking?.phone || '-'}`,
+      `Pet: ${buildPetLabel(booking)}`,
+      `Service: Dog Walking (${booking?.duration || booking?.durationMinutes || 30} Mins Session)`,
+      `Schedule: ${booking?.date || '-'} ${booking?.slot || ''}`.trim(),
+      `Pickup: ${booking?.pickupAddress || booking?.address || booking?.area || '-'}`,
       `Amount Paid: ${money(amountPaid)}`,
       `GST: ${gstAmount > 0 ? money(gstAmount) : 'Not applicable'}`,
       `Total: ${money(total)}`,
@@ -62,21 +83,27 @@ export function encodeInvoicePayload(booking) {
       ownerName: booking.ownerName || '',
       phone: booking.phone || '',
       userEmail: booking.userEmail || '',
-      petName: booking.petName || '',
+      petName: booking.petName || booking.dogName || '',
       petType: booking.petType || 'Dog',
-      petBreed: booking.petBreed || '',
+      petBreed: booking.petBreed || booking.breed || '',
       serviceName: booking.serviceName || '',
       serviceNames: Array.isArray(booking.serviceNames) ? booking.serviceNames : [],
       date: booking.date || '',
       slot: booking.slot || '',
       bookingType: booking.bookingType || 'store',
-      address: booking.address || '',
-      amountCollected: booking.amountCollected ?? booking.totalAmount ?? booking.serviceTotal ?? 0,
-      totalAmount: booking.totalAmount ?? booking.amountCollected ?? 0,
+      address: booking.address || booking.pickupAddress || '',
+      amountCollected: booking.amountCollected ?? booking.totalAmount ?? booking.totalPrice ?? booking.serviceTotal ?? 0,
+      totalAmount: booking.totalAmount ?? booking.totalPrice ?? booking.amountCollected ?? 0,
       serviceTotal: booking.serviceTotal || 0,
       visitCharge: booking.visitCharge || 0,
       gstAmount: booking.gstAmount || 0,
       isBoarding: !!booking.isBoarding,
+      isWalking: !!(booking.isWalking || booking.serviceType === 'walking'),
+      walkingDate: booking.walkingDate || booking.date || '',
+      walkingSlot: booking.walkingSlot || booking.slot || '',
+      duration: booking.duration || booking.durationMinutes || 30,
+      pickupAddress: booking.pickupAddress || booking.address || '',
+      area: booking.area || '',
       checkInDate: booking.checkInDate || '',
       checkInTime: booking.checkInTime || '',
       checkOutDate: booking.checkOutDate || '',
@@ -118,6 +145,7 @@ export const buildCustomerInvoiceWhatsAppMessage = (booking, businessInfo = {}) 
   const shopName = businessInfo.contact?.shopName || 'Paw Paw Pet Grooming'
   const invoiceNo = getInvoiceNumber(booking)
   const isBoarding = !!booking?.isBoarding
+  const isWalking = !!(booking?.isWalking || booking?.serviceType === 'walking')
   const ownerName = booking?.ownerName || 'Customer'
   const petLabel = buildPetLabel(booking)
   const amountPaid = Number(getAmountPaid(booking) || 0).toLocaleString('en-IN')
@@ -129,6 +157,15 @@ export const buildCustomerInvoiceWhatsAppMessage = (booking, businessInfo = {}) 
     detailsText = [
       `🐕 *Pet:* ${petLabel}`,
       `🏨 *Stay:* ${stayStr} (${days} Day${days > 1 ? 's' : ''})`,
+    ].join('\n')
+  } else if (isWalking) {
+    const durationMins = booking?.duration || booking?.durationMinutes || 30
+    const dateSlot = `${booking?.walkingDate || booking?.date || '-'}${booking?.slot || booking?.walkingSlot ? ` at ${booking.slot || booking.walkingSlot}` : ''}`
+    detailsText = [
+      `🐕 *Pet:* ${petLabel}`,
+      `🦮 *Service:* Dog Walking (${durationMins} Mins Session)`,
+      `📅 *Schedule:* ${dateSlot}`,
+      `📍 *Pickup:* ${booking?.pickupAddress || booking?.address || booking?.area || 'Doorstep Pickup'}`,
     ].join('\n')
   } else {
     const serviceName = booking?.serviceName || 'Grooming Service'
@@ -219,6 +256,9 @@ export async function viewInvoicePdf(booking, businessInfo = {}) {
 function getAmountPaid(booking) {
   if (booking?.isBoarding) {
     return Number(booking?.amountCollected || booking?.totalAmount || booking?.estimatedTotal || 0)
+  }
+  if (booking?.isWalking || booking?.serviceType === 'walking') {
+    return Number(booking?.totalPrice || booking?.amountCollected || booking?.totalAmount || 0)
   }
   return Number(booking?.amountCollected || booking?.estimatedTotal || 0)
 }
@@ -397,9 +437,12 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   doc.setFont('helvetica', 'normal')
   doc.text(address, margin + 18, 344, { maxWidth: 225, lineHeightFactor: 1.3 })
 
-  const serviceTitle = booking?.isBoarding ? 'Boarding Facility' : 'Service Address'
+  const isWalking = !!(booking?.isWalking || booking?.serviceType === 'walking')
+  const serviceTitle = booking?.isBoarding ? 'Boarding Facility' : isWalking ? 'Pickup Location' : 'Service Address'
   const serviceValue = booking?.isBoarding
     ? (contact.address || 'Paw Paw Pet Boarding Facility')
+    : isWalking
+    ? (booking?.pickupAddress || booking?.address || (booking?.area ? `${booking.area}, Pune` : contact.address || 'Pickup at doorstep'))
     : (booking?.bookingType === 'home' ? address : (contact.address || 'In-store visit'))
 
   doc.setFont('helvetica', 'bold')
@@ -409,6 +452,19 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
 
   const tableBody = (Array.isArray(booking?.invoiceItems) && booking.invoiceItems.length > 0)
     ? booking.invoiceItems
+    : isWalking
+    ? [[
+      '01',
+      [
+        `Dog Walking (${booking?.duration || booking?.durationMinutes || 30} Mins Session)`,
+        `Pet: ${buildPetLabel(booking)}`,
+        `Schedule: ${booking?.date || '-'} at ${booking?.slot || '-'}`,
+        `Pickup: ${booking?.pickupAddress || booking?.address || booking?.area || '-'}`,
+      ].join('\n'),
+      '1 Session',
+      Number(amountPaid || 0).toLocaleString('en-IN'),
+      Number(amountPaid || 0).toLocaleString('en-IN'),
+    ]]
     : [[
       '01',
       [booking?.serviceName || '-', `Pet: ${buildPetLabel(booking)}`, `Appointment: ${booking?.date || '-'} ${booking?.slot || '-'}`].join('\n'),
@@ -437,6 +493,8 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   const tableBottom = doc.lastAutoTable.finalY + 14
   const terms = booking?.isBoarding
     ? ['Invoice generated after pet boarding stay is completed.', 'Payment received as recorded by admin.']
+    : isWalking
+    ? ['Invoice generated after pet walking session is completed.', 'Payment received as recorded by admin.']
     : ['Invoice is generated only after the appointment is marked completed.', 'Payment received as recorded by admin.']
   drawTextBox(doc, 'Terms and Conditions', terms, margin + 8, tableBottom, 260, 104)
   drawTextBox(doc, 'Customer Note', [booking?.notes || booking?.additionalInstructions || ''], margin + 8, tableBottom + 118, 260, 54)

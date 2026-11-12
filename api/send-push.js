@@ -98,6 +98,8 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Missing token or userId' })
       }
       const cleanEmail = String(userEmail || '').trim().toLowerCase()
+      const now = new Date()
+
       await tokensCol.doc(token).set({
         token,
         userId,
@@ -105,8 +107,29 @@ export default async function handler(req, res) {
         isAdmin: cleanEmail === ENV_ADMIN_EMAIL && ENV_ADMIN_EMAIL !== '',
         active: true,
         platform: String(platform || ''),
-        updatedAt: new Date(),
+        updatedAt: now,
       }, { merge: true })
+
+      // Deactivate older tokens for this user on the same platform to avoid duplicate pushes
+      try {
+        const userTokensSnap = await tokensCol.where('userId', '==', userId).get()
+        const batch = firestore.batch()
+        let pruned = 0
+        userTokensSnap.forEach(dSnap => {
+          if (dSnap.id !== token) {
+            const d = dSnap.data()
+            if (d.active !== false && (!platform || d.platform === platform)) {
+              batch.update(dSnap.ref, { active: false, deactivatedAt: now })
+              pruned++
+            }
+          }
+        })
+        if (pruned > 0) {
+          await batch.commit()
+        }
+      } catch (pruneErr) {
+        console.warn('[send-push] Token cleanup on register error:', pruneErr)
+      }
 
       return res.status(200).json({ success: true, message: 'FCM token registered in Firestore' })
     }
@@ -116,14 +139,16 @@ export default async function handler(req, res) {
     const finalUrl = String(actionUrl || '/').trim()
     const notificationTag = String(bookingId ? `pawpaw-booking-${bookingId}` : 'pawpaw-alert')
 
-    // 1. Collect all active recipient tokens uniquely
-    const tokensSet = new Set()
+    // 1. Collect all active recipient tokens uniquely with device deduplication
+    const tokensMap = new Map()
 
     const addDocsTokens = (snap) => {
       snap.forEach((docSnap) => {
         const d = docSnap.data()
         if (d && d.token && d.active !== false) {
-          tokensSet.add(d.token)
+          if (!tokensMap.has(d.token)) {
+            tokensMap.set(d.token, d)
+          }
         }
       })
     }
@@ -171,7 +196,22 @@ export default async function handler(req, res) {
     const querySnaps = await Promise.all(queries)
     querySnaps.forEach(addDocsTokens)
 
-    const tokens = Array.from(tokensSet)
+    // Deduplicate tokens per user & device platform so a single phone does not receive duplicate pushes
+    const deviceMap = new Map()
+    for (const [t, data] of tokensMap.entries()) {
+      const userKey = data.userId || data.userEmail || 'anon'
+      const rawPlatform = String(data.platform || 'web').toLowerCase().trim()
+      const isMobile = rawPlatform.includes('mobi') || rawPlatform.includes('android') || rawPlatform.includes('iphone')
+      const deviceKey = `${userKey}___${isMobile ? 'mobile' : 'desktop'}___${rawPlatform.slice(0, 50)}`
+
+      const existing = deviceMap.get(deviceKey)
+      const tokenTime = data.updatedAt?.toDate?.()?.getTime?.() || (data.updatedAt ? new Date(data.updatedAt).getTime() : 0)
+      if (!existing || tokenTime > existing.time) {
+        deviceMap.set(deviceKey, { token: t, time: tokenTime })
+      }
+    }
+
+    const tokens = Array.from(new Set(Array.from(deviceMap.values()).map(item => item.token)))
 
     if (tokens.length === 0) {
       return res.status(200).json({
@@ -183,6 +223,12 @@ export default async function handler(req, res) {
     }
 
     // 2. Multicast FCM message with high priority for Web Push
+    // ROOT CAUSE FIX: Do NOT provide top-level `notification` or `webpush.notification`!
+    // In FCM Web Push, providing a `notification` payload triggers the Firebase SDK's internal
+    // auto-display handler. Because `messaging.onBackgroundMessage` in `firebase-messaging-sw.js`
+    // ALSO calls `self.registration.showNotification(...)`, the browser would display TWO notifications.
+    // By sending a pure data payload, the SDK does not auto-display, and `onBackgroundMessage` has
+    // exclusive control to display exactly ONE styled notification with interactive buttons and tag.
     const cleanTopic = notificationTag.replace(/[^a-zA-Z0-9-_.~%]/g, '_').slice(0, 32)
     const actionBtnTitle = req.body?.actionTitle || (
       isAdminTarget
@@ -194,10 +240,6 @@ export default async function handler(req, res) {
 
     const multicastMessage = {
       tokens,
-      notification: {
-        title: finalTitle,
-        body: textBody,
-      },
       data: {
         title: finalTitle,
         body: textBody,
@@ -211,31 +253,11 @@ export default async function handler(req, res) {
       android: {
         collapseKey: cleanTopic,
         priority: 'high',
-        notification: {
-          tag: notificationTag,
-          clickAction: finalUrl,
-          icon: PUSH_ICON,
-        },
       },
       webpush: {
         headers: {
           Urgency: 'high',
           Topic: cleanTopic,
-        },
-        notification: {
-          title: finalTitle,
-          body: textBody,
-          icon: PUSH_ICON,
-          tag: notificationTag,
-          renotify: true,
-          requireInteraction: true,
-          actions: [
-            { action: 'open_url', title: actionBtnTitle },
-            { action: 'dismiss', title: 'Dismiss' },
-          ],
-          data: {
-            url: finalUrl,
-          },
         },
         fcmOptions: {
           link: finalUrl,

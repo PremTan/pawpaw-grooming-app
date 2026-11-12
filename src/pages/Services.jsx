@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore'
-import { ArrowRight, Calendar, Clock, Flame, Package, PawPrint, Phone, Star, TrendingUp, Footprints, CheckCircle2, MapPin, X, MessageCircle, Hotel } from 'lucide-react'
+import { ArrowRight, Calendar, Clock, Flame, Package, PawPrint, Phone, Star, TrendingUp, Footprints, CheckCircle2, MapPin, X, MessageCircle, Hotel, Utensils } from 'lucide-react'
 import { db } from '../firebase'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import Spinner from '../components/Spinner'
@@ -31,6 +31,7 @@ export default function Services() {
   const [walkingSettings, setWalkingSettings] = useState(null)
   const [boardingSettings, setBoardingSettings] = useState(null)
   const [showWalkingModal, setShowWalkingModal] = useState(false)
+  const [showBoardingModal, setShowBoardingModal] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -59,6 +60,59 @@ export default function Services() {
   }, [])
 
   const maxBookings = useMemo(() => Math.max(...Object.values(counts).map(Number), 1), [counts])
+
+  // Dynamic durations and prices for Pet Walking
+  const walkingDurations = useMemo(() => {
+    if (Array.isArray(walkingSettings?.durations) && walkingSettings.durations.length > 0) {
+      return walkingSettings.durations
+        .map(d => ({
+          duration: Number(d.duration),
+          price: Number(d.price),
+          label: d.label || `${d.duration} Min Walk`,
+        }))
+        .filter(d => d.duration > 0 && d.price > 0)
+        .sort((a, b) => a.duration - b.duration)
+    }
+    const fallback = []
+    if (walkingSettings?.rate30Min) fallback.push({ duration: 30, price: Number(walkingSettings.rate30Min), label: '30 Min Walk' })
+    if (walkingSettings?.rate45Min) fallback.push({ duration: 45, price: Number(walkingSettings.rate45Min), label: '45 Min Walk' })
+    if (walkingSettings?.rate60Min) fallback.push({ duration: 60, price: Number(walkingSettings.rate60Min), label: '60 Min Walk' })
+    return fallback.length > 0 ? fallback : [
+      { duration: 30, price: 199, label: '30 Min Walk' },
+      { duration: 45, price: 279, label: '45 Min Walk' },
+      { duration: 60, price: 349, label: '60 Min Walk' },
+    ]
+  }, [walkingSettings])
+
+  const minWalkingPrice = useMemo(() => {
+    if (!walkingDurations.length) return 199
+    return Math.min(...walkingDurations.map(d => d.price))
+  }, [walkingDurations])
+
+  const walkingDurationSummary = useMemo(() => {
+    if (!walkingDurations.length) return '30 / 45... Mins'
+    if (walkingDurations.length > 2) {
+      return `${walkingDurations.slice(0, 2).map(d => d.duration).join(' / ')}... Mins`
+    }
+    return `${walkingDurations.map(d => d.duration).join(' / ')} Mins`
+  }, [walkingDurations])
+
+  // Dynamic rates for Pet Boarding
+  const boardingRatesList = useMemo(() => {
+    const list = []
+    if (boardingSettings?.catDailyRate) list.push({ label: 'Cat', rate: Number(boardingSettings.catDailyRate) })
+    if (boardingSettings?.dogDailyRate) list.push({ label: 'Dog', rate: Number(boardingSettings.dogDailyRate) })
+    if (boardingSettings?.otherDailyRate) list.push({ label: 'Other Pets', rate: Number(boardingSettings.otherDailyRate) })
+    if (!list.length) {
+      list.push({ label: 'Cat', rate: 600 }, { label: 'Dog', rate: 800 })
+    }
+    return list
+  }, [boardingSettings])
+
+  const minBoardingPrice = useMemo(() => {
+    if (!boardingRatesList.length) return 600
+    return Math.min(...boardingRatesList.map(r => r.rate))
+  }, [boardingRatesList])
 
   const publicServices = buildServiceCatalog(serviceDetails)
     .map((service, index) => {
@@ -151,7 +205,7 @@ export default function Services() {
                       e.currentTarget.src = petWalkingHero
                     }}
                   />
-                  <span className="services-card-ribbon trend">NEW</span>
+                  {(walkingSettings?.showNewBadge !== false) && <span className="services-card-ribbon trend">NEW</span>}
                 </div>
                 <div className="services-card-body">
                   <div className="services-card-title-row">
@@ -159,13 +213,13 @@ export default function Services() {
                       <h2>Pet Walking</h2>
                       <p>Daily walks, exercise and happy tails for your dog in Dhayari & nearby.</p>
                     </div>
-                    <strong>From Rs {walkingSettings?.rate30Min || 199}</strong>
+                    <strong>From Rs {minWalkingPrice}</strong>
                   </div>
-                  <div className="services-card-time"><Clock size={16} /> 30 / 45 / 60 Mins</div>
+                  <div className="services-card-time"><Clock size={16} /> {walkingDurationSummary}</div>
                   <div className="services-card-badges">
-                    <span><Footprints size={14} /> 30m · Rs {walkingSettings?.rate30Min || 199}</span>
-                    <span><Footprints size={14} /> 45m · Rs {walkingSettings?.rate45Min || 279}</span>
-                    <span><Footprints size={14} /> 60m · Rs {walkingSettings?.rate60Min || 349}</span>
+                    {walkingDurations.map(d => (
+                      <span key={d.duration}><Footprints size={14} /> {d.duration}m · Rs {d.price}</span>
+                    ))}
                   </div>
                   <div className="services-card-mobile-popularity">
                     <small><MapPin size={12} style={{ display: 'inline', verticalAlign: '-1px' }} /> Dhayari & nearby areas</small>
@@ -195,7 +249,7 @@ export default function Services() {
                       e.currentTarget.src = boardingHeroPets
                     }}
                   />
-                  <span className="services-card-ribbon trend">NEW</span>
+                  {(boardingSettings?.showNewBadge !== false) && <span className="services-card-ribbon trend">NEW</span>}
                 </div>
                 <div className="services-card-body">
                   <div className="services-card-title-row">
@@ -203,22 +257,23 @@ export default function Services() {
                       <h2>Pet Boarding</h2>
                       <p>Safe, cozy overnight stay & daycare with 24/7 loving care & updates.</p>
                     </div>
-                    <strong>From Rs {boardingSettings?.catDailyRate || 600} / day</strong>
+                    <strong>From Rs {minBoardingPrice} / day</strong>
                   </div>
-                  <div className="services-card-time"><Clock size={16} /> Daycare & Overnight</div>
+                  <div className="services-card-time"><Clock size={16} /> Pet Hostelling</div>
                   <div className="services-card-badges">
-                    <span><Hotel size={14} /> Cat: Rs {boardingSettings?.catDailyRate || 600}/day</span>
-                    <span><Hotel size={14} /> Dog: Rs {boardingSettings?.dogDailyRate || 800}/day</span>
+                    {boardingRatesList.map(item => (
+                      <span key={item.label}><Hotel size={14} /> {item.label}: Rs {item.rate}/day</span>
+                    ))}
                   </div>
                   <div className="services-card-mobile-popularity">
-                    <small><MapPin size={12} style={{ display: 'inline', verticalAlign: '-1px' }} /> AC suites · CCTV supervision · Dhayari</small>
+                    <small><MapPin size={12} style={{ display: 'inline', verticalAlign: '-1px' }} /> CCTV supervision · Dhayari</small>
                     <i><b style={{ width: '95%' }} /></i>
                   </div>
                 </div>
                 <div className="services-card-actions">
-                  <Link to="/boarding" className="btn btn-secondary">
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowBoardingModal(true)}>
                     View Details
-                  </Link>
+                  </button>
                   <Link to="/boarding" className="btn btn-primary">
                     Book Boarding <ArrowRight size={16} />
                   </Link>
@@ -332,7 +387,7 @@ export default function Services() {
                         <Clock size={16} /> 3. Flexible Morning & Evening Shifts
                       </div>
                       <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
-                        Choose between 30, 45, or 60-minute sessions during morning (6:30 AM – 9:30 AM) and evening (5:00 PM – 8:00 PM) slots. Custom times also available on request.
+                        Choose from flexible {walkingDurations.map(d => `${d.duration}`).join(', ')}-minute sessions during morning (6:30 AM – 9:30 AM) and evening (5:00 PM – 8:00 PM) slots. Custom times also available on request.
                       </p>
                     </div>
 
@@ -350,7 +405,12 @@ export default function Services() {
                         Dynamic Per-Session Pricing
                       </div>
                       <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.6 }}>
-                        <strong>30 Minutes:</strong> ₹{walkingSettings?.rate30Min || 199} · <strong>45 Minutes:</strong> ₹{walkingSettings?.rate45Min || 279} · <strong>60 Minutes:</strong> ₹{walkingSettings?.rate60Min || 349}. Pay after booking confirmation or in person.
+                        {walkingDurations.map((d, i) => (
+                          <span key={d.duration}>
+                            {i > 0 && ' · '}
+                            <strong>{d.duration} Minutes:</strong> ₹{d.price}
+                          </span>
+                        ))}. Pay after booking confirmation or in person.
                       </div>
                     </div>
                   </div>
@@ -366,6 +426,94 @@ export default function Services() {
                     >
                       <Footprints size={15} /> Book a Walk
                     </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Pet Boarding Details Modal */}
+            {showBoardingModal && (
+              <div className="modal-overlay" onClick={() => setShowBoardingModal(false)}>
+                <div className="reschedule-modal-card" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
+                  <div className="reschedule-modal-header">
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Hotel size={20} style={{ color: 'var(--accent)' }} /> Paw Paw Pet Boarding Guide
+                      </h3>
+                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--muted)' }}>
+                        Everything you need to know about our overnight hostelling care for dogs & cats
+                      </p>
+                    </div>
+                    <button type="button" className="icon-btn" onClick={() => setShowBoardingModal(false)}>
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: '12px', margin: '16px 0', maxHeight: '60vh', overflowY: 'auto' }}>
+                    <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                      <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Hotel size={16} /> 1. Cozy, Sanitized Suites
+                      </div>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                        Climate-controlled, clean, and spacious rooms designed to feel like home. Separate quiet spaces for cats and lively play zones for dogs.
+                      </p>
+                    </div>
+
+                    <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                      <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Utensils size={16} /> 2. Tailored Meals & Fresh Water
+                      </div>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                        We follow your pet's exact feeding routine. Bring their favorite food or choose Paw Paw's nutritious fresh home food or packaged kibble.
+                      </p>
+                    </div>
+
+                    <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                      <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <PawPrint size={16} /> 3. Daily Walks, Play & Cuddles
+                      </div>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                        Dogs enjoy morning and evening walks plus outdoor playtime. Cats receive interactive indoor play, scratching posts, and gentle attention.
+                      </p>
+                    </div>
+
+                    <div style={{ padding: '14px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)' }}>
+                      <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <MessageCircle size={16} /> 4. Daily WhatsApp Updates
+                      </div>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5 }}>
+                        Stay connected while you travel with daily photos and videos showing your furry family eating, playing, and relaxing happily.
+                      </p>
+                    </div>
+
+                    <div style={{ padding: '14px', background: 'var(--accent-bg)', borderRadius: '14px', border: '1px solid var(--accent-border)' }}>
+                      <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)', marginBottom: '4px' }}>
+                        Transparent Daily Rates & No Advance Fees
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.5 }}>
+                        {boardingRatesList.map((item, idx) => (
+                          <span key={item.label}>
+                            {idx > 0 && ' · '}
+                            <strong>{item.label} Boarding:</strong> ₹{item.rate} / day
+                          </span>
+                        ))}. No online payments required in advance; pay upon check-in or pick-up.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="reschedule-modal-footer">
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowBoardingModal(false)}>
+                      Close
+                    </button>
+                    {(boardingSettings?.acceptBookings !== false) && (
+                      <Link
+                        to="/boarding"
+                        className="btn btn-primary"
+                        onClick={() => setShowBoardingModal(false)}
+                      >
+                        <Calendar size={15} /> Book Pet Boarding
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>

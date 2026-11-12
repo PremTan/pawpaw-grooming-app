@@ -549,11 +549,49 @@ export default function Book() {
         </div>
       )}
       <div ref={bookingTopRef} style={{ ...S.wrap, textAlign: 'center' }}>
-        <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(52,211,153,0.1)', border: '2px solid rgba(52,211,153,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', color: '#34d399' }}>
-          <CheckCircle size={36} />
+        {/* Top Hero Section with Floating Paws & Check Badge */}
+        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '22px', paddingTop: '6px' }}>
+          {/* Subtle background floating paws */}
+          <div style={{ position: 'absolute', color: '#D6BA8F', opacity: 0.32, pointerEvents: 'none', zIndex: 1, top: '-2px', left: '20%', transform: 'rotate(-15deg)' }} aria-hidden="true">
+            <PawPrint size={32} />
+          </div>
+          <div style={{ position: 'absolute', color: '#D6BA8F', opacity: 0.32, pointerEvents: 'none', zIndex: 1, top: '-2px', right: '20%', transform: 'rotate(15deg)' }} aria-hidden="true">
+            <PawPrint size={32} />
+          </div>
+          <div style={{ position: 'absolute', color: '#D6BA8F', opacity: 0.22, pointerEvents: 'none', zIndex: 1, top: '55px', left: '4%', transform: 'rotate(-25deg)' }} aria-hidden="true">
+            <PawPrint size={24} />
+          </div>
+          <div style={{ position: 'absolute', color: '#D6BA8F', opacity: 0.22, pointerEvents: 'none', zIndex: 1, top: '60px', right: '4%', transform: 'rotate(25deg)' }} aria-hidden="true">
+            <PawPrint size={24} />
+          </div>
+
+          {/* Green Success Badge with Gold Sunburst Radiance */}
+          <div style={{ position: 'relative', width: '88px', height: '88px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', zIndex: 2 }}>
+            <svg style={{ position: 'absolute', width: '104px', height: '104px', top: '-8px', left: '-8px', pointerEvents: 'none' }} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <line x1="50" y1="4" x2="50" y2="13" stroke="#E2B768" strokeWidth="3" strokeLinecap="round" />
+              <line x1="75" y1="14" x2="69" y2="22" stroke="#E2B768" strokeWidth="3" strokeLinecap="round" />
+              <line x1="88" y1="36" x2="79" y2="40" stroke="#E2B768" strokeWidth="3" strokeLinecap="round" />
+              <line x1="25" y1="14" x2="31" y2="22" stroke="#E2B768" strokeWidth="3" strokeLinecap="round" />
+              <line x1="12" y1="36" x2="21" y2="40" stroke="#E2B768" strokeWidth="3" strokeLinecap="round" />
+            </svg>
+
+            <div style={{ position: 'absolute', pointerEvents: 'none', opacity: 0.45, left: '-14px', top: '24px', transform: 'rotate(-20deg)' }} aria-hidden="true">
+              <PawPrint size={22} color="#DEC49C" />
+            </div>
+            <div style={{ position: 'absolute', pointerEvents: 'none', opacity: 0.45, right: '-14px', top: '24px', transform: 'rotate(20deg)' }} aria-hidden="true">
+              <PawPrint size={22} color="#DEC49C" />
+            </div>
+
+            <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(22, 163, 74, 0.16)' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '50%', border: '2.8px solid #16A34A', background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Check size={26} strokeWidth={3.4} color="#16A34A" />
+              </div>
+            </div>
+          </div>
+
+          <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '30px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Booking Request Sent!</h2>
+          <p style={{ color: 'var(--muted)', marginBottom: '18px' }}>Your appointment request has been received. We'll confirm it shortly.</p>
         </div>
-        <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Booking Request Sent!</h2>
-        <p style={{ color: 'var(--muted)', marginBottom: '28px' }}>Your appointment request has been received. We'll confirm it shortly.</p>
 
         <div style={{ ...S.card, textAlign: 'left', marginBottom: '20px' }}>
           {[

@@ -491,6 +491,50 @@ export default function MyBookings() {
     }
   }
 
+  const handleDownloadWalkingInvoice = async (w) => {
+    if (!w) return
+    setDownloadingInvoiceId(w.id)
+    try {
+      const durationMins = w.duration || w.durationMinutes || 30
+      const finalPrice = Number(w.totalPrice || w.amountCollected || 199)
+
+      const items = [
+        [
+          '01',
+          `Dog Walking (${durationMins} Mins Session)\nPet: ${w.dogName || w.petName || 'Dog'}${w.breed || w.petBreed ? ` (${w.breed || w.petBreed})` : ''}\nSchedule: ${w.date || '-'} at ${w.slot || w.walkingSlot || '-'}\nPickup: ${w.pickupAddress || w.address || (w.area ? `${w.area}, Pune` : 'Doorstep Pickup')}`,
+          '1 Session',
+          finalPrice.toLocaleString('en-IN'),
+          finalPrice.toLocaleString('en-IN'),
+        ]
+      ]
+
+      const walkingInvoiceData = {
+        ...w,
+        isWalking: true,
+        serviceType: 'walking',
+        serviceName: `Dog Walking (${durationMins} Mins Session)`,
+        petName: w.dogName || w.petName || 'Dog',
+        petType: 'Dog',
+        petBreed: w.breed || w.petBreed || '',
+        date: w.date,
+        slot: w.slot || w.walkingSlot || '',
+        address: w.pickupAddress || w.address || (w.area ? `${w.area}, Pune` : ''),
+        invoiceItems: items,
+        totalAmount: finalPrice,
+        amountCollected: finalPrice,
+      }
+      await downloadInvoicePdf(walkingInvoiceData, businessInfo || {})
+      setInvoiceToastType('success')
+      setInvoiceToast('Dog walking invoice downloaded successfully!')
+    } catch (err) {
+      console.error('Walking invoice download failed:', err)
+      setInvoiceToastType('error')
+      setInvoiceToast('Failed to download invoice. Please try again.')
+    } finally {
+      setDownloadingInvoiceId('')
+    }
+  }
+
   const fetchBoardings = async () => {
     if (!user?.uid) return
     setBoardingLoading(true)
@@ -1398,6 +1442,18 @@ export default function MyBookings() {
                         >
                           Details
                         </button>
+
+                        {w.status === 'completed' && allowInvoice && (
+                          <button
+                            type="button"
+                            className="my-booking-card-btn invoice"
+                            onClick={() => handleDownloadWalkingInvoice(w)}
+                            disabled={downloadingInvoiceId === w.id}
+                            title="Download PDF Invoice"
+                          >
+                            <FileText size={12} /> {downloadingInvoiceId === w.id ? 'Downloading...' : 'Invoice'}
+                          </button>
+                        )}
 
                         {(w.status === 'pending' || w.status === 'under_review' || !w.status) && (
                           <button
@@ -3102,6 +3158,19 @@ export default function MyBookings() {
               </div>
 
               {/* Modal Footer Actions */}
+              {selectedWalking.status === 'completed' && allowInvoice && (
+                <div className="details-modal-footer boarding-modal-footer">
+                  <button
+                    type="button"
+                    className="grooming-action-btn invoice"
+                    onClick={() => handleDownloadWalkingInvoice(selectedWalking)}
+                    disabled={downloadingInvoiceId === selectedWalking.id}
+                  >
+                    <FileText size={15} /> {downloadingInvoiceId === selectedWalking.id ? 'Downloading...' : 'Download Invoice'}
+                  </button>
+                </div>
+              )}
+
               {isPendingOrConfirmed && (
                 <div className="details-modal-footer boarding-modal-footer">
                   {(selectedWalking.status === 'pending' || selectedWalking.status === 'under_review' || !selectedWalking.status) && (

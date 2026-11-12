@@ -1,5 +1,6 @@
 // src/admin/AdminWalking.jsx
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   collection,
   query,
@@ -42,6 +43,7 @@ import {
   MessageCircle,
   Phone,
   Plus,
+  ReceiptText,
   RefreshCw,
   Save,
   Search,
@@ -58,6 +60,7 @@ import {
 const money = (val) => Number(val || 0).toLocaleString('en-IN')
 
 export default function AdminWalking() {
+  const navigate = useNavigate()
   const { sendNotification } = useNotifications() || {}
 
   const [activeTab, setActiveTab] = useState('bookings') // 'bookings' | 'settings'
@@ -911,6 +914,31 @@ export default function AdminWalking() {
                             <CheckCircle size={13} /> Mark Completed
                           </button>
                         )}
+
+                        {b.status === WALKING_STATUS.COMPLETED && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/admin/invoices?mode=walking&id=${b.id}`)}
+                            style={{
+                              background: 'rgba(212, 175, 55, 0.12)',
+                              border: '1px solid var(--accent-border)',
+                              color: 'var(--accent)',
+                              fontWeight: 700,
+                              fontSize: '11px',
+                              padding: '5px 10px',
+                              borderRadius: '7px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0,
+                            }}
+                            title="Generate / View Invoice"
+                          >
+                            <ReceiptText size={13} /> Invoice
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1658,14 +1686,42 @@ export default function AdminWalking() {
                   </span>
                 </div>
               </div>
-              <button
-                type="button"
-                className="icon-btn"
-                onClick={() => setSelectedBooking(null)}
-                style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--muted)' }}
-              >
-                <X size={16} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {selectedBooking.status === WALKING_STATUS.COMPLETED && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const id = selectedBooking.id
+                      setSelectedBooking(null)
+                      navigate(`/admin/invoices?mode=walking&id=${id}`)
+                    }}
+                    style={{
+                      background: 'rgba(212, 175, 55, 0.12)',
+                      border: '1px solid var(--accent-border)',
+                      color: 'var(--accent)',
+                      borderRadius: '8px',
+                      padding: '5px 10px',
+                      fontSize: '11.5px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                    title="Generate or View Invoice"
+                  >
+                    <ReceiptText size={13} /> Invoice
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => setSelectedBooking(null)}
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--muted)' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -1966,6 +2022,27 @@ export default function AdminWalking() {
                     }}
                   >
                     <CheckCircle size={14} /> Mark Completed
+                  </button>
+                )}
+
+                {selectedBooking.status === WALKING_STATUS.COMPLETED && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const id = selectedBooking.id
+                      setSelectedBooking(null)
+                      navigate(`/admin/invoices?mode=walking&id=${id}`)
+                    }}
+                    className="btn btn-primary"
+                    style={{
+                      fontSize: '12px',
+                      padding: '8px 14px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    <ReceiptText size={14} /> Generate Invoice
                   </button>
                 )}
 

@@ -31,11 +31,18 @@ export function NotificationProvider({ children }) {
   const showBrowserNotification = async (notification) => {
     if (!canUseBrowserNotifications() || window.Notification.permission !== 'granted') return
 
-    const tag = notification.tag || notification.bookingId || notification.id || 'pawpaw-alert'
+    const tag = notification.tag || (notification.bookingId ? `pawpaw-booking-${notification.bookingId}` : (notification.id ? `pawpaw-notif-${notification.id}` : 'pawpaw-alert'))
     const now = Date.now()
     if (recentAlertsRef.current.has(tag)) {
       const lastTime = recentAlertsRef.current.get(tag)
       if (now - lastTime < 10000) return
+    }
+    if (notification.bookingId) {
+      const bookingTag = `pawpaw-booking-${notification.bookingId}`
+      if (recentAlertsRef.current.has(bookingTag) && (now - recentAlertsRef.current.get(bookingTag) < 10000)) {
+        return
+      }
+      recentAlertsRef.current.set(bookingTag, now)
     }
     recentAlertsRef.current.set(tag, now)
 
@@ -51,7 +58,9 @@ export function NotificationProvider({ children }) {
     const options = {
       body: notification.message || notification.body || '',
       icon: PUSH_ICON,
+      badge: PUSH_ICON,
       tag,
+      renotify: false,
       vibrate: [200, 100, 200],
       requireInteraction: true,
       data: {
@@ -119,11 +128,15 @@ export function NotificationProvider({ children }) {
       Object.values(sources).flat().forEach(notification => map.set(notification.id, notification))
       const rows = Array.from(map.values()).sort((a, b) => createdAtMs(b) - createdAtMs(a))
       
-      // Notify active browser if a brand new unread notification arrived while session is open
+      // Notify active browser if a brand new unread notification arrived while session is open.
+      // Only invoke OS system notification if FCM push is NOT already active on this client.
+      // If FCM is active, FCM push delivers the notification to avoid double-posting on the mobile drawer.
       if (initializedRef.current && seenIdsRef.current.size > 0) {
         rows.forEach(n => {
           if (!seenIdsRef.current.has(n.id) && !n.read) {
-            showBrowserNotification(n)
+            if (fcmStatus !== 'registered') {
+              showBrowserNotification(n)
+            }
           }
         })
       }

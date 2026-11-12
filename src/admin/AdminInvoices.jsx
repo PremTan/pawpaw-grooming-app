@@ -27,19 +27,23 @@ export default function AdminInvoices() {
   const [searchParams] = useSearchParams()
   const initialMode = searchParams.get('mode')
   const [mode, setMode] = useState(
-    initialMode === 'boarding' ? 'boarding' : initialMode === 'custom' ? 'custom' : 'appointment'
+    initialMode === 'boarding' ? 'boarding' : initialMode === 'walking' ? 'walking' : initialMode === 'custom' ? 'custom' : 'appointment'
   )
   const [bookings, setBookings] = useState([])
   const [boardings, setBoardings] = useState([])
+  const [walkings, setWalkings] = useState([])
   const [businessInfo, setBusinessInfo] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState('')
   const [selectedBoardingId, setSelectedBoardingId] = useState('')
+  const [selectedWalkingId, setSelectedWalkingId] = useState('')
   const [appointmentSearch, setAppointmentSearch] = useState('')
   const [boardingSearch, setBoardingSearch] = useState('')
+  const [walkingSearch, setWalkingSearch] = useState('')
   const [customCustomerSearch, setCustomCustomerSearch] = useState('')
   const [showAppointmentDropdown, setShowAppointmentDropdown] = useState(false)
   const [showBoardingDropdown, setShowBoardingDropdown] = useState(false)
+  const [showWalkingDropdown, setShowWalkingDropdown] = useState(false)
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [custom, setCustom] = useState(blankCustom)
   const [generated, setGenerated] = useState(null)
@@ -53,9 +57,11 @@ export default function AdminInvoices() {
     if (isFresh) {
       setBookings(cachedInvoicesData.bookings)
       setBoardings(cachedInvoicesData.boardings)
+      setWalkings(cachedInvoicesData.walkings || [])
       setBusinessInfo(cachedInvoicesData.businessInfo)
       if (cachedInvoicesData.selectedId) setSelectedId(cachedInvoicesData.selectedId)
       if (cachedInvoicesData.selectedBoardingId) setSelectedBoardingId(cachedInvoicesData.selectedBoardingId)
+      if (cachedInvoicesData.selectedWalkingId) setSelectedWalkingId(cachedInvoicesData.selectedWalkingId)
       setLoading(false)
       // Background revalidation so any newly completed booking is updated seamlessly
       refreshInBackground()
@@ -65,27 +71,34 @@ export default function AdminInvoices() {
     async function load() {
       setLoading(true)
       try {
-        const [snap, boardingSnap, info] = await Promise.all([
+        const [snap, boardingSnap, walkingSnap, info] = await Promise.all([
           getDocs(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150))),
           getDocs(query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'), limit(150))),
+          getDocs(query(collection(db, 'walkingBookings'), orderBy('createdAt', 'desc'), limit(150))),
           fetchBusinessInfo(db),
         ])
         const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
         const bRows = boardingSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        const wRows = walkingSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
         setBookings(rows)
         setBoardings(bRows)
+        setWalkings(wRows)
         setBusinessInfo(info)
         const firstCompleted = rows.find(row => row.status === 'completed')
         if (firstCompleted) setSelectedId(firstCompleted.id)
         const firstCompletedBoarding = bRows.find(row => row.status === 'checked_out' || row.status === 'completed')
         if (firstCompletedBoarding) setSelectedBoardingId(firstCompletedBoarding.id)
+        const firstCompletedWalking = wRows.find(row => row.status === 'completed')
+        if (firstCompletedWalking) setSelectedWalkingId(firstCompletedWalking.id)
 
         cachedInvoicesData = {
           bookings: rows,
           boardings: bRows,
+          walkings: wRows,
           businessInfo: info,
           selectedId: firstCompleted ? firstCompleted.id : '',
           selectedBoardingId: firstCompletedBoarding ? firstCompletedBoarding.id : '',
+          selectedWalkingId: firstCompletedWalking ? firstCompletedWalking.id : '',
         }
         cachedInvoicesTimestamp = Date.now()
       } catch {
@@ -96,20 +109,24 @@ export default function AdminInvoices() {
 
     async function refreshInBackground() {
       try {
-        const [snap, boardingSnap, info] = await Promise.all([
+        const [snap, boardingSnap, walkingSnap, info] = await Promise.all([
           getDocs(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150))),
           getDocs(query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'), limit(150))),
+          getDocs(query(collection(db, 'walkingBookings'), orderBy('createdAt', 'desc'), limit(150))),
           fetchBusinessInfo(db),
         ])
         const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
         const bRows = boardingSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        const wRows = walkingSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
         setBookings(rows)
         setBoardings(bRows)
+        setWalkings(wRows)
         setBusinessInfo(info)
         cachedInvoicesData = {
           ...cachedInvoicesData,
           bookings: rows,
           boardings: bRows,
+          walkings: wRows,
           businessInfo: info,
         }
         cachedInvoicesTimestamp = Date.now()
@@ -134,6 +151,12 @@ export default function AdminInvoices() {
   )
   const selectedBoarding = completedBoardings.find(b => b.id === selectedBoardingId)
 
+  const completedWalkings = useMemo(
+    () => walkings.filter(w => w.status === 'completed'),
+    [walkings]
+  )
+  const selectedWalking = completedWalkings.find(w => w.id === selectedWalkingId)
+
   const customers = useMemo(() => {
     const map = new Map()
     bookings.forEach(booking => {
@@ -146,11 +169,17 @@ export default function AdminInvoices() {
       if (!key || map.has(key)) return
       map.set(key, booking)
     })
+    walkings.forEach(w => {
+      const key = w.phone || w.ownerName || w.userEmail
+      if (!key || map.has(key)) return
+      map.set(key, { ...w, petName: w.dogName || w.petName, petBreed: w.breed || w.petBreed })
+    })
     return Array.from(map.values())
-  }, [bookings, boardings])
+  }, [bookings, boardings, walkings])
 
   const appointmentLabel = booking => `${booking.ownerName || 'Customer'} - ${booking.petName || 'Pet'} - ${booking.date || '-'} - Rs ${money(booking.amountCollected || booking.estimatedTotal)}`
   const boardingLabel = b => `${b.ownerName || 'Customer'} - ${b.petName || 'Pet'} (${b.checkInDate || '-'} to ${b.checkOutDate || '-'}) - Rs ${money(b.totalAmount || (Number(b.estimatedTotal || 0) + Number(b.specialFoodCharge || 0) + Number(b.lateCheckOutCharge || 0)))}`
+  const walkingLabel = w => `${w.ownerName || 'Customer'} - ${w.dogName || w.petName || 'Dog'} (${w.duration || 30}m Walk on ${w.date || '-'}) - Rs ${money(w.totalPrice || w.amountCollected || 199)}`
   const customerLabel = customer => `${customer.ownerName || 'Customer'} - ${customer.phone || customer.userEmail || '-'}`
 
   useEffect(() => {
@@ -168,6 +197,18 @@ export default function AdminInvoices() {
           setBoardingSearch(boardingLabel(found))
         }
       }
+    } else if (pMode === 'walking') {
+      setMode('walking')
+      if (pId && walkings.length > 0) {
+        const found = walkings.find(
+          w => w.status === 'completed' &&
+               (w.id === pId || shortId(w.id).toUpperCase() === pId.toUpperCase())
+        )
+        if (found) {
+          setSelectedWalkingId(found.id)
+          setWalkingSearch(walkingLabel(found))
+        }
+      }
     } else if (pMode === 'appointment') {
       setMode('appointment')
       if (pId && bookings.length > 0) {
@@ -183,7 +224,7 @@ export default function AdminInvoices() {
     } else if (pMode === 'custom') {
       setMode('custom')
     }
-  }, [searchParams, bookings, boardings])
+  }, [searchParams, bookings, boardings, walkings])
 
   const filteredCompletedBoardings = useMemo(() => {
     if (!boardingSearch.trim()) return completedBoardings
@@ -215,6 +256,38 @@ export default function AdminInvoices() {
     setBoardingSearch('')
     setSelectedBoardingId('')
     setShowBoardingDropdown(false)
+  }
+
+  const filteredCompletedWalkings = useMemo(() => {
+    if (!walkingSearch.trim()) return completedWalkings
+    const search = walkingSearch.trim().toLowerCase()
+    return completedWalkings.filter(w =>
+      walkingLabel(w).toLowerCase().includes(search)
+    )
+  }, [walkingSearch, completedWalkings])
+
+  const walkingLabelToId = useMemo(
+    () => new Map(filteredCompletedWalkings.map(w => [walkingLabel(w), w.id])),
+    [filteredCompletedWalkings]
+  )
+
+  const handleWalkingSearchChange = value => {
+    setWalkingSearch(value)
+    const matchId = walkingLabelToId.get(value)
+    setSelectedWalkingId(matchId || '')
+    setShowWalkingDropdown(true)
+  }
+
+  const handleWalkingSelect = w => {
+    setWalkingSearch(walkingLabel(w))
+    setSelectedWalkingId(w.id)
+    setShowWalkingDropdown(false)
+  }
+
+  const clearWalkingSearch = () => {
+    setWalkingSearch('')
+    setSelectedWalkingId('')
+    setShowWalkingDropdown(false)
   }
 
   const filteredCompletedBookings = useMemo(() => {
@@ -438,6 +511,67 @@ export default function AdminInvoices() {
     } catch {}
   }
 
+  const generateFromWalking = () => {
+    if (!selectedWalking) {
+      const msg = 'Select a completed dog walk first.'
+      setToastType('error')
+      setToastMessage(msg)
+      setError(msg)
+      return
+    }
+
+    const durationMins = selectedWalking.duration || selectedWalking.durationMinutes || 30
+    const finalPrice = Number(selectedWalking.totalPrice || selectedWalking.amountCollected || 199)
+
+    const items = [
+      [
+        '01',
+        [
+          `Dog Walking (${durationMins} Mins Session)`,
+          `Pet: ${selectedWalking.dogName || selectedWalking.petName || 'Dog'}${selectedWalking.breed || selectedWalking.petBreed ? ` (${selectedWalking.breed || selectedWalking.petBreed})` : ''}`,
+          `Schedule: ${selectedWalking.date || '-'} at ${selectedWalking.slot || selectedWalking.walkingSlot || '-'}`,
+          `Pickup: ${selectedWalking.pickupAddress || selectedWalking.address || (selectedWalking.area ? `${selectedWalking.area}, Pune` : 'Doorstep Pickup')}`,
+        ].join('\n'),
+        '1 Session',
+        Number(finalPrice).toLocaleString('en-IN'),
+        Number(finalPrice).toLocaleString('en-IN'),
+      ]
+    ]
+
+    const invoiceObj = {
+      ...selectedWalking,
+      isWalking: true,
+      serviceType: 'walking',
+      serviceName: `Dog Walking (${durationMins} Mins Session)`,
+      petName: selectedWalking.dogName || selectedWalking.petName || 'Dog',
+      petType: 'Dog',
+      petBreed: selectedWalking.breed || selectedWalking.petBreed || '',
+      date: selectedWalking.date,
+      slot: selectedWalking.slot || selectedWalking.walkingSlot || '',
+      address: selectedWalking.pickupAddress || selectedWalking.address || (selectedWalking.area ? `${selectedWalking.area}, Pune` : ''),
+      invoiceItems: items,
+      totalAmount: finalPrice,
+      amountCollected: finalPrice,
+    }
+
+    setError('')
+    setToastType('success')
+    setToastMessage('Dog walking invoice generated successfully.')
+    setGenerated({
+      booking: invoiceObj,
+      label: `${selectedWalking.ownerName || 'Customer'} - Dog Walking (${shortId(selectedWalking.id)})`,
+    })
+    try {
+      const pubData = {
+        ...invoiceObj,
+        invoiceNumber: getInvoiceNumber(invoiceObj),
+        updatedAt: serverTimestamp(),
+      }
+      setDoc(doc(db, 'settings', `inv_${invoiceObj.id}`), pubData, { merge: true }).catch(() => {})
+      setDoc(doc(db, 'publicInvoices', invoiceObj.id), pubData, { merge: true }).catch(() => {})
+    } catch {}
+  }
+
   const generateCustom = () => {
     if (!custom.ownerName || !custom.phone || !custom.petName || !custom.serviceName || !custom.date || !custom.amountCollected) {
       const msg = 'Please fill customer, pet, service, date and amount.'
@@ -553,10 +687,11 @@ export default function AdminInvoices() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '18px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '18px' }}>
         {[
           ['appointment', 'Grooming'],
           ['boarding', 'Boarding'],
+          ['walking', 'Dog Walking'],
           ['custom', 'Custom'],
         ].map(([value, label]) => (
           <button
@@ -921,6 +1056,181 @@ export default function AdminInvoices() {
               ) : <p style={{ color: 'var(--muted)', marginTop: '14px', fontSize: '13px' }}>No completed boarding stay selected.</p>}
 
               <button type="button" onClick={generateFromBoarding} disabled={!selectedBoarding} className="btn btn-primary" style={{ marginTop: '18px' }}>
+                <ReceiptText size={15} /> Generate Invoice
+              </button>
+            </div>
+          ) : mode === 'walking' ? (
+            <div>
+              <h2 style={{ color: 'var(--text)', fontSize: '16px', fontWeight: 800, marginBottom: '6px' }}>Choose Completed Dog Walk</h2>
+              <p style={{ color: 'var(--muted)', fontSize: '12px', marginBottom: '14px' }}>Only completed dog walking sessions can be used for invoice generation. Details are locked in this mode.</p>
+              <div style={{ position: 'relative' }}>
+                <label className="invoice-label">Search or select dog walking session</label>
+                <div className={`select-with-icon${walkingSearch ? ' has-clear' : ''}`}>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Search dog, owner, phone or date"
+                    value={walkingSearch}
+                    onChange={event => handleWalkingSearchChange(event.target.value)}
+                    onFocus={() => setShowWalkingDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowWalkingDropdown(false), 120)}
+                    autoComplete="off"
+                  />
+                  {walkingSearch && (
+                    <button type="button" className="select-clear-button" onClick={clearWalkingSearch} aria-label="Clear walking search">
+                      <X size={14} />
+                    </button>
+                  )}
+                  <Search size={16} className="select-icon" />
+                </div>
+                {showWalkingDropdown && filteredCompletedWalkings.length > 0 && (
+                  <div className="dropdown-list">
+                    {filteredCompletedWalkings.map(w => (
+                      <button
+                        key={w.id}
+                        type="button"
+                        className="dropdown-item"
+                        onMouseDown={event => event.preventDefault()}
+                        onClick={() => handleWalkingSelect(w)}
+                      >
+                        {walkingLabel(w)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {selectedWalking ? (
+                <div style={{
+                  marginTop: '16px',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '14px',
+                  overflow: 'hidden',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+                }}>
+                  {/* Card Top: Customer identity + Walk ID */}
+                  <div style={{
+                    padding: '12px 14px',
+                    borderBottom: '1px solid var(--border)',
+                    background: 'rgba(212,175,55,0.04)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    flexWrap: 'wrap'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'var(--accent)',
+                        color: '#ffffff',
+                        fontWeight: 800,
+                        fontSize: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        {selectedWalking.ownerName?.[0]?.toUpperCase() || 'C'}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '14.5px', color: 'var(--text)', lineHeight: 1.2 }}>
+                          {selectedWalking.ownerName || 'Customer'}
+                        </div>
+                        {selectedWalking.phone && (
+                          <div style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                            <Phone size={11} /> {selectedWalking.phone}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{
+                        fontFamily: 'monospace',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '3px 7px',
+                        borderRadius: '6px',
+                        background: 'var(--card)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--muted)'
+                      }}>
+                        {shortId(selectedWalking.id)}
+                      </span>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        background: 'rgba(217,119,6,0.12)',
+                        color: '#d97706',
+                        border: '1px solid rgba(217,119,6,0.25)'
+                      }}>
+                        🐾 Dog Walking
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Card Body: Pet, Duration & Schedule */}
+                  <div style={{ padding: '12px 14px', display: 'grid', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+                      <div style={{ background: 'var(--card)', padding: '9px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
+                          Pet / Dog
+                        </span>
+                        <strong style={{ fontSize: '13px', color: 'var(--text)', display: 'block' }}>
+                          🐕 {selectedWalking.dogName || selectedWalking.petName || 'Dog'}{selectedWalking.breed || selectedWalking.petBreed ? ` (${selectedWalking.breed || selectedWalking.petBreed})` : ''}
+                        </strong>
+                      </div>
+
+                      <div style={{ background: 'var(--card)', padding: '9px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
+                          Walking Duration
+                        </span>
+                        <strong style={{ fontSize: '13px', color: 'var(--text)', display: 'block' }}>
+                          ⏱️ {selectedWalking.duration || selectedWalking.durationMinutes || 30} Mins Session
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'var(--card)', padding: '9px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
+                        Schedule & Pick-up Address
+                      </span>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', lineHeight: 1.35 }}>
+                        📅 {selectedWalking.date || '-'} {selectedWalking.slot ? `• ${selectedWalking.slot}` : ''}
+                      </div>
+                      <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '3px' }}>
+                        📍 {selectedWalking.pickupAddress || selectedWalking.address || selectedWalking.area || 'Doorstep Pickup'}
+                      </div>
+                    </div>
+
+                    {/* Bottom Amount Highlight */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      background: 'var(--accent-bg)',
+                      border: '1px solid var(--accent-border)',
+                      marginTop: '2px'
+                    }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>
+                        Total Walk Fee
+                      </span>
+                      <strong style={{ fontSize: '16px', fontWeight: 900, color: 'var(--accent)' }}>
+                        Rs {money(selectedWalking.totalPrice || selectedWalking.amountCollected || 199)}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              ) : <p style={{ color: 'var(--muted)', marginTop: '14px', fontSize: '13px' }}>No completed dog walk selected.</p>}
+
+              <button type="button" onClick={generateFromWalking} disabled={!selectedWalking} className="btn btn-primary" style={{ marginTop: '18px' }}>
                 <ReceiptText size={15} /> Generate Invoice
               </button>
             </div>

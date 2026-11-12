@@ -52,16 +52,34 @@ firebase.initializeApp(${JSON.stringify(config, null, 2)});
 const messaging = firebase.messaging();
 
 const PUSH_ICON = 'https://res.cloudinary.com/doawldbnh/image/upload/w_192,h_192,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png';
+const seenTags = new Map();
 
 messaging.onBackgroundMessage((payload) => {
-  const data = payload.data || {};
-  const notification = payload.notification || {};
+  // If a notification object is present, Firebase SDK auto-displays it.
+  // Avoid calling showNotification again to prevent duplicate notifications on mobile.
+  if (payload.notification && (payload.notification.title || payload.notification.body)) {
+    return;
+  }
 
-  const title = notification.title || data.title || 'Paw Paw Pet Grooming';
-  const body = notification.body || data.body || '';
+  const data = payload.data || {};
+  const title = data.title || 'Paw Paw Pet Grooming';
+  const body = data.body || '';
   if (!title && !body) return;
 
-  const tag = data.tag || data.bookingId || 'pawpaw-alert';
+  const tag = data.tag || (data.bookingId ? ('pawpaw-booking-' + data.bookingId) : 'pawpaw-alert');
+  const now = Date.now();
+  if (seenTags.has(tag) && (now - seenTags.get(tag)) < 5000) {
+    // Drop rapid duplicate push within 5 seconds for the exact same tag
+    return;
+  }
+  seenTags.set(tag, now);
+  if (seenTags.size > 50) {
+    const cutoff = now - 60000;
+    for (const [t, ts] of seenTags.entries()) {
+      if (ts < cutoff) seenTags.delete(t);
+    }
+  }
+
   const targetUrl = data.actionUrl || data.link || '/';
   const actionTitle = data.actionTitle || (
     targetUrl.includes('/book')
@@ -72,8 +90,9 @@ messaging.onBackgroundMessage((payload) => {
   const options = {
     body: body,
     icon: data.icon || PUSH_ICON,
+    badge: data.icon || PUSH_ICON,
     tag: tag,
-    renotify: true,
+    renotify: false,
     vibrate: [200, 100, 200],
     requireInteraction: true,
     data: {

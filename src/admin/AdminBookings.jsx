@@ -1415,7 +1415,10 @@ export default function AdminBookings() {
                           <span>Slot open • No appointments booked</span>
                           <button
                             type="button"
-                            onClick={() => navigate('/admin/dashboard?action=walkin')}
+                            onClick={() => {
+                              const slotTime = `${String(hour24).padStart(2, '0')}:00`
+                              navigate(`/admin?action=walkin&date=${timelineDate || ''}&slot=${slotTime}`)
+                            }}
                             className="btn btn-outline"
                             style={{ fontSize: '11.5px', padding: '4px 10px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                           >

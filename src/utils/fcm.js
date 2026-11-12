@@ -67,6 +67,11 @@ export async function registerFcmToken(user) {
 
   const userEmail = (user.email || '').toLowerCase().trim()
   const envAdminEmail = (ADMIN_EMAIL || '').toLowerCase().trim()
+  const isStandalone = typeof window !== 'undefined' && (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true
+  )
+  const platformStr = `${navigator.userAgent || ''} | mode:${isStandalone ? 'standalone' : 'browser'}`
 
   // 1. Primary: Register token via server-side Admin SDK endpoint
   // Bypasses Firestore client-side security rules, cleanly handles multi-user/switching accounts
@@ -79,7 +84,7 @@ export async function registerFcmToken(user) {
         token,
         userId: user.uid,
         userEmail,
-        platform: navigator.userAgent || '',
+        platform: platformStr,
       }),
     })
   } catch (apiErr) {
@@ -95,7 +100,7 @@ export async function registerFcmToken(user) {
       userEmail,
       isAdmin: userEmail === envAdminEmail && envAdminEmail !== '',
       active: true,
-      platform: navigator.userAgent || '',
+      platform: platformStr,
       updatedAt: serverTimestamp(),
     }, { merge: true })
   } catch (err) {
