@@ -40,6 +40,119 @@ import {
   X,
 } from 'lucide-react'
 
+// Dynamic loader for Leaflet map library
+const loadLeaflet = () => {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') return resolve(null)
+    if (window.L) return resolve(window.L)
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link')
+      link.id = 'leaflet-css'
+      link.rel = 'stylesheet'
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+      document.head.appendChild(link)
+    }
+    if (window._leafletLoadingPromise) {
+      return window._leafletLoadingPromise.then(resolve)
+    }
+    window._leafletLoadingPromise = new Promise((res) => {
+      const script = document.createElement('script')
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+      script.async = true
+      script.onload = () => {
+        res(window.L)
+        resolve(window.L)
+      }
+      script.onerror = () => {
+        console.warn('Failed to load Leaflet')
+        res(null)
+        resolve(null)
+      }
+      document.head.appendChild(script)
+    })
+  })
+}
+
+// Reverse geocodes coordinates to street and locality in Pune/India
+async function reverseGeocodeCoords(lat, lng) {
+  if (!lat || !lng) return { formattedAddress: '', area: '', landmark: '' }
+
+  // Strategy 1: OpenStreetMap Nominatim
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 4500)
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1`,
+      {
+        signal: controller.signal,
+        headers: { 'Accept-Language': 'en' },
+      }
+    )
+    clearTimeout(timeoutId)
+    if (res.ok) {
+      const data = await res.json()
+      if (data?.address) {
+        const a = data.address
+        const parts = [
+          a.building || a.house_name || a.house_number || a.apartment || '',
+          a.road || a.street || a.residential || a.pedestrian || '',
+          a.suburb || a.neighbourhood || a.locality || a.village || '',
+          a.city_district || a.city || a.town || 'Pune',
+          a.postcode ? `PIN ${a.postcode}` : '',
+        ].filter(Boolean)
+        const formatted = parts.length > 0 ? parts.join(', ') : data.display_name.split(',').slice(0, 4).join(', ').trim()
+        return {
+          formattedAddress: formatted,
+          area: a.suburb || a.neighbourhood || a.locality || '',
+          landmark: a.building || a.road || a.suburb || '',
+        }
+      } else if (data?.display_name) {
+        return {
+          formattedAddress: data.display_name.split(',').slice(0, 4).join(', ').trim(),
+          area: '',
+          landmark: '',
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Nominatim reverse geocode error:', e)
+  }
+
+  // Strategy 2: BigDataCloud reverse geocode fallback
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 3500)
+    const res = await fetch(
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`,
+      { signal: controller.signal }
+    )
+    clearTimeout(timeoutId)
+    if (res.ok) {
+      const data = await res.json()
+      const parts = [
+        data.locality || data.localityInfo?.administrative?.[3]?.name || '',
+        data.city || data.principalSubdivision || 'Pune',
+        data.postcode ? `PIN ${data.postcode}` : '',
+      ].filter(Boolean)
+      if (parts.length > 0) {
+        return {
+          formattedAddress: parts.join(', '),
+          area: data.locality || '',
+          landmark: data.locality || '',
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('BigDataCloud reverse geocode error:', e)
+  }
+
+  return {
+    formattedAddress: `Location Coordinates (${lat.toFixed(5)}, ${lng.toFixed(5)})`,
+    area: '',
+    landmark: '',
+  }
+}
+
 export default function BookWalking() {
   const { user, isBlocked } = useAuth()
   const { sendNotification } = useNotifications() || {}
@@ -66,6 +179,13 @@ export default function BookWalking() {
   const [locationError, setLocationError] = useState('')
   const [showMapModal, setShowMapModal] = useState(false)
   const [customMapInput, setCustomMapInput] = useState('')
+  const [pinnedCoords, setPinnedCoords] = useState(null)
+  const [pinnedAddress, setPinnedAddress] = useState('')
+  const [fetchingAddress, setFetchingAddress] = useState(false)
+  const [mapLoading, setMapLoading] = useState(false)
+  const mapContainerRef = useRef(null)
+  const mapInstanceRef = useRef(null)
+  const markerRef = useRef(null)
 
   const todayStr = format(startOfToday(), 'yyyy-MM-dd')
   const tomorrowStr = format(addDays(startOfToday(), 1), 'yyyy-MM-dd')
@@ -218,7 +338,7 @@ export default function BookWalking() {
     }))
   }
 
-  // Detect Live Location via GPS
+  // Detect Live Location via GPS and populate complete address
   const handleGetLiveLocation = () => {
     if (!navigator.geolocation) {
       alert('Geolocation is not supported by your browser.')
@@ -232,93 +352,282 @@ export default function BookWalking() {
       async (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords
         const mapUrl = `https://www.google.com/maps?q=${lat},${lng}`
-        let detectedAddress = ''
 
-        try {
-          const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 3500)
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-            { signal: controller.signal }
-          )
-          clearTimeout(timeoutId)
-          if (res.ok) {
-            const data = await res.json()
-            if (data?.display_name) {
-              const road = data.address?.road || data.address?.suburb || data.address?.neighbourhood || ''
-              const city = data.address?.city || data.address?.county || 'Pune'
-              detectedAddress = road ? `${road}, ${city}` : data.display_name.split(',').slice(0, 3).join(',')
-            }
-          }
-        } catch {
-          // Timeout or network error, fallback to coordinates
-        }
+        // Reverse geocode to exact street and area address
+        const detected = await reverseGeocodeCoords(lat, lng)
+        const finalAddress = detected?.formattedAddress || `GPS Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`
 
         setForm(prev => {
-          const autoArea = settings.serviceableAreas.find(a =>
-            detectedAddress.toLowerCase().includes(a.toLowerCase())
+          const autoArea = settings.serviceableAreas?.find(a =>
+            finalAddress.toLowerCase().includes(a.toLowerCase()) ||
+            (detected?.area && detected.area.toLowerCase().includes(a.toLowerCase()))
           ) || prev.area
 
           return {
             ...prev,
             area: autoArea,
-            pickupAddress: prev.pickupAddress
-              ? (prev.pickupAddress.includes('GPS') ? prev.pickupAddress : `${prev.pickupAddress} (GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)})`)
-              : (detectedAddress ? `${detectedAddress} (GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)})` : `GPS Coordinates (${lat.toFixed(4)}, ${lng.toFixed(4)})`),
-            landmark: prev.landmark || 'Live GPS Location Shared',
+            pickupAddress: finalAddress,
+            landmark: prev.landmark || detected?.landmark || 'Live GPS Location Shared',
             locationCoords: { lat, lng },
             mapPinUrl: mapUrl,
           }
         })
 
-        setLocationSuccess(`GPS Pin captured (${lat.toFixed(4)}, ${lng.toFixed(4)})`)
+        setPinnedCoords({ lat, lng })
+        setPinnedAddress(finalAddress)
+        setLocationSuccess(`Live address detected: ${finalAddress}`)
         setDetectingLocation(false)
       },
       (err) => {
         console.warn('Geolocation error:', err)
-        setLocationError(err.code === 1 ? 'Location permission was denied. Please allow GPS access or choose on map.' : 'Unable to retrieve location.')
+        setLocationError(err.code === 1 ? 'Location permission was denied. Please allow GPS access in your browser or choose on map.' : 'Unable to retrieve location.')
         setDetectingLocation(false)
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+      { enableHighAccuracy: true, timeout: 9000, maximumAge: 10000 }
     )
   }
 
-  // Choose landmark in Dhayari
-  const handleSelectDhayariLandmark = (landmarkName, areaName, coords) => {
-    const mapUrl = coords
-      ? `https://www.google.com/maps?q=${coords.lat},${coords.lng}`
-      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(landmarkName + ', Dhayari, Pune')}`
+  // Interactive Leaflet Map initialization inside Map Modal
+  useEffect(() => {
+    if (!showMapModal) {
+      if (mapInstanceRef.current) {
+        try {
+          mapInstanceRef.current.remove()
+        } catch (_) {}
+        mapInstanceRef.current = null
+        markerRef.current = null
+      }
+      if (mapContainerRef.current?._leaflet_id) {
+        mapContainerRef.current._leaflet_id = null
+      }
+      return
+    }
 
-    setForm(prev => ({
-      ...prev,
-      area: areaName || prev.area,
-      pickupAddress: prev.pickupAddress ? prev.pickupAddress : `Near ${landmarkName}, Dhayari`,
-      landmark: landmarkName,
-      locationCoords: coords || null,
-      mapPinUrl: mapUrl,
-    }))
-    setLocationSuccess(`Pinned near ${landmarkName}`)
+    let isMounted = true
+    setMapLoading(true)
+
+    loadLeaflet().then((L) => {
+      if (!isMounted || !L || !mapContainerRef.current) {
+        setMapLoading(false)
+        return
+      }
+
+      if (mapInstanceRef.current) {
+        try {
+          mapInstanceRef.current.remove()
+        } catch (_) {}
+        mapInstanceRef.current = null
+      }
+      if (mapContainerRef.current?._leaflet_id) {
+        mapContainerRef.current._leaflet_id = null
+      }
+
+      const initialLat = form.locationCoords?.lat || pinnedCoords?.lat || 18.4485
+      const initialLng = form.locationCoords?.lng || pinnedCoords?.lng || 73.8123
+
+      try {
+        const map = L.map(mapContainerRef.current, {
+          center: [initialLat, initialLng],
+          zoom: 15,
+          zoomControl: true,
+        })
+        mapInstanceRef.current = map
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap',
+        }).addTo(map)
+
+        const pinIcon = L.divIcon({
+          className: 'pawpaw-map-pin',
+          html: `<div style="
+            width: 36px;
+            height: 36px;
+            background: #d97706;
+            color: #ffffff;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+            border: 2px solid #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+          ">
+            <span style="transform: rotate(45deg); font-size: 16px; line-height: 1;">🐾</span>
+          </div>`,
+          iconSize: [36, 36],
+          iconAnchor: [18, 36],
+        })
+
+        const marker = L.marker([initialLat, initialLng], {
+          draggable: true,
+          icon: pinIcon,
+        }).addTo(map)
+        markerRef.current = marker
+
+        const onPositionChange = async (lat, lng) => {
+          setPinnedCoords({ lat, lng })
+          setFetchingAddress(true)
+          const result = await reverseGeocodeCoords(lat, lng)
+          setPinnedAddress(result.formattedAddress)
+          setFetchingAddress(false)
+        }
+
+        marker.on('dragend', () => {
+          const pos = marker.getLatLng()
+          onPositionChange(pos.lat, pos.lng)
+        })
+
+        map.on('click', (e) => {
+          marker.setLatLng(e.latlng)
+          onPositionChange(e.latlng.lat, e.latlng.lng)
+        })
+
+        if (!pinnedAddress) {
+          onPositionChange(initialLat, initialLng)
+        }
+
+        setTimeout(() => {
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.invalidateSize()
+          }
+        }, 250)
+      } catch (err) {
+        console.warn('Map initialization failed:', err)
+      } finally {
+        setMapLoading(false)
+      }
+    })
+
+    return () => {
+      isMounted = false
+      if (mapInstanceRef.current) {
+        try {
+          mapInstanceRef.current.remove()
+        } catch (_) {}
+        mapInstanceRef.current = null
+        markerRef.current = null
+      }
+      if (mapContainerRef.current?._leaflet_id) {
+        mapContainerRef.current._leaflet_id = null
+      }
+    }
+  }, [showMapModal])
+
+  // Locate current GPS inside map modal
+  const handleLocateCurrentGPSOnMap = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser.')
+      return
+    }
+    setFetchingAddress(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords
+        if (mapInstanceRef.current && markerRef.current) {
+          mapInstanceRef.current.flyTo([lat, lng], 16)
+          markerRef.current.setLatLng([lat, lng])
+        }
+        setPinnedCoords({ lat, lng })
+        const res = await reverseGeocodeCoords(lat, lng)
+        setPinnedAddress(res.formattedAddress)
+        setFetchingAddress(false)
+      },
+      (err) => {
+        console.warn('GPS locate error:', err)
+        setFetchingAddress(false)
+        alert('Could not retrieve GPS location. Please check device location permissions.')
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    )
+  }
+
+  // Choose landmark in Dhayari and fly map to it
+  const handleSelectDhayariLandmark = async (spot) => {
+    if (mapInstanceRef.current && markerRef.current && window.L) {
+      mapInstanceRef.current.flyTo([spot.coords.lat, spot.coords.lng], 16)
+      markerRef.current.setLatLng([spot.coords.lat, spot.coords.lng])
+    }
+    setPinnedCoords(spot.coords)
+    const customAddr = `Near ${spot.name}, ${spot.area || 'Dhayari'}, Pune`
+    setPinnedAddress(customAddr)
+  }
+
+  // Confirm pinned location from map into booking form
+  const handleConfirmMapPin = () => {
+    const finalAddr = pinnedAddress || (pinnedCoords ? `Location Pin (${pinnedCoords.lat.toFixed(5)}, ${pinnedCoords.lng.toFixed(5)})` : '')
+    if (!finalAddr) {
+      alert('Please select or pin a location on the map.')
+      return
+    }
+    const mapUrl = pinnedCoords
+      ? `https://www.google.com/maps?q=${pinnedCoords.lat},${pinnedCoords.lng}`
+      : ''
+
+    setForm(prev => {
+      const autoArea = settings.serviceableAreas?.find(a =>
+        finalAddr.toLowerCase().includes(a.toLowerCase())
+      ) || prev.area
+
+      return {
+        ...prev,
+        pickupAddress: finalAddr,
+        area: autoArea,
+        landmark: prev.landmark || finalAddr.split(',')[0],
+        locationCoords: pinnedCoords,
+        mapPinUrl: mapUrl,
+      }
+    })
+    setLocationSuccess('📍 Location and address confirmed from map!')
+    setLocationError('')
     setShowMapModal(false)
   }
 
-  const handleCustomMapPinSubmit = () => {
+  // Handle custom map link or coordinates pasted in modal fallback
+  const handleCustomMapPinSubmit = async () => {
     const val = customMapInput.trim()
     if (!val) return
     let pinUrl = val
-    if (!pinUrl.startsWith('http://') && !pinUrl.startsWith('https://')) {
-      if (/^[-+]?([1-8]?\d(\.\d+)?|90(\.0+)?),\s*[-+]?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)$/.test(val)) {
-        pinUrl = `https://www.google.com/maps?q=${val.replace(/\s+/g, '')}`
-      } else {
-        pinUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(val + ', Dhayari, Pune')}`
+    let lat = null
+    let lng = null
+    const coordMatch = val.match(/^([-+]?\d{1,2}(?:\.\d+)?)[,\s]+([-+]?\d{1,3}(?:\.\d+)?)$/)
+    if (coordMatch) {
+      lat = parseFloat(coordMatch[1])
+      lng = parseFloat(coordMatch[2])
+      pinUrl = `https://www.google.com/maps?q=${lat},${lng}`
+    } else if (!pinUrl.startsWith('http://') && !pinUrl.startsWith('https://')) {
+      pinUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(val + ', Dhayari, Pune')}`
+    }
+
+    let resolvedAddr = val
+    if (lat && lng) {
+      setFetchingAddress(true)
+      const res = await reverseGeocodeCoords(lat, lng)
+      resolvedAddr = res.formattedAddress || val
+      setFetchingAddress(false)
+      if (mapInstanceRef.current && markerRef.current) {
+        mapInstanceRef.current.flyTo([lat, lng], 16)
+        markerRef.current.setLatLng([lat, lng])
+        setPinnedCoords({ lat, lng })
+        setPinnedAddress(resolvedAddr)
       }
     }
-    setForm(prev => ({
-      ...prev,
-      mapPinUrl: pinUrl,
-      landmark: prev.landmark || 'Custom Map Pin Provided',
-      pickupAddress: prev.pickupAddress ? prev.pickupAddress : `Location Pin: ${val}`
-    }))
-    setLocationSuccess('Custom map link attached!')
+
+    setForm(prev => {
+      const autoArea = settings.serviceableAreas?.find(a =>
+        resolvedAddr.toLowerCase().includes(a.toLowerCase())
+      ) || prev.area
+      return {
+        ...prev,
+        mapPinUrl: pinUrl,
+        landmark: prev.landmark || 'Custom Location Provided',
+        pickupAddress: resolvedAddr,
+        area: autoArea,
+        locationCoords: lat && lng ? { lat, lng } : prev.locationCoords,
+      }
+    })
+    setLocationSuccess('📍 Map location attached!')
     setCustomMapInput('')
     setShowMapModal(false)
   }
@@ -1142,11 +1451,8 @@ export default function BookWalking() {
                       <div style={{ fontSize: '15px', fontWeight: 800, color: isSelected ? 'var(--accent)' : 'var(--text)', marginBottom: '2px' }}>
                         {opt.duration} Mins
                       </div>
-                      <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--accent)', marginBottom: '3px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--accent)' }}>
                         ₹{opt.price}
-                      </div>
-                      <div style={{ fontSize: '10.5px', color: 'var(--muted)', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {opt.label || `${opt.duration} Min Walk`}
                       </div>
                     </button>
                   )
@@ -1459,48 +1765,108 @@ export default function BookWalking() {
             </div>
           )}
 
-          {/* Modal: Choose on Map / Popular Dhayari Locations */}
+          {/* Modal: Interactive Map Location Picker */}
           {showMapModal && (
             <div className="modal-overlay" onClick={() => setShowMapModal(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', boxSizing: 'border-box', zIndex: 9999 }}>
               <div
                 className="modal-content"
                 onClick={e => e.stopPropagation()}
                 style={{
-                  maxWidth: '500px',
+                  maxWidth: '520px',
                   width: '100%',
-                  maxHeight: '90vh',
+                  maxHeight: '92vh',
                   overflowY: 'auto',
                   background: 'var(--card)',
                   color: 'var(--text)',
                   border: '1.5px solid var(--border)',
                   borderRadius: '20px',
-                  padding: '22px',
-                  boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+                  padding: '20px',
+                  boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
                   boxSizing: 'border-box'
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <MapPin size={18} color="var(--accent)" />
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Choose Map Location</h3>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Choose Pickup Location on Map</h3>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowMapModal(false)}
                     style={{ background: 'var(--surface)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--muted)' }}
+                    title="Close map"
                   >
                     <X size={15} />
                   </button>
                 </div>
 
-                <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '0 0 14px', lineHeight: 1.45 }}>
-                  Tap a popular Dhayari landmark or enter your Google Maps location link / GPS pin to attach it directly to your dog walking appointment.
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                    Tap anywhere on map or drag the 🐾 pin to your exact building or gate.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleLocateCurrentGPSOnMap}
+                    style={{
+                      background: 'var(--accent-bg)',
+                      border: '1px solid var(--accent-border)',
+                      color: 'var(--accent)',
+                      borderRadius: '8px',
+                      padding: '5px 10px',
+                      fontSize: '11.5px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Navigation size={12} /> My GPS
+                  </button>
+                </div>
 
-                {/* Popular Landmarks in Dhayari */}
-                <div style={{ marginBottom: '18px' }}>
+                {/* Interactive Map Canvas */}
+                <div style={{ position: 'relative', width: '100%', height: '270px', borderRadius: '14px', overflow: 'hidden', border: '1.5px solid var(--border)', background: 'var(--surface)' }}>
+                  <div ref={mapContainerRef} style={{ width: '100%', height: '100%', zIndex: 1 }} />
+                  {mapLoading && (
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, fontSize: '12.5px', fontWeight: 700, color: 'var(--accent)' }}>
+                      Loading Map...
+                    </div>
+                  )}
+                </div>
+
+                {/* Selected Address Display Box */}
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '10px 14px', marginTop: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+                    <span style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase' }}>
+                      📍 Selected Location
+                    </span>
+                    {fetchingAddress && (
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)', fontWeight: 600 }}>Fetching address...</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', lineHeight: 1.4 }}>
+                    {pinnedAddress || (fetchingAddress ? 'Resolving street & area...' : 'Tap on map or drag pin')}
+                  </div>
+                </div>
+
+                {/* Primary Confirm Button */}
+                <button
+                  type="button"
+                  onClick={handleConfirmMapPin}
+                  className="btn btn-primary"
+                  style={{ width: '100%', padding: '12px', fontSize: '14px', marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                >
+                  <Check size={16} /> Confirm & Use This Location
+                </button>
+
+                {/* Quick Landmarks */}
+                <div style={{ marginTop: '16px', borderTop: '1px dashed var(--border)', paddingTop: '12px' }}>
                   <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: '8px' }}>
-                    POPULAR DHAYARI SPOTS
+                    OR JUMP TO POPULAR DHAYARI SPOTS
                   </span>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '8px' }}>
                     {[
@@ -1516,13 +1882,13 @@ export default function BookWalking() {
                       <button
                         key={spot.name}
                         type="button"
-                        onClick={() => handleSelectDhayariLandmark(spot.name, spot.area, spot.coords)}
+                        onClick={() => handleSelectDhayariLandmark(spot)}
                         style={{
                           background: 'var(--surface)',
                           border: '1px solid var(--border)',
                           borderRadius: '10px',
-                          padding: '8px 10px',
-                          fontSize: '11.5px',
+                          padding: '7px 9px',
+                          fontSize: '11px',
                           fontWeight: 600,
                           color: 'var(--text)',
                           textAlign: 'left',
@@ -1530,10 +1896,9 @@ export default function BookWalking() {
                           display: 'flex',
                           alignItems: 'center',
                           gap: '6px',
-                          transition: 'all 0.15s ease',
                         }}
                       >
-                        <MapPin size={12} color="var(--accent)" style={{ flexShrink: 0 }} />
+                        <MapPin size={11} color="var(--accent)" style={{ flexShrink: 0 }} />
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {spot.name}
                         </span>
@@ -1542,15 +1907,15 @@ export default function BookWalking() {
                   </div>
                 </div>
 
-                {/* Paste Google Maps link or coordinates */}
-                <div style={{ marginBottom: '14px' }}>
+                {/* Paste Google Maps link or coordinates fallback */}
+                <div style={{ marginTop: '14px', borderTop: '1px dashed var(--border)', paddingTop: '12px' }}>
                   <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: '6px' }}>
                     OR PASTE MAP LINK / GPS COORDINATES
                   </span>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <input
                       className="input"
-                      placeholder="e.g. https://maps.app.goo.gl/... or 18.4485, 73.8123"
+                      placeholder="e.g. 18.4485, 73.8123 or https://maps.app.goo.gl/..."
                       value={customMapInput}
                       onChange={e => setCustomMapInput(e.target.value)}
                       style={{ fontSize: '12px' }}
@@ -1558,7 +1923,7 @@ export default function BookWalking() {
                     <button
                       type="button"
                       onClick={handleCustomMapPinSubmit}
-                      className="btn btn-primary"
+                      className="btn btn-secondary"
                       style={{ padding: '8px 14px', fontSize: '12px', flexShrink: 0 }}
                     >
                       Attach
@@ -1566,17 +1931,6 @@ export default function BookWalking() {
                   </div>
                 </div>
 
-                {/* Direct Open in Google Maps */}
-                <div style={{ textAlign: 'center', borderTop: '1px dashed var(--border)', paddingTop: '12px' }}>
-                  <a
-                    href="https://www.google.com/maps/search/Dhayari,+Pune"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
-                  >
-                    <ExternalLink size={13} /> Open Google Maps in new tab ↗
-                  </a>
-                </div>
               </div>
             </div>
           )}
