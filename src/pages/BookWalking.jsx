@@ -675,7 +675,9 @@ export default function BookWalking() {
 
   const handleStep2Continue = () => {
     if (!isDayOpen) {
-      alert('Pet Walking is closed on this day. Please choose another date.')
+      alert(settings.holidays?.includes(form.date)
+        ? 'Paw Paw is closed on this date (Holiday). Please choose another date.'
+        : 'Pet Walking is closed on this day. Please choose another date.')
       return
     }
     if (!form.slot && !form.customTimeRequested.trim()) {
@@ -1497,7 +1499,7 @@ export default function BookWalking() {
                 />
                 {!isDayOpen && (
                   <span style={{ fontSize: '12px', color: '#ef4444', marginTop: '6px', display: 'block', fontWeight: 600 }}>
-                    ⚠️ Paw Paw is closed for dog walking on this day. Please select another day.
+                    ⚠️ {settings.holidays?.includes(form.date) ? 'Paw Paw is closed on this date (Holiday).' : 'Paw Paw is closed for dog walking on this day.'} Please select another day.
                   </span>
                 )}
               </div>

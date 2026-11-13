@@ -42,6 +42,7 @@ const AdminWhyChooseUs = lazy(() => import('./admin/AdminWhyChooseUs'))
 const AdminContactInfo = lazy(() => import('./admin/AdminContactInfo'))
 const AdminFooter = lazy(() => import('./admin/AdminFooter'))
 const AdminBookingSettings = lazy(() => import('./admin/AdminBookingSettings'))
+const AdminCommonSettings = lazy(() => import('./admin/AdminCommonSettings'))
 const AdminInvoices = lazy(() => import('./admin/AdminInvoices'))
 const AdminTeam = lazy(() => import('./admin/AdminTeam'))
 const AdminShopPurchases = lazy(() => import('./admin/AdminShopPurchases'))
@@ -130,6 +131,7 @@ export default function App() {
         <Route path="contact-info" element={<AdminContactInfo />} />
         <Route path="footer" element={<AdminFooter />} />
         <Route path="booking-settings" element={<AdminBookingSettings />} />
+        <Route path="common-settings" element={<AdminCommonSettings />} />
         <Route path="team" element={<AdminTeam />} />
         <Route path="shop-purchases" element={<AdminShopPurchases />} />
         <Route path="offers" element={<AdminOffers />} />

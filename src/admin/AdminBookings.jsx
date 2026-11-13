@@ -3,10 +3,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, startAfter, Timestamp, updateDoc, where } from 'firebase/firestore'
 import Cropper from 'react-easy-crop'
-import { Calendar, CalendarDays, Camera, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Edit3, IndianRupee, List, MapPin, MessageCircle, Phone, Plus, ReceiptText, RotateCcw, Scissors, Search, ShieldAlert, SlidersHorizontal, Sparkles, Tag, Upload, User, UserRound, X } from 'lucide-react'
+import { Calendar, CalendarDays, Camera, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Edit3, IndianRupee, List, MapPin, MessageCircle, Phone, Plus, ReceiptText, RotateCcw, Scissors, Search, Settings, ShieldAlert, SlidersHorizontal, Sparkles, Tag, Upload, User, UserRound, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import Toast from '../components/Toast'
+import AdminBookingSettings from './AdminBookingSettings'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import { db } from '../firebase'
@@ -150,12 +151,13 @@ export default function AdminBookings() {
   const { bookingId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedDate = searchParams.get('date') || ''
+  const requestedView = searchParams.get('view')
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [lastVisibleDoc, setLastVisibleDoc] = useState(null)
-  const [viewMode, setViewMode] = useState('list') // 'list' | 'timeline'
+  const [viewMode, setViewMode] = useState(() => (requestedView === 'settings' ? 'settings' : requestedView === 'timeline' ? 'timeline' : 'list'))
   const [timelineDate, setTimelineDate] = useState(() => requestedDate || dateKeyLocal(new Date()))
   const [timelineStaffFilter, setTimelineStaffFilter] = useState('all')
   const [search, setSearch] = useState('')
@@ -164,6 +166,23 @@ export default function AdminBookings() {
   const [quickFilter, setQuickFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState(requestedDate)
   const [dateTo, setDateTo] = useState(requestedDate)
+
+  useEffect(() => {
+    const v = searchParams.get('view')
+    if (v === 'settings' || v === 'timeline' || v === 'list') {
+      setViewMode(v)
+    }
+  }, [searchParams])
+
+  const handleSwitchView = (mode) => {
+    setViewMode(mode)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      if (mode === 'list') next.delete('view')
+      else next.set('view', mode)
+      return next
+    }, { replace: true })
+  }
 
   useEffect(() => {
     if (requestedDate) {
@@ -838,7 +857,7 @@ export default function AdminBookings() {
               <button
                 type="button"
                 className={viewMode === 'list' ? 'active' : ''}
-                onClick={() => setViewMode('list')}
+                onClick={() => handleSwitchView('list')}
               >
                 <List size={13} />
                 <span>List</span>
@@ -846,10 +865,19 @@ export default function AdminBookings() {
               <button
                 type="button"
                 className={viewMode === 'timeline' ? 'active' : ''}
-                onClick={() => setViewMode('timeline')}
+                onClick={() => handleSwitchView('timeline')}
               >
                 <CalendarDays size={13} />
                 <span>Timeline</span>
+              </button>
+              <button
+                type="button"
+                className={viewMode === 'settings' ? 'active' : ''}
+                onClick={() => handleSwitchView('settings')}
+                title="Grooming Booking Settings"
+              >
+                <Settings size={13} />
+                <span>Settings</span>
               </button>
             </div>
           </div>
@@ -858,11 +886,13 @@ export default function AdminBookings() {
               <>
                 {filtered.length} of {bookings.length} bookings • showing {filtered.length ? pageStart + 1 : 0}-{Math.min(pageStart + PAGE_SIZE, filtered.length)}
               </>
-            ) : (
+            ) : viewMode === 'timeline' ? (
               <>
                 Floor Schedule • {formatDateNice(timelineDate)}
                 {timelineDayBookings.length > 0 && <span>{timelineDayBookings.length} Bookings ({timelineDayBookings.filter(b => b.status === 'completed').length} Done)</span>}
               </>
+            ) : (
+              <>Grooming Service Settings • Operating Hours, Slots, Capacity & Rules</>
             )}
           </p>
         </div>
@@ -1432,6 +1462,12 @@ export default function AdminBookings() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {viewMode === 'settings' && (
+        <div style={{ marginTop: '14px' }}>
+          <AdminBookingSettings embedded />
         </div>
       )}
 

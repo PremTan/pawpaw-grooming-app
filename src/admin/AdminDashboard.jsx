@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs, addDoc, serverTimestamp, doc, setDoc, orderBy, query } from 'firebase/firestore'
 import { Link, useSearchParams } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
-import { ArrowRight, BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Search, Store, UserCheck, X } from 'lucide-react'
+import { ArrowRight, BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Search, Settings, Store, UserCheck, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
@@ -493,8 +493,30 @@ export default function AdminDashboard() {
       )}
       <div className="admin-page-header">
         <div>
-          <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '28px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>Dashboard</h1>
-          <p style={{ color: 'var(--muted)', fontSize: '13px' }}>Overview of Paw Paw Grooming Centre</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '28px', fontWeight: 800, color: 'var(--text)', margin: 0 }}>Dashboard</h1>
+            <Link
+              to="/admin/common-settings"
+              title="Common Settings (Global Holidays & Center Status)"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                background: 'rgba(217, 119, 6, 0.12)',
+                border: '1px solid rgba(217, 119, 6, 0.28)',
+                color: '#d97706',
+                transition: 'all 0.2s ease',
+                textDecoration: 'none',
+              }}
+              aria-label="Common Settings"
+            >
+              <Settings size={18} />
+            </Link>
+          </div>
+          <p style={{ color: 'var(--muted)', fontSize: '13px', marginTop: '4px' }}>Overview of Paw Paw Grooming Centre</p>
         </div>
         <div className="admin-dashboard-actions">
           <button onClick={() => { setShowModal(true); setSuccess(false); setError('') }} className="btn btn-primary">

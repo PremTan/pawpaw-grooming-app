@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { CalendarOff, Clock, Copy, CreditCard, FileText, Home, Minus, Plus, Save, SlidersHorizontal, Store, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { CalendarOff, Clock, Copy, CreditCard, ExternalLink, FileText, Home, Minus, Plus, Save, SlidersHorizontal, Store, Trash2 } from 'lucide-react'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
@@ -23,7 +24,7 @@ function formatCancellationCutoff(value) {
   return `${hours} hr${hours > 1 ? 's' : ''} ${minutes} min`
 }
 
-export default function AdminBookingSettings() {
+export default function AdminBookingSettings({ embedded = false }) {
   const [settings, setSettings] = useState(() => normalizeBookingSettings({}))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -195,13 +196,15 @@ export default function AdminBookingSettings() {
         </div>
       )}
 
-      {/* Page Header */}
-      <div className="booking-settings-head">
-        <div>
-          <h1>Booking Settings</h1>
-          <p>Control working windows, appointment length, capacity, cancellation policy and visit preferences.</p>
+      {/* Page Header (hidden when embedded inside Bookings view) */}
+      {!embedded && (
+        <div className="booking-settings-head">
+          <div>
+            <h1>Booking Settings</h1>
+            <p>Control working windows, appointment length, capacity, cancellation policy and visit preferences.</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {(message || error) && <div className={`booking-alert ${error ? 'error' : 'ok'}`}>{error || message}</div>}
 
@@ -371,8 +374,20 @@ export default function AdminBookingSettings() {
             {/* Right: Holidays & Blocked Slots */}
             <aside className="booking-side-stack">
               <section className="booking-panel">
-                <h2><CalendarOff size={17} /> Holidays</h2>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                  <h2 style={{ margin: 0 }}><CalendarOff size={17} /> Holidays</h2>
+                  <Link
+                    to="/admin/common-settings"
+                    style={{ fontSize: '11px', color: '#d97706', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
+                    title="Manage global holidays for Grooming, Walking and Boarding"
+                  >
+                    Common Holidays <ExternalLink size={11} />
+                  </Link>
+                </div>
                 <p>Dates added here will be unavailable for all visit types.</p>
+                <div style={{ background: 'rgba(217,119,6,0.06)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: '8px', padding: '8px 10px', fontSize: '11.5px', color: 'var(--text)', marginBottom: '10px', lineHeight: 1.4 }}>
+                  💡 Universal holidays applying to all 3 services (Grooming, Walking & Boarding) are configured in <Link to="/admin/common-settings" style={{ color: '#d97706', fontWeight: 700 }}>Common Settings</Link>.
+                </div>
                 <div className="holiday-add-row">
                   <input type="date" value={holidayDate} onChange={e => setHolidayDate(e.target.value)} />
                   <button type="button" className="btn btn-secondary" onClick={addHoliday}>Add</button>
@@ -546,19 +561,16 @@ export default function AdminBookingSettings() {
 
             <div className="booking-side-stack">
               <section className="booking-panel">
-                <h2><FileText size={17} /> Customer Invoices</h2>
-                <p>Control whether customers can download official PDF receipts from their "My Bookings" page.</p>
-                <label className={`radio-card${settings.allowCustomerInvoiceDownload ? ' active' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(settings.allowCustomerInvoiceDownload)}
-                    onChange={e => updateRoot({ allowCustomerInvoiceDownload: e.target.checked })}
-                  />
-                  <span>
-                    <strong>Allow customers to download receipts / invoices</strong>
-                    <small>When enabled, completed Grooming & Boarding bookings display a "Download Invoice" button for customers.</small>
-                  </span>
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                  <h2 style={{ margin: 0 }}><FileText size={17} /> Customer Invoices</h2>
+                  <Link
+                    to="/admin/common-settings"
+                    style={{ fontSize: '11px', color: '#d97706', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
+                  >
+                    Common Settings <ExternalLink size={11} />
+                  </Link>
+                </div>
+                <p>Customer invoice downloads for all services are managed in <Link to="/admin/common-settings" style={{ color: '#d97706', fontWeight: 700 }}>Common Settings</Link>.</p>
               </section>
             </div>
           </div>

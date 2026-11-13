@@ -4015,6 +4015,58 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   letter-spacing: 0.2px;
 }
 
+/* ── Admin Common Settings Floating Save Button ── */
+.admin-common-floating-save {
+  position: fixed;
+  bottom: 28px;
+  right: 32px;
+  z-index: 1060;
+  display: flex;
+  align-items: center;
+}
+
+.admin-floating-save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 26px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 10px 25px -4px rgba(217, 119, 6, 0.45), 0 4px 12px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.admin-floating-save-btn:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 14px 30px -4px rgba(217, 119, 6, 0.55), 0 6px 16px rgba(0, 0, 0, 0.25);
+  filter: brightness(1.05);
+}
+
+.admin-floating-save-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.admin-floating-save-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+@media (max-width: 1024px) {
+  .admin-common-floating-save {
+    bottom: 84px;
+    right: 20px;
+  }
+  .admin-floating-save-btn {
+    padding: 11px 22px;
+    font-size: 13.5px;
+  }
+}
 
 /* Walk-in/offline appointment modal */
 .walkin-modal {

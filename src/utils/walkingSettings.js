@@ -110,9 +110,26 @@ export async function fetchWalkingSettings(db) {
           { duration: 60, price: rate60, label: '60 Min Walk' },
         ]
 
+    let commonHolidays = []
+    let emergencyClosure = false
+    let emergencyNotice = ''
+    try {
+      const commonSnap = await getDoc(doc(db, 'settings', 'commonSettings'))
+      if (commonSnap.exists()) {
+        const cd = commonSnap.data() || {}
+        commonHolidays = Array.isArray(cd.holidays) ? cd.holidays : []
+        if (cd.emergencyClosure && cd.servicesActive?.walking === false) {
+          emergencyClosure = true
+          emergencyNotice = cd.emergencyNotice || ''
+        }
+      }
+    } catch {
+      // fallback
+    }
+
     return {
-      active: data.active !== false && data.acceptBookings !== false,
-      acceptBookings: data.acceptBookings !== false,
+      active: data.active !== false && data.acceptBookings !== false && !emergencyClosure,
+      acceptBookings: data.acceptBookings !== false && !emergencyClosure,
       showNewBadge: data.showNewBadge !== false,
       rate30Min: rate30,
       rate45Min: rate45,
@@ -125,6 +142,9 @@ export async function fetchWalkingSettings(db) {
       bannerImageUrl: String(data.bannerImageUrl || '').trim(),
       description: data.description || DEFAULT_WALKING_SETTINGS.description,
       guidelines: Array.isArray(data.guidelines) && data.guidelines.length ? data.guidelines : DEFAULT_WALKING_SETTINGS.guidelines,
+      holidays: commonHolidays,
+      emergencyClosure,
+      emergencyNotice,
     }
   } catch (err) {
     console.warn('[walkingSettings] fetch failed, using defaults:', err)
@@ -150,7 +170,11 @@ export async function saveWalkingSettings(db, patch = {}) {
 }
 
 export function isWalkingDayOpen(settings, dateString) {
-  if (!dateString || !settings?.operatingDays) return true
+  if (!dateString) return true
+  if (Array.isArray(settings?.holidays) && settings.holidays.includes(dateString)) {
+    return false
+  }
+  if (!settings?.operatingDays) return true
   try {
     const d = new Date(`${dateString}T00:00:00`)
     const dayName = d.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()

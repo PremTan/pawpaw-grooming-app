@@ -149,6 +149,30 @@ export async function fetchBookingSettings(db, forceRefresh = false) {
   try {
     const snap = await getDoc(doc(db, 'settings', 'bookingSettings'))
     const normalized = normalizeBookingSettings(snap.exists() ? snap.data() : {})
+
+    // Merge universal holidays and emergency status from commonSettings
+    try {
+      const commonSnap = await getDoc(doc(db, 'settings', 'commonSettings'))
+      if (commonSnap.exists()) {
+        const commonData = commonSnap.data() || {}
+        if (Array.isArray(commonData.holidays) && commonData.holidays.length) {
+          normalized.holidays = Array.from(new Set([...normalized.holidays, ...commonData.holidays])).sort()
+        }
+        if (commonData.holidayLabels && typeof commonData.holidayLabels === 'object') {
+          normalized.holidayLabels = { ...(normalized.holidayLabels || {}), ...commonData.holidayLabels }
+        }
+        if (commonData.allowCustomerInvoiceDownload !== undefined) {
+          normalized.allowCustomerInvoiceDownload = Boolean(commonData.allowCustomerInvoiceDownload)
+        }
+        if (commonData.emergencyClosure && commonData.servicesActive?.grooming === false) {
+          normalized.emergencyClosure = true
+          normalized.emergencyNotice = commonData.emergencyNotice || ''
+        }
+      }
+    } catch (e) {
+      // Common settings fallback
+    }
+
     cachedBookingSettings = normalized
     cachedBookingSettingsTime = now
     return normalized

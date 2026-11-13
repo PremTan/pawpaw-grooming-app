@@ -449,6 +449,11 @@ export default function BookBoarding() {
       return
     }
 
+    if (boardingSettings?.holidays?.includes(form.checkInDate)) {
+      alert('Paw Paw is closed on your selected check-in date (Holiday). Please choose another date.')
+      return
+    }
+
     if (!form.petName || !form.ownerName || !form.phone) {
       alert('Please fill in all required pet and contact information.')
       return
@@ -1236,6 +1241,11 @@ export default function BookBoarding() {
                           if (e.target.value > form.checkOutDate) update('checkOutDate', e.target.value)
                         }}
                       />
+                      {boardingSettings?.holidays?.includes(form.checkInDate) && (
+                        <span style={{ fontSize: '12px', color: '#ef4444', marginTop: '6px', display: 'block', fontWeight: 600 }}>
+                          ⚠️ Paw Paw is closed for check-in on this date (Holiday). Please choose another date.
+                        </span>
+                      )}
                     </div>
                     <div className="form-group">
                       <label className="field-label">APPROX. TIME</label>
@@ -1372,8 +1382,14 @@ export default function BookBoarding() {
 
                 <button
                   type="button"
-                  onClick={() => setStep(3)}
-                  disabled={!stayCalculation.valid}
+                  onClick={() => {
+                    if (boardingSettings?.holidays?.includes(form.checkInDate)) {
+                      alert('Check-in is unavailable on this date because Paw Paw is closed for a Holiday. Please choose another check-in date.')
+                      return
+                    }
+                    setStep(3)
+                  }}
+                  disabled={!stayCalculation.valid || boardingSettings?.holidays?.includes(form.checkInDate)}
                   className="boarding-primary-btn"
                 >
                   Continue to Food & Diet <ArrowRight size={16} />

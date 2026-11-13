@@ -164,6 +164,29 @@ export async function fetchBoardingSettings(db, forceRefresh = false) {
   try {
     const snap = await getDoc(doc(db, 'settings', 'boardingSettings'))
     const normalized = normalizeBoardingSettings(snap.exists() ? snap.data() : {})
+
+    // Merge universal holidays and emergency status from commonSettings
+    try {
+      const commonSnap = await getDoc(doc(db, 'settings', 'commonSettings'))
+      if (commonSnap.exists()) {
+        const cd = commonSnap.data() || {}
+        normalized.holidays = Array.isArray(cd.holidays) ? cd.holidays : []
+        if (cd.holidayLabels && typeof cd.holidayLabels === 'object') {
+          normalized.holidayLabels = cd.holidayLabels
+        }
+        if (cd.emergencyClosure && cd.servicesActive?.boarding === false) {
+          normalized.emergencyClosure = true
+          normalized.emergencyNotice = cd.emergencyNotice || ''
+          normalized.acceptBookings = false
+          normalized.active = false
+        }
+      } else {
+        normalized.holidays = []
+      }
+    } catch {
+      normalized.holidays = []
+    }
+
     cachedBoardingSettings = normalized
     cachedBoardingSettingsTime = now
     return normalized
