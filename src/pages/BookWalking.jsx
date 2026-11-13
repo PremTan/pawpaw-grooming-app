@@ -692,6 +692,12 @@ export default function BookWalking() {
       alert('Your account is blocked from booking. Please contact admin.')
       return
     }
+    if (!isWalkingDayOpen(settings, form.date) || settings?.holidays?.includes(form.date)) {
+      alert(settings?.holidays?.includes(form.date)
+        ? 'Paw Paw is closed on this date (Holiday). Please choose another date.'
+        : 'Pet Walking is closed on this day. Please choose another date.')
+      return
+    }
     if (!form.ownerName.trim() || !form.phone.trim()) {
       alert('Please provide your name and contact phone number.')
       return
@@ -1493,8 +1499,12 @@ export default function BookWalking() {
                   min={todayStr}
                   value={form.date}
                   onChange={e => {
-                    update('date', e.target.value)
+                    const newDate = e.target.value
+                    update('date', newDate)
                     update('slot', '')
+                    if (!isWalkingDayOpen(settings, newDate)) {
+                      setShowCustomTimeInput(false)
+                    }
                   }}
                 />
                 {!isDayOpen && (
@@ -1510,12 +1520,23 @@ export default function BookWalking() {
                   <Footprints size={18} color="var(--accent)" /> Available Walk Slots
                 </span>
                 <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
-                  {loadingSlots ? 'Checking slots...' : `${bookedSlotsForDate.length} slot(s) full`}
+                  {!isDayOpen ? 'Closed' : loadingSlots ? 'Checking slots...' : `${bookedSlotsForDate.length} slot(s) full`}
                 </span>
               </h2>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginBottom: '16px' }}>
-                {settings.slots.map(s => {
+                {!isDayOpen ? (
+                  <div style={{ gridColumn: '1 / -1', padding: '16px', textAlign: 'center', background: 'rgba(239,68,68,0.06)', border: '1.5px dashed rgba(239,68,68,0.3)', borderRadius: '12px', color: '#ef4444' }}>
+                    <div style={{ fontWeight: 800, fontSize: '14px', marginBottom: '4px' }}>
+                      🚫 Closed for Dog Walking
+                    </div>
+                    <div style={{ fontSize: '12.5px', color: 'var(--text)' }}>
+                      {settings.holidays?.includes(form.date)
+                        ? 'Paw Paw is closed on this date (Holiday). Please choose another date.'
+                        : 'Dog Walking is not available on this day of the week.'}
+                    </div>
+                  </div>
+                ) : settings.slots.map(s => {
                   const isSelected = form.slot === s
                   const isFull = bookedSlotsForDate.includes(s)
                   const slotMins = parseSlotTimeToMinutes(s)

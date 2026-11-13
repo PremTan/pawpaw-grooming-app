@@ -59,6 +59,31 @@ import {
 
 const money = (val) => Number(val || 0).toLocaleString('en-IN')
 
+const formatFriendlyDate = (dateStr) => {
+  if (!dateStr) return 'No date'
+  try {
+    const parts = String(dateStr).split('-')
+    if (parts.length === 3) {
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+      if (!Number.isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+      }
+    }
+    return dateStr
+  } catch {
+    return dateStr
+  }
+}
+
+const QUICK_CANCEL_REASONS = [
+  'Walker unavailable in this locality',
+  'Severe weather / Heavy rain',
+  'Customer requested cancellation',
+  'Pet unwell / Medical reason',
+  'Slot overbooked / Capacity reached',
+  'Emergency reason',
+]
+
 export default function AdminWalking() {
   const navigate = useNavigate()
   const { sendNotification } = useNotifications() || {}
@@ -1612,25 +1637,18 @@ export default function AdminWalking() {
             </div>
           )}
 
-          {/* Single Floating Sticky Save Bar at Bottom */}
-          <div className="walking-sticky-bar">
-            <div className="walking-sticky-bar-content">
-              <div className="walking-sticky-info">
-                <span className="walking-status-dot" />
-                <div className="walking-status-text">
-                  <strong>Walking settings ready to save</strong>
-                  <small>Changes across all sub-tabs are saved together</small>
-                </div>
-              </div>
-              <button
-                type="button"
-                disabled={savingSettings}
-                onClick={handleSaveSettings}
-                className="btn btn-primary walking-save-btn"
-              >
-                <Save size={15} /> {savingSettings ? 'Saving...' : 'Save Settings'}
-              </button>
-            </div>
+          {/* Proper Floating Save Button */}
+          <div className="admin-common-floating-save">
+            <button
+              type="button"
+              onClick={handleSaveSettings}
+              disabled={savingSettings}
+              className="admin-floating-save-btn"
+              aria-label="Save Settings"
+            >
+              <Save size={17} />
+              <span>{savingSettings ? 'Saving...' : 'Save Settings'}</span>
+            </button>
           </div>
         </div>
       )}
@@ -2061,63 +2079,131 @@ export default function AdminWalking() {
       )}
 
       {/* =========================================================================
-          MODAL: RESCHEDULE
+          MODAL: RESCHEDULE (Modern Redesign)
          ========================================================================= */}
       {rescheduleTarget && (
-        <div className="modal-overlay" onClick={() => setRescheduleTarget(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px', background: 'var(--card)', color: 'var(--text)' }}>
-            <h2 style={{ fontSize: '17px', fontWeight: 800, margin: '0 0 12px', color: 'var(--text)' }}>
-              Reschedule Walk for {rescheduleTarget.dogName}
-            </h2>
-            <p style={{ fontSize: '12.5px', color: 'var(--muted)', marginBottom: '16px' }}>
-              Current: {rescheduleTarget.date} at {rescheduleTarget.slot}
-            </p>
-
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>New Date</label>
-              <input
-                type="date"
-                className="input"
-                min={new Date().toISOString().split('T')[0]}
-                value={rescheduleDate}
-                onChange={e => setRescheduleDate(e.target.value)}
-              />
+        <div className="walking-modal-overlay" onClick={() => setRescheduleTarget(null)}>
+          <div className="walking-modal-card" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="walking-modal-header">
+              <div className="walking-modal-header-left">
+                <div className="walking-modal-icon-badge reschedule">
+                  <Calendar size={20} />
+                </div>
+                <div>
+                  <h3 className="walking-modal-title">Reschedule Walk</h3>
+                  <p className="walking-modal-subtitle">
+                    For <strong>{rescheduleTarget.dogName}</strong>{rescheduleTarget.breed ? ` • ${rescheduleTarget.breed}` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="walking-modal-close-btn"
+                onClick={() => setRescheduleTarget(null)}
+                aria-label="Close modal"
+              >
+                <X size={18} />
+              </button>
             </div>
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>New Slot</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: '6px' }}>
-                {settings.slots.map(s => {
-                  const isSelected = rescheduleSlot === s
-                  return (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setRescheduleSlot(s)}
-                      style={{
-                        background: isSelected ? 'var(--accent)' : 'var(--surface)',
-                        color: isSelected ? '#fff' : 'var(--text)',
-                        border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
-                        borderRadius: '8px',
-                        padding: '6px',
-                        fontSize: '11.5px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {s}
-                    </button>
-                  )
-                })}
+            {/* Body */}
+            <div className="walking-modal-body">
+              {/* Current Schedule Summary */}
+              <div className="walking-current-schedule-banner">
+                <div className="current-schedule-label">CURRENT SCHEDULE</div>
+                <div className="current-schedule-details">
+                  <span className="current-schedule-pill">
+                    <Calendar size={13} />
+                    <span>{formatFriendlyDate(rescheduleTarget.date)}</span>
+                  </span>
+                  <span className="current-schedule-pill">
+                    <Clock size={13} />
+                    <span>{rescheduleTarget.slot}</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* New Date Picker */}
+              <div className="walking-form-group">
+                <label className="walking-form-label">
+                  <Calendar size={13} />
+                  <span>Select New Date</span>
+                </label>
+                <input
+                  type="date"
+                  className="walking-form-input"
+                  min={new Date().toISOString().split('T')[0]}
+                  value={rescheduleDate}
+                  onChange={e => setRescheduleDate(e.target.value)}
+                />
+              </div>
+
+              {/* New Slot Picker */}
+              <div className="walking-form-group">
+                <div className="walking-label-row">
+                  <label className="walking-form-label">
+                    <Clock size={13} />
+                    <span>Choose Time Slot</span>
+                  </label>
+                  {rescheduleSlot && (
+                    <span className="walking-selected-slot-hint">
+                      Selected: <strong>{rescheduleSlot}</strong>
+                    </span>
+                  )}
+                </div>
+                <div className="walking-slots-grid">
+                  {(settings.slots || DEFAULT_WALKING_SLOTS).map(s => {
+                    const isSelected = rescheduleSlot === s
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setRescheduleSlot(s)}
+                        className={`walking-slot-chip${isSelected ? ' active' : ''}`}
+                      >
+                        {isSelected && <Check size={12} className="slot-check-icon" />}
+                        <span>{s}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Notification Note */}
+              <div className="walking-modal-info-note">
+                <Info size={14} />
+                <span>The customer will automatically receive an in-app notification confirming the updated schedule.</span>
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button type="button" onClick={() => setRescheduleTarget(null)} className="btn btn-secondary">
+            {/* Footer */}
+            <div className="walking-modal-footer">
+              <button
+                type="button"
+                onClick={() => setRescheduleTarget(null)}
+                className="btn btn-secondary walking-modal-btn"
+                disabled={updatingId === rescheduleTarget.id}
+              >
                 Cancel
               </button>
-              <button type="button" onClick={handleConfirmReschedule} className="btn btn-primary">
-                Confirm Reschedule
+              <button
+                type="button"
+                onClick={handleConfirmReschedule}
+                className="btn btn-primary walking-modal-btn"
+                disabled={!rescheduleDate || !rescheduleSlot || updatingId === rescheduleTarget.id}
+              >
+                {updatingId === rescheduleTarget.id ? (
+                  <>
+                    <RefreshCw size={14} className="spin" />
+                    <span>Rescheduling...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    <span>Confirm Reschedule</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -2125,36 +2211,130 @@ export default function AdminWalking() {
       )}
 
       {/* =========================================================================
-          MODAL: CANCEL / DECLINE
+          MODAL: CANCEL / DECLINE (Modern Redesign)
          ========================================================================= */}
       {cancelTarget && (
-        <div className="modal-overlay" onClick={() => setCancelTarget(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px', background: 'var(--card)', color: 'var(--text)' }}>
-            <h2 style={{ fontSize: '17px', fontWeight: 800, margin: '0 0 10px', color: '#ef4444' }}>
-              Decline / Cancel Walk
-            </h2>
-            <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '14px' }}>
-              Are you sure you want to cancel the walking request for <strong>{cancelTarget.dogName}</strong>?
-            </p>
-            <textarea
-              className="input"
-              rows={3}
-              placeholder="Reason for cancellation (e.g. Walker unavailable in this locality, severe weather, etc.)..."
-              value={cancelReason}
-              onChange={e => setCancelReason(e.target.value)}
-              style={{ resize: 'none', marginBottom: '16px' }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button type="button" onClick={() => setCancelTarget(null)} className="btn btn-secondary">
+        <div className="walking-modal-overlay" onClick={() => setCancelTarget(null)}>
+          <div className="walking-modal-card" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="walking-modal-header danger">
+              <div className="walking-modal-header-left">
+                <div className="walking-modal-icon-badge danger">
+                  <XCircle size={22} />
+                </div>
+                <div>
+                  <h3 className="walking-modal-title danger">Decline / Cancel Walk</h3>
+                  <p className="walking-modal-subtitle">
+                    Request for <strong>{cancelTarget.dogName}</strong>{cancelTarget.breed ? ` • ${cancelTarget.breed}` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="walking-modal-close-btn"
+                onClick={() => setCancelTarget(null)}
+                aria-label="Close modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="walking-modal-body">
+              {/* Booking Info Box */}
+              <div className="walking-cancel-summary-box">
+                <div className="cancel-summary-top">
+                  <div className="cancel-dog-info">
+                    <Dog size={16} />
+                    <strong>{cancelTarget.dogName}</strong>
+                    {cancelTarget.planTitle && <span className="cancel-plan-badge">{cancelTarget.planTitle}</span>}
+                  </div>
+                  <div className="cancel-schedule-info">
+                    <Calendar size={13} />
+                    <span>{formatFriendlyDate(cancelTarget.date)}</span>
+                    <span className="dot">•</span>
+                    <Clock size={13} />
+                    <span>{cancelTarget.slot}</span>
+                  </div>
+                </div>
+                {(cancelTarget.userName || cancelTarget.userPhone) && (
+                  <div className="cancel-customer-row">
+                    <User size={12} />
+                    <span>
+                      Customer: <strong>{cancelTarget.userName || 'Pet Parent'}</strong>
+                      {cancelTarget.userPhone ? ` (${cancelTarget.userPhone})` : ''}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Reason Chips */}
+              <div className="walking-form-group">
+                <label className="walking-form-label">
+                  <span>Quick Reasons (Click to fill)</span>
+                </label>
+                <div className="walking-reason-chips">
+                  {QUICK_CANCEL_REASONS.map(reason => (
+                    <button
+                      key={reason}
+                      type="button"
+                      className={`walking-reason-chip${cancelReason === reason ? ' active' : ''}`}
+                      onClick={() => setCancelReason(reason)}
+                    >
+                      {reason}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Textarea */}
+              <div className="walking-form-group">
+                <label className="walking-form-label">
+                  <span>Reason for Cancellation</span>
+                  <small className="walking-optional-tag">Shared with customer</small>
+                </label>
+                <textarea
+                  className="walking-form-textarea"
+                  rows={3}
+                  placeholder="Explain why the walk cannot be fulfilled (e.g. Walker unavailable in this locality, severe weather, etc.)..."
+                  value={cancelReason}
+                  onChange={e => setCancelReason(e.target.value)}
+                />
+              </div>
+
+              <div className="walking-cancel-warning-note">
+                <Info size={14} />
+                <span>This will decline the request, free up the walker slot, and notify the pet parent.</span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="walking-modal-footer">
+              <button
+                type="button"
+                onClick={() => setCancelTarget(null)}
+                className="btn btn-secondary walking-modal-btn"
+                disabled={updatingId === cancelTarget.id}
+              >
                 Keep Booking
               </button>
               <button
                 type="button"
                 onClick={() => handleUpdateStatus(cancelTarget, WALKING_STATUS.CANCELLED, cancelReason)}
-                className="btn btn-primary"
-                style={{ background: '#ef4444', borderColor: '#ef4444' }}
+                className="btn btn-danger-action walking-modal-btn"
+                disabled={updatingId === cancelTarget.id}
               >
-                Confirm Cancellation
+                {updatingId === cancelTarget.id ? (
+                  <>
+                    <RefreshCw size={14} className="spin" />
+                    <span>Cancelling...</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle size={15} />
+                    <span>Confirm Cancellation</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -2163,6 +2343,457 @@ export default function AdminWalking() {
 
       {/* Scoped responsive styles */}
       <style>{`
+        /* Walking Modals Redesign */
+        .walking-modal-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 1250;
+          background: rgba(0, 0, 0, 0.65);
+          backdrop-filter: blur(5px);
+          display: grid;
+          place-items: center;
+          padding: 16px;
+          overflow-y: auto;
+          box-sizing: border-box;
+        }
+
+        .walking-modal-card {
+          width: min(100%, 500px);
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          animation: walkingModalZoomIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          box-sizing: border-box;
+        }
+
+        @keyframes walkingModalZoomIn {
+          from { opacity: 0; transform: scale(0.96) translateY(8px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .walking-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 16px 20px 14px;
+          border-bottom: 1px solid var(--border);
+          background: var(--surface);
+        }
+
+        .walking-modal-header-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .walking-modal-icon-badge {
+          width: 42px;
+          height: 42px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .walking-modal-icon-badge.reschedule {
+          background: rgba(217, 119, 6, 0.12);
+          color: #d97706;
+          border: 1px solid rgba(217, 119, 6, 0.25);
+        }
+
+        .walking-modal-icon-badge.danger {
+          background: rgba(239, 68, 68, 0.12);
+          color: #ef4444;
+          border: 1px solid rgba(239, 68, 68, 0.25);
+        }
+
+        .walking-modal-title {
+          margin: 0;
+          font-size: 17px;
+          font-weight: 800;
+          color: var(--text);
+          line-height: 1.25;
+        }
+
+        .walking-modal-title.danger {
+          color: #ef4444;
+        }
+
+        .walking-modal-subtitle {
+          margin: 2px 0 0;
+          font-size: 12px;
+          color: var(--muted);
+          line-height: 1.35;
+        }
+
+        .walking-modal-close-btn {
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--muted);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.18s ease;
+          flex-shrink: 0;
+        }
+
+        .walking-modal-close-btn:hover {
+          color: var(--text);
+          background: var(--card);
+        }
+
+        .walking-modal-body {
+          padding: 18px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+          max-height: calc(85vh - 150px);
+          overflow-y: auto;
+          box-sizing: border-box;
+        }
+
+        /* Current Schedule Banner */
+        .walking-current-schedule-banner {
+          background: linear-gradient(135deg, rgba(217, 119, 6, 0.08) 0%, rgba(217, 119, 6, 0.02) 100%);
+          border: 1px solid rgba(217, 119, 6, 0.2);
+          border-radius: 12px;
+          padding: 10px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .current-schedule-label {
+          font-size: 10.5px;
+          font-weight: 800;
+          color: #d97706;
+          letter-spacing: 0.5px;
+        }
+
+        .current-schedule-details {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .current-schedule-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text);
+          background: var(--card);
+          border: 1px solid var(--border);
+          padding: 4px 10px;
+          border-radius: 6px;
+        }
+
+        /* Cancel Summary Box */
+        .walking-cancel-summary-box {
+          background: rgba(239, 68, 68, 0.05);
+          border: 1px solid rgba(239, 68, 68, 0.2);
+          border-radius: 12px;
+          padding: 12px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .cancel-summary-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .cancel-dog-info {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 14px;
+          color: var(--text);
+        }
+
+        .cancel-plan-badge {
+          font-size: 10.5px;
+          font-weight: 700;
+          padding: 2px 7px;
+          border-radius: 5px;
+          background: rgba(217, 119, 6, 0.12);
+          color: #d97706;
+        }
+
+        .cancel-schedule-info {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 12px;
+          color: var(--muted);
+        }
+
+        .cancel-schedule-info .dot {
+          opacity: 0.5;
+        }
+
+        .cancel-customer-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11.5px;
+          color: var(--muted);
+          border-top: 1px dashed rgba(239, 68, 68, 0.2);
+          padding-top: 6px;
+        }
+
+        /* Form controls */
+        .walking-form-group {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .walking-form-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11.5px;
+          font-weight: 700;
+          color: var(--muted);
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+        }
+
+        .walking-label-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .walking-selected-slot-hint {
+          font-size: 11.5px;
+          color: #d97706;
+        }
+
+        .walking-optional-tag {
+          font-size: 10.5px;
+          color: var(--muted);
+          text-transform: none;
+          font-weight: 500;
+          margin-left: auto;
+        }
+
+        .walking-form-input {
+          width: 100%;
+          padding: 9px 12px;
+          border-radius: 10px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--text);
+          font-size: 13.5px;
+          box-sizing: border-box;
+          transition: border-color 0.18s ease;
+        }
+
+        .walking-form-input:focus {
+          outline: none;
+          border-color: var(--accent);
+        }
+
+        .walking-form-textarea {
+          width: 100%;
+          padding: 10px 12px;
+          border-radius: 10px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--text);
+          font-size: 13px;
+          font-family: inherit;
+          resize: none;
+          box-sizing: border-box;
+          transition: border-color 0.18s ease;
+          line-height: 1.45;
+        }
+
+        .walking-form-textarea:focus {
+          outline: none;
+          border-color: #ef4444;
+        }
+
+        /* Slots Grid */
+        .walking-slots-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+          gap: 6px;
+        }
+
+        .walking-slot-chip {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          padding: 8px 10px;
+          border-radius: 9px;
+          border: 1.5px solid var(--border);
+          background: var(--surface);
+          color: var(--text);
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.16s ease;
+        }
+
+        .walking-slot-chip:hover {
+          border-color: var(--accent);
+          background: color-mix(in srgb, var(--surface) 90%, var(--accent));
+          transform: translateY(-1px);
+        }
+
+        .walking-slot-chip.active {
+          background: var(--accent);
+          border-color: var(--accent);
+          color: #ffffff;
+          box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
+        }
+
+        .slot-check-icon {
+          flex-shrink: 0;
+        }
+
+        /* Reason Chips */
+        .walking-reason-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .walking-reason-chip {
+          display: inline-flex;
+          align-items: center;
+          padding: 5px 10px;
+          border-radius: 7px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          color: var(--text);
+          font-size: 11.5px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .walking-reason-chip:hover {
+          border-color: #ef4444;
+          color: #ef4444;
+          background: rgba(239, 68, 68, 0.05);
+        }
+
+        .walking-reason-chip.active {
+          background: rgba(239, 68, 68, 0.12);
+          border-color: #ef4444;
+          color: #ef4444;
+          font-weight: 700;
+        }
+
+        /* Info Notes */
+        .walking-modal-info-note {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          font-size: 11.5px;
+          color: var(--muted);
+          background: var(--surface);
+          border: 1px solid var(--border);
+          padding: 8px 12px;
+          border-radius: 9px;
+          line-height: 1.4;
+        }
+
+        .walking-modal-info-note svg {
+          color: #d97706;
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+
+        .walking-cancel-warning-note {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          font-size: 11.5px;
+          color: #ef4444;
+          background: rgba(239, 68, 68, 0.06);
+          border: 1px solid rgba(239, 68, 68, 0.2);
+          padding: 8px 12px;
+          border-radius: 9px;
+          line-height: 1.4;
+        }
+
+        .walking-cancel-warning-note svg {
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+
+        /* Footer */
+        .walking-modal-footer {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          padding: 14px 20px;
+          border-top: 1px solid var(--border);
+          background: var(--surface);
+        }
+
+        .walking-modal-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 9px 18px;
+          font-size: 13px;
+          font-weight: 700;
+          border-radius: 10px;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .btn-danger-action {
+          background: #ef4444;
+          border: 1px solid #ef4444;
+          color: #ffffff;
+          box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+          transition: all 0.18s ease;
+        }
+
+        .btn-danger-action:hover:not(:disabled) {
+          background: #dc2626;
+          border-color: #dc2626;
+          transform: translateY(-1px);
+        }
+
+        .btn-danger-action:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .spin {
+          animation: spin 1s linear infinite;
+        }
+
         .admin-walking-page {
           padding: 24px 20px 80px;
           max-width: 1280px;

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarOff, Clock, Copy, CreditCard, ExternalLink, FileText, Home, Minus, Plus, Save, SlidersHorizontal, Store, Trash2 } from 'lucide-react'
+import { CalendarOff, ChevronDown, ChevronUp, Clock, Copy, CreditCard, ExternalLink, FileText, Home, Minus, Plus, Save, SlidersHorizontal, Store, Trash2 } from 'lucide-react'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
@@ -10,6 +10,152 @@ import { DAYS, DURATION_OPTIONS, VISIT_MODES, countOpenDays, getAvailabilityForD
 const MAX_WINDOWS = 4
 const MAX_CANCELLATION_MINUTES = 1440
 const emptyWindow = () => ({ start: '09:00', end: '18:00', mode: 'center' })
+
+function formatDurationOption(mins) {
+  const num = Number(mins) || 0
+  if (num < 60) return `${num} Minutes`
+  const hours = Math.floor(num / 60)
+  const rem = num % 60
+  if (rem === 0) return hours === 1 ? '1 Hour' : `${hours} Hour`
+  if (rem === 30) return `${hours}.5 Hour`
+  return `${hours} hr ${rem} min`
+}
+
+function DurationWheelPicker({ value, onChange }) {
+  const containerRef = useRef(null)
+  const isProgrammaticScroll = useRef(false)
+  const scrollTimeout = useRef(null)
+
+  const ITEM_HEIGHT = 44
+  const currentIndex = DURATION_OPTIONS.indexOf(Number(value))
+  const safeIndex = currentIndex === -1
+    ? (DURATION_OPTIONS.findIndex(opt => opt >= Number(value)) !== -1
+      ? DURATION_OPTIONS.findIndex(opt => opt >= Number(value))
+      : 3)
+    : currentIndex
+
+  useEffect(() => {
+    if (containerRef.current) {
+      const targetScrollTop = safeIndex * ITEM_HEIGHT
+      if (Math.abs(containerRef.current.scrollTop - targetScrollTop) > 4) {
+        isProgrammaticScroll.current = true
+        containerRef.current.scrollTo({
+          top: targetScrollTop,
+          behavior: 'smooth',
+        })
+        const t = setTimeout(() => {
+          isProgrammaticScroll.current = false
+        }, 320)
+        return () => clearTimeout(t)
+      }
+    }
+  }, [safeIndex])
+
+  const handleScroll = () => {
+    if (isProgrammaticScroll.current) return
+    if (scrollTimeout.current) clearTimeout(scrollTimeout.current)
+
+    scrollTimeout.current = setTimeout(() => {
+      if (!containerRef.current) return
+      const scrollTop = containerRef.current.scrollTop
+      const rawIndex = Math.round(scrollTop / ITEM_HEIGHT)
+      const clampedIndex = Math.max(0, Math.min(DURATION_OPTIONS.length - 1, rawIndex))
+      const targetVal = DURATION_OPTIONS[clampedIndex]
+      if (targetVal !== undefined && targetVal !== value) {
+        onChange(targetVal)
+      }
+    }, 60)
+  }
+
+  const handleSelectIndex = (index) => {
+    const targetVal = DURATION_OPTIONS[index]
+    if (targetVal !== undefined) {
+      onChange(targetVal)
+      if (containerRef.current) {
+        isProgrammaticScroll.current = true
+        containerRef.current.scrollTo({
+          top: index * ITEM_HEIGHT,
+          behavior: 'smooth',
+        })
+        setTimeout(() => {
+          isProgrammaticScroll.current = false
+        }, 320)
+      }
+    }
+  }
+
+  const handlePrev = () => {
+    if (safeIndex > 0) {
+      handleSelectIndex(safeIndex - 1)
+    }
+  }
+
+  const handleNext = () => {
+    if (safeIndex < DURATION_OPTIONS.length - 1) {
+      handleSelectIndex(safeIndex + 1)
+    }
+  }
+
+  return (
+    <div className="duration-wheel-card">
+      <button
+        type="button"
+        className="duration-wheel-nav-btn"
+        onClick={handlePrev}
+        disabled={safeIndex <= 0}
+        aria-label="Previous duration"
+      >
+        <ChevronUp size={20} strokeWidth={2.4} />
+      </button>
+
+      <div className="duration-wheel-viewport">
+        {/* Golden Highlight Oval/Pill */}
+        <div className="duration-wheel-pill-frame" />
+
+        <div
+          ref={containerRef}
+          className="duration-wheel-list"
+          onScroll={handleScroll}
+        >
+          {/* Top spacer so first element can sit centered */}
+          <div style={{ height: `${ITEM_HEIGHT}px`, flexShrink: 0 }} />
+
+          {DURATION_OPTIONS.map((mins, i) => {
+            const isSelected = i === safeIndex
+            return (
+              <div
+                key={mins}
+                className={`duration-wheel-row${isSelected ? ' is-selected' : ''}`}
+                style={{
+                  height: `${ITEM_HEIGHT}px`,
+                }}
+                onClick={() => handleSelectIndex(i)}
+              >
+                <span>{formatDurationOption(mins)}</span>
+              </div>
+            )
+          })}
+
+          {/* Bottom spacer so last element can sit centered */}
+          <div style={{ height: `${ITEM_HEIGHT}px`, flexShrink: 0 }} />
+        </div>
+
+        <div className="duration-wheel-mask-top" />
+        <div className="duration-wheel-mask-bottom" />
+      </div>
+
+      <button
+        type="button"
+        className="duration-wheel-nav-btn"
+        onClick={handleNext}
+        disabled={safeIndex >= DURATION_OPTIONS.length - 1}
+        aria-label="Next duration"
+      >
+        <ChevronDown size={20} strokeWidth={2.4} />
+      </button>
+    </div>
+  )
+}
 
 function clampCancellationCutoff(value) {
   return Math.max(0, Math.min(MAX_CANCELLATION_MINUTES, Number(value) || 0))
@@ -145,6 +291,10 @@ export default function AdminBookingSettings({ embedded = false }) {
         setDoc(doc(db, 'settings', 'general'), {
           daysOpen,
           statsUpdatedAt: serverTimestamp(),
+        }, { merge: true }),
+        setDoc(doc(db, 'settings', 'commonSettings'), {
+          holidays: settings.holidays,
+          updatedAt: serverTimestamp(),
         }, { merge: true }),
       ])
       const successMsg = 'Booking availability updated successfully.'
@@ -456,22 +606,30 @@ export default function AdminBookingSettings({ embedded = false }) {
               <section className="booking-panel">
                 <h2>Appointment Duration</h2>
                 <p>This splits working hours into bookable slots.</p>
-                <div className="duration-grid">
-                  {DURATION_OPTIONS.map(value => (
-                    <button
-                      key={value}
-                      type="button"
-                      className={settings.appointmentDuration === value ? 'selected' : ''}
-                      onClick={() => updateRoot({ appointmentDuration: value })}
-                    >
-                      {value < 60 ? `${value} Minutes` : value === 60 ? '1 Hour' : `${value / 60} Hour`}
-                    </button>
-                  ))}
-                </div>
-                <div className="stepper-row">
-                  <button type="button" onClick={() => stepDuration(-15)}><Minus size={16} /></button>
-                  <strong>{String(Math.floor(settings.appointmentDuration / 60)).padStart(2, '0')}:{String(settings.appointmentDuration % 60).padStart(2, '0')}</strong>
-                  <button type="button" onClick={() => stepDuration(15)}><Plus size={16} /></button>
+                <DurationWheelPicker
+                  value={settings.appointmentDuration}
+                  onChange={(val) => updateRoot({ appointmentDuration: val })}
+                />
+                <div className="stepper-row" style={{ marginTop: '14px' }}>
+                  <button
+                    type="button"
+                    onClick={() => stepDuration(-15)}
+                    disabled={Number(settings.appointmentDuration || 60) <= 15}
+                    aria-label="Decrease duration by 15 mins"
+                    title="Reduce by 15 minutes"
+                  >
+                    <Minus size={16} />
+                  </button>
+                  <strong>{formatDurationOption(Number(settings.appointmentDuration || 60))} ({settings.appointmentDuration || 60} mins)</strong>
+                  <button
+                    type="button"
+                    onClick={() => stepDuration(15)}
+                    disabled={Number(settings.appointmentDuration || 60) >= 240}
+                    aria-label="Increase duration by 15 mins"
+                    title="Extend by 15 minutes"
+                  >
+                    <Plus size={16} />
+                  </button>
                 </div>
               </section>
 
@@ -577,24 +735,22 @@ export default function AdminBookingSettings({ embedded = false }) {
         </div>
       )}
 
-      {/* Floating Sticky Save Bar */}
-      <div className="booking-sticky-bar">
-        <div className="booking-sticky-bar-content">
-          <div className="booking-sticky-info">
-            <span className="save-status-dot" />
-            <div className="save-status-text">
-              <strong>Settings ready to save</strong>
-              <small>Changes across all tabs are saved together</small>
-            </div>
-          </div>
-          <button onClick={save} disabled={saving} className="btn btn-primary booking-save-btn">
-            <Save size={16} /> {saving ? 'Saving...' : 'Save Settings'}
-          </button>
-        </div>
+      {/* Proper Floating Save Button */}
+      <div className="admin-common-floating-save">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="admin-floating-save-btn"
+          aria-label="Save Settings"
+        >
+          <Save size={17} />
+          <span>{saving ? 'Saving...' : 'Save Settings'}</span>
+        </button>
       </div>
 
       <style>{`
-        .booking-settings-page { padding: 24px 28px 16px; }
+        .booking-settings-page { padding: 24px 28px 90px; }
         .booking-settings-head { margin-bottom: 18px; }
         .booking-settings-head h1 { color: var(--text); font-size: 24px; font-weight: 800; margin-bottom: 4px; }
         .booking-settings-head p, .booking-panel p { color: var(--muted); font-size: 13px; line-height: 1.5; }
@@ -774,10 +930,132 @@ export default function AdminBookingSettings({ embedded = false }) {
         .add-window-btn:disabled { opacity: .45; cursor: not-allowed; }
         
         .closed-text, .empty-holidays { color: var(--muted); font-size: 13px; }
-        .duration-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
-        .duration-grid button { min-height: 48px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 700; cursor: pointer; }
-        .duration-grid button.selected { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
-        
+
+        /* Duration Wheel Picker */
+        .duration-wheel-card {
+          margin-top: 12px;
+          background: var(--surface);
+          border: 1.5px solid var(--border);
+          border-radius: 16px;
+          padding: 4px 10px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          position: relative;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+          max-width: 360px;
+        }
+
+        .duration-wheel-nav-btn {
+          background: transparent;
+          border: none;
+          color: var(--muted);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2px;
+          border-radius: 50%;
+          transition: all 0.2s ease;
+          z-index: 5;
+        }
+
+        .duration-wheel-nav-btn:hover:not(:disabled) {
+          color: var(--accent);
+          background: var(--accent-bg);
+        }
+
+        .duration-wheel-nav-btn:disabled {
+          opacity: 0.15;
+          cursor: not-allowed;
+        }
+
+        .duration-wheel-viewport {
+          position: relative;
+          width: 100%;
+          height: 132px;
+          overflow: hidden;
+        }
+
+        .duration-wheel-pill-frame {
+          position: absolute;
+          top: 50%;
+          left: 6px;
+          right: 6px;
+          transform: translateY(-50%);
+          height: 44px;
+          border: 1.5px solid #d97706;
+          border-radius: 999px;
+          background: rgba(217, 119, 6, 0.03);
+          pointer-events: none;
+          z-index: 2;
+          box-shadow: 0 1px 8px rgba(217, 119, 6, 0.08);
+        }
+
+        .duration-wheel-list {
+          width: 100%;
+          height: 100%;
+          overflow-y: scroll;
+          scroll-snap-type: y mandatory;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+          position: relative;
+          z-index: 3;
+        }
+
+        .duration-wheel-list::-webkit-scrollbar {
+          display: none;
+        }
+
+        .duration-wheel-row {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          scroll-snap-align: center;
+          font-size: 15px;
+          font-weight: 600;
+          color: var(--muted);
+          cursor: pointer;
+          user-select: none;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          opacity: 0.55;
+        }
+
+        .duration-wheel-row:hover {
+          opacity: 0.85;
+          color: var(--text);
+        }
+
+        .duration-wheel-row.is-selected {
+          font-size: 18px;
+          font-weight: 800;
+          color: var(--text);
+          opacity: 1;
+        }
+
+        .duration-wheel-mask-top {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 22px;
+          background: linear-gradient(to bottom, var(--surface) 20%, rgba(255, 255, 255, 0) 100%);
+          pointer-events: none;
+          z-index: 4;
+        }
+
+        .duration-wheel-mask-bottom {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 22px;
+          background: linear-gradient(to top, var(--surface) 20%, rgba(255, 255, 255, 0) 100%);
+          pointer-events: none;
+          z-index: 4;
+        }
+
         .stepper-row { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 14px; margin-top: 14px; }
         .stepper-row button { height: 42px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer; }
         .stepper-row strong { text-align: center; color: var(--text); font-size: 18px; }
@@ -857,7 +1135,7 @@ export default function AdminBookingSettings({ embedded = false }) {
         }
 
         @media (max-width: 680px) {
-          .booking-settings-page { padding: 16px 14px 12px; }
+          .booking-settings-page { padding: 16px 14px 85px; }
           .booking-panel { padding: 14px; border-radius: 10px; }
           .panel-title-row { display: grid; gap: 8px; }
           .panel-title-row .btn { width: 100%; justify-content: center; }

@@ -850,9 +850,9 @@ export default function AdminBookings() {
     <div className="admin-bookings-page">
       {toastMessage && <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}><Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} /></div>}
       <div className="admin-bookings-header">
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'nowrap' }}>
-            <h1 style={{ margin: 0, whiteSpace: 'nowrap' }}>Bookings</h1>
+        <div style={{ width: '100%' }}>
+          <div className="admin-bookings-title-bar">
+            <h1 style={{ margin: 0 }}>Bookings</h1>
             <div className="admin-view-toggle">
               <button
                 type="button"

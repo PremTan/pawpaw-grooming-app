@@ -108,7 +108,7 @@ export default function AdminCommonSettings() {
     try {
       await saveCommonSettings(db, settings)
       setToastType('success')
-      setToastMessage('Common facility settings saved successfully!')
+      setToastMessage('Common settings saved successfully!')
     } catch (err) {
       console.error('Failed to save common settings:', err)
       setToastType('error')
@@ -126,7 +126,7 @@ export default function AdminCommonSettings() {
   }
 
   return (
-    <div className="admin-page-container" style={{ maxWidth: '960px', margin: '0 auto', paddingBottom: '90px' }}>
+    <div className="admin-page admin-common-settings-page" style={{ maxWidth: '1060px', margin: '0 auto', paddingBottom: '90px' }}>
       {toastMessage && (
         <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 9999 }}>
           <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
@@ -141,7 +141,7 @@ export default function AdminCommonSettings() {
               <Sliders size={20} />
             </span>
             <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '26px', fontWeight: 800, color: 'var(--text)', margin: 0 }}>
-              Common Facility Settings
+              Common Settings
             </h1>
           </div>
           <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '6px 0 0' }}>

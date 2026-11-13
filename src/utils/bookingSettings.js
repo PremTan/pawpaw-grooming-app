@@ -17,7 +17,7 @@ export const VISIT_MODES = [
 ]
 
 export const DEFAULT_TIME_WINDOWS = [{ start: '09:00', end: '18:00', mode: 'center' }]
-export const DURATION_OPTIONS = [15, 30, 45, 60, 120, 180]
+export const DURATION_OPTIONS = [15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, 195, 210, 225, 240]
 
 export const DEFAULT_BOOKING_SETTINGS = {
   appointmentDuration: 30,
@@ -134,7 +134,7 @@ export function countOpenDays(settings) {
 }
 let cachedBookingSettings = null
 let cachedBookingSettingsTime = 0
-const CACHE_TTL_MS = 60 * 1000
+const CACHE_TTL_MS = 5 * 1000
 
 export function clearBookingSettingsCache() {
   cachedBookingSettings = null

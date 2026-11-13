@@ -1080,9 +1080,6 @@ export default function AdminBoarding() {
           </div>
           <div>
             <h1 className="header-title">Pet Boarding Reservations</h1>
-            <p className="header-subtitle">
-              Manage overnight pet stays, check-ins, check-outs, and customer care instructions.
-            </p>
           </div>
         </div>
 

@@ -62,6 +62,7 @@ export const DEFAULT_WALKING_SETTINGS = {
     'Fresh water break and paw wipe after every walking session.',
     'Live WhatsApp walk updates with photo & route summary upon completion.',
   ],
+  holidays: [],
 }
 
 export const WALKING_STATUS = {
@@ -90,9 +91,13 @@ export const WALKING_STATUS_BADGES = {
 
 export async function fetchWalkingSettings(db) {
   try {
-    const snap = await getDoc(doc(db, 'settings', 'walkingSettings'))
-    if (!snap.exists()) return DEFAULT_WALKING_SETTINGS
-    const data = snap.data() || {}
+    let data = {}
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'walkingSettings'))
+      if (snap.exists()) data = snap.data() || {}
+    } catch {
+      // fallback
+    }
 
     const rate30 = Number(data.rate30Min) || DEFAULT_WALKING_SETTINGS.rate30Min
     const rate45 = Number(data.rate45Min) || DEFAULT_WALKING_SETTINGS.rate45Min
@@ -100,29 +105,43 @@ export async function fetchWalkingSettings(db) {
 
     const durations = Array.isArray(data.durations) && data.durations.length > 0
       ? data.durations.map(d => ({
-          duration: Number(d.duration) || 30,
-          price: Number(d.price) || 0,
-          label: String(d.label || `${d.duration} Min Walk`).trim(),
-        }))
+        duration: Number(d.duration) || 30,
+        price: Number(d.price) || 0,
+        label: String(d.label || `${d.duration} Min Walk`).trim(),
+      }))
       : [
-          { duration: 30, price: rate30, label: '30 Min Walk' },
-          { duration: 45, price: rate45, label: '45 Min Walk' },
-          { duration: 60, price: rate60, label: '60 Min Walk' },
-        ]
+        { duration: 30, price: rate30, label: '30 Min Walk' },
+        { duration: 45, price: rate45, label: '45 Min Walk' },
+        { duration: 60, price: rate60, label: '60 Min Walk' },
+      ]
 
     let commonHolidays = []
     let emergencyClosure = false
     let emergencyNotice = ''
     try {
-      const commonSnap = await getDoc(doc(db, 'settings', 'commonSettings'))
-      if (commonSnap.exists()) {
+      const [commonSnap, legacySnap] = await Promise.all([
+        getDoc(doc(db, 'settings', 'commonSettings')).catch(() => null),
+        getDoc(doc(db, 'settings', 'bookingSettings')).catch(() => null),
+      ])
+
+      const setOfHolidays = new Set()
+      if (commonSnap && commonSnap.exists()) {
         const cd = commonSnap.data() || {}
-        commonHolidays = Array.isArray(cd.holidays) ? cd.holidays : []
+        if (Array.isArray(cd.holidays)) {
+          cd.holidays.forEach(h => setOfHolidays.add(String(h).trim()))
+        }
         if (cd.emergencyClosure && cd.servicesActive?.walking === false) {
           emergencyClosure = true
           emergencyNotice = cd.emergencyNotice || ''
         }
       }
+      if (legacySnap && legacySnap.exists()) {
+        const bd = legacySnap.data() || {}
+        if (Array.isArray(bd.holidays)) {
+          bd.holidays.forEach(h => setOfHolidays.add(String(h).trim()))
+        }
+      }
+      commonHolidays = Array.from(setOfHolidays).filter(Boolean).sort()
     } catch {
       // fallback
     }

@@ -109,6 +109,8 @@ export function normalizeBoardingSettings(data = {}) {
     showNewBadge: data.showNewBadge !== false,
     acceptBookings: data.acceptBookings !== false,
     active: data.active !== false && data.acceptBookings !== false,
+    holidays: Array.isArray(data.holidays) ? data.holidays : [],
+    holidayLabels: typeof data.holidayLabels === 'object' && data.holidayLabels !== null ? data.holidayLabels : {},
     terms,
     termsClosingMessage,
   }
@@ -149,7 +151,7 @@ export function isPastStandardCheckOut(scheduledCheckOutDate, standardCheckOutTi
 
 let cachedBoardingSettings = null
 let cachedBoardingSettingsTime = 0
-const CACHE_TTL_MS = 60 * 1000
+const CACHE_TTL_MS = 5 * 1000
 
 export function clearBoardingSettingsCache() {
   cachedBoardingSettings = null
@@ -162,15 +164,26 @@ export async function fetchBoardingSettings(db, forceRefresh = false) {
     return cachedBoardingSettings
   }
   try {
-    const snap = await getDoc(doc(db, 'settings', 'boardingSettings'))
-    const normalized = normalizeBoardingSettings(snap.exists() ? snap.data() : {})
-
-    // Merge universal holidays and emergency status from commonSettings
+    let data = {}
     try {
-      const commonSnap = await getDoc(doc(db, 'settings', 'commonSettings'))
-      if (commonSnap.exists()) {
+      const snap = await getDoc(doc(db, 'settings', 'boardingSettings'))
+      if (snap.exists()) data = snap.data() || {}
+    } catch {}
+    const normalized = normalizeBoardingSettings(data)
+
+    // Merge universal holidays and emergency status from commonSettings AND bookingSettings
+    try {
+      const [commonSnap, legacySnap] = await Promise.all([
+        getDoc(doc(db, 'settings', 'commonSettings')).catch(() => null),
+        getDoc(doc(db, 'settings', 'bookingSettings')).catch(() => null),
+      ])
+
+      const setOfHolidays = new Set()
+      if (commonSnap && commonSnap.exists()) {
         const cd = commonSnap.data() || {}
-        normalized.holidays = Array.isArray(cd.holidays) ? cd.holidays : []
+        if (Array.isArray(cd.holidays)) {
+          cd.holidays.forEach(h => setOfHolidays.add(String(h).trim()))
+        }
         if (cd.holidayLabels && typeof cd.holidayLabels === 'object') {
           normalized.holidayLabels = cd.holidayLabels
         }
@@ -180,9 +193,14 @@ export async function fetchBoardingSettings(db, forceRefresh = false) {
           normalized.acceptBookings = false
           normalized.active = false
         }
-      } else {
-        normalized.holidays = []
       }
+      if (legacySnap && legacySnap.exists()) {
+        const bd = legacySnap.data() || {}
+        if (Array.isArray(bd.holidays)) {
+          bd.holidays.forEach(h => setOfHolidays.add(String(h).trim()))
+        }
+      }
+      normalized.holidays = Array.from(setOfHolidays).filter(Boolean).sort()
     } catch {
       normalized.holidays = []
     }
@@ -211,6 +229,17 @@ export function calculateBoardingStay(checkInDate, checkInTime, checkOutDate, ch
     : petType === 'Dog'
       ? config.dogDailyRate
       : config.otherDailyRate
+
+  if (Array.isArray(config.holidays) && config.holidays.includes(checkInDate)) {
+    return {
+      valid: false,
+      error: 'Paw Paw is closed on this date (Holiday). Check-in is unavailable.',
+      days: 0,
+      nights: 0,
+      dailyRate: rate,
+      estimatedTotal: 0,
+    }
+  }
 
   if (!checkInDate || !checkOutDate) {
     return {
