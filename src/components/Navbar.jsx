@@ -47,13 +47,10 @@ export default function Navbar() {
     promptInstall,
   } = usePWAInstall()
   const headerBarRef = useRef(null)
-  const bannerInnerRef = useRef(null)
-  const bannerHeightRef = useRef(0)
-  const statusStripInnerRef = useRef(null)
-  const statusStripHeightRef = useRef(0)
+  const fullNavbarHeightRef = useRef(134)
   const [isScrolled, setIsScrolled] = useState(() => {
     if (typeof window !== 'undefined') {
-      return (window.scrollY || window.pageYOffset || 0) > 15
+      return (window.scrollY || window.pageYOffset || 0) > 25
     }
     return false
   })
@@ -61,6 +58,13 @@ export default function Navbar() {
 
   useEffect(() => {
     isScrolledRef.current = isScrolled
+    if (isScrolled) {
+      setHoursOpen(false)
+      document.documentElement.style.setProperty('--navbar-height', '65px')
+    } else {
+      const fullH = fullNavbarHeightRef.current || 134
+      document.documentElement.style.setProperty('--navbar-height', `${fullH}px`)
+    }
   }, [isScrolled])
 
   useEffect(() => {
@@ -71,10 +75,12 @@ export default function Navbar() {
       if (!ticking) {
         window.requestAnimationFrame(() => {
           const scrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0
-          const scrolled = scrollY > 15
-          if (isScrolledRef.current !== scrolled) {
-            isScrolledRef.current = scrolled
-            setIsScrolled(scrolled)
+          if (scrollY > 25 && !isScrolledRef.current) {
+            isScrolledRef.current = true
+            setIsScrolled(true)
+          } else if (scrollY <= 10 && isScrolledRef.current) {
+            isScrolledRef.current = false
+            setIsScrolled(false)
           }
           ticking = false
         })
@@ -89,7 +95,7 @@ export default function Navbar() {
 
   useEffect(() => {
     const scrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0
-    const scrolled = scrollY > 15
+    const scrolled = scrollY > 25
     isScrolledRef.current = scrolled
     setIsScrolled(scrolled)
   }, [location.pathname])
@@ -134,26 +140,12 @@ export default function Navbar() {
     if (!el) return
 
     const updateHeight = () => {
-      const height = el.getBoundingClientRect().height
-      if (height > 0) {
-        if (!isScrolledRef.current) {
-          if (bannerInnerRef.current) {
-            const bHeight = bannerInnerRef.current.getBoundingClientRect().height
-            if (bHeight > 0) {
-              bannerHeightRef.current = bHeight
-            }
-          }
-          if (statusStripInnerRef.current) {
-            const sHeight = statusStripInnerRef.current.getBoundingClientRect().height
-            if (sHeight > 0) {
-              statusStripHeightRef.current = sHeight
-            }
-          }
+      if (!isScrolledRef.current) {
+        const height = el.getBoundingClientRect().height
+        if (height > 65) {
+          fullNavbarHeightRef.current = Math.round(height)
+          document.documentElement.style.setProperty('--navbar-height', `${fullNavbarHeightRef.current}px`)
         }
-        const hiddenBannerHeight = isScrolledRef.current ? bannerHeightRef.current : 0
-        const hiddenStatusStripHeight = isScrolledRef.current ? statusStripHeightRef.current : 0
-        const totalNavbarHeight = Math.round(height + hiddenBannerHeight + hiddenStatusStripHeight)
-        document.documentElement.style.setProperty('--navbar-height', `${totalNavbarHeight}px`)
       }
     }
 
@@ -228,9 +220,7 @@ export default function Navbar() {
             className={`navbar-offers-banner-wrapper${isScrolled ? ' banner-hidden' : ''}`}
             aria-hidden={isScrolled}
           >
-            <div ref={bannerInnerRef} className="navbar-offers-banner-inner">
-              <FestiveBanner />
-            </div>
+            <FestiveBanner />
           </div>
           <div style={{ width: '100%', maxWidth: '100%', margin: '0 auto', padding: '0 14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', height: '64px', gap: '8px' }}>
@@ -366,27 +356,25 @@ export default function Navbar() {
                 className={`navbar-status-strip-wrapper${isScrolled ? ' strip-hidden' : ''}`}
                 aria-hidden={isScrolled}
               >
-                <div ref={statusStripInnerRef} className="navbar-status-strip-inner">
-                  <div className={'store-status-strip ' + (workingStatus.open ? 'open' : 'closed') + (hoursOpen ? ' expanded' : '')}>
-                    <button
-                      type="button"
-                      className="store-status-main"
-                      onClick={() => setHoursOpen(prev => !prev)}
-                      aria-expanded={hoursOpen}
-                    >
-                      <span className="store-status-dot" />
-                      <strong>{workingStatus.label}</strong>
-                      <span>{workingStatus.detail}</span>
-                      <ChevronDown size={15} className="store-status-arrow" />
-                    </button>
-                    {hoursOpen && (
-                      <div className="store-status-details">
-                        {workingStatus.windows.length
-                          ? workingStatus.windows.map(window => <span key={window}>{window}</span>)
-                          : <span>{workingStatus.detail}</span>}
-                      </div>
-                    )}
-                  </div>
+                <div className={'store-status-strip ' + (workingStatus.open ? 'open' : 'closed') + (hoursOpen ? ' expanded' : '')}>
+                  <button
+                    type="button"
+                    className="store-status-main"
+                    onClick={() => setHoursOpen(prev => !prev)}
+                    aria-expanded={hoursOpen}
+                  >
+                    <span className="store-status-dot" />
+                    <strong>{workingStatus.label}</strong>
+                    <span>{workingStatus.detail}</span>
+                    <ChevronDown size={15} className="store-status-arrow" />
+                  </button>
+                  {hoursOpen && (
+                    <div className="store-status-details">
+                      {workingStatus.windows.length
+                        ? workingStatus.windows.map(window => <span key={window}>{window}</span>)
+                        : <span>{workingStatus.detail}</span>}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
