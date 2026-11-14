@@ -664,18 +664,18 @@ function HeroSlider() {
                 )}
               </div>
 
-              <h2 className="home-boarding-title">
+              <h2 className="home-boarding-title home-fade-up">
                 Your Pet's Home <br />
                 <span className="gold-accent">Away From Home</span>
               </h2>
 
-              <p className="home-boarding-desc">
+              <p className="home-boarding-desc home-fade-up">
                 Safe, clean and comfortable stay for your furry family with loving care while you are away.
               </p>
 
               {/* Pricing Cards */}
               <div className="home-boarding-prices">
-                <div className="home-boarding-price-card">
+                <div className="home-boarding-price-card home-fade-up stagger-1">
                   <img
                     src={boardingDogAvatar}
                     alt="Dog Boarding"
@@ -693,7 +693,7 @@ function HeroSlider() {
                   </div>
                 </div>
 
-                <div className="home-boarding-price-card">
+                <div className="home-boarding-price-card home-fade-up stagger-2">
                   <img
                     src={boardingCatAvatar}
                     alt="Cat Boarding"
@@ -713,7 +713,7 @@ function HeroSlider() {
               </div>
 
               {/* Actions */}
-              <div className={`home-boarding-actions ${boardingSettings?.acceptBookings === false ? 'is-closed' : ''}`}>
+              <div className={`home-boarding-actions home-fade-up stagger-3 ${boardingSettings?.acceptBookings === false ? 'is-closed' : ''}`}>
                 {(boardingSettings?.acceptBookings !== false) ? (
                   <Link to="/boarding" className="home-boarding-btn-primary">
                     <Calendar size={16} /> Book Pet Boarding <ArrowRight size={15} />
@@ -736,7 +736,7 @@ function HeroSlider() {
 
             {/* Large Hero Image (Default illustration as background to prevent blank box while custom image loads) */}
             <div
-              className="home-boarding-hero-wrap"
+              className="home-boarding-hero-wrap home-fade-up stagger-2"
               style={{
                 backgroundImage: `url(${boardingHeroPets})`,
                 backgroundSize: 'cover',
@@ -857,13 +857,13 @@ function HeroSlider() {
                 )}
               </div>
 
-              <h2 className="home-boarding-title">
+              <h2 className="home-boarding-title home-fade-up">
                 Daily Walks & Exercise <br />
                 <span className="gold-accent">Happy Tails Every Day</span>
               </h2>
 
               <p
-                className="home-boarding-desc"
+                className="home-boarding-desc home-fade-up"
                 style={{
                   display: '-webkit-box',
                   WebkitLineClamp: 2,
@@ -885,8 +885,8 @@ function HeroSlider() {
                       { duration: 45, price: walkingSettings?.rate45Min || 279, label: '45 Min Walk' },
                       { duration: 60, price: walkingSettings?.rate60Min || 349, label: '60 Min Walk' },
                     ]
-                ).map(tier => (
-                  <div key={tier.duration} className="home-boarding-price-card">
+                ).map((tier, i) => (
+                  <div key={tier.duration} className={`home-boarding-price-card home-fade-up stagger-${i + 1}`}>
                     <div className="home-boarding-avatar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-bg)', color: 'var(--accent)' }}>
                       <Footprints size={22} />
                     </div>
@@ -901,7 +901,7 @@ function HeroSlider() {
               </div>
 
               {/* Actions */}
-              <div className={`home-boarding-actions ${walkingSettings?.acceptBookings === false ? 'is-closed' : ''}`}>
+              <div className={`home-boarding-actions home-fade-up stagger-3 ${walkingSettings?.acceptBookings === false ? 'is-closed' : ''}`}>
                 {(walkingSettings?.acceptBookings !== false) ? (
                   <Link to="/book-walking" className="home-boarding-btn-primary">
                     <Footprints size={16} /> Book a Walk <ArrowRight size={15} />
@@ -924,7 +924,7 @@ function HeroSlider() {
 
             {/* Large Hero Image */}
             <div
-              className="home-boarding-hero-wrap"
+              className="home-boarding-hero-wrap home-fade-up stagger-2"
               style={{
                 backgroundImage: `url(${petWalkingHero})`,
                 backgroundSize: 'cover',
@@ -1037,7 +1037,7 @@ function HeroSlider() {
         )}
 
         {(user?.uid || user?.email) && (
-          <section className="upcoming-appointment-section">
+          <section className="upcoming-appointment-section home-fade-up">
             <div className="upcoming-appointment-card">
               <div className="upcoming-appointment-header">
                 <div className="upcoming-appointment-title-wrap">
@@ -1248,14 +1248,14 @@ function HeroSlider() {
         )}
 
         <div className="visit-choice-section">
-          <div className="visit-choice-title">
+          <div className="visit-choice-title home-fade-up">
             <span />
             <h2>Where would you like your pet groomed?</h2>
             <span />
           </div>
           <div className="visit-choice-grid">
             {visitCards.map((card, index) => (
-              <Link key={card.title} to={card.to} className="visit-choice-card">
+              <Link key={card.title} to={card.to} className={`visit-choice-card home-fade-up stagger-${index + 1}`}>
                 <div className="visit-choice-icon">{card.icon}</div>
                 <div className="visit-choice-image">
                   {card.image?.url ? (
@@ -1273,7 +1273,7 @@ function HeroSlider() {
           </div>
         </div>
 
-        <div className="home-trust-strip">
+        <div className="home-trust-strip home-fade-up">
           <span><Shield size={24} /> Trained & Verified Groomers</span>
           <span><BadgeCheck size={24} /> Safe, Hygienic & Loving Care</span>
           <span><Award size={24} /> Premium Quality Products</span>
@@ -1312,6 +1312,56 @@ export default function Home() {
   const [touchStartX, setTouchStartX] = useState(null)
   const reviewCarouselRef = useRef(null)
   const reviewSlideRefs = useRef([])
+  const homeContainerRef = useRef(null)
+
+  // Premium Fade-Up on Scroll with IntersectionObserver
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    // Fallback for older browsers without IntersectionObserver
+    if (typeof IntersectionObserver === 'undefined') {
+      const container = homeContainerRef.current || document
+      container.querySelectorAll('.home-fade-up').forEach(el => el.classList.add('is-visible'))
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries, obs) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible')
+            obs.unobserve(entry.target)
+          }
+        })
+      },
+      {
+        root: null,
+        rootMargin: '0px 0px -20px 0px',
+        threshold: 0.05,
+      }
+    )
+
+    const observeNewElements = () => {
+      const container = homeContainerRef.current || document
+      const elements = container.querySelectorAll('.home-fade-up:not(.is-visible)')
+      elements.forEach(el => observer.observe(el))
+    }
+
+    observeNewElements()
+
+    // MutationObserver observes dynamically rendered elements (reviews, gallery, services, etc.)
+    const mutationObserver = new MutationObserver(() => {
+      observeNewElements()
+    })
+
+    const container = homeContainerRef.current || document.body
+    mutationObserver.observe(container, { childList: true, subtree: true })
+
+    return () => {
+      observer.disconnect()
+      mutationObserver.disconnect()
+    }
+  }, [])
 
   useEffect(() => {
     fetchWalkingSettings(db).then(setWalkingSettings).catch(() => {})
@@ -1563,14 +1613,14 @@ export default function Home() {
     return <MessageCircle size={18} />
   }
   return (
-    <div style={{ background: 'var(--bg)' }}>
+    <div ref={homeContainerRef} style={{ background: 'var(--bg)' }}>
       {/* Hero slider */}
       <HeroSlider />
 
       {/* Services preview */}
       <section className="home-services-mobile-section">
         <div className="home-section-card home-services-panel">
-          <div className="home-section-head split">
+          <div className="home-section-head split home-fade-up">
             <div>
               <p className="section-label">What We Offer</p>
               <h2>Our Services</h2>
@@ -1583,8 +1633,8 @@ export default function Home() {
               <Link
                 key={s.id}
                 to={s.to || `/services/${s.id}`}
-                className="home-service-row fade-up"
-                style={{ animationDelay: `${i * 0.06}s`, '--service-color': s.color || 'var(--accent)' }}
+                className="home-service-row home-fade-up"
+                style={{ '--fade-delay': `${Math.min(i * 120, 600)}ms`, '--service-color': s.color || 'var(--accent)' }}
               >
                 <span className="home-service-visual">
                   {s.iconImageUrl && <img src={s.iconImageUrl} alt="" loading="lazy" decoding="async" />}
@@ -1607,7 +1657,7 @@ export default function Home() {
       {/* Gallery preview */}
       {galleryImages.length > 0 && (
         <section className="home-gallery-section">
-          <div className="home-section-head split">
+          <div className="home-section-head split home-fade-up">
             <div>
               <p className="section-label">Our Work</p>
               <h2>Gallery</h2>
@@ -1616,7 +1666,7 @@ export default function Home() {
             <Link to="/gallery" className="home-pill-link">View All <ArrowRight size={17} /></Link>
           </div>
 
-          <div className="gallery-mobile-slider">
+          <div className="gallery-mobile-slider home-fade-up stagger-1">
             <div className="home-gallery-slider-frame">
               {galleryImages.map((image, index) => (
                 image.type === 'video' ? (
@@ -1658,7 +1708,7 @@ export default function Home() {
             )}
           </div>
 
-          <div className="gallery-desktop-grid home-gallery-grid">
+          <div className="gallery-desktop-grid home-gallery-grid home-fade-up stagger-1">
             {galleryImages.map((image) => (
               <button key={image.id} onClick={() => setGalleryLightbox(image)}>
                 {image.type === 'video' ? (
@@ -1675,11 +1725,11 @@ export default function Home() {
       {/* Reviews section */}
       {featuredReviews.length > 0 && (
         <section className="home-reviews-section">
-          <div className="home-section-head centered decorated">
+          <div className="home-section-head centered decorated home-fade-up">
             <p className="section-label">What Customers Say</p>
             <h2>Real Reviews <PawPrint size={24} /></h2>
           </div>
-          <div className="home-review-carousel" ref={reviewCarouselRef} onTouchStart={handleReviewTouchStart} onTouchEnd={handleReviewTouchEnd} style={{ height: reviewCarouselHeight ? `${reviewCarouselHeight}px` : 'auto' }}>
+          <div className="home-review-carousel home-fade-up stagger-1" ref={reviewCarouselRef} onTouchStart={handleReviewTouchStart} onTouchEnd={handleReviewTouchEnd} style={{ height: reviewCarouselHeight ? `${reviewCarouselHeight}px` : 'auto' }}>
             <div className="home-review-carousel-track" style={{ transform: `translateX(-${reviewIndex * 100}%)` }}>
               {featuredReviews.map((r, index) => {
                 const reviewImageList = Array.isArray(r.reviewImages) && r.reviewImages.length > 0
@@ -1756,7 +1806,7 @@ export default function Home() {
               </button>
             </div>
           )}
-          <div className="home-review-actions">
+          <div className="home-review-actions home-fade-up stagger-2">
             <Link to="/reviews" className="btn btn-secondary">See All Reviews <ArrowRight size={16} /></Link>
             {googleReviewUrl && (
               <a href={googleReviewUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
@@ -1769,13 +1819,13 @@ export default function Home() {
 
       {/* Why Choose Us */}
       <section className="home-why-section">
-        <div className="home-why-head">
+        <div className="home-why-head home-fade-up">
           <p className="section-label"><PawPrint size={14} /> Why Choose Us <PawPrint size={14} /></p>
           <h2>Trusted by Pet Parents</h2>
         </div>
         <div className="why-choose-grid">
           {features.map((f, i) => (
-            <div key={`${f.title}-${i}`} className="why-choose-card fade-up" style={{ animationDelay: `${i * 0.1}s` }}>
+            <div key={`${f.title}-${i}`} className="why-choose-card home-fade-up" style={{ '--fade-delay': `${i * 120}ms` }}>
               <div className="why-choose-icon">
                 {FEATURE_ICONS[f.icon] || FEATURE_ICONS.star}
               </div>
@@ -1789,7 +1839,7 @@ export default function Home() {
 
       {/* Call CTA Section */}
       <section className="home-help-cta">
-        <div className="home-help-card">
+        <div className="home-help-card home-fade-up">
           <div className="home-help-image">
             {homePetImages.cta ? <img src={homePetImages.cta} alt="Happy pet" loading="lazy" decoding="async" /> : <PawPrint size={72} />}
           </div>
@@ -1803,7 +1853,7 @@ export default function Home() {
 
       {/* Location */}
       <section id="contact" className="home-location-section">
-        <div className="home-location-info">
+        <div className="home-location-info home-fade-up">
           <p className="section-label">Find Us</p>
           <h2>Visit Our Centre <PawPrint size={24} /></h2>
           {[
@@ -1820,7 +1870,7 @@ export default function Home() {
             <a href={contactAddress ? `https://maps.google.com/?q=${encodeURIComponent(contactAddress)}` : '#'} target="_blank" rel="noopener noreferrer" className="btn btn-secondary"><Navigation size={16} /> Get Directions</a>
           </div>
         </div>
-        <div className="home-map-card">
+        <div className="home-map-card home-fade-up stagger-1">
           <iframe
             title="Location"
             src={contactAddress ? `https://www.google.com/maps?q=${encodeURIComponent(contactAddress)}&output=embed` : 'about:blank'}
@@ -1830,7 +1880,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="home-follow-card">
+      <section className="home-follow-card home-fade-up">
         <div className="home-follow-brand">
           <div className="home-follow-logo"><BrandLogo size="admin" showText={false} /></div>
           <div>
