@@ -47,7 +47,7 @@ export default function Navbar() {
     promptInstall,
   } = usePWAInstall()
   const headerBarRef = useRef(null)
-  const fullNavbarHeightRef = useRef(134)
+  const fullNavbarHeightRef = useRef(100)
   const [isScrolled, setIsScrolled] = useState(() => {
     if (typeof window !== 'undefined') {
       return (window.scrollY || window.pageYOffset || 0) > 25
@@ -62,7 +62,7 @@ export default function Navbar() {
       setHoursOpen(false)
       document.documentElement.style.setProperty('--navbar-height', '65px')
     } else {
-      const fullH = fullNavbarHeightRef.current || 134
+      const fullH = fullNavbarHeightRef.current || 100
       document.documentElement.style.setProperty('--navbar-height', `${fullH}px`)
     }
   }, [isScrolled])
@@ -212,10 +212,70 @@ export default function Navbar() {
     fontWeight: active ? 600 : 400,
   })
 
+  const statusSubtitle = workingStatus ? (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setHoursOpen(prev => !prev)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          e.stopPropagation()
+          setHoursOpen(prev => !prev)
+        }
+      }}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '3px',
+        padding: '1.5px 6px',
+        borderRadius: '999px',
+        background: workingStatus.open ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+        border: `1px solid ${workingStatus.open ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)'}`,
+        cursor: 'pointer',
+        userSelect: 'none',
+        whiteSpace: 'nowrap',
+        lineHeight: 1,
+        color: workingStatus.open ? '#22c55e' : '#ef4444',
+        fontSize: '9.5px',
+        fontWeight: 700,
+        verticalAlign: 'middle',
+      }}
+      title="Click to view store hours"
+    >
+      <span
+        style={{
+          width: '5px',
+          height: '5px',
+          borderRadius: '50%',
+          backgroundColor: workingStatus.open ? '#22c55e' : '#ef4444',
+          boxShadow: workingStatus.open
+            ? '0 0 0 2px rgba(34,197,94,0.18)'
+            : '0 0 0 2px rgba(239,68,68,0.18)',
+          flexShrink: 0,
+        }}
+      />
+      <span>{workingStatus.open ? 'Open' : 'Closed'}</span>
+      <ChevronDown
+        size={9}
+        style={{
+          color: workingStatus.open ? '#22c55e' : '#ef4444',
+          transform: hoursOpen ? 'rotate(180deg)' : 'none',
+          transition: 'transform 0.2s ease',
+          marginLeft: '-1px',
+        }}
+      />
+    </span>
+  ) : null
+
   return (
     <>
       <nav className="navbar" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50 }}>
-        <div ref={headerBarRef}>
+        <div ref={headerBarRef} style={{ position: 'relative' }}>
           <div
             className={`navbar-offers-banner-wrapper${isScrolled ? ' banner-hidden' : ''}`}
             aria-hidden={isScrolled}
@@ -225,7 +285,7 @@ export default function Navbar() {
           <div style={{ width: '100%', maxWidth: '100%', margin: '0 auto', padding: '0 14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', height: '64px', gap: '8px' }}>
               <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', marginRight: '8px', flexShrink: 0 }}>
-                <BrandLogo size="nav" />
+                <BrandLogo size="nav" status={statusSubtitle} />
               </Link>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flex: 1, minWidth: 0, overflow: 'hidden' }} className="desktop-nav">
@@ -315,8 +375,8 @@ export default function Navbar() {
                   )}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }} className="mobile-nav">
-                  {canShowInstall ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto', flexShrink: 0 }} className="mobile-nav">
+                  {canShowInstall && (
                     <button
                       type="button"
                       onClick={promptInstall}
@@ -327,8 +387,6 @@ export default function Navbar() {
                       <Download size={15} />
                       <span className="nav-install-mobile-text">Install</span>
                     </button>
-                  ) : (
-                    <ThemeSwitcher />
                   )}
                   {user && <NotificationBell />}
                   {isAdmin && (
@@ -336,47 +394,87 @@ export default function Navbar() {
                       to="/admin"
                       aria-label="Dashboard"
                       title="Dashboard"
-                      style={{ background: location.pathname.startsWith('/admin') ? 'var(--accent)' : 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '10px', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: location.pathname.startsWith('/admin') ? '#000' : 'var(--accent)', textDecoration: 'none' }}
+                      style={{ background: location.pathname.startsWith('/admin') ? 'var(--accent)' : 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '10px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: location.pathname.startsWith('/admin') ? '#000' : 'var(--accent)', textDecoration: 'none' }}
                     >
-                      <LayoutDashboard size={18} />
+                      <LayoutDashboard size={17} />
                     </Link>
                   )}
                   <button
                     onClick={() => setMenuOpen(!menuOpen)}
-                    style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '10px', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent)' }}
+                    style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '10px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent)' }}
                   >
-                    {menuOpen ? <X size={20} /> : <Menu size={20} />}
+                    {menuOpen ? <X size={19} /> : <Menu size={19} />}
                   </button>
                 </div>
               </div>
             </div>
 
-            {workingStatus && (
-              <div
-                className={`navbar-status-strip-wrapper${isScrolled ? ' strip-hidden' : ''}`}
-                aria-hidden={isScrolled}
-              >
-                <div className={'store-status-strip ' + (workingStatus.open ? 'open' : 'closed') + (hoursOpen ? ' expanded' : '')}>
-                  <button
-                    type="button"
-                    className="store-status-main"
-                    onClick={() => setHoursOpen(prev => !prev)}
-                    aria-expanded={hoursOpen}
-                  >
-                    <span className="store-status-dot" />
-                    <strong>{workingStatus.label}</strong>
-                    <span>{workingStatus.detail}</span>
-                    <ChevronDown size={15} className="store-status-arrow" />
-                  </button>
-                  {hoursOpen && (
-                    <div className="store-status-details">
-                      {workingStatus.windows.length
-                        ? workingStatus.windows.map(window => <span key={window}>{window}</span>)
-                        : <span>{workingStatus.detail}</span>}
+            {hoursOpen && workingStatus && (
+              <>
+                <div
+                  onClick={() => setHoursOpen(false)}
+                  style={{ position: 'fixed', inset: 0, zIndex: 60 }}
+                />
+                <div
+                  className="store-status-popover"
+                  style={{
+                    position: 'absolute',
+                    left: '14px',
+                    top: 'calc(100% + 6px)',
+                    background: 'var(--card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '16px',
+                    padding: '14px 16px',
+                    minWidth: '240px',
+                    maxWidth: 'calc(100vw - 28px)',
+                    boxShadow: '0 16px 40px rgba(0,0,0,0.35)',
+                    zIndex: 70,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                      Store Working Hours
                     </div>
-                  )}
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        background: workingStatus.open ? 'rgba(34,197,94,0.14)' : 'rgba(239,68,68,0.14)',
+                        color: workingStatus.open ? '#22c55e' : '#ef4444',
+                      }}
+                    >
+                      {workingStatus.open ? 'Open Now' : 'Closed'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {workingStatus.windows.length ? (
+                      workingStatus.windows.map(window => (
+                        <div
+                          key={window}
+                          style={{
+                            fontSize: '12.5px',
+                            color: 'var(--text)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            background: 'var(--surface)',
+                            padding: '7px 10px',
+                            borderRadius: '9px',
+                            border: '1px solid var(--border)',
+                          }}
+                        >
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: workingStatus.open ? '#22c55e' : '#ef4444' }} />
+                          {window}
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ fontSize: '12.5px', color: 'var(--text)' }}>{workingStatus.detail}</div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
 
@@ -477,13 +575,11 @@ export default function Navbar() {
                 </button>
               )}
 
-              {/* Theme Switcher in Mobile Menu (shown when Install button occupies top bar) */}
-              {canShowInstall && (
-                <div className="mobile-drawer-theme-row">
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>Theme</span>
-                  <ThemeSwitcher />
-                </div>
-              )}
+              {/* Theme Switcher in Mobile Menu */}
+              <div className="mobile-drawer-theme-row">
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>Theme</span>
+                <ThemeSwitcher />
+              </div>
 
               {/* At the end: User info section or Guest buttons */}
               {user ? (

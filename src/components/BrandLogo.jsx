@@ -20,7 +20,7 @@ function splitBrandName(shopName) {
   }
 }
 
-export default function BrandLogo({ size = 'nav', showText = true, tagline, align = 'left', textOverride }) {
+export default function BrandLogo({ size = 'nav', showText = true, tagline, align = 'left', textOverride, status }) {
   const [brand, setBrand] = useState(DEFAULT_BRAND)
   const [isLoaded, setIsLoaded] = useState(false)
   const [isError, setIsError] = useState(false)
@@ -134,9 +134,18 @@ export default function BrandLogo({ size = 'nav', showText = true, tagline, alig
         )}
       </div>
       {showText && (
-        <div>
-          <div style={{ fontFamily: '"Playfair Display",serif', fontWeight: size === 'login' ? 800 : 700, fontSize: `${s.title}px`, color: 'var(--text)', lineHeight: 1 }}>{displayTitle}</div>
-          {currentTagline && <div style={{ fontSize: `${s.sub}px`, color: 'var(--muted)', letterSpacing: size === 'login' ? 0 : '1.5px', textTransform: size === 'login' ? 'none' : 'uppercase', marginTop: size === 'login' ? '4px' : '2px' }}>{currentTagline}</div>}
+        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontFamily: '"Playfair Display",serif', fontWeight: size === 'login' ? 800 : 700, fontSize: `${s.title}px`, color: 'var(--text)', lineHeight: 1.15 }}>
+              {displayTitle}
+            </span>
+            {status}
+          </div>
+          {currentTagline && (
+            <div style={{ fontSize: `${s.sub}px`, color: 'var(--muted)', letterSpacing: size === 'login' ? 0 : '1.5px', textTransform: size === 'login' ? 'none' : 'uppercase', marginTop: size === 'login' ? '4px' : '2px', lineHeight: 1 }}>
+              {currentTagline}
+            </div>
+          )}
         </div>
       )}
     </div>

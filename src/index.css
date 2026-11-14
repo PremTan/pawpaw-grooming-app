@@ -14497,7 +14497,7 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 
 
 /* ============================================================
-   Collapsible Offers Banner & Store Hours Strip on Scroll
+   Collapsible Top Offers Banner on Scroll
    ============================================================ */
 .navbar-offers-banner-wrapper {
   overflow: hidden;
@@ -14519,29 +14519,8 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   pointer-events: none;
 }
 
-.navbar-status-strip-wrapper {
-  overflow: hidden;
-  max-height: 80px;
-  opacity: 1;
-  transform: translateY(0);
-  transition: max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 0.22s ease,
-              transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-  width: 100%;
-  box-sizing: border-box;
-  will-change: max-height, transform, opacity;
-}
-
-.navbar-status-strip-wrapper.strip-hidden {
-  max-height: 0;
-  opacity: 0;
-  transform: translateY(-100%);
-  pointer-events: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .navbar-offers-banner-wrapper,
-  .navbar-status-strip-wrapper {
+  .navbar-offers-banner-wrapper {
     transition: none !important;
   }
 }
