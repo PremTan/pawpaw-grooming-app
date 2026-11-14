@@ -16,7 +16,7 @@ export const VISIT_MODES = [
   { value: 'hybrid', label: 'Hybrid' },
 ]
 
-export const DEFAULT_TIME_WINDOWS = [{ start: '09:00', end: '18:00', mode: 'center' }]
+export const DEFAULT_TIME_WINDOWS = [{ start: '09:00', end: '20:30', mode: 'center' }]
 export const DURATION_OPTIONS = [15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, 195, 210, 225, 240]
 
 export const DEFAULT_BOOKING_SETTINGS = {
@@ -136,9 +136,29 @@ let cachedBookingSettings = null
 let cachedBookingSettingsTime = 0
 const CACHE_TTL_MS = 5 * 1000
 
+export function getCachedBookingSettings() {
+  if (cachedBookingSettings) return cachedBookingSettings
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('pawpaw_cached_booking_settings')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        cachedBookingSettings = parsed
+        return parsed
+      }
+    } catch {}
+  }
+  return null
+}
+
 export function clearBookingSettingsCache() {
   cachedBookingSettings = null
   cachedBookingSettingsTime = 0
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem('pawpaw_cached_booking_settings')
+    } catch {}
+  }
 }
 
 export async function fetchBookingSettings(db, forceRefresh = false) {
@@ -175,6 +195,11 @@ export async function fetchBookingSettings(db, forceRefresh = false) {
 
     cachedBookingSettings = normalized
     cachedBookingSettingsTime = now
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('pawpaw_cached_booking_settings', JSON.stringify(normalized))
+      } catch {}
+    }
     return normalized
   } catch {
     return normalizeBookingSettings({})

@@ -865,7 +865,6 @@
     }
     .home-redesign {
       padding-top: calc(var(--navbar-height, 98px) + 12px) !important;
-      transition: padding-top 0.28s cubic-bezier(0.4, 0, 0.2, 1);
     }
   }
 
@@ -881,7 +880,6 @@
   .profile-page,
   .reviews-page {
     padding-top: var(--navbar-height, 98px) !important;
-    transition: padding-top 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .services-page-shell,
@@ -6888,7 +6886,6 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   padding-left: 28px;
   padding-right: 28px;
   background: color-mix(in srgb, var(--bg) 92%, #fff 8%);
-  transition: padding-top 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .mobile-hero-card {
@@ -7060,7 +7057,6 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 @media (max-width: 720px) {
   .home-redesign {
     padding: calc(var(--navbar-height, 98px) + 12px) 26px 24px !important;
-    transition: padding-top 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .mobile-hero-card {
@@ -7174,7 +7170,6 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 @media (max-width: 520px) {
   .home-redesign {
     padding: calc(var(--navbar-height, 98px) + 10px) 14px 22px !important;
-    transition: padding-top 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .mobile-hero-card {
@@ -7284,7 +7279,6 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 @media (max-width: 520px) {
   .home-redesign {
     padding: calc(var(--navbar-height, 98px) + 10px) 16px 22px !important;
-    transition: padding-top 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .home-redesign-inner {
@@ -14501,12 +14495,12 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
    ============================================================ */
 .navbar-offers-banner-wrapper {
   overflow: hidden;
-  max-height: 80px;
+  max-height: 42px;
   opacity: 1;
   transform: translateY(0);
-  transition: max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 0.22s ease,
-              transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: max-height 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.18s ease,
+              transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   width: 100%;
   box-sizing: border-box;
   will-change: max-height, transform, opacity;
