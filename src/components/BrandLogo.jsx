@@ -67,6 +67,7 @@ export default function BrandLogo({ size = 'nav', showText = true, tagline, alig
   return (
     <div style={{ display: 'flex', flexDirection: direction, alignItems: 'center', gap: size === 'login' ? '0' : '10px', textAlign: align }}>
       <div
+        className="nav-brand-logo-container"
         style={{
           width: `${s.box}px`,
           height: `${s.box}px`,

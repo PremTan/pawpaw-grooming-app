@@ -282,9 +282,9 @@ export default function Navbar() {
           >
             <FestiveBanner />
           </div>
-          <div style={{ width: '100%', maxWidth: '100%', margin: '0 auto', padding: '0 14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', height: '64px', gap: '8px' }}>
-              <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', marginRight: '8px', flexShrink: 0 }}>
+          <div className="nav-header-inner" style={{ width: '100%', maxWidth: '100%', margin: '0 auto', padding: '0 14px' }}>
+            <div className="nav-header-row" style={{ display: 'flex', alignItems: 'center', height: '64px', gap: '8px' }}>
+              <Link to="/" className="nav-brand-link" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', marginRight: '8px', flexShrink: 0 }}>
                 <BrandLogo size="nav" status={statusSubtitle} />
               </Link>
 
@@ -394,6 +394,7 @@ export default function Navbar() {
                       to="/admin"
                       aria-label="Dashboard"
                       title="Dashboard"
+                      className="nav-admin-btn"
                       style={{ background: location.pathname.startsWith('/admin') ? 'var(--accent)' : 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '10px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: location.pathname.startsWith('/admin') ? '#000' : 'var(--accent)', textDecoration: 'none' }}
                     >
                       <LayoutDashboard size={17} />
@@ -401,6 +402,7 @@ export default function Navbar() {
                   )}
                   <button
                     onClick={() => setMenuOpen(!menuOpen)}
+                    className="nav-menu-btn"
                     style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '10px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent)' }}
                   >
                     {menuOpen ? <X size={19} /> : <Menu size={19} />}
@@ -739,14 +741,45 @@ export default function Navbar() {
           border: 1px solid var(--border);
           border-radius: 12px;
         }
-        @media (max-width: 375px) {
-          .nav-install-mobile-text {
-            display: none;
+        @media (max-width: 600px) {
+          .nav-header-inner {
+            padding: 0 8px !important;
           }
-          .nav-install-btn.mobile {
-            padding: 0 10px;
-            width: 38px;
-            justify-content: center;
+          .nav-header-row {
+            gap: 4px !important;
+          }
+          .nav-brand-link {
+            margin-right: 4px !important;
+            gap: 6px !important;
+          }
+          .nav-brand-logo-container {
+            width: 40px !important;
+            height: 40px !important;
+            border-radius: 11px !important;
+          }
+          .mobile-nav {
+            gap: 4px !important;
+          }
+          .nav-install-btn.mobile,
+          .nav-admin-btn,
+          .nav-menu-btn,
+          .nav-bell-btn {
+            width: 32px !important;
+            height: 32px !important;
+            min-width: 32px !important;
+            border-radius: 9px !important;
+            padding: 0 !important;
+            justify-content: center !important;
+          }
+          .nav-install-btn.mobile svg,
+          .nav-admin-btn svg,
+          .nav-menu-btn svg,
+          .nav-bell-btn svg {
+            width: 15px !important;
+            height: 15px !important;
+          }
+          .nav-install-mobile-text {
+            display: none !important;
           }
         }
         @media (max-width: 520px) {

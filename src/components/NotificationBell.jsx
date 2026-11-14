@@ -99,7 +99,7 @@ export default function NotificationBell() {
       <button
         type="button"
         onClick={openPanel}
-        className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105"
+        className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105 nav-bell-btn"
         style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', color: 'var(--accent)' }}
         aria-label="Notifications"
       >
