@@ -47,6 +47,52 @@ export default function Navbar() {
     promptInstall,
   } = usePWAInstall()
   const headerBarRef = useRef(null)
+  const bannerInnerRef = useRef(null)
+  const bannerHeightRef = useRef(0)
+  const statusStripInnerRef = useRef(null)
+  const statusStripHeightRef = useRef(0)
+  const [isScrolled, setIsScrolled] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return (window.scrollY || window.pageYOffset || 0) > 15
+    }
+    return false
+  })
+  const isScrolledRef = useRef(isScrolled)
+
+  useEffect(() => {
+    isScrolledRef.current = isScrolled
+  }, [isScrolled])
+
+  useEffect(() => {
+    let ticking = false
+
+    const handleScroll = () => {
+      if (menuOpen) return
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const scrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0
+          const scrolled = scrollY > 15
+          if (isScrolledRef.current !== scrolled) {
+            isScrolledRef.current = scrolled
+            setIsScrolled(scrolled)
+          }
+          ticking = false
+        })
+        ticking = true
+      }
+    }
+
+    handleScroll()
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [menuOpen])
+
+  useEffect(() => {
+    const scrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0
+    const scrolled = scrollY > 15
+    isScrolledRef.current = scrolled
+    setIsScrolled(scrolled)
+  }, [location.pathname])
   const hasGoogleOnly = user?.providerData?.length === 1 && user.providerData[0]?.providerId === 'google.com'
 
   const isActive = (path) => (
@@ -90,7 +136,24 @@ export default function Navbar() {
     const updateHeight = () => {
       const height = el.getBoundingClientRect().height
       if (height > 0) {
-        document.documentElement.style.setProperty('--navbar-height', `${Math.round(height)}px`)
+        if (!isScrolledRef.current) {
+          if (bannerInnerRef.current) {
+            const bHeight = bannerInnerRef.current.getBoundingClientRect().height
+            if (bHeight > 0) {
+              bannerHeightRef.current = bHeight
+            }
+          }
+          if (statusStripInnerRef.current) {
+            const sHeight = statusStripInnerRef.current.getBoundingClientRect().height
+            if (sHeight > 0) {
+              statusStripHeightRef.current = sHeight
+            }
+          }
+        }
+        const hiddenBannerHeight = isScrolledRef.current ? bannerHeightRef.current : 0
+        const hiddenStatusStripHeight = isScrolledRef.current ? statusStripHeightRef.current : 0
+        const totalNavbarHeight = Math.round(height + hiddenBannerHeight + hiddenStatusStripHeight)
+        document.documentElement.style.setProperty('--navbar-height', `${totalNavbarHeight}px`)
       }
     }
 
@@ -161,7 +224,14 @@ export default function Navbar() {
     <>
       <nav className="navbar" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50 }}>
         <div ref={headerBarRef}>
-          <FestiveBanner />
+          <div
+            className={`navbar-offers-banner-wrapper${isScrolled ? ' banner-hidden' : ''}`}
+            aria-hidden={isScrolled}
+          >
+            <div ref={bannerInnerRef} className="navbar-offers-banner-inner">
+              <FestiveBanner />
+            </div>
+          </div>
           <div style={{ width: '100%', maxWidth: '100%', margin: '0 auto', padding: '0 14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', height: '64px', gap: '8px' }}>
               <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', marginRight: '8px', flexShrink: 0 }}>
@@ -292,25 +362,32 @@ export default function Navbar() {
             </div>
 
             {workingStatus && (
-              <div className={'store-status-strip ' + (workingStatus.open ? 'open' : 'closed') + (hoursOpen ? ' expanded' : '')}>
-                <button
-                  type="button"
-                  className="store-status-main"
-                  onClick={() => setHoursOpen(prev => !prev)}
-                  aria-expanded={hoursOpen}
-                >
-                  <span className="store-status-dot" />
-                  <strong>{workingStatus.label}</strong>
-                  <span>{workingStatus.detail}</span>
-                  <ChevronDown size={15} className="store-status-arrow" />
-                </button>
-                {hoursOpen && (
-                  <div className="store-status-details">
-                    {workingStatus.windows.length
-                      ? workingStatus.windows.map(window => <span key={window}>{window}</span>)
-                      : <span>{workingStatus.detail}</span>}
+              <div
+                className={`navbar-status-strip-wrapper${isScrolled ? ' strip-hidden' : ''}`}
+                aria-hidden={isScrolled}
+              >
+                <div ref={statusStripInnerRef} className="navbar-status-strip-inner">
+                  <div className={'store-status-strip ' + (workingStatus.open ? 'open' : 'closed') + (hoursOpen ? ' expanded' : '')}>
+                    <button
+                      type="button"
+                      className="store-status-main"
+                      onClick={() => setHoursOpen(prev => !prev)}
+                      aria-expanded={hoursOpen}
+                    >
+                      <span className="store-status-dot" />
+                      <strong>{workingStatus.label}</strong>
+                      <span>{workingStatus.detail}</span>
+                      <ChevronDown size={15} className="store-status-arrow" />
+                    </button>
+                    {hoursOpen && (
+                      <div className="store-status-details">
+                        {workingStatus.windows.length
+                          ? workingStatus.windows.map(window => <span key={window}>{window}</span>)
+                          : <span>{workingStatus.detail}</span>}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>

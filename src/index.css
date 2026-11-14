@@ -14495,8 +14495,73 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 
 
 /* ============================================================
-   Festive Announcement Ribbon
+   Festive Announcement Ribbon & Auto-Hide on Scroll
    ============================================================ */
+.navbar-offers-banner-wrapper {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 280ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 240ms ease;
+  opacity: 1;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.navbar-offers-banner-inner {
+  overflow: hidden;
+  min-height: 0;
+  transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateY(0);
+  will-change: transform;
+}
+
+.navbar-offers-banner-wrapper.banner-hidden {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.navbar-offers-banner-wrapper.banner-hidden .navbar-offers-banner-inner {
+  transform: translateY(-100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navbar-offers-banner-wrapper,
+  .navbar-offers-banner-inner,
+  .navbar-status-strip-wrapper,
+  .navbar-status-strip-inner {
+    transition: none !important;
+  }
+}
+
+.navbar-status-strip-wrapper {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 280ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 240ms ease;
+  opacity: 1;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.navbar-status-strip-inner {
+  overflow: hidden;
+  min-height: 0;
+  transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateY(0);
+  will-change: transform;
+}
+
+.navbar-status-strip-wrapper.strip-hidden {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.navbar-status-strip-wrapper.strip-hidden .navbar-status-strip-inner {
+  transform: translateY(-100%);
+}
+
 .festive-ribbon {
   background: var(--gradient);
   color: #ffffff;
