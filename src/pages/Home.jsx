@@ -20,6 +20,7 @@ import boardingHeroPets from '../assets/boarding-hero-pets.png'
 import boardingDogAvatar from '../assets/boarding-dog-avatar.png'
 import boardingCatAvatar from '../assets/boarding-cat-avatar.png'
 import petWalkingHero from '../assets/pet-walking-hero.jpg'
+import petGroomingCroppedHero from '../assets/pet-grooming-cropped-hero.jpg'
 import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils, Footprints, Hotel } from 'lucide-react'
 
 const HERO_FALLBACK_IMAGE = '/hero-fallback.webp'
@@ -229,6 +230,7 @@ function matchesCurrentUserBooking(booking, user) {
 // Module-level caches to preserve state during navigation
 let cachedHeroImages = null
 let cachedVisitImages = null
+let cachedGroomingChoiceImage = null
 let cachedHeroFetchTime = 0
 let cachedBookingSettings = null
 let cachedBoardingSettings = null
@@ -243,6 +245,7 @@ function HeroSlider() {
   const [loadedMap, setLoadedMap] = useState({})
   const [errorMap, setErrorMap] = useState({})
   const [visitImages, setVisitImages] = useState(cachedVisitImages || DEFAULT_VISIT_IMAGES)
+  const [groomingChoiceImage, setGroomingChoiceImage] = useState(cachedGroomingChoiceImage || '')
   const [paused, setPaused] = useState(false)
   const [upcomingAppointment, setUpcomingAppointment] = useState(null)
   const [upcomingPetProfile, setUpcomingPetProfile] = useState(null)
@@ -289,6 +292,9 @@ function HeroSlider() {
           url: savedVisitImages[index]?.url || '',
           alt: savedVisitImages[index]?.alt || fallback.alt,
         }))
+        const savedGroomingUrl = data.groomingChoiceImage?.url || (Array.isArray(data.visitImages) && data.visitImages[0]?.url ? data.visitImages[0].url : '')
+        cachedGroomingChoiceImage = savedGroomingUrl
+        setGroomingChoiceImage(savedGroomingUrl)
         setHeroImages(cleanImages)
         setVisitImages(cleanVisitImages)
       } catch {
@@ -564,18 +570,18 @@ function HeroSlider() {
   const visitCards = [
     {
       title: 'Home Visit',
-      text: 'We come to your doorstep',
+      text: 'We come directly to your doorstep with our sanitized equipment. Zero travel stress for your pet.',
       cta: 'Choose Home Visit',
       to: '/book?visit=home',
-      icon: <HomeIcon size={30} />,
+      icon: <HomeIcon size={20} />,
       image: visitImages[0],
     },
     {
       title: 'Visit Our Centre',
-      text: 'Bring your pet to our salon',
+      text: 'Bring your pet to our fully equipped salon centre for a relaxing spa & grooming day in Dhayari.',
       cta: 'Choose Our Centre',
       to: '/book?visit=centre',
-      icon: <Store size={28} />,
+      icon: <Store size={20} />,
       image: visitImages[1],
     },
   ]
@@ -1247,31 +1253,91 @@ function HeroSlider() {
           </section>
         )}
 
-        <div className="visit-choice-section">
-          <div className="visit-choice-title home-fade-up">
-            <span />
-            <h2>Where would you like your pet groomed?</h2>
-            <span />
-          </div>
-          <div className="visit-choice-grid">
-            {visitCards.map((card, index) => (
-              <Link key={card.title} to={card.to} className={`visit-choice-card home-fade-up stagger-${index + 1}`}>
-                <div className="visit-choice-icon">{card.icon}</div>
-                <div className="visit-choice-image">
-                  {card.image?.url ? (
-                    <img src={optimizeCloudinary(card.image.url, 600)} alt={card.image.alt} loading="lazy" decoding="async" />
-                  ) : (
-                    <div className="visit-choice-placeholder">{card.icon}</div>
-                  )}
+        {/* Professional Pet Grooming — Unified Master Card (Matches User Mockup 1:1) */}
+        <section className="home-boarding-section home-grooming-choice-section" aria-label="Professional Pet Grooming">
+          <div className="home-grooming-master-card home-fade-up">
+            {/* Top Bar with PET GROOMING pill only (NEW badge removed as requested) */}
+            <div className="home-boarding-top-bar" style={{ marginBottom: '10px' }}>
+              <div className="home-boarding-pill">
+                <PawPrint size={13} /> PET GROOMING
+              </div>
+            </div>
+
+            <h2 className="home-boarding-title">
+              Professional <br />
+              <span className="gold-accent">Pet Grooming</span>
+            </h2>
+
+            <p className="home-boarding-desc">
+              Keep your furry friend clean, healthy and happy.
+            </p>
+
+            <div className="home-grooming-paw-decor" aria-hidden="true">
+              <PawPrint size={32} className="home-paw-decor-1" />
+              <PawPrint size={22} className="home-paw-decor-2" />
+              <PawPrint size={18} className="home-paw-decor-3" />
+            </div>
+
+            {/* Single Hero Illustration Banner */}
+            <div className="home-choice-banner-wrap">
+              <img
+                src={groomingChoiceImage ? optimizeCloudinary(groomingChoiceImage, 1000) : petGroomingCroppedHero}
+                alt="Pet Grooming Home Visit and Salon Centre"
+                className="home-choice-banner-img"
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+
+            {/* Two Columns Grid with overlapping icons */}
+            <div className="home-choice-columns">
+              {/* Left Column: Home Visit */}
+              <Link to="/book?visit=home" className="home-choice-col">
+                <div className="home-choice-icon-wrap">
+                  <div className="home-choice-icon-rays">
+                    <span className="ray ray-1" />
+                    <span className="ray ray-2" />
+                    <span className="ray ray-3" />
+                  </div>
+                  <div className="home-choice-icon-circle">
+                    <HomeIcon size={24} />
+                  </div>
                 </div>
-                <h3>{card.title}</h3>
-                <p>{card.text}</p>
-                <span className="visit-choice-button">{card.cta} <ArrowRight size={16} /></span>
-                {index === 0 && <b className="visit-choice-or">OR</b>}
+                <h3 className="home-choice-col-title">Home Visit</h3>
+                <p className="home-choice-col-sub">We come to your doorstep</p>
+                <span className="home-choice-col-btn">
+                  Book Now <ArrowRight size={14} />
+                </span>
               </Link>
-            ))}
+
+              {/* Center Divider / OR Circle */}
+              <div className="home-choice-divider-wrap">
+                <span className="home-choice-divider-line" />
+                <span className="home-choice-center-or">OR</span>
+                <span className="home-choice-divider-line" />
+              </div>
+
+              {/* Right Column: Visit Our Centre */}
+              <Link to="/book?visit=centre" className="home-choice-col">
+                <div className="home-choice-icon-wrap">
+                  <div className="home-choice-icon-rays">
+                    <span className="ray ray-1" />
+                    <span className="ray ray-2" />
+                    <span className="ray ray-3" />
+                  </div>
+                  <div className="home-choice-icon-circle">
+                    <Store size={24} />
+                  </div>
+                </div>
+                <h3 className="home-choice-col-title">Visit Our Centre</h3>
+                <p className="home-choice-col-sub">Bring your pet to our salon.</p>
+                <span className="home-choice-col-btn">
+                  Book Now <ArrowRight size={14} />
+                </span>
+              </Link>
+            </div>
           </div>
-        </div>
+        </section>
 
         <div className="home-trust-strip home-fade-up">
           <span><Shield size={24} /> Trained & Verified Groomers</span>
