@@ -15215,9 +15215,14 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   align-items: center;
   justify-content: center;
   gap: 6px;
+  white-space: nowrap;
   box-shadow: 0 4px 12px rgba(184, 134, 11, 0.26);
   margin-top: auto;
   transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.home-choice-col-btn svg {
+  flex-shrink: 0;
 }
 
 .home-choice-col:hover .home-choice-col-btn {
@@ -15290,9 +15295,12 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
     height: 20px;
   }
   .home-choice-col-btn {
-    height: 36px;
-    font-size: 12px;
+    height: 38px;
+    font-size: 12.5px;
     max-width: 135px;
+    padding: 0 10px;
+    white-space: nowrap;
+    gap: 4px;
   }
   .home-choice-center-or {
     width: 28px;

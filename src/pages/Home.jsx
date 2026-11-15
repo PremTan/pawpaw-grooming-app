@@ -577,9 +577,9 @@ function HeroSlider() {
       image: visitImages[0],
     },
     {
-      title: 'Visit Our Centre',
+      title: 'Visit Centre',
       text: 'Bring your pet to our fully equipped salon centre for a relaxing spa & grooming day in Dhayari.',
-      cta: 'Choose Our Centre',
+      cta: 'Choose Centre',
       to: '/book?visit=centre',
       icon: <Store size={20} />,
       image: visitImages[1],
@@ -1317,7 +1317,7 @@ function HeroSlider() {
                 <span className="home-choice-divider-line" />
               </div>
 
-              {/* Right Column: Visit Our Centre */}
+              {/* Right Column: Visit Centre */}
               <Link to="/book?visit=centre" className="home-choice-col">
                 <div className="home-choice-icon-wrap">
                   <div className="home-choice-icon-rays">
@@ -1329,7 +1329,7 @@ function HeroSlider() {
                     <Store size={24} />
                   </div>
                 </div>
-                <h3 className="home-choice-col-title">Visit Our Centre</h3>
+                <h3 className="home-choice-col-title">Visit Centre</h3>
                 <p className="home-choice-col-sub">Bring your pet to our salon.</p>
                 <span className="home-choice-col-btn">
                   Book Now <ArrowRight size={14} />

@@ -1124,12 +1124,27 @@ export default function MyBookings() {
         </div>
 
         {/* Domain Switcher */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '22px', flexWrap: 'wrap' }}>
+        <div
+          className="my-bookings-domain-tabs"
+          style={{
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '22px',
+            flexWrap: 'nowrap',
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none',
+          }}
+        >
           <button
             type="button"
             onClick={() => setDomainTab('grooming')}
             style={{
-              padding: '9px 16px',
+              flex: 1,
+              minWidth: 'max-content',
+              justifyContent: 'center',
+              whiteSpace: 'nowrap',
+              padding: '9px 12px',
               borderRadius: '12px',
               fontSize: '13px',
               fontWeight: 700,
@@ -1142,13 +1157,17 @@ export default function MyBookings() {
               gap: '6px',
             }}
           >
-            <Scissors size={14} /> Grooming ({bookings.length})
+            <Scissors size={14} /> Grooming
           </button>
           <button
             type="button"
             onClick={() => setDomainTab('boarding')}
             style={{
-              padding: '9px 16px',
+              flex: 1,
+              minWidth: 'max-content',
+              justifyContent: 'center',
+              whiteSpace: 'nowrap',
+              padding: '9px 12px',
               borderRadius: '12px',
               fontSize: '13px',
               fontWeight: 700,
@@ -1161,13 +1180,17 @@ export default function MyBookings() {
               gap: '6px',
             }}
           >
-            <Building2 size={14} /> Pet Boarding ({boardings.length})
+            <Building2 size={14} /> Boarding
           </button>
           <button
             type="button"
             onClick={() => setDomainTab('walking')}
             style={{
-              padding: '9px 16px',
+              flex: 1,
+              minWidth: 'max-content',
+              justifyContent: 'center',
+              whiteSpace: 'nowrap',
+              padding: '9px 12px',
               borderRadius: '12px',
               fontSize: '13px',
               fontWeight: 700,
@@ -1180,7 +1203,7 @@ export default function MyBookings() {
               gap: '6px',
             }}
           >
-            <Footprints size={14} /> Dog Walking ({walkings.length})
+            <Footprints size={14} /> Walking
           </button>
         </div>
 
@@ -3397,6 +3420,10 @@ export default function MyBookings() {
           font-size: 14px;
         }
 
+        .my-bookings-domain-tabs::-webkit-scrollbar {
+          display: none;
+        }
+
         .my-bookings-new {
           font-size: 13px;
           padding: 10px 16px;
@@ -4659,6 +4686,17 @@ export default function MyBookings() {
             font-size: 11px;
             padding: 7px 10px;
             flex: 0 0 auto;
+          }
+
+          .my-bookings-domain-tabs {
+            gap: 6px;
+            margin-bottom: 18px;
+          }
+
+          .my-bookings-domain-tabs button {
+            font-size: 12px;
+            padding: 8px 8px;
+            gap: 5px;
           }
 
           .my-booking-row {
