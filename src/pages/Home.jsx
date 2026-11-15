@@ -651,7 +651,7 @@ function HeroSlider() {
         {/* Pet Boarding — Your Pet's Home Away From Home (Matches Reference Mockup) */}
         <section className="home-boarding-section" aria-label="Pet Boarding Suites">
           <div className="home-boarding-card">
-            <div className="home-boarding-content">
+            <div className="home-boarding-content home-fade-up">
               {/* Top Bar with PET BOARDING pill and NEW badge */}
               <div className="home-boarding-top-bar">
                 <div className="home-boarding-pill">
@@ -664,12 +664,12 @@ function HeroSlider() {
                 )}
               </div>
 
-              <h2 className="home-boarding-title home-fade-up">
+              <h2 className="home-boarding-title">
                 Your Pet's Home <br />
                 <span className="gold-accent">Away From Home</span>
               </h2>
 
-              <p className="home-boarding-desc home-fade-up">
+              <p className="home-boarding-desc">
                 Safe, clean and comfortable stay for your furry family with loving care while you are away.
               </p>
 
@@ -844,7 +844,7 @@ function HeroSlider() {
         {/* Pet Walking — Daily Walks & Exercise */}
         <section className="home-boarding-section home-walking-section" aria-label="Pet Walking Service" style={{ marginTop: '16px' }}>
           <div className="home-boarding-card">
-            <div className="home-boarding-content">
+            <div className="home-boarding-content home-fade-up">
               {/* Top Bar with PET WALKING pill and NEW badge */}
               <div className="home-boarding-top-bar">
                 <div className="home-boarding-pill">
@@ -857,13 +857,13 @@ function HeroSlider() {
                 )}
               </div>
 
-              <h2 className="home-boarding-title home-fade-up">
+              <h2 className="home-boarding-title">
                 Daily Walks & Exercise <br />
                 <span className="gold-accent">Happy Tails Every Day</span>
               </h2>
 
               <p
-                className="home-boarding-desc home-fade-up"
+                className="home-boarding-desc"
                 style={{
                   display: '-webkit-box',
                   WebkitLineClamp: 2,

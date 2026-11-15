@@ -15018,39 +15018,43 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 
 /* ── Home Screen Premium Fade-Up on Scroll ── */
 .home-fade-up {
-  opacity: 0 !important;
-  transform: translateY(32px) translateZ(0) !important;
+  opacity: 0;
+  transform: translateY(25px);
   transition: opacity 700ms cubic-bezier(0.16, 1, 0.3, 1),
-              transform 700ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+              transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
   will-change: opacity, transform;
 }
 
 .home-fade-up.is-visible {
-  opacity: 1 !important;
-}
-
-.home-fade-up.is-visible:not(:hover) {
-  transform: translateY(0) translateZ(0) !important;
+  opacity: 1;
+  transform: translateY(0);
   will-change: auto;
 }
 
 /* Subtle stagger presets (100–150ms intervals) */
-.home-fade-up.stagger-1 { transition-delay: 120ms !important; }
-.home-fade-up.stagger-2 { transition-delay: 240ms !important; }
-.home-fade-up.stagger-3 { transition-delay: 360ms !important; }
-.home-fade-up.stagger-4 { transition-delay: 480ms !important; }
-.home-fade-up.stagger-5 { transition-delay: 600ms !important; }
+.home-fade-up.stagger-1 { transition-delay: 120ms; }
+.home-fade-up.stagger-2 { transition-delay: 240ms; }
+.home-fade-up.stagger-3 { transition-delay: 360ms; }
+.home-fade-up.stagger-4 { transition-delay: 480ms; }
+.home-fade-up.stagger-5 { transition-delay: 600ms; }
 
 /* Custom stagger delay via inline style variable */
 .home-fade-up[style*="--fade-delay"] {
-  transition-delay: var(--fade-delay) !important;
+  transition-delay: var(--fade-delay);
+}
+
+/* Preserve card hover elevation after becoming visible */
+.why-choose-card.home-fade-up.is-visible:hover,
+.why-choose-card.home-fade-up.is-visible:focus-within,
+.why-choose-card.home-fade-up.is-visible:active {
+  transform: translateY(-8px);
 }
 
 /* Accessibility: reduce motion distance for sensitive users while preserving elegant feedback */
 @media (prefers-reduced-motion: reduce) {
   .home-fade-up {
-    transform: translateY(10px) translateZ(0) !important;
-    transition-duration: 350ms !important;
+    transform: translateY(10px);
+    transition-duration: 350ms;
   }
 }
 
