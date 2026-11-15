@@ -15042,6 +15042,7 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 .home-grooming-master-card .home-boarding-top-bar,
 .home-grooming-master-card .home-boarding-title,
 .home-grooming-master-card .home-boarding-desc,
+.home-grooming-master-card .home-grooming-header,
 .home-grooming-master-card .home-choice-banner-wrap,
 .home-grooming-master-card .home-choice-columns {
   order: unset !important;
@@ -15397,6 +15398,12 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 .why-choose-card.home-fade-up.is-visible:focus-within,
 .why-choose-card.home-fade-up.is-visible:active {
   transform: translateY(-8px);
+}
+
+.home-choice-col.home-fade-up.is-visible:hover,
+.home-choice-col.home-fade-up.is-visible:focus-within,
+.home-choice-col.home-fade-up.is-visible:active {
+  transform: translateY(-3px);
 }
 
 /* Accessibility: reduce motion distance for sensitive users while preserving elegant feedback */

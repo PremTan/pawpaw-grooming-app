@@ -89,7 +89,50 @@ export const WALKING_STATUS_BADGES = {
   cancelled: 'badge-cancelled',
 }
 
-export async function fetchWalkingSettings(db) {
+let cachedWalkingSettings = null
+let cachedWalkingSettingsTime = 0
+const WALKING_CACHE_TTL_MS = 60 * 1000
+
+export function getCachedWalkingSettings() {
+  if (cachedWalkingSettings) return cachedWalkingSettings
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('pawpaw_cached_walking_settings')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        cachedWalkingSettings = parsed
+        return parsed
+      }
+    } catch {}
+  }
+  return null
+}
+
+export function clearWalkingSettingsCache() {
+  cachedWalkingSettings = null
+  cachedWalkingSettingsTime = 0
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem('pawpaw_cached_walking_settings')
+    } catch {}
+  }
+}
+
+export async function fetchWalkingSettings(db, forceRefresh = false) {
+  const now = Date.now()
+  if (!forceRefresh && cachedWalkingSettings && (now - cachedWalkingSettingsTime < WALKING_CACHE_TTL_MS)) {
+    return cachedWalkingSettings
+  }
+
+  // Check localStorage if memory cache was empty
+  if (!cachedWalkingSettings) {
+    const local = getCachedWalkingSettings()
+    if (local && !forceRefresh) {
+      cachedWalkingSettings = local
+      cachedWalkingSettingsTime = now
+    }
+  }
+
   try {
     let data = {}
     try {
@@ -146,7 +189,7 @@ export async function fetchWalkingSettings(db) {
       // fallback
     }
 
-    return {
+    const result = {
       active: data.active !== false && data.acceptBookings !== false && !emergencyClosure,
       acceptBookings: data.acceptBookings !== false && !emergencyClosure,
       showNewBadge: data.showNewBadge !== false,
@@ -165,9 +208,18 @@ export async function fetchWalkingSettings(db) {
       emergencyClosure,
       emergencyNotice,
     }
+
+    cachedWalkingSettings = result
+    cachedWalkingSettingsTime = now
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('pawpaw_cached_walking_settings', JSON.stringify(result))
+      } catch {}
+    }
+    return result
   } catch (err) {
     console.warn('[walkingSettings] fetch failed, using defaults:', err)
-    return DEFAULT_WALKING_SETTINGS
+    return cachedWalkingSettings || DEFAULT_WALKING_SETTINGS
   }
 }
 

@@ -151,11 +151,31 @@ export function isPastStandardCheckOut(scheduledCheckOutDate, standardCheckOutTi
 
 let cachedBoardingSettings = null
 let cachedBoardingSettingsTime = 0
-const CACHE_TTL_MS = 5 * 1000
+const CACHE_TTL_MS = 60 * 1000
+
+export function getCachedBoardingSettings() {
+  if (cachedBoardingSettings) return cachedBoardingSettings
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('pawpaw_cached_boarding_settings')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        cachedBoardingSettings = parsed
+        return parsed
+      }
+    } catch {}
+  }
+  return null
+}
 
 export function clearBoardingSettingsCache() {
   cachedBoardingSettings = null
   cachedBoardingSettingsTime = 0
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem('pawpaw_cached_boarding_settings')
+    } catch {}
+  }
 }
 
 export async function fetchBoardingSettings(db, forceRefresh = false) {
@@ -163,6 +183,16 @@ export async function fetchBoardingSettings(db, forceRefresh = false) {
   if (!forceRefresh && cachedBoardingSettings && (now - cachedBoardingSettingsTime < CACHE_TTL_MS)) {
     return cachedBoardingSettings
   }
+
+  // Check localStorage if memory cache was empty
+  if (!cachedBoardingSettings) {
+    const local = getCachedBoardingSettings()
+    if (local && !forceRefresh) {
+      cachedBoardingSettings = local
+      cachedBoardingSettingsTime = now
+    }
+  }
+
   try {
     let data = {}
     try {
@@ -207,9 +237,14 @@ export async function fetchBoardingSettings(db, forceRefresh = false) {
 
     cachedBoardingSettings = normalized
     cachedBoardingSettingsTime = now
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('pawpaw_cached_boarding_settings', JSON.stringify(normalized))
+      } catch {}
+    }
     return normalized
   } catch {
-    return normalizeBoardingSettings({})
+    return cachedBoardingSettings || normalizeBoardingSettings({})
   }
 }
 

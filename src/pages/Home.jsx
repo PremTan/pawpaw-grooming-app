@@ -8,11 +8,12 @@ import BrandLogo from '../components/BrandLogo'
 import Toast from '../components/Toast'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { DEFAULT_FEATURES, normalizeFeature } from '../utils/siteContent'
-import { countOpenDays, fetchBookingSettings, getAvailabilityForDate } from '../utils/bookingSettings'
-import { fetchBoardingSettings } from '../utils/boardingSettings'
-import { fetchWalkingSettings } from '../utils/walkingSettings'
+import { countOpenDays, fetchBookingSettings, getAvailabilityForDate, getCachedBookingSettings } from '../utils/bookingSettings'
+import { fetchBoardingSettings, getCachedBoardingSettings } from '../utils/boardingSettings'
+import { fetchWalkingSettings, getCachedWalkingSettings } from '../utils/walkingSettings'
 import { buildGeneralWhatsAppMessage, fetchBusinessInfo } from '../utils/businessInfo'
 import { optimizeCloudinary } from '../utils/imageOptimizer'
+import { getHomeCache, setHomeCache, preloadImage, prefetchImages } from '../utils/homeCache'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
 import { BOOKING_STATUS } from '../utils/services'
@@ -23,7 +24,7 @@ import petWalkingHero from '../assets/pet-walking-hero.jpg'
 import petGroomingCroppedHero from '../assets/pet-grooming-cropped-hero.jpg'
 import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils, Footprints, Hotel } from 'lucide-react'
 
-const HERO_FALLBACK_IMAGE = '/hero-fallback.webp'
+const HERO_FALLBACK_IMAGE = '/hero-fallback.jpg'
 const DEFAULT_HERO_IMAGES = [
   { src: HERO_FALLBACK_IMAGE, alt: 'Paw Paw Pet Grooming Salon & Spa' }
 ]
@@ -227,34 +228,40 @@ function matchesCurrentUserBooking(booking, user) {
   return false
 }
 
-// Module-level caches to preserve state during navigation
-let cachedHeroImages = null
-let cachedVisitImages = null
-let cachedGroomingChoiceImage = null
-let cachedHeroFetchTime = 0
-let cachedBookingSettings = null
-let cachedBoardingSettings = null
-let cachedWalkingSettings = null
-const HERO_CACHE_TTL = 3 * 60 * 1000
+// High-performance client-side cache hydration (Instant 0ms initial render)
+let cachedHeroImages = getHomeCache('heroImages', null)
+let cachedVisitImages = getHomeCache('visitImages', null)
+let cachedGroomingChoiceImage = getHomeCache('groomingChoiceImage', null)
+let cachedBookingSettings = getCachedBookingSettings()
+let cachedBoardingSettings = getCachedBoardingSettings()
+let cachedWalkingSettings = getCachedWalkingSettings()
+
+// Eagerly prefetch the first hero image immediately on module initialization
+if (cachedHeroImages && cachedHeroImages[0]?.src) {
+  preloadImage(cachedHeroImages[0].src, 'high')
+}
+if (cachedGroomingChoiceImage) {
+  preloadImage(cachedGroomingChoiceImage, 'low')
+}
 
 function HeroSlider() {
   const { user } = useAuth()
   const { sendNotification } = useNotifications() || {}
   const [current, setCurrent] = useState(0)
-  const [heroImages, setHeroImages] = useState(cachedHeroImages)
+  const [heroImages, setHeroImages] = useState(() => cachedHeroImages)
   const [loadedMap, setLoadedMap] = useState({})
   const [errorMap, setErrorMap] = useState({})
-  const [visitImages, setVisitImages] = useState(cachedVisitImages || DEFAULT_VISIT_IMAGES)
-  const [groomingChoiceImage, setGroomingChoiceImage] = useState(cachedGroomingChoiceImage || '')
+  const [visitImages, setVisitImages] = useState(() => cachedVisitImages || DEFAULT_VISIT_IMAGES)
+  const [groomingChoiceImage, setGroomingChoiceImage] = useState(() => cachedGroomingChoiceImage || '')
   const [paused, setPaused] = useState(false)
   const [upcomingAppointment, setUpcomingAppointment] = useState(null)
   const [upcomingPetProfile, setUpcomingPetProfile] = useState(null)
   const [recommendedVisit, setRecommendedVisit] = useState(null)
   const [upcomingLoading, setUpcomingLoading] = useState(true)
-  const [bookingSettings, setBookingSettings] = useState(cachedBookingSettings)
-  const [boardingSettings, setBoardingSettings] = useState(cachedBoardingSettings)
+  const [bookingSettings, setBookingSettings] = useState(() => cachedBookingSettings)
+  const [boardingSettings, setBoardingSettings] = useState(() => cachedBoardingSettings)
   const [showBoardingLearnMore, setShowBoardingLearnMore] = useState(false)
-  const [walkingSettings, setWalkingSettings] = useState(cachedWalkingSettings)
+  const [walkingSettings, setWalkingSettings] = useState(() => cachedWalkingSettings)
   const [showWalkingLearnMore, setShowWalkingLearnMore] = useState(false)
   const [rescheduleToast, setRescheduleToast] = useState('')
   const [rescheduleTarget, setRescheduleTarget] = useState(null)
@@ -282,24 +289,41 @@ function HeroSlider() {
         const savedImages = data.images || []
         const cleanImages = Array.isArray(savedImages)
           ? savedImages.filter(image => image?.url).slice(0, 5).map((image, index) => ({
-            src: image.url,
+            src: optimizeCloudinary(image.url, 1200),
             alt: image.alt || `Pet grooming hero image ${index + 1}`,
           }))
           : []
         const savedVisitImages = Array.isArray(data.visitImages) ? data.visitImages : []
         const cleanVisitImages = DEFAULT_VISIT_IMAGES.map((fallback, index) => ({
           ...fallback,
-          url: savedVisitImages[index]?.url || '',
+          url: savedVisitImages[index]?.url ? optimizeCloudinary(savedVisitImages[index].url, 800) : '',
           alt: savedVisitImages[index]?.alt || fallback.alt,
         }))
-        const savedGroomingUrl = data.groomingChoiceImage?.url || (Array.isArray(data.visitImages) && data.visitImages[0]?.url ? data.visitImages[0].url : '')
+        const rawGroomingUrl = data.groomingChoiceImage?.url || (Array.isArray(data.visitImages) && data.visitImages[0]?.url ? data.visitImages[0].url : '')
+        const savedGroomingUrl = rawGroomingUrl ? optimizeCloudinary(rawGroomingUrl, 1000) : ''
+
+        cachedHeroImages = cleanImages
+        cachedVisitImages = cleanVisitImages
         cachedGroomingChoiceImage = savedGroomingUrl
+
+        // Save to persistent localStorage cache for instant future loads
+        setHomeCache('heroImages', cleanImages)
+        setHomeCache('visitImages', cleanVisitImages)
+        setHomeCache('groomingChoiceImage', savedGroomingUrl)
+
         setGroomingChoiceImage(savedGroomingUrl)
         setHeroImages(cleanImages)
         setVisitImages(cleanVisitImages)
+
+        // Preload next hero slides in idle time
+        if (cleanImages.length > 1) {
+          prefetchImages(cleanImages.slice(1).map(img => img.src))
+        }
       } catch {
-        setHeroImages(DEFAULT_HERO_IMAGES)
-        setVisitImages(DEFAULT_VISIT_IMAGES)
+        if (!cachedHeroImages) {
+          setHeroImages(DEFAULT_HERO_IMAGES)
+          setVisitImages(DEFAULT_VISIT_IMAGES)
+        }
       }
     }
     fetchHeroImages()
@@ -601,10 +625,13 @@ function HeroSlider() {
               src={HERO_FALLBACK_IMAGE}
               alt="Paw Paw Pet Grooming"
               className="mobile-hero-fallback-img"
+              loading="eager"
+              fetchpriority="high"
+              decoding="async"
               onError={e => {
                 if (!e.currentTarget.dataset.retried) {
                   e.currentTarget.dataset.retried = 'true'
-                  e.currentTarget.src = '/hero-fallback.png'
+                  e.currentTarget.src = '/hero-fallback.jpg'
                 }
               }}
             />
@@ -620,6 +647,9 @@ function HeroSlider() {
                   key={image.src}
                   src={image.src}
                   alt={image.alt}
+                  loading={i === 0 ? "eager" : "lazy"}
+                  fetchpriority={i === 0 ? "high" : "auto"}
+                  decoding="async"
                   onLoad={() => setLoadedMap(prev => prev[image.src] ? prev : ({ ...prev, [image.src]: true }))}
                   onError={() => setErrorMap(prev => prev[image.src] ? prev : ({ ...prev, [image.src]: true }))}
                   className={`mobile-hero-slide-img ${isActive ? 'active' : ''} ${isLoaded ? 'is-loaded' : ''}`}
@@ -1256,21 +1286,24 @@ function HeroSlider() {
         {/* Professional Pet Grooming — Unified Master Card (Matches User Mockup 1:1) */}
         <section className="home-boarding-section home-grooming-choice-section" aria-label="Professional Pet Grooming">
           <div className="home-grooming-master-card home-fade-up">
-            {/* Top Bar with PET GROOMING pill only (NEW badge removed as requested) */}
-            <div className="home-boarding-top-bar" style={{ marginBottom: '10px' }}>
-              <div className="home-boarding-pill">
-                <PawPrint size={13} /> PET GROOMING
+            {/* Header Content with Fade Up */}
+            <div className="home-grooming-header home-fade-up">
+              {/* Top Bar with PET GROOMING pill only (NEW badge removed as requested) */}
+              <div className="home-boarding-top-bar" style={{ marginBottom: '10px' }}>
+                <div className="home-boarding-pill">
+                  <PawPrint size={13} /> PET GROOMING
+                </div>
               </div>
+
+              <h2 className="home-boarding-title">
+                Professional <br />
+                <span className="gold-accent">Pet Grooming</span>
+              </h2>
+
+              <p className="home-boarding-desc">
+                Keep your furry friend clean, healthy and happy.
+              </p>
             </div>
-
-            <h2 className="home-boarding-title">
-              Professional <br />
-              <span className="gold-accent">Pet Grooming</span>
-            </h2>
-
-            <p className="home-boarding-desc">
-              Keep your furry friend clean, healthy and happy.
-            </p>
 
             <div className="home-grooming-paw-decor" aria-hidden="true">
               <PawPrint size={32} className="home-paw-decor-1" />
@@ -1279,7 +1312,7 @@ function HeroSlider() {
             </div>
 
             {/* Single Hero Illustration Banner */}
-            <div className="home-choice-banner-wrap">
+            <div className="home-choice-banner-wrap home-fade-up stagger-1">
               <img
                 src={groomingChoiceImage ? optimizeCloudinary(groomingChoiceImage, 1000) : petGroomingCroppedHero}
                 alt="Pet Grooming Home Visit and Salon Centre"
@@ -1290,9 +1323,9 @@ function HeroSlider() {
             </div>
 
             {/* Two Columns Grid with overlapping icons */}
-            <div className="home-choice-columns">
+            <div className="home-choice-columns home-fade-up stagger-2">
               {/* Left Column: Home Visit */}
-              <Link to="/book?visit=home" className="home-choice-col">
+              <Link to="/book?visit=home" className="home-choice-col home-fade-up stagger-2">
                 <div className="home-choice-icon-wrap">
                   <div className="home-choice-icon-rays">
                     <span className="ray ray-1" />
@@ -1311,14 +1344,14 @@ function HeroSlider() {
               </Link>
 
               {/* Center Divider / OR Circle */}
-              <div className="home-choice-divider-wrap">
+              <div className="home-choice-divider-wrap home-fade-up stagger-2">
                 <span className="home-choice-divider-line" />
                 <span className="home-choice-center-or">OR</span>
                 <span className="home-choice-divider-line" />
               </div>
 
               {/* Right Column: Visit Centre */}
-              <Link to="/book?visit=centre" className="home-choice-col">
+              <Link to="/book?visit=centre" className="home-choice-col home-fade-up stagger-3">
                 <div className="home-choice-icon-wrap">
                   <div className="home-choice-icon-rays">
                     <span className="ray ray-1" />
@@ -1349,8 +1382,8 @@ function HeroSlider() {
     </section>
   )
 }
-// Module-level caches for Home page sections
-let cachedHomeSectionsData = null
+// Module-level and localStorage persistent caches for Home page sections
+let cachedHomeSectionsData = getHomeCache('sections_data', null)
 let cachedHomeSectionsTime = 0
 const HOME_SECTIONS_TTL = 3 * 60 * 1000
 
@@ -1502,30 +1535,38 @@ export default function Home() {
           ? countOpenDays(businessInfoResult.value.bookingSettings)
           : null
 
-        setStats({
+        const calculatedStats = {
           totalBookings: Number(publicStats.totalBookings ?? fallbackBookingsCount ?? 0),
           totalReviews: Number(publicStats.totalReviews ?? fallbackReviewsCount ?? revs.length),
           avgRating: Number(publicStats.avgRating ?? revAvg),
           daysOpen: scheduleDaysOpen ?? Number(publicStats.daysOpen ?? 7),
-        })
+        }
+
+        setStats(calculatedStats)
         setReviews(revs)
         setServiceDetails(details)
+
+        let loadedPackages = []
         if (packagesResult.status === 'fulfilled') {
-          setPackages(packagesResult.value.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false))
+          loadedPackages = packagesResult.value.docs.map(d => ({ id: d.id, ...d.data() })).filter(pkg => pkg.active !== false)
+          setPackages(loadedPackages)
         }
+
+        let sortedGallery = []
         if (galleryResult.status === 'fulfilled') {
           const galleryItems = galleryResult.value.docs.map(d => {
             const data = d.data()
             return { id: d.id, ...data, url: data.type === 'video' ? data.url : optimizeCloudinary(data.url, 600), rawUrl: data.url }
           }).filter(image => image.url)
-          setGalleryImages(galleryItems.sort((a, b) => {
+          sortedGallery = galleryItems.sort((a, b) => {
             const aPos = Number(a.position ?? -1)
             const bPos = Number(b.position ?? -1)
             if (bPos !== aPos) return bPos - aPos
             const aCreated = a.createdAt?.toMillis ? a.createdAt.toMillis() : a.createdAt ? a.createdAt.seconds * 1000 : 0
             const bCreated = b.createdAt?.toMillis ? b.createdAt.toMillis() : b.createdAt ? b.createdAt.seconds * 1000 : 0
             return bCreated - aCreated
-          }).slice(0, 5))
+          }).slice(0, 5)
+          setGalleryImages(sortedGallery)
         }
         const savedFeatures = featuresResult.status === 'fulfilled' && featuresResult.value.exists() && Array.isArray(featuresResult.value.data().features)
           ? featuresResult.value.data().features
@@ -1540,19 +1581,55 @@ export default function Home() {
           }
         })
         setFeatures(cleanFeatures)
+
+        let loadedPhone = ''
+        let loadedAddress = ''
+        let loadedHours = ''
+        let loadedShop = 'Paw Paw Pet Grooming'
+        let loadedReviewUrl = ''
+        let loadedPetImages = { cta: '', follow: '' }
+        let loadedFooter = { tagline: '', socials: [], phones: [], email: '' }
+
         if (businessInfoResult.status === 'fulfilled') {
           const info = businessInfoResult.value
-          setAdminPhone(info.whatsappNumber || '')
-          setContactAddress(info.contact.address || '')
-          setContactHours(info.hoursText || '')
-          setShopName(info.contact.shopName || 'Paw Paw Pet Grooming')
-          setGoogleReviewUrl(info.contact.googleReviewUrl || '')
-          setHomePetImages({
-            cta: info.contact.ctaPetImageUrl || '',
-            follow: info.contact.followPetImageUrl || '',
-          })
-          setFooterInfo(info.footer || { tagline: '', socials: [], phones: [], email: '' })
+          loadedPhone = info.whatsappNumber || ''
+          loadedAddress = info.contact?.address || ''
+          loadedHours = info.hoursText || ''
+          loadedShop = info.contact?.shopName || 'Paw Paw Pet Grooming'
+          loadedReviewUrl = info.contact?.googleReviewUrl || ''
+          loadedPetImages = {
+            cta: info.contact?.ctaPetImageUrl ? optimizeCloudinary(info.contact.ctaPetImageUrl, 400) : '',
+            follow: info.contact?.followPetImageUrl ? optimizeCloudinary(info.contact.followPetImageUrl, 400) : '',
+          }
+          loadedFooter = info.footer || { tagline: '', socials: [], phones: [], email: '' }
+
+          setAdminPhone(loadedPhone)
+          setContactAddress(loadedAddress)
+          setContactHours(loadedHours)
+          setShopName(loadedShop)
+          setGoogleReviewUrl(loadedReviewUrl)
+          setHomePetImages(loadedPetImages)
+          setFooterInfo(loadedFooter)
         }
+
+        // Snapshot to persistent localStorage cache for instant future loads
+        const homeSectionsSnapshot = {
+          stats: calculatedStats,
+          reviews: revs,
+          serviceDetails: details,
+          packages: loadedPackages,
+          galleryImages: sortedGallery,
+          features: cleanFeatures,
+          adminPhone: loadedPhone,
+          contactAddress: loadedAddress,
+          contactHours: loadedHours,
+          shopName: loadedShop,
+          googleReviewUrl: loadedReviewUrl,
+          homePetImages: loadedPetImages,
+          footerInfo: loadedFooter,
+        }
+        cachedHomeSectionsData = homeSectionsSnapshot
+        setHomeCache('sections_data', homeSectionsSnapshot)
       } catch { }
     }
     fetchStats()
