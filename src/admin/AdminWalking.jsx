@@ -1,5 +1,5 @@
 // src/admin/AdminWalking.jsx
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   collection,
@@ -9,9 +9,11 @@ import {
   doc,
   updateDoc,
   setDoc,
+  addDoc,
   orderBy,
   serverTimestamp,
   deleteDoc,
+  onSnapshot,
 } from 'firebase/firestore'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useNotifications } from '../context/NotificationContext'
@@ -30,6 +32,7 @@ import {
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 import petWalkingHero from '../assets/pet-walking-hero.jpg'
+import LiveWalkModal from '../components/LiveWalkModal'
 import {
   Calendar,
   Check,
@@ -55,6 +58,10 @@ import {
   X,
   XCircle,
   PlayCircle,
+  UserCheck,
+  UserRound,
+  Share2,
+  Copy,
 } from 'lucide-react'
 
 const money = (val) => Number(val || 0).toLocaleString('en-IN')
@@ -107,6 +114,11 @@ export default function AdminWalking() {
   const [cancelTarget, setCancelTarget] = useState(null)
   const [cancelReason, setCancelReason] = useState('')
 
+  // Confirm & Walker Assignment Modal
+  const [confirmTarget, setConfirmTarget] = useState(null)
+  const [confirmWalkerId, setConfirmWalkerId] = useState('')
+  const [confirmSendWhatsApp, setConfirmSendWhatsApp] = useState(true)
+
   // Settings State
   const [settings, setSettings] = useState(DEFAULT_WALKING_SETTINGS)
   const [savingSettings, setSavingSettings] = useState(false)
@@ -122,6 +134,12 @@ export default function AdminWalking() {
   const [uploadingBanner, setUploadingBanner] = useState(false)
   const [optimizingBanner, setOptimizingBanner] = useState(false)
   const [bannerUploadError, setBannerUploadError] = useState('')
+
+  // Team & Walker Assignment State
+  const [teamMembers, setTeamMembers] = useState([])
+  const [walkerFilter, setWalkerFilter] = useState('all')
+  const [assigningId, setAssigningId] = useState('')
+  const [liveTrackingBooking, setLiveTrackingBooking] = useState(null)
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -157,7 +175,35 @@ export default function AdminWalking() {
   }
 
   useEffect(() => {
-    loadBookings()
+    setLoadingBookings(true)
+    const q = query(collection(db, 'walkingBookings'), orderBy('createdAt', 'desc'))
+
+    let unsub = null
+    try {
+      unsub = onSnapshot(
+        q,
+        (snap) => {
+          setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+          setLoadingBookings(false)
+        },
+        () => {
+          // Fallback snapshot without composite ordering
+          unsub = onSnapshot(collection(db, 'walkingBookings'), (snap) => {
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            list.sort((a, b) => {
+              const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0
+              const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0
+              return bTime - aTime
+            })
+            setBookings(list)
+            setLoadingBookings(false)
+          })
+        }
+      )
+    } catch {
+      loadBookings()
+    }
+
     fetchWalkingSettings(db).then(setSettings)
     fetchBusinessInfo(db).then(biz => {
       if (biz) {
@@ -165,11 +211,122 @@ export default function AdminWalking() {
         setShopName(biz.contact?.shopName || 'Paw Paw Pet Grooming')
       }
     })
+
+    // Load active team members for walker assignment
+    async function loadTeam() {
+      try {
+        const snap = await getDocs(collection(db, 'teamMembers'))
+        setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      } catch (err) {
+        console.warn('Could not load team members:', err)
+      }
+    }
+    loadTeam()
+
+    return () => {
+      if (unsub) unsub()
+    }
   }, [])
+
+  // Filter assignable team members (only active members with role containing 'Walker')
+  const walkerOptions = useMemo(() => {
+    return teamMembers.filter(m => {
+      if (m.active === false) return false
+      return (m.role || '').trim().toLowerCase().includes('walker')
+    })
+  }, [teamMembers])
+
+  // Assign or unassign a walker
+  const handleAssignWalker = async (booking, walkerId) => {
+    if (!booking) return
+    setAssigningId(booking.id)
+    try {
+      const selected = walkerOptions.find(w => w.id === walkerId)
+      const patch = selected ? {
+        assignedTeamMemberId: selected.id,
+        assignedTeamMemberName: selected.name,
+        assignedTeamMemberPhone: selected.phone || '',
+        assignedTeamMemberRole: selected.role || 'Walker',
+        assignedWalkerId: selected.id,
+        assignedWalkerName: selected.name,
+        assignedWalkerPhone: selected.phone || '',
+        assignedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      } : {
+        assignedTeamMemberId: null,
+        assignedTeamMemberName: '',
+        assignedTeamMemberPhone: '',
+        assignedTeamMemberRole: '',
+        assignedWalkerId: null,
+        assignedWalkerName: '',
+        assignedWalkerPhone: '',
+        assignedAt: null,
+        updatedAt: serverTimestamp(),
+      }
+
+      await updateDoc(doc(db, 'walkingBookings', booking.id), patch)
+
+      if (selected) {
+        addDoc(collection(db, 'walkerNotifications'), {
+          walkerId: selected.id,
+          title: `🐾 New Dog Walk Assigned!`,
+          message: `${booking.dogName || booking.petName || 'Dog'} on ${booking.date || booking.walkingDate || 'scheduled date'} (${booking.slot || booking.walkingSlot || 'slot'})`,
+          bookingId: booking.id,
+          dogName: booking.dogName || booking.petName || 'Dog',
+          area: booking.area || 'Dhayari',
+          read: false,
+          createdAt: serverTimestamp(),
+        }).catch(() => {})
+      }
+
+      setBookings(prev => prev.map(item => item.id === booking.id ? { ...item, ...patch } : item))
+      if (selectedBooking?.id === booking.id) {
+        setSelectedBooking(prev => ({ ...prev, ...patch }))
+      }
+      setToastMessage(selected ? `Assigned to walker ${selected.name}!` : 'Walker unassigned.')
+    } catch (err) {
+      alert(`Could not assign walker: ${err.message}`)
+    } finally {
+      setAssigningId('')
+    }
+  }
+
+  // Send walk details and live portal link to Walker on WhatsApp
+  const handleSendWalkToWalkerWhatsApp = (booking) => {
+    if (!booking) return
+    const walkerPhone = booking.assignedTeamMemberPhone || booking.assignedWalkerPhone || ''
+    const rawPhone = String(walkerPhone).replace(/\D/g, '')
+    const cleanPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone
+
+    const mapUrl = booking.mapPinUrl || booking.mapLink || (booking.lat && booking.lng ? `https://www.google.com/maps?q=${booking.lat},${booking.lng}` : '')
+    const portalUrl = `${window.location.origin}/walker?walkerId=${booking.assignedTeamMemberId || booking.assignedWalkerId || ''}`
+
+    const msg = `🐾 *Paw Paw — Dog Walk Assignment Details*
+
+🐶 *Dog:* ${booking.dogName || booking.petName || 'Dog'} (${booking.breed || booking.petBreed || 'Breed not specified'})
+📅 *Date:* ${booking.date || booking.walkingDate || '-'}
+⏰ *Time Slot:* ${booking.slot || booking.walkingSlot || '-'} (${booking.duration || 30} Mins Walk)
+👤 *Pet Parent:* ${booking.ownerName || 'Pet Parent'} (${booking.phone || '-'})
+📍 *Pickup Address:* ${booking.pickupAddress || booking.address || '-'}${booking.area ? `, ${booking.area}` : ''}${booking.landmark ? ` (Landmark: ${booking.landmark})` : ''}
+${mapUrl ? `🗺️ *Google Maps:* ${mapUrl}\n` : ''}
+${booking.behaviorNotes ? `⚠️ *Instructions:* ${booking.behaviorNotes}\n` : ''}
+🚀 *Open Walker Portal to Start Live Walk:*
+${portalUrl}`
+
+    const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`
+    window.open(waUrl, '_blank')
+  }
 
   // Filter Bookings
   const filteredBookings = bookings.filter(b => {
     if (statusFilter !== 'all' && b.status !== statusFilter) return false
+    if (walkerFilter !== 'all') {
+      if (walkerFilter === 'unassigned') {
+        if (b.assignedTeamMemberId || b.assignedWalkerId) return false
+      } else {
+        if ((b.assignedTeamMemberId || b.assignedWalkerId) !== walkerFilter) return false
+      }
+    }
     if (!searchQuery.trim()) return true
     const q = searchQuery.toLowerCase()
     return (
@@ -178,6 +335,7 @@ export default function AdminWalking() {
       (b.phone || '').toLowerCase().includes(q) ||
       (b.area || '').toLowerCase().includes(q) ||
       (b.pickupAddress || '').toLowerCase().includes(q) ||
+      (b.assignedTeamMemberName || '').toLowerCase().includes(q) ||
       (b.id || '').toLowerCase().includes(q)
     )
   })
@@ -213,6 +371,21 @@ export default function AdminWalking() {
       }
 
       await updateDoc(doc(db, 'walkingBookings', booking.id), patch)
+
+      const targetWalkerId = booking.assignedWalkerId || booking.assignedTeamMemberId
+      if (targetWalkerId && newStatus === WALKING_STATUS.CONFIRMED) {
+        addDoc(collection(db, 'walkerNotifications'), {
+          walkerId: targetWalkerId,
+          title: `🐾 Walk Confirmed!`,
+          message: `${booking.dogName || booking.petName || 'Dog'} on ${booking.date || booking.walkingDate || 'scheduled date'} (${booking.slot || booking.walkingSlot || 'slot'})`,
+          bookingId: booking.id,
+          dogName: booking.dogName || booking.petName || 'Dog',
+          area: booking.area || 'Dhayari',
+          read: false,
+          createdAt: serverTimestamp(),
+        }).catch(() => {})
+      }
+
       setBookings(prev => prev.map(item => item.id === booking.id ? { ...item, ...patch } : item))
       if (selectedBooking?.id === booking.id) {
         setSelectedBooking(prev => ({ ...prev, ...patch }))
@@ -300,6 +473,98 @@ export default function AdminWalking() {
       setRescheduleSlot('')
     } catch (err) {
       alert(`Could not reschedule: ${err.message}`)
+    } finally {
+      setUpdatingId('')
+    }
+  }
+
+  // Open Confirm & Assign Walker Modal
+  const openConfirmModal = (booking) => {
+    if (!booking) return
+    setConfirmTarget(booking)
+    const existingWalker = booking.assignedWalkerId || booking.assignedTeamMemberId || ''
+    if (existingWalker) {
+      setConfirmWalkerId(existingWalker)
+    } else if (walkerOptions.length === 1) {
+      setConfirmWalkerId(walkerOptions[0].id)
+    } else {
+      setConfirmWalkerId('')
+    }
+    setConfirmSendWhatsApp(true)
+  }
+
+  // Confirm booking & assign selected walker
+  const handleConfirmAndAssign = async () => {
+    if (!confirmTarget) return
+    setUpdatingId(confirmTarget.id)
+    try {
+      const selectedWalker = walkerOptions.find(w => w.id === confirmWalkerId)
+
+      const patch = {
+        status: WALKING_STATUS.CONFIRMED,
+        confirmedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }
+
+      if (selectedWalker) {
+        patch.assignedTeamMemberId = selectedWalker.id
+        patch.assignedTeamMemberName = selectedWalker.name
+        patch.assignedTeamMemberPhone = selectedWalker.phone || ''
+        patch.assignedTeamMemberRole = selectedWalker.role || 'Walker'
+        patch.assignedWalkerId = selectedWalker.id
+        patch.assignedWalkerName = selectedWalker.name
+        patch.assignedWalkerPhone = selectedWalker.phone || ''
+        patch.assignedAt = serverTimestamp()
+      }
+
+      await updateDoc(doc(db, 'walkingBookings', confirmTarget.id), patch)
+
+      // Notify Walker in Walker Portal
+      if (selectedWalker) {
+        addDoc(collection(db, 'walkerNotifications'), {
+          walkerId: selectedWalker.id,
+          title: `🐾 New Dog Walk Assigned!`,
+          message: `${confirmTarget.dogName || confirmTarget.petName || 'Dog'} on ${confirmTarget.date || 'date'} (${confirmTarget.slot || 'slot'})`,
+          bookingId: confirmTarget.id,
+          dogName: confirmTarget.dogName || confirmTarget.petName || 'Dog',
+          area: confirmTarget.area || 'Dhayari',
+          read: false,
+          createdAt: serverTimestamp(),
+        }).catch(() => {})
+      }
+
+      // Update local state
+      setBookings(prev => prev.map(item => item.id === confirmTarget.id ? { ...item, ...patch } : item))
+      if (selectedBooking?.id === confirmTarget.id) {
+        setSelectedBooking(prev => ({ ...prev, ...patch }))
+      }
+
+      // Notify Customer
+      if (confirmTarget.userId && sendNotification) {
+        await sendNotification(confirmTarget.userId, {
+          userEmail: confirmTarget.userEmail || '',
+          toAdmin: false,
+          title: '🐕 Pet Walking: Confirmed',
+          message: `Your dog walking session for ${confirmTarget.dogName} on ${confirmTarget.date} at ${confirmTarget.slot} has been confirmed!`,
+          type: 'walking_update',
+          bookingId: confirmTarget.id,
+          actionUrl: '/my-bookings?tab=walking',
+        }).catch(() => {})
+      }
+
+      // If WhatsApp option enabled and walker has phone
+      if (confirmSendWhatsApp && selectedWalker?.phone) {
+        handleSendWalkToWalkerWhatsApp({ ...confirmTarget, ...patch })
+      }
+
+      setToastMessage(
+        selectedWalker
+          ? `Walk confirmed & assigned to ${selectedWalker.name}!`
+          : 'Walk confirmed successfully!'
+      )
+      setConfirmTarget(null)
+    } catch (err) {
+      alert(`Could not confirm walk: ${err.message}`)
     } finally {
       setUpdatingId('')
     }
@@ -611,17 +876,38 @@ export default function AdminWalking() {
             })}
           </div>
 
-          {/* Search Bar */}
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ position: 'relative', width: '100%', maxWidth: '460px' }}>
+          {/* Search & Walker Filter Bar */}
+          <div style={{ marginBottom: '16px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', flex: '1', minWidth: '220px', maxWidth: '420px' }}>
               <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
               <input
                 className="input"
-                placeholder="Search dog, owner, phone, or Dhayari address..."
+                placeholder="Search dog, owner, phone, address, or walker..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 style={{ paddingLeft: '34px' }}
               />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Footprints size={15} color="var(--accent)" />
+              <select
+                className="input"
+                value={walkerFilter}
+                onChange={e => setWalkerFilter(e.target.value)}
+                style={{ fontSize: '12.5px', padding: '7px 10px', minWidth: '150px' }}
+                aria-label="Filter by assigned walker"
+              >
+                <option value="all">All Walkers ({bookings.length})</option>
+                <option value="unassigned">⚠️ Unassigned ({bookings.filter(b => !b.assignedTeamMemberId && !b.assignedWalkerId).length})</option>
+                {walkerOptions.map(w => {
+                  const countForWalker = bookings.filter(b => (b.assignedTeamMemberId || b.assignedWalkerId) === w.id).length
+                  return (
+                    <option key={w.id} value={w.id}>
+                      {w.name} {w.role ? `(${w.role})` : ''} ({countForWalker})
+                    </option>
+                  )
+                })}
+              </select>
             </div>
           </div>
 
@@ -654,6 +940,7 @@ export default function AdminWalking() {
                   <div
                     key={b.id}
                     className="walking-booking-card"
+                    onClick={() => openBookingDetails(b)}
                     style={{
                       background: 'var(--card)',
                       border: '1px solid var(--border)',
@@ -662,6 +949,7 @@ export default function AdminWalking() {
                       flexDirection: 'column',
                       gap: '12px',
                       boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                      cursor: 'pointer',
                     }}
                   >
                     {/* Top Row: Dog Info & Status Badge */}
@@ -724,6 +1012,18 @@ export default function AdminWalking() {
                           📍 {b.area || 'Dhayari'} ({b.pickupAddress})
                         </strong>
                       </div>
+                      <div>
+                        <span style={{ color: 'var(--muted)', display: 'block', fontSize: '11px' }}>ASSIGNED WALKER</span>
+                        {b.assignedTeamMemberName ? (
+                          <strong style={{ color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Footprints size={13} /> {b.assignedTeamMemberName}
+                          </strong>
+                        ) : (
+                          <span style={{ color: 'var(--muted)', fontStyle: 'italic', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Footprints size={13} /> Unassigned
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Notes if any */}
@@ -737,9 +1037,62 @@ export default function AdminWalking() {
                     {/* Actions Row */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', paddingTop: '4px' }}>
                       <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {b.status === WALKING_STATUS.IN_PROGRESS && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation()
+                              setLiveTrackingBooking(b)
+                            }}
+                            style={{
+                              background: '#16a34a',
+                              border: '1px solid #15803d',
+                              color: '#fff',
+                              fontWeight: 800,
+                              fontSize: '12px',
+                              padding: '6px 12px',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              boxShadow: '0 2px 8px rgba(22, 163, 74, 0.3)',
+                            }}
+                          >
+                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#fff', animation: 'pawpaw-gps-pulse 1.5s infinite' }} />
+                            Live GPS Walk
+                          </button>
+                        )}
+                        {b.status === WALKING_STATUS.COMPLETED && (Array.isArray(b.routeTrail) && b.routeTrail.length > 0) && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation()
+                              setLiveTrackingBooking(b)
+                            }}
+                            style={{
+                              background: 'var(--surface)',
+                              border: '1px solid var(--border)',
+                              color: 'var(--accent)',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              padding: '6px 12px',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Footprints size={13} /> View Route
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => openBookingDetails(b)}
+                          onClick={e => {
+                            e.stopPropagation()
+                            openBookingDetails(b)
+                          }}
                           style={{
                             background: 'rgba(184, 134, 11, 0.08)',
                             border: '1px solid rgba(184, 134, 11, 0.35)',
@@ -759,6 +1112,7 @@ export default function AdminWalking() {
                             href={waUrl}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
                             style={{
                               background: '#f0fdf4',
                               border: '1px solid #bbf7d0',
@@ -786,7 +1140,10 @@ export default function AdminWalking() {
                             <button
                               type="button"
                               disabled={updatingId === b.id}
-                              onClick={() => handleUpdateStatus(b, WALKING_STATUS.CONFIRMED)}
+                              onClick={e => {
+                                e.stopPropagation()
+                                openConfirmModal(b)
+                              }}
                               style={{
                                 background: '#16a34a',
                                 border: '1px solid #15803d',
@@ -809,7 +1166,8 @@ export default function AdminWalking() {
                             <button
                               type="button"
                               disabled={updatingId === b.id}
-                              onClick={() => {
+                              onClick={e => {
+                                e.stopPropagation()
                                 setRescheduleTarget(b)
                                 setRescheduleDate(b.date || '')
                                 setRescheduleSlot(b.slot || '')
@@ -835,7 +1193,8 @@ export default function AdminWalking() {
                             <button
                               type="button"
                               disabled={updatingId === b.id}
-                              onClick={() => {
+                              onClick={e => {
+                                e.stopPropagation()
                                 setCancelTarget(b)
                                 setCancelReason('')
                               }}
@@ -861,38 +1220,15 @@ export default function AdminWalking() {
                         )}
 
                         {isConfirmed && (
-                          <>
-                            <button
-                              type="button"
-                              disabled={updatingId === b.id}
-                              onClick={() => handleUpdateStatus(b, WALKING_STATUS.IN_PROGRESS)}
-                              style={{
-                                background: '#7c3aed',
-                                border: '1px solid #6d28d9',
-                                color: '#ffffff',
-                                fontWeight: 700,
-                                fontSize: '11px',
-                                padding: '5px 9px',
-                                borderRadius: '7px',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px',
-                                whiteSpace: 'nowrap',
-                                flexShrink: 0,
-                                boxShadow: '0 2px 6px rgba(124, 58, 237, 0.25)',
-                              }}
-                            >
-                              <PlayCircle size={13} /> Start Walk
-                            </button>
-                            <button
-                              type="button"
-                              disabled={updatingId === b.id}
-                              onClick={() => {
-                                setRescheduleTarget(b)
-                                setRescheduleDate(b.date || '')
-                                setRescheduleSlot(b.slot || '')
-                              }}
+                          <button
+                            type="button"
+                            disabled={updatingId === b.id}
+                            onClick={e => {
+                              e.stopPropagation()
+                              setRescheduleTarget(b)
+                              setRescheduleDate(b.date || '')
+                              setRescheduleSlot(b.slot || '')
+                            }}
                               style={{
                                 background: 'rgba(37, 99, 235, 0.08)',
                                 border: '1px solid rgba(37, 99, 235, 0.35)',
@@ -911,14 +1247,16 @@ export default function AdminWalking() {
                             >
                               <Clock size={12} /> Reschedule
                             </button>
-                          </>
                         )}
 
                         {isInProgress && (
                           <button
                             type="button"
                             disabled={updatingId === b.id}
-                            onClick={() => handleUpdateStatus(b, WALKING_STATUS.COMPLETED)}
+                            onClick={e => {
+                              e.stopPropagation()
+                              handleUpdateStatus(b, WALKING_STATUS.COMPLETED)
+                            }}
                             style={{
                               background: '#059669',
                               border: '1px solid #047857',
@@ -943,7 +1281,10 @@ export default function AdminWalking() {
                         {b.status === WALKING_STATUS.COMPLETED && (
                           <button
                             type="button"
-                            onClick={() => navigate(`/admin/invoices?mode=walking&id=${b.id}`)}
+                            onClick={e => {
+                              e.stopPropagation()
+                              navigate(`/admin/invoices?mode=walking&id=${b.id}`)
+                            }}
                             style={{
                               background: 'rgba(212, 175, 55, 0.12)',
                               border: '1px solid var(--accent-border)',
@@ -1892,6 +2233,94 @@ export default function AdminWalking() {
                 </div>
               </div>
 
+              {/* SECTION: Walker Assignment & WhatsApp Dispatch */}
+              <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: '14px', padding: '14px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Footprints size={15} color="var(--accent)" /> Walker Assignment & Live GPS Dispatch
+                  </div>
+                  {selectedBooking.assignedTeamMemberName ? (
+                    <span className="badge badge-online">
+                      Walker: {selectedBooking.assignedTeamMemberName}
+                    </span>
+                  ) : (
+                    <span className="badge badge-pending">
+                      Walker Unassigned
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' }}>
+                  <select
+                    className="input"
+                    value={selectedBooking.assignedTeamMemberId || selectedBooking.assignedWalkerId || ''}
+                    onChange={e => handleAssignWalker(selectedBooking, e.target.value)}
+                    disabled={assigningId === selectedBooking.id}
+                    style={{ flex: 1, minWidth: '180px', fontSize: '13px', padding: '9px 12px' }}
+                    aria-label="Assign walker"
+                  >
+                    {walkerOptions.length === 0 ? (
+                      <option value="">-- No Walkers in Team (Add role 'Walker' in Team section) --</option>
+                    ) : (
+                      <option value="">-- Select Assigned Walker ({walkerOptions.length} available) --</option>
+                    )}
+                    {walkerOptions.map(w => (
+                      <option key={w.id} value={w.id}>
+                        🐾 {w.name} {w.role ? `(${w.role})` : ''} {w.phone ? `· ${w.phone}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedBooking.assignedTeamMemberName && (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border)' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleSendWalkToWalkerWhatsApp(selectedBooking)}
+                      className="btn btn-primary"
+                      style={{ background: '#25D366', borderColor: '#20BA5C', color: '#fff', fontSize: '12px', padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <MessageCircle size={15} /> Send Walk Details to Walker (WhatsApp)
+                    </button>
+                    {selectedBooking.assignedTeamMemberPhone && (
+                      <a
+                        href={`tel:${selectedBooking.assignedTeamMemberPhone}`}
+                        className="btn btn-secondary"
+                        style={{ fontSize: '12px', padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}
+                      >
+                        <Phone size={13} /> Call Walker
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {(selectedBooking.status === WALKING_STATUS.IN_PROGRESS || (Array.isArray(selectedBooking.routeTrail) && selectedBooking.routeTrail.length > 0)) && (
+                  <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border)' }}>
+                    <button
+                      type="button"
+                      onClick={() => setLiveTrackingBooking(selectedBooking)}
+                      className="btn btn-primary"
+                      style={{
+                        width: '100%',
+                        background: selectedBooking.status === WALKING_STATUS.IN_PROGRESS ? '#16a34a' : 'var(--accent)',
+                        borderColor: selectedBooking.status === WALKING_STATUS.IN_PROGRESS ? '#15803d' : 'var(--accent-border)',
+                        color: '#fff',
+                        fontSize: '12.5px',
+                        padding: '9px 14px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        fontWeight: 800,
+                      }}
+                    >
+                      <Footprints size={15} />
+                      {selectedBooking.status === WALKING_STATUS.IN_PROGRESS ? 'Watch Live GPS Walk' : 'View Recorded Walk Route Map'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* SECTION: Habits & Notes */}
               {(selectedBooking.behaviorNotes || selectedBooking.notes) && (
                 <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '14px', padding: '14px 16px', fontSize: '12.5px' }}>
@@ -1945,7 +2374,7 @@ export default function AdminWalking() {
                     <button
                       type="button"
                       disabled={updatingId === selectedBooking.id}
-                      onClick={() => handleUpdateStatus(selectedBooking, WALKING_STATUS.CONFIRMED)}
+                      onClick={() => openConfirmModal(selectedBooking)}
                       style={{
                         background: '#16A34A',
                         border: '1px solid #15803D',
@@ -1994,28 +2423,10 @@ export default function AdminWalking() {
                 )}
 
                 {selectedBooking.status === WALKING_STATUS.CONFIRMED && (
-                  <button
-                    type="button"
-                    disabled={updatingId === selectedBooking.id}
-                    onClick={() => handleUpdateStatus(selectedBooking, WALKING_STATUS.IN_PROGRESS)}
-                    style={{
-                      background: '#7C3AED',
-                      border: '1px solid #6D28D9',
-                      color: '#FFFFFF',
-                      fontWeight: 700,
-                      fontSize: '12px',
-                      padding: '8px 14px',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      whiteSpace: 'nowrap',
-                      boxShadow: '0 2px 6px rgba(124, 58, 237, 0.25)',
-                    }}
-                  >
-                    <PlayCircle size={14} /> Start Walk
-                  </button>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--muted)', background: 'var(--surface)', padding: '7px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                    <Footprints size={14} color="var(--accent)" />
+                    <span>Awaiting Walker to start live GPS walk in <a href="/walker" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', fontWeight: 800, textDecoration: 'underline' }}>Walker Portal ↗</a></span>
+                  </div>
                 )}
 
                 {selectedBooking.status === WALKING_STATUS.IN_PROGRESS && (
@@ -2211,6 +2622,157 @@ export default function AdminWalking() {
       )}
 
       {/* =========================================================================
+          MODAL: CONFIRM WALK & ASSIGN WALKER
+         ========================================================================= */}
+      {confirmTarget && (
+        <div className="walking-modal-overlay" onClick={() => setConfirmTarget(null)}>
+          <div className="walking-modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+            {/* Header */}
+            <div className="walking-modal-header" style={{ background: 'linear-gradient(135deg, rgba(22, 163, 74, 0.1) 0%, rgba(21, 128, 61, 0.05) 100%)', borderBottom: '1px solid rgba(22, 163, 74, 0.2)' }}>
+              <div className="walking-modal-header-left">
+                <div className="walking-modal-icon-badge" style={{ background: '#16a34a', color: '#fff' }}>
+                  <CheckCircle size={22} />
+                </div>
+                <div>
+                  <h3 className="walking-modal-title" style={{ color: '#15803d' }}>Confirm Walk & Assign Walker</h3>
+                  <p className="walking-modal-subtitle">
+                    Request for <strong>{confirmTarget.dogName}</strong>{confirmTarget.breed ? ` • ${confirmTarget.breed}` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="walking-modal-close-btn"
+                onClick={() => setConfirmTarget(null)}
+                aria-label="Close modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="walking-modal-body">
+              {/* Summary Box */}
+              <div className="walking-cancel-summary-box" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <div className="cancel-summary-top">
+                  <div className="cancel-dog-info">
+                    <Dog size={16} color="var(--accent)" />
+                    <strong>{confirmTarget.dogName}</strong>
+                    <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>({confirmTarget.duration || 30} Mins)</span>
+                  </div>
+                  <div className="cancel-schedule-info">
+                    <Calendar size={13} />
+                    <span>{formatFriendlyDate(confirmTarget.date)}</span>
+                    <span className="dot">•</span>
+                    <Clock size={13} />
+                    <span>{confirmTarget.slot || confirmTarget.customTimeRequested}</span>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '8px', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                    <MapPin size={13} color="var(--accent)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                    <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+                      <strong>Pickup:</strong> {confirmTarget.area || 'Dhayari'} {confirmTarget.pickupAddress ? `(${confirmTarget.pickupAddress})` : ''}
+                    </span>
+                  </div>
+                  {(confirmTarget.userName || confirmTarget.ownerName || confirmTarget.phone || confirmTarget.userPhone) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <User size={13} color="var(--accent)" style={{ flexShrink: 0 }} />
+                      <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+                        <strong>Parent:</strong> {confirmTarget.userName || confirmTarget.ownerName || 'Pet Parent'} {confirmTarget.phone || confirmTarget.userPhone ? `· ${confirmTarget.phone || confirmTarget.userPhone}` : ''}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Walker Selection */}
+              <div className="walking-form-group" style={{ marginTop: '16px' }}>
+                <label className="walking-form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ fontWeight: 800, color: 'var(--text)', fontSize: '13px' }}>Assign Walker *</span>
+                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Role: Walker</span>
+                </label>
+
+                {walkerOptions.length === 0 ? (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '10px 12px', fontSize: '12px', color: '#92400e' }}>
+                    ⚠️ No team members with role <strong>"Walker"</strong> found in Team.
+                    <div style={{ marginTop: '4px', fontSize: '11.5px' }}>
+                      You can confirm now and assign later, or add/update a member with role "Walker" in Team section.
+                    </div>
+                  </div>
+                ) : (
+                  <select
+                    className="input"
+                    value={confirmWalkerId}
+                    onChange={e => setConfirmWalkerId(e.target.value)}
+                    style={{ width: '100%', fontSize: '13.5px', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid var(--accent)', background: 'var(--card)' }}
+                  >
+                    <option value="">-- Choose Walker to assign --</option>
+                    {walkerOptions.map(w => (
+                      <option key={w.id} value={w.id}>
+                        🐾 {w.name} {w.phone ? `(${w.phone})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                <p style={{ margin: '6px 0 0', fontSize: '11.5px', color: 'var(--muted)' }}>
+                  The assigned walker will receive this walk in their <strong>Walker Portal</strong> schedule and can start live GPS tracking.
+                </p>
+              </div>
+
+              {/* WhatsApp Checkbox */}
+              {confirmWalkerId && (
+                <div style={{ marginTop: '12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '10px 12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', color: '#166534', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={confirmSendWhatsApp}
+                      onChange={e => setConfirmSendWhatsApp(e.target.checked)}
+                      style={{ width: '16px', height: '16px', accentColor: '#16a34a' }}
+                    />
+                    <span>Send walk details to Walker on WhatsApp</span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="walking-modal-footer">
+              <button
+                type="button"
+                onClick={() => setConfirmTarget(null)}
+                className="btn btn-secondary walking-modal-btn"
+                disabled={updatingId === confirmTarget.id}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAndAssign}
+                className="btn btn-primary walking-modal-btn"
+                disabled={updatingId === confirmTarget.id}
+                style={{ background: '#16a34a', borderColor: '#15803d' }}
+              >
+                {updatingId === confirmTarget.id ? (
+                  <>
+                    <RefreshCw size={14} className="spin" />
+                    <span>Confirming...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={15} />
+                    <span>{confirmWalkerId ? 'Confirm & Assign' : 'Confirm Walk'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
           MODAL: CANCEL / DECLINE (Modern Redesign)
          ========================================================================= */}
       {cancelTarget && (
@@ -2339,6 +2901,15 @@ export default function AdminWalking() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Live Dog Walk GPS Tracker Modal */}
+      {liveTrackingBooking && (
+        <LiveWalkModal
+          bookingId={liveTrackingBooking.id}
+          initialBooking={liveTrackingBooking}
+          onClose={() => setLiveTrackingBooking(null)}
+        />
       )}
 
       {/* Scoped responsive styles */}
@@ -2803,6 +3374,18 @@ export default function AdminWalking() {
           width: 100%;
         }
 
+        .walking-booking-card {
+          padding: 20px 24px;
+          border-radius: 16px;
+          cursor: pointer;
+          transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+        .walking-booking-card:hover {
+          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08) !important;
+          border-color: rgba(192, 136, 32, 0.4) !important;
+          transform: translateY(-1px);
+        }
+
         @media (max-width: 768px) {
           .admin-walking-page {
             padding: 12px 6px 90px !important;
@@ -2923,4 +3506,3 @@ export default function AdminWalking() {
     </div>
   )
 }
-

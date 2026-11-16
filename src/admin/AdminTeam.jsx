@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
 import { format } from 'date-fns'
 import Cropper from 'react-easy-crop'
-import { AlertTriangle, Calendar, Camera, CheckCircle, CheckSquare, ChevronLeft, ChevronRight, CreditCard, Edit3, Gift, IndianRupee, Mail, Phone, Plus, Save, Slash, Trash2, Upload, UserRound, Users, X, ArrowUpCircle } from 'lucide-react'
+import { AlertTriangle, Calendar, Camera, CheckCircle, CheckSquare, ChevronLeft, ChevronRight, CreditCard, Edit3, Gift, IndianRupee, Mail, Phone, Plus, Save, Slash, Trash2, Upload, UserRound, Users, X, ArrowUpCircle, Footprints, MessageCircle, Copy, Check, KeyRound, ShieldCheck } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import ConfirmModal from '../components/ConfirmModal'
@@ -12,6 +12,7 @@ import { downloadPayrollPdf } from '../utils/payrollPdf'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 import { getOwnerAssignee } from '../utils/teamMembers'
+import { generateUniqueToken } from '../utils/walkerAuth'
 
 const EMPTY = { name: '', phone: '', email: '', role: 'Groomer', photoUrl: '', monthlySalary: '', joiningDate: '' }
 const PAYMENT_TYPES = ['Salary', 'Advance', 'Bonus', 'Incentive', 'Deduction', 'Other']
@@ -378,7 +379,9 @@ export default function AdminTeam() {
       if (editingId) {
         await updateDoc(doc(db, 'teamMembers', editingId), payload)
       } else {
-        await addDoc(collection(db, 'teamMembers'), { ...payload, active: true, createdAt: serverTimestamp() })
+        const isWalker = (payload.role || '').toLowerCase().includes('walker')
+        const extra = isWalker ? { activationToken: generateUniqueToken(), isActivated: false } : {}
+        await addDoc(collection(db, 'teamMembers'), { ...payload, ...extra, active: true, createdAt: serverTimestamp() })
       }
       closeForm()
       await fetchMembers()
@@ -422,6 +425,101 @@ export default function AdminTeam() {
       setToastMessage('Could not update member status. Please try again.')
     }
     setSaving(false)
+  }
+
+  const handleCopyWalkerLink = async (member) => {
+    if (!member) return
+    let token = member.activationToken
+    if (!token && !member.isActivated) {
+      token = generateUniqueToken()
+      await updateDoc(doc(db, 'teamMembers', member.id), { activationToken: token })
+      member.activationToken = token
+    }
+    const portalUrl = member.isActivated
+      ? `${window.location.origin}/walker`
+      : `${window.location.origin}/walker/setup?token=${token}&walkerId=${member.id}`
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(portalUrl).then(() => {
+        setToastType('success')
+        setToastMessage(`Link copied for ${member.name}!`)
+      }).catch(() => {
+        prompt('Copy Walker Link:', portalUrl)
+      })
+    } else {
+      prompt('Copy Walker Link:', portalUrl)
+    }
+  }
+
+  const handleShareWalkerWhatsApp = async (member) => {
+    if (!member) return
+    let token = member.activationToken
+    if (!token && !member.isActivated) {
+      token = generateUniqueToken()
+      await updateDoc(doc(db, 'teamMembers', member.id), { activationToken: token })
+      member.activationToken = token
+    }
+
+    const rawPhone = String(member.phone || '').replace(/\D/g, '')
+    const cleanPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone
+
+    let msg = ''
+    if (member.isActivated) {
+      const portalUrl = `${window.location.origin}/walker`
+      msg = `🐾 *Paw Paw Pet Care — Dog Walker Portal*
+
+Hello *${member.name}*!
+Your Walker Portal account is active. You can log in using your registered mobile (*${member.phone}*) and your private password:
+👉 ${portalUrl}
+
+Please save this link on your phone home screen for quick daily access!`
+    } else {
+      const setupUrl = `${window.location.origin}/walker/setup?token=${token}&walkerId=${member.id}`
+      msg = `🐾 *Paw Paw Pet Care — Walker Account Activation*
+
+Hello *${member.name}*!
+You have been registered as a Dog Walker with Paw Paw.
+
+Please tap the link below to create your private password / PIN and activate your Walker account:
+👉 ${setupUrl}
+
+Once set, you will be able to view your assigned dogs and stream live GPS walks!`
+    }
+
+    const url = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`
+    window.open(url, '_blank')
+  }
+
+  const handleResetWalkerPassword = async (member) => {
+    if (!member) return
+    const confirmReset = window.confirm(`Reset password for ${member.name}? They will be sent a new WhatsApp activation link to set a new password.`)
+    if (!confirmReset) return
+
+    const token = generateUniqueToken()
+    await updateDoc(doc(db, 'teamMembers', member.id), {
+      activationToken: token,
+      isActivated: false,
+      passwordHash: null,
+      salt: null,
+      activeSessionId: null,
+      updatedAt: serverTimestamp(),
+    })
+
+    setToastType('success')
+    setToastMessage(`Password reset link generated for ${member.name}!`)
+    await fetchMembers()
+
+    const setupUrl = `${window.location.origin}/walker/setup?token=${token}&walkerId=${member.id}`
+    const rawPhone = String(member.phone || '').replace(/\D/g, '')
+    const cleanPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone
+    const msg = `🐾 *Paw Paw — Walker Password Reset*
+
+Hello *${member.name}*!
+Your password has been reset by Admin. Please tap the link below to set your new password / PIN:
+👉 ${setupUrl}`
+
+    const url = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`
+    window.open(url, '_blank')
   }
 
   const openPaymentModal = (type = 'Salary', payment = null) => {
@@ -784,6 +882,60 @@ export default function AdminTeam() {
                         </div>
                       </div>
 
+                      {/* Dedicated Walker Portal Access Card for Walker roles */}
+                      {(selectedMember.role || '').toLowerCase().includes('walker') && (
+                        <div style={{ marginTop: '16px', padding: '16px', background: 'linear-gradient(135deg, rgba(197, 139, 36, 0.08), rgba(197, 139, 36, 0.02))', border: '1.5px solid rgba(197, 139, 36, 0.3)', borderRadius: '16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>
+                              <Footprints size={18} color="var(--accent)" /> Walker Security & Portal Access
+                            </div>
+                            {selectedMember.isActivated ? (
+                              <span className="badge badge-online" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <ShieldCheck size={12} /> Account Active
+                              </span>
+                            ) : (
+                              <span className="badge badge-pending" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <KeyRound size={12} /> Pending Password Setup
+                              </span>
+                            )}
+                          </div>
+                          <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.5 }}>
+                            {selectedMember.isActivated
+                              ? `Account is active. ${selectedMember.name} can log in with their phone (${selectedMember.phone}) and password on any single device.`
+                              : `Activation link is ready. Send the link to ${selectedMember.name} on WhatsApp so they can set their private password and activate their portal.`}
+                          </p>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleShareWalkerWhatsApp(selectedMember)}
+                              className="btn btn-primary"
+                              style={{ background: '#25D366', borderColor: '#20BA5C', color: '#fff', fontSize: '12px', padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                            >
+                              <MessageCircle size={15} /> {selectedMember.isActivated ? 'Send Login Link (WhatsApp)' : 'Send Setup Link (WhatsApp)'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyWalkerLink(selectedMember)}
+                              className="btn btn-secondary"
+                              style={{ fontSize: '12px', padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                            >
+                              <Copy size={15} /> Copy Link
+                            </button>
+                            {selectedMember.isActivated && (
+                              <button
+                                type="button"
+                                onClick={() => handleResetWalkerPassword(selectedMember)}
+                                className="btn btn-secondary"
+                                style={{ fontSize: '12px', padding: '8px 12px', color: '#b45309', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                title="Reset Walker Password"
+                              >
+                                <KeyRound size={13} /> Reset Password
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="admin-team-detail-actions">
                         <button type="button" className="btn admin-team-edit-button" onClick={() => openEdit(selectedMember)}>
                           <Edit3 size={18} /> Edit
@@ -1085,7 +1237,34 @@ export default function AdminTeam() {
               <label>Email</label>
               <input className="input" type="email" value={form.email} onChange={e => update('email', e.target.value)} placeholder="member@email.com" />
               <label>Role</label>
-              <input className="input" value={form.role} onChange={e => update('role', e.target.value)} placeholder="Groomer, Driver, Assistant..." />
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                {['Walker', 'Groomer', 'Manager', 'Assistant'].map(r => {
+                  const isSelected = form.role?.trim().toLowerCase() === r.toLowerCase()
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => update('role', r)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '999px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                        background: isSelected ? 'var(--accent-bg)' : 'var(--surface)',
+                        color: isSelected ? 'var(--accent)' : 'var(--muted)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      {r === 'Walker' ? <Footprints size={12} /> : null} {r}
+                    </button>
+                  )
+                })}
+              </div>
+              <input className="input" value={form.role} onChange={e => update('role', e.target.value)} placeholder="Walker, Groomer, Driver, Assistant..." />
               <label>Monthly Salary</label>
               <input className="input" type="number" min="0" value={form.monthlySalary} onChange={e => update('monthlySalary', e.target.value)} placeholder="0" />
               <label>Joining Date</label>

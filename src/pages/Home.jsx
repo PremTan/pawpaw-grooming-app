@@ -713,7 +713,7 @@ function HeroSlider() {
               <div className="home-boarding-prices">
                 <div className="home-boarding-price-card home-fade-up stagger-1">
                   <img
-                    src={boardingDogAvatar}
+                    src={boardingSettings?.dogImageUrl ? optimizeCloudinary(boardingSettings.dogImageUrl, 200) : boardingDogAvatar}
                     alt="Dog Boarding"
                     className="home-boarding-avatar"
                     onError={e => {
@@ -731,7 +731,7 @@ function HeroSlider() {
 
                 <div className="home-boarding-price-card home-fade-up stagger-2">
                   <img
-                    src={boardingCatAvatar}
+                    src={boardingSettings?.catImageUrl ? optimizeCloudinary(boardingSettings.catImageUrl, 200) : boardingCatAvatar}
                     alt="Cat Boarding"
                     className="home-boarding-avatar"
                     onError={e => {

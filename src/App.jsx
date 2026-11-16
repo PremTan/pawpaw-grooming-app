@@ -22,6 +22,8 @@ import Login       from './pages/Login'
 const Gallery = lazy(() => import('./pages/Gallery'))
 const ServiceDetail = lazy(() => import('./pages/ServiceDetail'))
 const PublicInvoice = lazy(() => import('./pages/PublicInvoice'))
+const WalkerPortal = lazy(() => import('./pages/WalkerPortal'))
+const WalkerSetup = lazy(() => import('./pages/WalkerSetup'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 // Lazy-loaded Admin modules (prevents bundling heavy admin code into initial user load)
@@ -136,6 +138,10 @@ export default function App() {
         <Route path="shop-purchases" element={<AdminShopPurchases />} />
         <Route path="offers" element={<AdminOffers />} />
       </Route>
+
+      {/* Walker Portal — dedicated mobile view */}
+      <Route path="/walker" element={<WalkerPortal />} />
+      <Route path="/walker/setup" element={<WalkerSetup />} />
 
       {/* Public — main layout */}
       <Route element={<PublicLayout />}>

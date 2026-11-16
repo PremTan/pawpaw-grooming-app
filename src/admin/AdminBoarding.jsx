@@ -1,6 +1,7 @@
 // src/admin/AdminBoarding.jsx
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import Cropper from 'react-easy-crop'
 import {
   collection,
   doc,
@@ -24,6 +25,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Crop,
   Droplets,
   Edit3,
   Eye,
@@ -60,6 +62,7 @@ import {
   Bed,
   ImagePlus,
   Upload,
+  ZoomIn,
 } from 'lucide-react'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -69,6 +72,8 @@ import Toast from '../components/Toast'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 import defaultBoardingHeroImg from '../assets/boarding-hero-pets.png'
+import defaultDogAvatar from '../assets/boarding-dog-avatar.png'
+import defaultCatAvatar from '../assets/boarding-cat-avatar.png'
 import {
   BOARDING_STATUS,
   buildBoardingWhatsAppMessage,
@@ -205,6 +210,65 @@ function formatPetAge(dob) {
   return dob
 }
 
+// Canvas-based sharp image crop helper
+const getCroppedImg = async (imageSrc, pixelCrop, fileName = 'boarding-image.jpg') => {
+  const image = new Image()
+  image.crossOrigin = 'anonymous'
+  if (imageSrc.startsWith('http')) {
+    image.src = imageSrc.includes('?') ? `${imageSrc}&_cors=${Date.now()}` : `${imageSrc}?_cors=${Date.now()}`
+  } else {
+    image.src = imageSrc
+  }
+
+  await new Promise((resolve, reject) => {
+    image.onload = resolve
+    image.onerror = (e) => reject(new Error('Failed to load image for cropping: ' + (e?.message || 'cross-origin error')))
+  })
+
+  const maxDim = 1200
+  let targetWidth = Math.round(pixelCrop.width)
+  let targetHeight = Math.round(pixelCrop.height)
+  if (targetWidth > maxDim || targetHeight > maxDim) {
+    if (targetWidth >= targetHeight) {
+      targetHeight = Math.round((targetHeight * maxDim) / targetWidth)
+      targetWidth = maxDim
+    } else {
+      targetWidth = Math.round((targetWidth * maxDim) / targetHeight)
+      targetHeight = maxDim
+    }
+  }
+
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  canvas.width = targetWidth
+  canvas.height = targetHeight
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+
+  ctx.drawImage(
+    image,
+    pixelCrop.x,
+    pixelCrop.y,
+    pixelCrop.width,
+    pixelCrop.height,
+    0,
+    0,
+    targetWidth,
+    targetHeight
+  )
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('Canvas export failed'))
+        return
+      }
+      const baseName = (fileName || 'image').replace(/\.[^/.]+$/, '')
+      resolve(new File([blob], `${baseName}-cropped.jpg`, { type: 'image/jpeg' }))
+    }, 'image/jpeg', 0.90)
+  })
+}
+
 let cachedBoardingData = null
 let cachedBoardingTime = 0
 const BOARDING_CACHE_TTL = 3 * 60 * 1000
@@ -265,6 +329,15 @@ export default function AdminBoarding() {
   const [bannerUploadError, setBannerUploadError] = useState('')
   const [savingSettings, setSavingSettings] = useState(false)
   const [termsViewMode, setTermsViewMode] = useState('items') // 'items' | 'text'
+
+  // Cropper state for Boarding Visuals (Banner, Dog Avatar, Cat Avatar)
+  const [cropData, setCropData] = useState(null) // { src, fileName, field, label, defaultAspect, shape }
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
+  const [cropperAspect, setCropperAspect] = useState(1)
+  const [uploadingImageField, setUploadingImageField] = useState(null)
+  const [optimizingImageField, setOptimizingImageField] = useState(null)
 
   // UI state
   const [toastMessage, setToastMessage] = useState('')
@@ -910,6 +983,84 @@ export default function AdminBoarding() {
     }))
   }
 
+  const onCropComplete = useCallback((_croppedArea, pixels) => {
+    setCroppedAreaPixels(pixels)
+  }, [])
+
+  const handleSelectImageForCrop = (file, field, label, defaultAspect = 1, shape = 'rect') => {
+    if (!file) return
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      setBannerUploadError(err.message)
+      return
+    }
+    setBannerUploadError('')
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setCroppedAreaPixels(null)
+      setCropperAspect(defaultAspect)
+      setCropData({
+        src: reader.result,
+        fileName: file.name,
+        field,
+        label,
+        defaultAspect,
+        shape,
+      })
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleOpenExistingCropper = (imageUrl, field, label, defaultAspect = 1, shape = 'rect') => {
+    if (!imageUrl) return
+    setBannerUploadError('')
+    setCrop({ x: 0, y: 0 })
+    setZoom(1)
+    setCroppedAreaPixels(null)
+    setCropperAspect(defaultAspect)
+    setCropData({
+      src: imageUrl,
+      fileName: `${field}.jpg`,
+      field,
+      label,
+      defaultAspect,
+      shape,
+    })
+  }
+
+  const handleCropConfirm = async () => {
+    if (!cropData || !croppedAreaPixels) return
+
+    const { field, fileName, src, label } = cropData
+    setUploadingImageField(field)
+    setBannerUploadError('')
+
+    try {
+      const croppedFile = await getCroppedImg(src, croppedAreaPixels, fileName)
+
+      const url = await uploadToCloudinary(croppedFile, {
+        onOptimizeStart: () => setOptimizingImageField(field),
+        onOptimizeEnd: () => setOptimizingImageField(null),
+      })
+
+      setSettingsDraft(p => ({ ...p, [field]: url }))
+      setToastType('success')
+      setToastMessage(`${label} cropped & uploaded! Click "Save Settings" to persist.`)
+      setCropData(null)
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+    } catch (err) {
+      setBannerUploadError(err.message || 'Image crop/upload failed. Please try again.')
+    } finally {
+      setOptimizingImageField(null)
+      setUploadingImageField(null)
+    }
+  }
+
   const handleBannerUpload = async (file) => {
     if (!file) return
     try {
@@ -993,6 +1144,8 @@ export default function AdminBoarding() {
         checkOutTimeDefault: String(settingsDraft.checkOutTimeDefault || '11:00 PM').trim(),
         lateCheckOutFee: lateFee,
         bannerImageUrl: String(settingsDraft.bannerImageUrl || '').trim(),
+        dogImageUrl: String(settingsDraft.dogImageUrl || '').trim(),
+        catImageUrl: String(settingsDraft.catImageUrl || '').trim(),
         acceptBookings: settingsDraft.acceptBookings !== false,
         showNewBadge: settingsDraft.showNewBadge !== false,
         terms: cleanedTerms,
@@ -3248,71 +3401,233 @@ export default function AdminBoarding() {
                 </div>
               </div>
 
-              {/* Pet Boarding Homepage Banner Image */}
+              {/* Pet Boarding Homepage Banner & Animal Avatars */}
               <div className="boarding-settings-section">
                 <span className="boarding-settings-section-heading">
-                  Homepage Boarding Banner Image
+                  Boarding Banner & Animal Avatars
                 </span>
-                <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '12px', lineHeight: 1.5 }}>
-                  Custom photo shown in the Pet Boarding card on the homepage. If left empty, or while your image is downloading on slow networks, the default cozy illustration is automatically displayed.
+                <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '14px', lineHeight: 1.5 }}>
+                  Customize the suite banner and dog/cat pricing badge avatars shown on the homepage. If left empty, default handcrafted illustrations are used automatically.
                 </p>
 
-                <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                  <div style={{ position: 'relative', width: '180px', height: '120px', borderRadius: '12px', overflow: 'hidden', border: '1.5px solid var(--border)', background: '#FAF3E3', flexShrink: 0 }}>
-                    <img
-                      src={settingsDraft.bannerImageUrl || defaultBoardingHeroImg}
-                      alt="Banner Preview"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={e => {
-                        e.currentTarget.onerror = null;
-                        e.currentTarget.src = defaultBoardingHeroImg;
-                      }}
-                    />
-                    <div style={{ position: 'absolute', bottom: '6px', left: '6px', right: '6px', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', textAlign: 'center', fontWeight: 600 }}>
-                      {settingsDraft.bannerImageUrl ? 'Custom Image Active' : 'Default Illustration'}
-                    </div>
+                {/* 1. Large Suite Banner */}
+                <div style={{ background: '#FAF6ED', border: '1px solid #EADBBE', borderRadius: '12px', padding: '12px 14px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>
+                      Homepage Boarding Banner (Large Suite)
+                    </span>
+                    <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '12px', background: settingsDraft.bannerImageUrl ? '#ECFDF5' : '#F3F4F6', color: settingsDraft.bannerImageUrl ? '#059669' : '#6B7280' }}>
+                      {settingsDraft.bannerImageUrl ? 'Custom Active' : 'Default Active'}
+                    </span>
                   </div>
 
-                  <div style={{ flex: 1, minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: uploadingBanner ? 'not-allowed' : 'pointer', width: 'fit-content', fontSize: '12.5px', padding: '8px 14px' }}>
-                      <Upload size={14} />
-                      {uploadingBanner ? (optimizingBanner ? 'Optimizing...' : 'Uploading...') : 'Upload Custom Image'}
-                      <input
-                        type="file"
-                        accept={IMAGE_FILE_ACCEPT}
-                        disabled={uploadingBanner}
-                        style={{ display: 'none' }}
-                        onChange={e => {
-                          if (e.target.files?.[0]) {
-                            handleBannerUpload(e.target.files[0])
-                            e.target.value = ''
-                          }
+                  <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative', width: '130px', height: '82px', borderRadius: '10px', overflow: 'hidden', border: '1.5px solid var(--border)', background: '#FAF3E3', flexShrink: 0 }}>
+                      <img
+                        src={settingsDraft.bannerImageUrl || defaultBoardingHeroImg}
+                        alt="Banner Preview"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={e => {
+                          e.currentTarget.onerror = null
+                          e.currentTarget.src = defaultBoardingHeroImg
                         }}
                       />
-                    </label>
+                    </div>
 
-                    {settingsDraft.bannerImageUrl && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '6px', width: 'fit-content', fontSize: '12px', padding: '4px 8px' }}
-                        onClick={() => setSettingsDraft(p => ({ ...p, bannerImageUrl: '' }))}
-                      >
-                        <Trash2 size={13} /> Remove Custom Image (Use Default)
-                      </button>
-                    )}
+                    <div style={{ flex: 1, minWidth: '180px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: uploadingImageField === 'bannerImageUrl' ? 'not-allowed' : 'pointer', fontSize: '11.5px', padding: '6px 10px' }}>
+                          <Upload size={13} />
+                          {uploadingImageField === 'bannerImageUrl' ? (optimizingImageField === 'bannerImageUrl' ? 'Optimizing...' : 'Uploading...') : 'Upload & Crop'}
+                          <input
+                            type="file"
+                            accept={IMAGE_FILE_ACCEPT}
+                            disabled={uploadingImageField !== null}
+                            style={{ display: 'none' }}
+                            onChange={e => {
+                              if (e.target.files?.[0]) {
+                                handleSelectImageForCrop(e.target.files[0], 'bannerImageUrl', 'Boarding Banner', 16 / 10, 'rect')
+                                e.target.value = ''
+                              }
+                            }}
+                          />
+                        </label>
 
-                    <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
-                      Supports JPG, PNG, WebP up to 10MB. Images are automatically compressed before upload.
-                    </span>
-
-                    {bannerUploadError && (
-                      <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 500 }}>
-                        {bannerUploadError}
+                        {settingsDraft.bannerImageUrl && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', padding: '6px 10px' }}
+                              onClick={() => handleOpenExistingCropper(settingsDraft.bannerImageUrl, 'bannerImageUrl', 'Boarding Banner', 16 / 10, 'rect')}
+                            >
+                              <Crop size={13} /> Re-crop
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', padding: '6px 8px' }}
+                              onClick={() => setSettingsDraft(p => ({ ...p, bannerImageUrl: '' }))}
+                            >
+                              <Trash2 size={13} /> Reset
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)' }}>
+                        Recommended wide ratio (~16:10). Shown on homepage and service page.
                       </span>
-                    )}
+                    </div>
                   </div>
                 </div>
+
+                {/* 2. Dog Boarding Avatar */}
+                <div style={{ background: '#FAF6ED', border: '1px solid #EADBBE', borderRadius: '12px', padding: '12px 14px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>
+                      🐶 Dog Boarding Avatar (Price Badge)
+                    </span>
+                    <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '12px', background: settingsDraft.dogImageUrl ? '#ECFDF5' : '#F3F4F6', color: settingsDraft.dogImageUrl ? '#059669' : '#6B7280' }}>
+                      {settingsDraft.dogImageUrl ? 'Custom Active' : 'Default Active'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative', width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', border: '2px solid var(--accent)', background: '#fff', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                      <img
+                        src={settingsDraft.dogImageUrl || defaultDogAvatar}
+                        alt="Dog Avatar Preview"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={e => {
+                          e.currentTarget.onerror = null
+                          e.currentTarget.src = defaultDogAvatar
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: '180px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: uploadingImageField === 'dogImageUrl' ? 'not-allowed' : 'pointer', fontSize: '11.5px', padding: '6px 10px' }}>
+                          <Upload size={13} />
+                          {uploadingImageField === 'dogImageUrl' ? (optimizingImageField === 'dogImageUrl' ? 'Optimizing...' : 'Uploading...') : 'Upload & Crop'}
+                          <input
+                            type="file"
+                            accept={IMAGE_FILE_ACCEPT}
+                            disabled={uploadingImageField !== null}
+                            style={{ display: 'none' }}
+                            onChange={e => {
+                              if (e.target.files?.[0]) {
+                                handleSelectImageForCrop(e.target.files[0], 'dogImageUrl', 'Dog Boarding Avatar', 1, 'round')
+                                e.target.value = ''
+                              }
+                            }}
+                          />
+                        </label>
+
+                        {settingsDraft.dogImageUrl && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', padding: '6px 10px' }}
+                              onClick={() => handleOpenExistingCropper(settingsDraft.dogImageUrl, 'dogImageUrl', 'Dog Boarding Avatar', 1, 'round')}
+                            >
+                              <Crop size={13} /> Re-crop
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', padding: '6px 8px' }}
+                              onClick={() => setSettingsDraft(p => ({ ...p, dogImageUrl: '' }))}
+                            >
+                              <Trash2 size={13} /> Reset
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)' }}>
+                        Square (1:1) avatar. Displayed inside the ₹{settingsDraft.dogDailyRate || 800}/day Dog Boarding pill.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Cat Boarding Avatar */}
+                <div style={{ background: '#FAF6ED', border: '1px solid #EADBBE', borderRadius: '12px', padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>
+                      🐱 Cat Boarding Avatar (Price Badge)
+                    </span>
+                    <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '12px', background: settingsDraft.catImageUrl ? '#ECFDF5' : '#F3F4F6', color: settingsDraft.catImageUrl ? '#059669' : '#6B7280' }}>
+                      {settingsDraft.catImageUrl ? 'Custom Active' : 'Default Active'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative', width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', border: '2px solid var(--accent)', background: '#fff', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                      <img
+                        src={settingsDraft.catImageUrl || defaultCatAvatar}
+                        alt="Cat Avatar Preview"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={e => {
+                          e.currentTarget.onerror = null
+                          e.currentTarget.src = defaultCatAvatar
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: '180px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: uploadingImageField === 'catImageUrl' ? 'not-allowed' : 'pointer', fontSize: '11.5px', padding: '6px 10px' }}>
+                          <Upload size={13} />
+                          {uploadingImageField === 'catImageUrl' ? (optimizingImageField === 'catImageUrl' ? 'Optimizing...' : 'Uploading...') : 'Upload & Crop'}
+                          <input
+                            type="file"
+                            accept={IMAGE_FILE_ACCEPT}
+                            disabled={uploadingImageField !== null}
+                            style={{ display: 'none' }}
+                            onChange={e => {
+                              if (e.target.files?.[0]) {
+                                handleSelectImageForCrop(e.target.files[0], 'catImageUrl', 'Cat Boarding Avatar', 1, 'round')
+                                e.target.value = ''
+                              }
+                            }}
+                          />
+                        </label>
+
+                        {settingsDraft.catImageUrl && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', padding: '6px 10px' }}
+                              onClick={() => handleOpenExistingCropper(settingsDraft.catImageUrl, 'catImageUrl', 'Cat Boarding Avatar', 1, 'round')}
+                            >
+                              <Crop size={13} /> Re-crop
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', padding: '6px 8px' }}
+                              onClick={() => setSettingsDraft(p => ({ ...p, catImageUrl: '' }))}
+                            >
+                              <Trash2 size={13} /> Reset
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)' }}>
+                        Square (1:1) avatar. Displayed inside the ₹{settingsDraft.catDailyRate || 600}/day Cat Boarding pill.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {bannerUploadError && (
+                  <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 500, display: 'block', marginTop: '8px' }}>
+                    {bannerUploadError}
+                  </span>
+                )}
               </div>
 
               {/* Pet Boarding Terms & Conditions */}
@@ -3504,6 +3819,212 @@ export default function AdminBoarding() {
               >
                 {savingSettings ? 'Saving...' : 'Save Settings'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Crop Modal for Pet Boarding Visuals */}
+      {cropData && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 10005,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={() => !uploadingImageField && setCropData(null)}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '600px',
+              background: '#FCFAF6',
+              borderRadius: '16px',
+              border: '1.5px solid #EADBBE',
+              boxShadow: '0 24px 48px rgba(0,0,0,0.35)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: '92vh',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid #EADBBE',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: '#FAF5EC',
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontFamily: '"Playfair Display",serif', fontSize: '18px', fontWeight: 800, color: 'var(--text)' }}>
+                  {cropData.label}
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: '12px', color: 'var(--muted)' }}>
+                  Drag to frame, pinch or use slider to zoom.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCropData(null)}
+                disabled={uploadingImageField !== null}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  borderRadius: '50%',
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Aspect Ratio Buttons (for Banner only, avatar is 1:1) */}
+            {cropData.field === 'bannerImageUrl' && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 20px',
+                  background: '#fff',
+                  borderBottom: '1px solid #F0E6D2',
+                  overflowX: 'auto',
+                }}
+              >
+                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--muted)' }}>
+                  Aspect:
+                </span>
+                {[
+                  { label: '16:10 (Default)', val: 16 / 10 },
+                  { label: '16:9 (Wide)', val: 16 / 9 },
+                  { label: '4:3', val: 4 / 3 },
+                  { label: 'Free', val: undefined },
+                ].map(opt => {
+                  const active = cropperAspect === opt.val || (cropperAspect === undefined && opt.val === undefined)
+                  return (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      onClick={() => setCropperAspect(opt.val)}
+                      style={{
+                        border: active ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+                        background: active ? 'var(--accent)' : 'var(--surface)',
+                        color: active ? '#fff' : 'var(--text)',
+                        borderRadius: '20px',
+                        padding: '4px 12px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Cropper Canvas */}
+            <div
+              style={{
+                position: 'relative',
+                width: '100%',
+                height: '360px',
+                background: '#1A1412',
+              }}
+            >
+              <Cropper
+                image={cropData.src}
+                crop={crop}
+                zoom={zoom}
+                aspect={cropperAspect}
+                cropShape={cropData.shape === 'round' ? 'round' : 'rect'}
+                showGrid={cropData.shape !== 'round'}
+                onCropChange={setCrop}
+                onCropComplete={onCropComplete}
+                onZoomChange={setZoom}
+              />
+            </div>
+
+            {/* Zoom Slider */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '12px 20px',
+                background: '#fff',
+                borderTop: '1px solid #F0E6D2',
+              }}
+            >
+              <ZoomIn size={16} style={{ color: 'var(--muted)' }} />
+              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', minWidth: '40px' }}>Zoom</span>
+              <input
+                type="range"
+                min="1"
+                max="3"
+                step="0.01"
+                value={zoom}
+                onChange={e => setZoom(Number(e.target.value))}
+                style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)', minWidth: '34px', textAlign: 'right' }}>
+                {zoom.toFixed(1)}x
+              </span>
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                padding: '14px 20px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: '#FAF5EC',
+                borderTop: '1px solid #EADBBE',
+              }}
+            >
+              <p style={{ margin: 0, fontSize: '11px', color: 'var(--muted)' }}>
+                {cropData.shape === 'round' ? 'Circular preview matches the price badge.' : 'Drag to adjust framing.'}
+              </p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setCropData(null)}
+                  disabled={uploadingImageField !== null}
+                  style={{ fontSize: '13px', padding: '8px 16px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleCropConfirm}
+                  disabled={uploadingImageField !== null}
+                  style={{ fontSize: '13px', padding: '8px 18px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Crop size={15} />
+                  {uploadingImageField ? (optimizingImageField ? 'Optimizing...' : 'Uploading...') : 'Confirm & Upload'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 // src/pages/MyBookings.jsx
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
+import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, Timestamp, onSnapshot } from 'firebase/firestore'
 import {
   AlertCircle,
   ArrowRight,
@@ -68,11 +68,13 @@ import {
   parseSlotTimeToMinutes,
 } from '../utils/walkingSettings'
 import { downloadInvoicePdf } from '../utils/invoicePdf'
+import LiveWalkModal from '../components/LiveWalkModal'
 
 const STATUS_BADGE = {
   pending: 'badge-pending',
   confirmed: 'badge-confirmed',
   checked_in: 'badge-confirmed',
+  in_progress: 'badge-confirmed',
   checked_out: 'badge-completed',
   completed: 'badge-completed',
   cancelled: 'badge-cancelled',
@@ -84,6 +86,7 @@ const statusLabel = status => {
   if (status === 'all') return 'All'
   if (status === 'checked_in') return 'Checked In'
   if (status === 'checked_out') return 'Checked Out'
+  if (status === 'in_progress') return 'Walk In Progress'
   return (status || 'pending').charAt(0).toUpperCase() + (status || 'pending').slice(1)
 }
 const money = value => Number(value || 0).toLocaleString('en-IN')
@@ -362,6 +365,7 @@ export default function MyBookings() {
   const [walkings, setWalkings] = useState([])
   const [walkingLoading, setWalkingLoading] = useState(false)
   const [selectedWalking, setSelectedWalking] = useState(null)
+  const [liveTrackingWalking, setLiveTrackingWalking] = useState(null)
   const [walkingCancelTarget, setWalkingCancelTarget] = useState(null)
   const [walkingCancelReason, setWalkingCancelReason] = useState('')
   const [cancellingWalkingId, setCancellingWalkingId] = useState('')
@@ -585,24 +589,32 @@ export default function MyBookings() {
     setCancellingBoardingId('')
   }
 
-  const fetchWalkings = async () => {
-    if (!user?.uid) return
-    setWalkingLoading(true)
-    try {
-      const q = query(collection(db, 'walkingBookings'), where('userId', '==', user.uid))
-      const snap = await getDocs(q)
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      list.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
-      setWalkings(list)
-    } catch {}
-    setWalkingLoading(false)
-  }
-
   useEffect(() => {
-    if (user?.uid) {
-      fetchWalkings()
+    if (!user?.uid) {
+      setWalkings([])
+      setWalkingLoading(false)
+      return
     }
-  }, [user])
+
+    setWalkingLoading(true)
+    const q = query(collection(db, 'walkingBookings'), where('userId', '==', user.uid))
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        list.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
+        setWalkings(list)
+        setWalkingLoading(false)
+      },
+      (err) => {
+        console.warn('Realtime walking bookings error:', err)
+        setWalkingLoading(false)
+      }
+    )
+
+    return () => unsub()
+  }, [user?.uid])
 
   const cancelWalkingBooking = async () => {
     if (!walkingCancelTarget || !walkingCancelReason.trim()) return
@@ -1458,6 +1470,44 @@ export default function MyBookings() {
 
                       {/* Action Bar */}
                       <div className="my-booking-row-actions" onClick={e => e.stopPropagation()}>
+                        {w.status === 'in_progress' && (
+                          <button
+                            type="button"
+                            className="my-booking-card-btn"
+                            style={{
+                              background: '#16a34a',
+                              borderColor: '#15803d',
+                              color: '#fff',
+                              fontWeight: 800,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                            }}
+                            onClick={() => setLiveTrackingWalking(w)}
+                          >
+                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#fff', animation: 'pawpaw-gps-pulse 1.5s infinite' }} />
+                            Live GPS Walk
+                          </button>
+                        )}
+
+                        {w.status === 'completed' && (Array.isArray(w.routeTrail) && w.routeTrail.length > 0) && (
+                          <button
+                            type="button"
+                            className="my-booking-card-btn"
+                            style={{
+                              color: 'var(--accent)',
+                              borderColor: 'var(--accent-border)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                            onClick={() => setLiveTrackingWalking(w)}
+                            title="View recorded walk route"
+                          >
+                            <Footprints size={12} /> Walk Route
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           className="my-booking-card-btn details"
@@ -3178,6 +3228,62 @@ export default function MyBookings() {
                     </div>
                   </div>
                 )}
+
+                {/* SECTION: Walker & Live GPS Tracking */}
+                {(selectedWalking.assignedTeamMemberName || selectedWalking.status === 'in_progress' || (Array.isArray(selectedWalking.routeTrail) && selectedWalking.routeTrail.length > 0)) && (
+                  <div className="boarding-section-card" style={{ border: selectedWalking.status === 'in_progress' ? '1.5px solid #16a34a' : '1px solid var(--border)' }}>
+                    <div className="section-card-header">
+                      <div className="section-icon-wrap paw" style={{ background: selectedWalking.status === 'in_progress' ? 'rgba(34, 197, 94, 0.15)' : 'var(--accent-bg)', color: selectedWalking.status === 'in_progress' ? '#16a34a' : 'var(--accent)' }}>
+                        <Footprints size={16} />
+                      </div>
+                      <h3>Dog Walker & Live GPS</h3>
+                    </div>
+
+                    <div className="detail-two-col-grid">
+                      {selectedWalking.assignedTeamMemberName && (
+                        <div className="detail-item">
+                          <span className="detail-label">Assigned Walker</span>
+                          <strong className="detail-val">{selectedWalking.assignedTeamMemberName}</strong>
+                        </div>
+                      )}
+                      {selectedWalking.assignedTeamMemberPhone && (
+                        <div className="detail-item">
+                          <span className="detail-label">Walker Contact</span>
+                          <a href={`tel:${selectedWalking.assignedTeamMemberPhone}`} style={{ color: 'var(--accent)', fontWeight: 700, textDecoration: 'none' }}>
+                            📞 {selectedWalking.assignedTeamMemberPhone}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    {(selectedWalking.status === 'in_progress' || (Array.isArray(selectedWalking.routeTrail) && selectedWalking.routeTrail.length > 0)) && (
+                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed var(--border)' }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          style={{
+                            width: '100%',
+                            background: selectedWalking.status === 'in_progress' ? '#16a34a' : 'var(--accent)',
+                            borderColor: selectedWalking.status === 'in_progress' ? '#15803d' : 'var(--accent-border)',
+                            color: '#fff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            fontWeight: 800,
+                            padding: '10px',
+                          }}
+                          onClick={() => {
+                            setLiveTrackingWalking(selectedWalking)
+                          }}
+                        >
+                          <Footprints size={16} />
+                          {selectedWalking.status === 'in_progress' ? 'Open Live GPS Dog Walk Tracker' : 'View Recorded Walk Route'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Modal Footer Actions */}
@@ -3372,6 +3478,16 @@ export default function MyBookings() {
           </div>
         )
       })()}
+
+      {/* Live Dog Walk GPS Tracker Modal */}
+      {liveTrackingWalking && (
+        <LiveWalkModal
+          bookingId={liveTrackingWalking.id}
+          initialBooking={liveTrackingWalking}
+          onClose={() => setLiveTrackingWalking(null)}
+        />
+      )}
+
       <style>{`
         .my-bookings-page {
           background: var(--bg);
