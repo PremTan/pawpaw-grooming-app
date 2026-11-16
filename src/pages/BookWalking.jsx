@@ -79,84 +79,204 @@ const loadLeaflet = () => {
   })
 }
 
-// Reverse geocodes coordinates to street and locality in Pune/India
+// Known landmarks in Pune, Dhayari & surrounding areas for high-precision landmark mapping
+const POPULAR_PUNE_LANDMARKS = [
+  { name: 'DSK Vishwa', area: 'DSK Vishwa', coords: { lat: 18.4385, lng: 73.8055 } },
+  { name: 'Benkar Vasti', area: 'Benkar Vasti', coords: { lat: 18.4423, lng: 73.8118 } },
+  { name: 'Dhayari Gaon / Maruti Mandir', area: 'Dhayari', coords: { lat: 18.4485, lng: 73.8123 } },
+  { name: 'Dhayari Phata / Pari Company', area: 'Sinhagad Road (Dhayari Phata to Toll Plaza)', coords: { lat: 18.4610, lng: 73.8190 } },
+  { name: 'Vadgaon Budruk / Fun Time', area: 'Vadgaon Budruk', coords: { lat: 18.4680, lng: 73.8235 } },
+  { name: 'Narhe Colony / Zeal College', area: 'Narhe', coords: { lat: 18.4520, lng: 73.8290 } },
+  { name: 'Ambegaon Budruk / D-Mart', area: 'Ambegaon Budruk', coords: { lat: 18.4590, lng: 73.8410 } },
+  { name: 'Sinhagad Toll Plaza / Donje', area: 'Sinhagad Road (Dhayari Phata to Toll Plaza)', coords: { lat: 18.4350, lng: 73.7990 } },
+  { name: 'Manik Baug / Sinhagad Road', area: 'Sinhagad Road', coords: { lat: 18.4750, lng: 73.8280 } },
+  { name: 'Nanded City / Destination Center', area: 'Nanded City', coords: { lat: 18.4580, lng: 73.7880 } },
+  { name: 'Warje Bridge / Mai Mangeshkar', area: 'Warje', coords: { lat: 18.4810, lng: 73.7990 } },
+  { name: 'Katraj Zoo / Dairy Chowk', area: 'Katraj', coords: { lat: 18.4530, lng: 73.8560 } },
+  { name: 'Kothrud / Karve Road', area: 'Kothrud', coords: { lat: 18.5074, lng: 73.8077 } },
+  { name: 'Mahad / Shivaji Chowk', area: 'Mahad', coords: { lat: 18.2356, lng: 73.4219 } },
+  { name: 'Poladpur / ST Stand', area: 'Poladpur', coords: { lat: 17.9839, lng: 73.4688 } },
+]
+
+// Finds the closest landmark within 3.5 km
+function findClosestLandmark(lat, lng) {
+  if (!lat || !lng) return null
+  let closest = null
+  let minDistance = Infinity
+
+  for (const spot of POPULAR_PUNE_LANDMARKS) {
+    const dLat = (spot.coords.lat - lat) * (Math.PI / 180)
+    const dLng = (spot.coords.lng - lng) * (Math.PI / 180)
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat * (Math.PI / 180)) * Math.cos(spot.coords.lat * (Math.PI / 180)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    const distMeters = 6371000 * c
+
+    if (distMeters < minDistance) {
+      minDistance = distMeters
+      closest = { ...spot, distMeters }
+    }
+  }
+
+  if (closest && closest.distMeters <= 3500) {
+    const distStr = closest.distMeters < 400 ? '' : ` (${(closest.distMeters / 1000).toFixed(1)} km)`
+    return `Near ${closest.name}${distStr}`
+  }
+  return null
+}
+
+// Multi-strategy reverse geocode for complete street address and nearby landmark
 async function reverseGeocodeCoords(lat, lng) {
   if (!lat || !lng) return { formattedAddress: '', area: '', landmark: '' }
 
-  // Strategy 1: OpenStreetMap Nominatim
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 4500)
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1`,
-      {
-        signal: controller.signal,
-        headers: { 'Accept-Language': 'en' },
-      }
-    )
-    clearTimeout(timeoutId)
-    if (res.ok) {
-      const data = await res.json()
-      if (data?.address) {
-        const a = data.address
-        const parts = [
-          a.building || a.house_name || a.house_number || a.apartment || '',
-          a.road || a.street || a.residential || a.pedestrian || '',
-          a.suburb || a.neighbourhood || a.locality || a.village || '',
-          a.city_district || a.city || a.town || 'Pune',
-          a.postcode ? `PIN ${a.postcode}` : '',
-        ].filter(Boolean)
-        const formatted = parts.length > 0 ? parts.join(', ') : data.display_name.split(',').slice(0, 4).join(', ').trim()
-        return {
-          formattedAddress: formatted,
-          area: a.suburb || a.neighbourhood || a.locality || '',
-          landmark: a.building || a.road || a.suburb || '',
-        }
-      } else if (data?.display_name) {
-        return {
-          formattedAddress: data.display_name.split(',').slice(0, 4).join(', ').trim(),
-          area: '',
-          landmark: '',
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('Nominatim reverse geocode error:', e)
-  }
+  let best = { formattedAddress: '', area: '', landmark: '', road: '', locality: '' }
 
-  // Strategy 2: BigDataCloud reverse geocode fallback
+  // Strategy 1: Photon by Komoot (Very fast, open CORS, high-detail OSM street & building data)
   try {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 3500)
+    const timeoutId = setTimeout(() => controller.abort(), 4000)
     const res = await fetch(
-      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`,
+      `https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`,
       { signal: controller.signal }
     )
     clearTimeout(timeoutId)
     if (res.ok) {
       const data = await res.json()
-      const parts = [
-        data.locality || data.localityInfo?.administrative?.[3]?.name || '',
-        data.city || data.principalSubdivision || 'Pune',
-        data.postcode ? `PIN ${data.postcode}` : '',
-      ].filter(Boolean)
-      if (parts.length > 0) {
-        return {
-          formattedAddress: parts.join(', '),
-          area: data.locality || '',
-          landmark: data.locality || '',
+      const p = data.features?.[0]?.properties
+      if (p) {
+        const parts = [
+          p.name && p.name !== p.street ? p.name : '',
+          p.housenumber ? `House #${p.housenumber}` : '',
+          p.street || '',
+          p.district || p.locality || p.suburb || '',
+          p.city || p.county || 'Pune',
+          p.postcode ? `PIN ${p.postcode}` : '',
+        ].filter(Boolean)
+
+        if (parts.length > 0) {
+          best = {
+            formattedAddress: parts.join(', '),
+            area: p.district || p.locality || p.suburb || p.city || '',
+            landmark: p.name && p.name !== p.street ? `Near ${p.name}` : (p.street ? `Near ${p.street}` : ''),
+            road: p.street || '',
+            locality: p.district || p.locality || p.suburb || '',
+          }
         }
       }
     }
   } catch (e) {
-    console.warn('BigDataCloud reverse geocode error:', e)
+    console.warn('Photon reverse geocode error:', e)
   }
 
-  return {
-    formattedAddress: `Location Coordinates (${lat.toFixed(5)}, ${lng.toFixed(5)})`,
-    area: '',
-    landmark: '',
+  // Strategy 2: OpenStreetMap Nominatim with zoom=18 building precision
+  if (!best.formattedAddress || best.formattedAddress.split(',').length < 3) {
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 4500)
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&email=pawpawgrooming.app@gmail.com`,
+        {
+          signal: controller.signal,
+          headers: { 'Accept-Language': 'en' },
+        }
+      )
+      clearTimeout(timeoutId)
+      if (res.ok) {
+        const data = await res.json()
+        const a = data?.address
+        if (a) {
+          const poi = a.amenity || a.building || a.shop || a.tourism || a.leisure || a.house_name || ''
+          const street = a.road || a.street || a.residential || a.pedestrian || ''
+          const subArea = a.suburb || a.neighbourhood || a.locality || a.village || a.hamlet || ''
+          const city = a.city || a.town || a.city_district || a.county || 'Pune'
+          const pin = a.postcode ? `PIN ${a.postcode}` : ''
+
+          const parts = [poi, street, subArea, city, pin].filter(Boolean)
+          if (parts.length > 0) {
+            best = {
+              formattedAddress: parts.join(', '),
+              area: subArea || city,
+              landmark: poi ? `Near ${poi}` : (street ? `Near ${street}` : (subArea ? `Near ${subArea}` : '')),
+              road: street,
+              locality: subArea,
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Nominatim reverse geocode error:', e)
+    }
   }
+
+  // Strategy 3: BigDataCloud Deep Inspection fallback
+  if (!best.formattedAddress || best.formattedAddress.split(',').length < 3) {
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 3500)
+      const res = await fetch(
+        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`,
+        { signal: controller.signal }
+      )
+      clearTimeout(timeoutId)
+      if (res.ok) {
+        const data = await res.json()
+        const infoItems = (data.localityInfo?.informative || [])
+          .filter(i => i.name && i.name.length > 2 && i.name !== data.city && i.name !== data.countryName)
+          .map(i => i.name)
+        const adminItems = (data.localityInfo?.administrative || [])
+          .filter(a => a.name && a.order >= 4 && a.name !== data.city && a.name !== data.principalSubdivision)
+          .map(a => a.name)
+
+        const localArea = data.locality || adminItems[adminItems.length - 1] || infoItems[0] || ''
+        const streetOrPOI = infoItems[1] || infoItems[0] || adminItems[0] || ''
+        const city = data.city || data.principalSubdivision || 'Pune'
+        const pin = data.postcode ? `PIN ${data.postcode}` : ''
+
+        const parts = [
+          streetOrPOI && streetOrPOI !== localArea ? streetOrPOI : '',
+          localArea,
+          city,
+          pin,
+        ].filter(Boolean)
+
+        if (parts.length > 0) {
+          best = {
+            formattedAddress: parts.join(', '),
+            area: localArea || city,
+            landmark: streetOrPOI ? `Near ${streetOrPOI}` : (localArea ? `Near ${localArea}` : ''),
+            road: streetOrPOI,
+            locality: localArea,
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('BigDataCloud reverse geocode error:', e)
+    }
+  }
+
+  // Query nearby landmark from registry if landmark is still empty
+  const nearbySpot = findClosestLandmark(lat, lng)
+  if (!best.landmark && nearbySpot) {
+    best.landmark = nearbySpot
+  }
+
+  // If formattedAddress is only City & PIN (e.g. "Pune, PIN 402300"), enrich it with the landmark / area name
+  if (best.formattedAddress) {
+    const partsCount = best.formattedAddress.split(',').length
+    if (partsCount <= 2 && best.landmark) {
+      const landmarkClean = best.landmark.replace(/^Near\s+/i, '').replace(/\s*\([^)]*\)$/, '')
+      best.formattedAddress = `${landmarkClean}, ${best.formattedAddress}`
+    }
+  } else {
+    best.formattedAddress = nearbySpot
+      ? `${nearbySpot.replace(/^Near\s+/i, '')}, Pune`
+      : `Live GPS Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`
+    best.landmark = nearbySpot || 'Near Main Road'
+  }
+
+  return best
 }
 
 export default function BookWalking() {
@@ -332,6 +452,17 @@ export default function BookWalking() {
     checkBookedSlots()
     return () => { cancelled = true }
   }, [form.date, settings.maxCapacityPerSlot])
+
+  // Split morning and evening slots for 2x daily walking
+  const morningSlots = useMemo(() => {
+    const am = (settings.slots || []).filter(s => s.toUpperCase().includes('AM'))
+    return am.length > 0 ? am : ['06:30 AM', '07:15 AM', '08:00 AM', '08:45 AM', '09:30 AM']
+  }, [settings.slots])
+
+  const eveningSlots = useMemo(() => {
+    const pm = (settings.slots || []).filter(s => s.toUpperCase().includes('PM'))
+    return pm.length > 0 ? pm : ['05:00 PM', '05:45 PM', '06:30 PM', '07:15 PM', '08:00 PM']
+  }, [settings.slots])
 
   const update = (key, val) => setForm(prev => ({ ...prev, [key]: val }))
 
@@ -650,6 +781,19 @@ export default function BookWalking() {
         { duration: 60, price: settings.rate60Min || 349, label: '60 Min Walk' },
       ]
 
+  const packsConfig = settings?.packs || DEFAULT_WALKING_PACKS
+  const weeklyPack = packsConfig?.weekly || DEFAULT_WALKING_PACKS.weekly
+  const monthlyPack = packsConfig?.monthly || DEFAULT_WALKING_PACKS.monthly
+  const weeklyDiscount = Number(weeklyPack?.discountPercent ?? 12)
+  const monthlyDiscount = Number(monthlyPack?.discountPercent ?? 22)
+  const weeklyBadge = weeklyPack?.badgeText || (weeklyDiscount > 0 ? `${weeklyDiscount}% OFF` : 'Popular')
+  const monthlyBadge = monthlyPack?.badgeText || (monthlyDiscount > 0 ? `Save ${monthlyDiscount}%` : 'Best Value')
+  const weeklyWalkCount = Number(weeklyPack?.walkCount || weeklyPack?.totalWalks) || 7
+  const monthlyWalkCount = Number(monthlyPack?.walkCount || monthlyPack?.totalWalks) || 26
+  const weeklyName = weeklyPack?.name || `${weeklyWalkCount}-Day Pass`
+  const monthlyName = monthlyPack?.name || 'Monthly Pass'
+  const isPacksEnabled = packsConfig?.enabled !== false
+
   const packCalc = calculatePackPrice({
     planType: form.planType || 'single',
     duration: Number(form.duration) || 30,
@@ -700,13 +844,20 @@ export default function BookWalking() {
         : 'Pet Walking is closed on this day. Please choose another date.')
       return
     }
-    if (!form.slot && !form.customTimeRequested.trim()) {
-      alert('Please choose a walking time slot or specify a custom time.')
-      return
-    }
-    if (form.frequency === 'twice_daily' && !form.eveningSlot) {
-      alert('Please select an evening walk slot for the 2nd daily walk.')
-      return
+    if (form.frequency === 'twice_daily') {
+      if (!form.slot && !form.customTimeRequested.trim()) {
+        alert('Please select a Morning walk slot (1st daily walk).')
+        return
+      }
+      if (!form.eveningSlot) {
+        alert('Please select an Evening walk slot (2nd daily walk).')
+        return
+      }
+    } else {
+      if (!form.slot && !form.customTimeRequested.trim()) {
+        alert('Please choose a walking time slot or specify a custom time.')
+        return
+      }
     }
     setStep(3)
   }
@@ -759,8 +910,14 @@ export default function BookWalking() {
         durationMinutes: Number(form.duration),
         date: form.date,
         walkingDate: form.date,
-        slot: form.slot || (form.customTimeRequested ? `Custom: ${form.customTimeRequested.trim()}` : 'Custom Timing'),
-        walkingSlot: form.slot || (form.customTimeRequested ? `Custom: ${form.customTimeRequested.trim()}` : 'Custom Timing'),
+        morningSlot: form.slot || form.customTimeRequested.trim(),
+        eveningSlot: form.frequency === 'twice_daily' ? (form.eveningSlot || '') : '',
+        slot: form.frequency === 'twice_daily' && form.eveningSlot
+          ? `${form.slot || form.customTimeRequested.trim()} & ${form.eveningSlot}`
+          : (form.slot || (form.customTimeRequested ? `Custom: ${form.customTimeRequested.trim()}` : 'Custom Timing')),
+        walkingSlot: form.frequency === 'twice_daily' && form.eveningSlot
+          ? `${form.slot || form.customTimeRequested.trim()} (Morning) & ${form.eveningSlot} (Evening)`
+          : (form.slot || (form.customTimeRequested ? `Custom: ${form.customTimeRequested.trim()}` : 'Custom Timing')),
         customTimeRequested: form.customTimeRequested.trim(),
         notes: form.notes.trim(),
         walkerInstructions: form.notes.trim(),
@@ -768,7 +925,6 @@ export default function BookWalking() {
         planType: form.planType || 'single',
         frequency: form.frequency || 'once_daily',
         schedulePattern: form.schedulePattern || 'weekdays',
-        eveningSlot: form.frequency === 'twice_daily' ? (form.eveningSlot || '') : '',
         totalWalks: packCalc.walkCount,
         completedWalks: 0,
         skippedWalks: 0,
@@ -1507,51 +1663,59 @@ export default function BookWalking() {
                     <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '3px' }}>Pay per walk</div>
                   </button>
 
-                  {/* 7-Day Weekly Pack */}
-                  <button
-                    type="button"
-                    onClick={() => update('planType', 'weekly')}
-                    style={{
-                      background: form.planType === 'weekly' ? 'var(--accent-bg)' : 'var(--surface)',
-                      border: `2px solid ${form.planType === 'weekly' ? 'var(--accent)' : 'var(--border)'}`,
-                      borderRadius: '14px',
-                      padding: '12px 10px',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      position: 'relative',
-                    }}
-                  >
-                    <span style={{ position: 'absolute', top: '-7px', right: '8px', background: '#f59e0b', color: '#fff', fontSize: '9px', fontWeight: 900, padding: '2px 6px', borderRadius: '999px', textTransform: 'uppercase' }}>
-                      12% OFF
-                    </span>
-                    <div style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '2px' }}>Weekly</div>
-                    <div style={{ fontSize: '14px', fontWeight: 800, color: form.planType === 'weekly' ? 'var(--accent)' : 'var(--text)' }}>7-Day Pass</div>
-                    <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '3px' }}>Flexible Routine</div>
-                  </button>
+                  {/* Weekly Pack */}
+                  {(isPacksEnabled && weeklyPack?.enabled !== false) && (
+                    <button
+                      type="button"
+                      onClick={() => update('planType', 'weekly')}
+                      style={{
+                        background: form.planType === 'weekly' ? 'var(--accent-bg)' : 'var(--surface)',
+                        border: `2px solid ${form.planType === 'weekly' ? 'var(--accent)' : 'var(--border)'}`,
+                        borderRadius: '14px',
+                        padding: '12px 10px',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        position: 'relative',
+                      }}
+                    >
+                      {weeklyBadge && (
+                        <span style={{ position: 'absolute', top: '-7px', right: '8px', background: '#f59e0b', color: '#fff', fontSize: '9px', fontWeight: 900, padding: '2px 6px', borderRadius: '999px', textTransform: 'uppercase' }}>
+                          {weeklyBadge}
+                        </span>
+                      )}
+                      <div style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '2px' }}>Weekly</div>
+                      <div style={{ fontSize: '14px', fontWeight: 800, color: form.planType === 'weekly' ? 'var(--accent)' : 'var(--text)' }}>{weeklyName}</div>
+                      <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '3px' }}>Flexible Routine</div>
+                    </button>
+                  )}
 
                   {/* Monthly Subscription */}
-                  <button
-                    type="button"
-                    onClick={() => update('planType', 'monthly')}
-                    style={{
-                      background: form.planType === 'monthly' ? 'var(--accent-bg)' : 'var(--surface)',
-                      border: `2px solid ${form.planType === 'monthly' ? 'var(--accent)' : 'var(--border)'}`,
-                      borderRadius: '14px',
-                      padding: '12px 10px',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      position: 'relative',
-                    }}
-                  >
-                    <span style={{ position: 'absolute', top: '-7px', right: '8px', background: '#10b981', color: '#fff', fontSize: '9px', fontWeight: 900, padding: '2px 6px', borderRadius: '999px', textTransform: 'uppercase' }}>
-                      Save 22%
-                    </span>
-                    <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#10b981', textTransform: 'uppercase', marginBottom: '2px' }}>Monthly</div>
-                    <div style={{ fontSize: '14px', fontWeight: 800, color: form.planType === 'monthly' ? 'var(--accent)' : 'var(--text)' }}>Monthly Pass</div>
-                    <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '3px' }}>Best Value</div>
-                  </button>
+                  {(isPacksEnabled && monthlyPack?.enabled !== false) && (
+                    <button
+                      type="button"
+                      onClick={() => update('planType', 'monthly')}
+                      style={{
+                        background: form.planType === 'monthly' ? 'var(--accent-bg)' : 'var(--surface)',
+                        border: `2px solid ${form.planType === 'monthly' ? 'var(--accent)' : 'var(--border)'}`,
+                        borderRadius: '14px',
+                        padding: '12px 10px',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        position: 'relative',
+                      }}
+                    >
+                      {monthlyBadge && (
+                        <span style={{ position: 'absolute', top: '-7px', right: '8px', background: '#10b981', color: '#fff', fontSize: '9px', fontWeight: 900, padding: '2px 6px', borderRadius: '999px', textTransform: 'uppercase' }}>
+                          {monthlyBadge}
+                        </span>
+                      )}
+                      <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#10b981', textTransform: 'uppercase', marginBottom: '2px' }}>Monthly</div>
+                      <div style={{ fontSize: '14px', fontWeight: 800, color: form.planType === 'monthly' ? 'var(--accent)' : 'var(--text)' }}>{monthlyName}</div>
+                      <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '3px' }}>Best Value</div>
+                    </button>
+                  )}
                 </div>
 
                 {/* Pack details, frequency & Skip Day benefit */}
@@ -1562,7 +1726,10 @@ export default function BookWalking() {
                       <div style={{ display: 'flex', gap: '6px' }}>
                         <button
                           type="button"
-                          onClick={() => update('frequency', 'once_daily')}
+                          onClick={() => {
+                            update('frequency', 'once_daily')
+                            update('eveningSlot', '')
+                          }}
                           style={{
                             padding: '4px 10px',
                             borderRadius: '8px',
@@ -1578,7 +1745,13 @@ export default function BookWalking() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => update('frequency', 'twice_daily')}
+                          onClick={() => {
+                            update('frequency', 'twice_daily')
+                            if (form.slot && form.slot.toUpperCase().includes('PM')) {
+                              update('eveningSlot', form.slot)
+                              update('slot', '')
+                            }
+                          }}
                           style={{
                             padding: '4px 10px',
                             borderRadius: '8px',
@@ -1695,117 +1868,298 @@ export default function BookWalking() {
                 )}
               </div>
 
-              {/* Time Slots Grid */}
-              <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                  <Footprints size={18} color="var(--accent)" /> Available Walk Slots
-                </span>
-                <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
-                  {!isDayOpen ? 'Closed' : loadingSlots ? 'Checking slots...' : `${bookedSlotsForDate.length} slot(s) full`}
-                </span>
-              </h2>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginBottom: '16px' }}>
-                {!isDayOpen ? (
-                  <div style={{ gridColumn: '1 / -1', padding: '16px', textAlign: 'center', background: 'rgba(239,68,68,0.06)', border: '1.5px dashed rgba(239,68,68,0.3)', borderRadius: '12px', color: '#ef4444' }}>
-                    <div style={{ fontWeight: 800, fontSize: '14px', marginBottom: '4px' }}>
-                      🚫 Closed for Dog Walking
+              {/* Time Slots Section */}
+              {!isDayOpen ? (
+                <div style={{ padding: '16px', textAlign: 'center', background: 'rgba(239,68,68,0.06)', border: '1.5px dashed rgba(239,68,68,0.3)', borderRadius: '12px', color: '#ef4444', marginBottom: '16px' }}>
+                  <div style={{ fontWeight: 800, fontSize: '14px', marginBottom: '4px' }}>
+                    🚫 Closed for Dog Walking
+                  </div>
+                  <div style={{ fontSize: '12.5px', color: 'var(--text)' }}>
+                    {settings.holidays?.includes(form.date)
+                      ? 'Paw Paw is closed on this date (Holiday). Please choose another date.'
+                      : 'Dog Walking is not available on this day of the week.'}
+                  </div>
+                </div>
+              ) : form.frequency === 'twice_daily' ? (
+                /* TWICE DAILY MODE: Explicitly separate Morning Walk & Evening Walk */
+                <div style={{ marginBottom: '16px' }}>
+                  {/* 1. Morning Walk Slot (1st Walk) */}
+                  <div style={{ marginBottom: '18px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>☀️</span> Morning Walk Slot (1st Daily Walk) *
+                      </h3>
+                      <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
+                        {loadingSlots ? 'Checking...' : `${morningSlots.filter(s => bookedSlotsForDate.includes(s)).length} full`}
+                      </span>
                     </div>
-                    <div style={{ fontSize: '12.5px', color: 'var(--text)' }}>
-                      {settings.holidays?.includes(form.date)
-                        ? 'Paw Paw is closed on this date (Holiday). Please choose another date.'
-                        : 'Dog Walking is not available on this day of the week.'}
+                    <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '10px' }}>
+                      Select preferred morning shift time for walk #1
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
+                      {morningSlots.map(s => {
+                        const isSelected = form.slot === s
+                        const isFull = bookedSlotsForDate.includes(s)
+                        const slotMins = parseSlotTimeToMinutes(s)
+                        const isPast = isToday && slotMins <= nowMins + 30
+                        const disabled = isFull || isPast
+
+                        return (
+                          <button
+                            key={`morning-${s}`}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => {
+                              update('slot', s)
+                              setShowCustomTimeInput(false)
+                            }}
+                            style={{
+                              background: isFull
+                                ? '#f3f4f6'
+                                : isPast
+                                  ? 'var(--surface)'
+                                  : isSelected
+                                    ? '#16a34a'
+                                    : '#f0fdf4',
+                              color: isFull
+                                ? '#9ca3af'
+                                : isPast
+                                  ? 'var(--muted)'
+                                  : isSelected
+                                    ? '#ffffff'
+                                    : '#15803d',
+                              border: `1.5px solid ${isFull
+                                  ? '#e5e7eb'
+                                  : isPast
+                                    ? 'var(--border)'
+                                    : isSelected
+                                      ? '#15803d'
+                                      : '#86efac'
+                                }`,
+                              borderRadius: '10px',
+                              padding: '10px 4px',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              cursor: disabled ? 'not-allowed' : 'pointer',
+                              opacity: isFull ? 0.7 : isPast ? 0.45 : 1,
+                              textAlign: 'center',
+                              position: 'relative',
+                              whiteSpace: 'nowrap',
+                              minWidth: 0,
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              transition: 'all 0.15s ease',
+                              boxShadow: isSelected ? '0 2px 8px rgba(22, 163, 74, 0.35)' : 'none',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                              {!disabled && !isSelected && (
+                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                              )}
+                              {isSelected && (
+                                <Check size={12} strokeWidth={3} />
+                              )}
+                              <span>{s}</span>
+                            </div>
+                            <span style={{ display: 'block', fontSize: '9px', fontWeight: isSelected ? 800 : 700, color: isSelected ? '#ffffff' : isFull ? '#9ca3af' : isPast ? 'var(--muted)' : '#16a34a', marginTop: '2px' }}>
+                              {isSelected ? 'Selected' : isFull ? 'Full' : isPast ? 'Passed' : 'Available'}
+                            </span>
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
-                ) : settings.slots.map(s => {
-                  const isSelected = form.slot === s
-                  const isFull = bookedSlotsForDate.includes(s)
-                  const slotMins = parseSlotTimeToMinutes(s)
-                  const isPast = isToday && slotMins <= nowMins + 30
-                  const disabled = !isDayOpen || isFull || isPast
 
-                  return (
-                    <button
-                      key={s}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => {
-                        update('slot', s)
-                        setShowCustomTimeInput(false)
-                      }}
-                      style={{
-                        background: isFull
-                          ? '#f3f4f6'
-                          : isPast
-                            ? 'var(--surface)'
-                            : isSelected
-                              ? '#16a34a'
-                              : '#f0fdf4',
-                        color: isFull
-                          ? '#9ca3af'
-                          : isPast
-                            ? 'var(--muted)'
-                            : isSelected
-                              ? '#ffffff'
-                              : '#15803d',
-                        border: `1.5px solid ${isFull
-                            ? '#e5e7eb'
-                            : isPast
-                              ? 'var(--border)'
-                              : isSelected
-                                ? '#15803d'
-                                : '#86efac'
-                          }`,
-                        borderRadius: '10px',
-                        padding: '10px 4px',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: disabled ? 'not-allowed' : 'pointer',
-                        opacity: isFull ? 0.7 : isPast ? 0.45 : 1,
-                        textAlign: 'center',
-                        position: 'relative',
-                        whiteSpace: 'nowrap',
-                        minWidth: 0,
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        transition: 'all 0.15s ease',
-                        boxShadow: isSelected ? '0 2px 8px rgba(22, 163, 74, 0.35)' : 'none',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                        {!disabled && !isSelected && (
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
-                        )}
-                        {isSelected && (
-                          <Check size={12} strokeWidth={3} />
-                        )}
-                        <span>{s}</span>
-                      </div>
-
-                      {isFull && (
-                      <span style={{ display: 'block', fontSize: '9px', fontWeight: 700, color: '#9ca3af', marginTop: '2px', textTransform: 'uppercase' }}>
-                        Full
+                  {/* 2. Evening Walk Slot (2nd Walk) */}
+                  <div style={{ marginBottom: '18px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>🌙</span> Evening Walk Slot (2nd Daily Walk) *
+                      </h3>
+                      <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
+                        {loadingSlots ? 'Checking...' : `${eveningSlots.filter(s => bookedSlotsForDate.includes(s)).length} full`}
                       </span>
-                      )}
-                    {isPast && !isFull && (
-                        <span style={{ display: 'block', fontSize: '9px', fontWeight: 600, color: 'var(--muted)', marginTop: '2px' }}>
-                          Passed
-                        </span>
-                      )}
-                      {!disabled && !isSelected && (
-                        <span style={{ display: 'block', fontSize: '9px', fontWeight: 700, color: '#16a34a', marginTop: '2px' }}>
-                          Available
-                        </span>
-                      )}
-                      {isSelected && (
-                        <span style={{ display: 'block', fontSize: '9px', fontWeight: 800, color: '#ffffff', marginTop: '2px' }}>
-                          Selected
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '10px' }}>
+                      Select preferred evening shift time for walk #2
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
+                      {eveningSlots.map(s => {
+                        const isSelected = form.eveningSlot === s
+                        const isFull = bookedSlotsForDate.includes(s)
+                        const slotMins = parseSlotTimeToMinutes(s)
+                        const isPast = isToday && slotMins <= nowMins + 30
+                        const disabled = isFull || isPast
+
+                        return (
+                          <button
+                            key={`evening-${s}`}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => update('eveningSlot', s)}
+                            style={{
+                              background: isFull
+                                ? '#f3f4f6'
+                                : isPast
+                                  ? 'var(--surface)'
+                                  : isSelected
+                                    ? '#16a34a'
+                                    : '#f0fdf4',
+                              color: isFull
+                                ? '#9ca3af'
+                                : isPast
+                                  ? 'var(--muted)'
+                                  : isSelected
+                                    ? '#ffffff'
+                                    : '#15803d',
+                              border: `1.5px solid ${isFull
+                                  ? '#e5e7eb'
+                                  : isPast
+                                    ? 'var(--border)'
+                                    : isSelected
+                                      ? '#15803d'
+                                      : '#86efac'
+                                }`,
+                              borderRadius: '10px',
+                              padding: '10px 4px',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              cursor: disabled ? 'not-allowed' : 'pointer',
+                              opacity: isFull ? 0.7 : isPast ? 0.45 : 1,
+                              textAlign: 'center',
+                              position: 'relative',
+                              whiteSpace: 'nowrap',
+                              minWidth: 0,
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              transition: 'all 0.15s ease',
+                              boxShadow: isSelected ? '0 2px 8px rgba(22, 163, 74, 0.35)' : 'none',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                              {!disabled && !isSelected && (
+                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                              )}
+                              {isSelected && (
+                                <Check size={12} strokeWidth={3} />
+                              )}
+                              <span>{s}</span>
+                            </div>
+                            <span style={{ display: 'block', fontSize: '9px', fontWeight: isSelected ? 800 : 700, color: isSelected ? '#ffffff' : isFull ? '#9ca3af' : isPast ? 'var(--muted)' : '#16a34a', marginTop: '2px' }}>
+                              {isSelected ? 'Selected' : isFull ? 'Full' : isPast ? 'Passed' : 'Available'}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* ONCE DAILY / SINGLE WALK MODE: Standard full list */
+                <div style={{ marginBottom: '16px' }}>
+                  <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                      <Footprints size={18} color="var(--accent)" /> Available Walk Slots
+                    </span>
+                    <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 500 }}>
+                      {loadingSlots ? 'Checking slots...' : `${bookedSlotsForDate.length} slot(s) full`}
+                    </span>
+                  </h2>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginBottom: '16px' }}>
+                    {settings.slots.map(s => {
+                      const isSelected = form.slot === s
+                      const isFull = bookedSlotsForDate.includes(s)
+                      const slotMins = parseSlotTimeToMinutes(s)
+                      const isPast = isToday && slotMins <= nowMins + 30
+                      const disabled = isFull || isPast
+
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => {
+                            update('slot', s)
+                            setShowCustomTimeInput(false)
+                          }}
+                          style={{
+                            background: isFull
+                              ? '#f3f4f6'
+                              : isPast
+                                ? 'var(--surface)'
+                                : isSelected
+                                  ? '#16a34a'
+                                  : '#f0fdf4',
+                            color: isFull
+                              ? '#9ca3af'
+                              : isPast
+                                ? 'var(--muted)'
+                                : isSelected
+                                  ? '#ffffff'
+                                  : '#15803d',
+                            border: `1.5px solid ${isFull
+                                ? '#e5e7eb'
+                                : isPast
+                                  ? 'var(--border)'
+                                  : isSelected
+                                    ? '#15803d'
+                                    : '#86efac'
+                              }`,
+                            borderRadius: '10px',
+                            padding: '10px 4px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            cursor: disabled ? 'not-allowed' : 'pointer',
+                            opacity: isFull ? 0.7 : isPast ? 0.45 : 1,
+                            textAlign: 'center',
+                            position: 'relative',
+                            whiteSpace: 'nowrap',
+                            minWidth: 0,
+                            width: '100%',
+                            boxSizing: 'border-box',
+                            transition: 'all 0.15s ease',
+                            boxShadow: isSelected ? '0 2px 8px rgba(22, 163, 74, 0.35)' : 'none',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                            {!disabled && !isSelected && (
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                            )}
+                            {isSelected && (
+                              <Check size={12} strokeWidth={3} />
+                            )}
+                            <span>{s}</span>
+                          </div>
+
+                          {isFull && (
+                            <span style={{ display: 'block', fontSize: '9px', fontWeight: 700, color: '#9ca3af', marginTop: '2px', textTransform: 'uppercase' }}>
+                              Full
+                            </span>
+                          )}
+                          {isPast && !isFull && (
+                            <span style={{ display: 'block', fontSize: '9px', fontWeight: 600, color: 'var(--muted)', marginTop: '2px' }}>
+                              Passed
+                            </span>
+                          )}
+                          {!disabled && !isSelected && (
+                            <span style={{ display: 'block', fontSize: '9px', fontWeight: 700, color: '#16a34a', marginTop: '2px' }}>
+                              Available
+                            </span>
+                          )}
+                          {isSelected && (
+                            <span style={{ display: 'block', fontSize: '9px', fontWeight: 800, color: '#ffffff', marginTop: '2px' }}>
+                              Selected
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Custom Timing Option */}
               <div style={{ marginBottom: '16px', background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: '12px', padding: '12px 14px' }}>
@@ -1840,44 +2194,6 @@ export default function BookWalking() {
                   </div>
                 )}
               </div>
-
-              {/* Evening Slot Selector if Twice Daily */}
-              {form.frequency === 'twice_daily' && (
-                <div style={{ marginBottom: '22px' }}>
-                  <h3 style={{ fontSize: '14.5px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>🌙</span> Evening Walk Slot (2nd Daily Walk) *
-                  </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
-                    {(settings.slots.filter(s => s.toUpperCase().includes('PM')).length > 0
-                      ? settings.slots.filter(s => s.toUpperCase().includes('PM'))
-                      : ['05:00 PM', '06:00 PM', '07:00 PM']
-                    ).map(s => {
-                      const isSel = form.eveningSlot === s
-                      return (
-                        <button
-                          key={`evening-${s}`}
-                          type="button"
-                          onClick={() => update('eveningSlot', s)}
-                          style={{
-                            padding: '10px 4px',
-                            borderRadius: '10px',
-                            fontSize: '12px',
-                            fontWeight: 700,
-                            border: `1.5px solid ${isSel ? '#15803d' : '#86efac'}`,
-                            background: isSel ? '#16a34a' : '#f0fdf4',
-                            color: isSel ? '#ffffff' : '#15803d',
-                            cursor: 'pointer',
-                            textAlign: 'center',
-                            boxShadow: isSel ? '0 2px 8px rgba(22, 163, 74, 0.35)' : 'none',
-                          }}
-                        >
-                          {s}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
 
               <button
                 type="button"
@@ -2011,9 +2327,13 @@ export default function BookWalking() {
                   <div><strong>Duration:</strong> {form.duration} Minutes / walk</div>
                   <div><strong>Start Date:</strong> {form.date}</div>
                   {form.planType !== 'single' && <div><strong>Est. End Date:</strong> {estimatedEndDate}</div>}
-                  <div><strong>Morning Slot:</strong> {form.slot || form.customTimeRequested}</div>
-                  {form.frequency === 'twice_daily' && form.eveningSlot && (
-                    <div><strong>Evening Slot:</strong> {form.eveningSlot}</div>
+                  {form.frequency === 'twice_daily' ? (
+                    <>
+                      <div><strong>☀️ Morning Walk:</strong> {form.slot || form.customTimeRequested}</div>
+                      <div><strong>🌙 Evening Walk:</strong> {form.eveningSlot}</div>
+                    </>
+                  ) : (
+                    <div><strong>Walk Slot:</strong> {form.slot || form.customTimeRequested}</div>
                   )}
                   <div><strong>Area:</strong> {form.area}</div>
                 </div>

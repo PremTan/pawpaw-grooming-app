@@ -1745,40 +1745,73 @@ export default function MyBookings() {
                             </div>
                           </div>
                         )}
-
-                        {/* Subscription Pack Progress Summary */}
-                        {w.planType && w.planType !== 'single' && (() => {
-                          const total = Number(w.totalWalks || (w.planType === 'monthly' ? 26 : 7))
-                          const completed = Number(w.completedWalks || 0)
-                          const remaining = Math.max(0, total - completed)
-                          const percent = Math.min(100, Math.round((completed / total) * 100))
-                          const skippedCount = Array.isArray(w.skippedDates) ? w.skippedDates.length : Number(w.skippedWalks || 0)
-
-                          return (
-                            <div style={{ marginTop: '12px', background: 'var(--surface)', border: '1px solid var(--accent-border)', borderRadius: '12px', padding: '10px 12px' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>
-                                  Pass Progress: {completed}/{total} Walks Done
-                                </span>
-                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--accent)' }}>
-                                  {remaining} Remaining
-                                </span>
-                              </div>
-                              <div style={{ width: '100%', height: '6px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden', marginBottom: '6px' }}>
-                                <div style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent) 0%, #10b981 100%)', borderRadius: '999px', transition: 'width 0.4s ease' }} />
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10.5px', color: 'var(--muted)' }}>
-                                <span>Valid until: <strong>{formatBoardingDate(w.estimatedEndDate || w.date)}</strong></span>
-                                {skippedCount > 0 && (
-                                  <span style={{ color: '#b45309', fontWeight: 700 }}>
-                                    ⏸️ {skippedCount} skipped (extended)
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          )
-                        })()}
                       </div>
+
+                      {/* Subscription Pack Progress Summary - Full Width Clean Banner */}
+                      {w.planType && w.planType !== 'single' && (() => {
+                        const total = Number(w.totalWalks || (w.planType === 'monthly' ? 26 : 7))
+                        const completed = Number(w.completedWalks || 0)
+                        const remaining = Math.max(0, total - completed)
+                        const percent = Math.min(100, Math.round((completed / total) * 100))
+                        const skippedCount = Array.isArray(w.skippedDates) ? w.skippedDates.length : Number(w.skippedWalks || 0)
+                        const planLabel = w.planType === 'monthly' ? 'Monthly Pass' : '7-Day Pass'
+
+                        return (
+                          <div
+                            style={{
+                              marginTop: '10px',
+                              marginBottom: '2px',
+                              background: 'var(--surface)',
+                              border: '1px solid var(--accent-border)',
+                              borderRadius: '12px',
+                              padding: '10px 14px',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '13px' }}>{w.planType === 'monthly' ? '👑' : '📦'}</span>
+                                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>
+                                  {planLabel} Progress
+                                </span>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-bg)', padding: '1px 7px', borderRadius: '6px', border: '1px solid var(--accent-border)' }}>
+                                  {completed}/{total} Done
+                                </span>
+                              </div>
+                              <span style={{ fontSize: '11.5px', fontWeight: 800, color: remaining === 0 ? '#10b981' : '#b45309' }}>
+                                {remaining} walk{remaining === 1 ? '' : 's'} remaining
+                              </span>
+                            </div>
+
+                            <div style={{ width: '100%', height: '6px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden', marginBottom: '7px' }}>
+                              <div
+                                style={{
+                                  width: `${percent}%`,
+                                  height: '100%',
+                                  background: 'linear-gradient(90deg, var(--accent) 0%, #10b981 100%)',
+                                  borderRadius: '999px',
+                                  transition: 'width 0.4s ease',
+                                }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--muted)', flexWrap: 'wrap', gap: '6px' }}>
+                              <span>
+                                Valid until: <strong style={{ color: 'var(--text)' }}>{formatBoardingDate(w.estimatedEndDate || w.date)}</strong>
+                              </span>
+                              {skippedCount > 0 ? (
+                                <span style={{ color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', padding: '1px 8px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  ⏸️ {skippedCount} day{skippedCount > 1 ? 's' : ''} skipped (+{skippedCount} extended)
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '10.5px', color: 'var(--muted)' }}>
+                                  Tap "Skip Day" if out of town
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })()}
 
                       {/* Action Bar */}
                       <div className="my-booking-row-actions" onClick={e => e.stopPropagation()}>

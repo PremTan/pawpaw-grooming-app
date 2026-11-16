@@ -55,7 +55,9 @@ export const DEFAULT_WALKING_PACKS = {
     enabled: true,
     name: 'Weekly Pack',
     badge: 'Popular',
+    badgeText: '12% OFF',
     walkCount: 7,
+    totalWalks: 7,
     discountPercent: 12,
     description: '7 consecutive walks with your dedicated walker. Includes 1-tap skip day if out of town.',
   },
@@ -63,7 +65,9 @@ export const DEFAULT_WALKING_PACKS = {
     enabled: true,
     name: 'Monthly Pack',
     badge: 'Best Value',
+    badgeText: 'Save 22%',
     walkCount: 26,
+    totalWalks: 26,
     discountPercent: 22,
     description: '26 walks (Mon–Sat or Daily). Skip days whenever out of town with automatic pack extension.',
   },
@@ -328,8 +332,8 @@ export function calculatePackPrice({
   const packsConfig = settings?.packs || DEFAULT_WALKING_PACKS
   const packInfo = planType === 'weekly' ? (packsConfig.weekly || DEFAULT_WALKING_PACKS.weekly) : (packsConfig.monthly || DEFAULT_WALKING_PACKS.monthly)
   const multiplier = frequency === 'twice_daily' ? 2 : 1
-  const count = (Number(packInfo?.walkCount) || (planType === 'weekly' ? 7 : 26)) * multiplier
-  const discountPercent = Number(packInfo?.discountPercent) || (planType === 'weekly' ? 12 : 22)
+  const count = (Number(packInfo?.walkCount || packInfo?.totalWalks) || (planType === 'weekly' ? 7 : 26)) * multiplier
+  const discountPercent = Number(packInfo?.discountPercent ?? (planType === 'weekly' ? 12 : 22))
 
   const regularTotal = count * baseRate
   const discountAmount = Math.round((regularTotal * discountPercent) / 100)

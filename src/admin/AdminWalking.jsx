@@ -68,6 +68,7 @@ import {
   Copy,
   Star,
   AlertOctagon,
+  ArrowUpDown,
 } from 'lucide-react'
 
 const money = (val) => Number(val || 0).toLocaleString('en-IN')
@@ -184,6 +185,7 @@ export default function AdminWalking() {
   // Team & Walker Assignment State
   const [teamMembers, setTeamMembers] = useState([])
   const [walkerFilter, setWalkerFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('latest')
   const [assigningId, setAssigningId] = useState('')
   const [liveTrackingBooking, setLiveTrackingBooking] = useState(null)
 
@@ -363,28 +365,66 @@ ${portalUrl}`
     window.open(waUrl, '_blank')
   }
 
-  // Filter Bookings
-  const filteredBookings = bookings.filter(b => {
-    if (statusFilter !== 'all' && b.status !== statusFilter) return false
-    if (walkerFilter !== 'all') {
-      if (walkerFilter === 'unassigned') {
-        if (b.assignedTeamMemberId || b.assignedWalkerId) return false
-      } else {
-        if ((b.assignedTeamMemberId || b.assignedWalkerId) !== walkerFilter) return false
+  // Filter & Sort Bookings
+  const filteredBookings = useMemo(() => {
+    let list = bookings.filter(b => {
+      if (statusFilter !== 'all' && b.status !== statusFilter) return false
+      if (walkerFilter !== 'all') {
+        if (walkerFilter === 'unassigned') {
+          if (b.assignedTeamMemberId || b.assignedWalkerId) return false
+        } else {
+          if ((b.assignedTeamMemberId || b.assignedWalkerId) !== walkerFilter) return false
+        }
       }
-    }
-    if (!searchQuery.trim()) return true
-    const q = searchQuery.toLowerCase()
-    return (
-      (b.dogName || b.petName || '').toLowerCase().includes(q) ||
-      (b.ownerName || '').toLowerCase().includes(q) ||
-      (b.phone || '').toLowerCase().includes(q) ||
-      (b.area || '').toLowerCase().includes(q) ||
-      (b.pickupAddress || '').toLowerCase().includes(q) ||
-      (b.assignedTeamMemberName || '').toLowerCase().includes(q) ||
-      (b.id || '').toLowerCase().includes(q)
-    )
-  })
+      if (!searchQuery.trim()) return true
+      const q = searchQuery.toLowerCase()
+      return (
+        (b.dogName || b.petName || '').toLowerCase().includes(q) ||
+        (b.ownerName || '').toLowerCase().includes(q) ||
+        (b.phone || '').toLowerCase().includes(q) ||
+        (b.area || '').toLowerCase().includes(q) ||
+        (b.pickupAddress || '').toLowerCase().includes(q) ||
+        (b.assignedTeamMemberName || '').toLowerCase().includes(q) ||
+        (b.id || '').toLowerCase().includes(q)
+      )
+    })
+
+    list.sort((a, b) => {
+      if (sortBy === 'latest') {
+        const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (new Date(a.createdAt || 0).getTime() || 0)
+        const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (new Date(b.createdAt || 0).getTime() || 0)
+        return tB - tA
+      }
+      if (sortBy === 'oldest') {
+        const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (new Date(a.createdAt || 0).getTime() || 0)
+        const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (new Date(b.createdAt || 0).getTime() || 0)
+        return tA - tB
+      }
+      if (sortBy === 'date_asc') {
+        const dateA = a.date || a.startDate || a.walkingDate || ''
+        const dateB = b.date || b.startDate || b.walkingDate || ''
+        return dateA.localeCompare(dateB)
+      }
+      if (sortBy === 'date_desc') {
+        const dateA = a.date || a.startDate || a.walkingDate || ''
+        const dateB = b.date || b.startDate || b.walkingDate || ''
+        return dateB.localeCompare(dateA)
+      }
+      if (sortBy === 'dog_name') {
+        const nameA = (a.dogName || a.petName || '').toLowerCase()
+        const nameB = (b.dogName || b.petName || '').toLowerCase()
+        return nameA.localeCompare(nameB)
+      }
+      if (sortBy === 'amount_desc') {
+        const amtA = Number(a.totalPrice || a.amountCollected || 0)
+        const amtB = Number(b.totalPrice || b.amountCollected || 0)
+        return amtB - amtA
+      }
+      return 0
+    })
+
+    return list
+  }, [bookings, statusFilter, walkerFilter, searchQuery, sortBy])
 
   // Status Counts
   const counts = {
@@ -947,25 +987,36 @@ ${portalUrl}`
             })}
           </div>
 
-          {/* Search & Walker Filter Bar */}
-          <div style={{ marginBottom: '16px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative', flex: '1', minWidth: '220px', maxWidth: '420px' }}>
-              <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+          {/* Search, Walker Filter & Sort Bar (Single Line) */}
+          <div className="walking-search-sort-bar">
+            {/* Search Input Box */}
+            <div className="walking-search-wrap">
+              <Search size={15} className="walking-search-icon" />
               <input
-                className="input"
-                placeholder="Search dog, owner, phone, address, or walker..."
+                className="input walking-search-input"
+                placeholder="Search dog, owner, phone..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                style={{ paddingLeft: '34px' }}
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="walking-search-clear-btn"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Footprints size={15} color="var(--accent)" />
+
+            {/* Walker Filter Dropdown */}
+            <div className="walking-select-wrap">
+              <Footprints size={14} className="walking-select-icon" />
               <select
-                className="input"
+                className="input walking-filter-select"
                 value={walkerFilter}
                 onChange={e => setWalkerFilter(e.target.value)}
-                style={{ fontSize: '12.5px', padding: '7px 10px', minWidth: '150px' }}
                 aria-label="Filter by assigned walker"
               >
                 <option value="all">All Walkers ({bookings.length})</option>
@@ -978,6 +1029,24 @@ ${portalUrl}`
                     </option>
                   )
                 })}
+              </select>
+            </div>
+
+            {/* Sort Dropdown */}
+            <div className="walking-select-wrap">
+              <ArrowUpDown size={14} className="walking-select-icon" />
+              <select
+                className="input walking-sort-select"
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value)}
+                aria-label="Sort bookings by"
+              >
+                <option value="latest">Latest First</option>
+                <option value="oldest">Oldest First</option>
+                <option value="date_asc">Walk Date (Earliest)</option>
+                <option value="date_desc">Walk Date (Latest)</option>
+                <option value="dog_name">Pet Name (A-Z)</option>
+                <option value="amount_desc">Fee (High to Low)</option>
               </select>
             </div>
           </div>
@@ -1098,7 +1167,22 @@ ${portalUrl}`
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {b.planType === 'weekly' && (
+                          <span className="badge" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 800 }}>
+                            <Package size={11} /> 7-Day Pass
+                          </span>
+                        )}
+                        {b.planType === 'monthly' && (
+                          <span className="badge" style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 800 }}>
+                            <Package size={11} /> Monthly Pass
+                          </span>
+                        )}
+                        {(!b.planType || b.planType === 'single') && (
+                          <span className="badge" style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
+                            1-Day Walk
+                          </span>
+                        )}
                         <span className={`badge ${WALKING_STATUS_BADGES[b.status] || 'badge-pending'}`}>
                           {WALKING_STATUS_LABELS[b.status] || b.status}
                         </span>
@@ -1161,6 +1245,52 @@ ${portalUrl}`
                         )}
                       </div>
                     </div>
+
+                    {/* Multi-Day Pass Progress Banner */}
+                    {b.planType && b.planType !== 'single' && (() => {
+                      const total = Number(b.totalWalks || (b.planType === 'monthly' ? 26 : 7))
+                      const completed = Number(b.completedWalks || 0)
+                      const remaining = Math.max(0, total - completed)
+                      const percent = Math.min(100, Math.round((completed / total) * 100))
+                      const skippedCount = Array.isArray(b.skippedDates) ? b.skippedDates.length : Number(b.skippedWalks || 0)
+                      const planTitle = b.planType === 'monthly' ? 'Monthly Pass' : '7-Day Pass'
+
+                      return (
+                        <div
+                          style={{
+                            background: 'rgba(192, 136, 32, 0.05)',
+                            border: '1px solid rgba(192, 136, 32, 0.2)',
+                            borderRadius: '12px',
+                            padding: '10px 14px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Package size={14} color="var(--accent)" />
+                              {planTitle} Progress:
+                              <span style={{ color: 'var(--accent)' }}>{completed}/{total} Walks Done</span>
+                            </span>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: remaining === 0 ? '#15803d' : '#b45309', background: 'var(--card)', padding: '2px 8px', borderRadius: '999px', border: '1px solid var(--border)' }}>
+                              {remaining} Remaining
+                            </span>
+                          </div>
+                          <div style={{ width: '100%', height: '6px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden', marginBottom: '6px' }}>
+                            <div style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent) 0%, #10b981 100%)', borderRadius: '999px' }} />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--muted)', flexWrap: 'wrap', gap: '6px' }}>
+                            <span>Valid until: <strong style={{ color: 'var(--text)' }}>{b.estimatedEndDate || b.date}</strong></span>
+                            {b.frequency && (
+                              <span>Routine: <strong>{b.frequency === 'twice_daily' ? '2 Walks / Day' : '1 Walk / Day'}</strong></span>
+                            )}
+                            {skippedCount > 0 && (
+                              <span style={{ color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', padding: '1px 6px', borderRadius: '4px' }}>
+                                ⏸️ {skippedCount} day{skippedCount > 1 ? 's' : ''} skipped (Extended)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
 
                     {/* Notes if any */}
                     {(b.behaviorNotes || b.notes) && (
@@ -2682,6 +2812,77 @@ ${portalUrl}`
                   <span style={{ fontSize: '11px', color: '#d97706', marginTop: '6px', display: 'block', fontWeight: 600 }}>
                     * Unsaved change. Current saved rate is ₹{selectedBooking.totalPrice}.
                   </span>
+                )}
+              </div>
+
+              {/* SECTION: Plan & Subscription Progress */}
+              <div style={{ background: 'var(--surface)', border: '1.5px solid var(--accent-border)', borderRadius: '14px', padding: '14px 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Package size={15} color="var(--accent)" /> Walking Plan & Subscription
+                  </div>
+                  <span className="badge" style={{
+                    background: selectedBooking.planType === 'monthly' ? '#dcfce7' : selectedBooking.planType === 'weekly' ? '#fef3c7' : 'var(--card)',
+                    color: selectedBooking.planType === 'monthly' ? '#15803d' : selectedBooking.planType === 'weekly' ? '#b45309' : 'var(--text)',
+                    border: `1px solid ${selectedBooking.planType === 'monthly' ? '#bbf7d0' : selectedBooking.planType === 'weekly' ? '#fde68a' : 'var(--border)'}`,
+                    fontWeight: 800,
+                  }}>
+                    {selectedBooking.planType === 'monthly' ? '👑 Monthly Pass' : selectedBooking.planType === 'weekly' ? '📦 7-Day Pass' : '🐕 1-Day Walk'}
+                  </span>
+                </div>
+
+                {selectedBooking.planType && selectedBooking.planType !== 'single' ? (() => {
+                  const total = Number(selectedBooking.totalWalks || (selectedBooking.planType === 'monthly' ? 26 : 7))
+                  const completed = Number(selectedBooking.completedWalks || 0)
+                  const remaining = Math.max(0, total - completed)
+                  const percent = Math.min(100, Math.round((completed / total) * 100))
+                  const skippedCount = Array.isArray(selectedBooking.skippedDates) ? selectedBooking.skippedDates.length : Number(selectedBooking.skippedWalks || 0)
+
+                  return (
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', fontSize: '12.5px', marginBottom: '10px' }}>
+                        <div>
+                          <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Walk Progress</span>
+                          <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{completed} / {total} Done</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Walks Remaining</span>
+                          <strong style={{ color: remaining === 0 ? '#10b981' : '#b45309', fontSize: '14px' }}>{remaining} Remaining</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Frequency</span>
+                          <strong style={{ color: 'var(--text)' }}>{selectedBooking.frequency === 'twice_daily' ? '2 Walks/Day (Morning & Evening)' : '1 Walk/Day'}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Valid Until</span>
+                          <strong style={{ color: 'var(--text)' }}>{selectedBooking.estimatedEndDate || selectedBooking.date}</strong>
+                        </div>
+                      </div>
+
+                      <div style={{ width: '100%', height: '8px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden', marginBottom: '8px' }}>
+                        <div style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent) 0%, #10b981 100%)', borderRadius: '999px' }} />
+                      </div>
+
+                      {skippedCount > 0 && (
+                        <div style={{ marginTop: '8px', padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '12px', color: '#b45309' }}>
+                          <strong>⏸️ {skippedCount} Day{skippedCount > 1 ? 's' : ''} Skipped by Parent:</strong>
+                          <div style={{ marginTop: '4px', fontSize: '11px' }}>
+                            {Array.isArray(selectedBooking.skippedDates) ? selectedBooking.skippedDates.join(', ') : `${skippedCount} days`} (Pass validity automatically extended to {selectedBooking.estimatedEndDate})
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedBooking.discountAmount > 0 && (
+                        <div style={{ marginTop: '8px', fontSize: '11.5px', color: '#15803d' }}>
+                          🎉 <strong>Pass Bundle Discount:</strong> ₹{selectedBooking.discountAmount} ({selectedBooking.discountPercent}% OFF) applied
+                        </div>
+                      )}
+                    </div>
+                  )
+                })() : (
+                  <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                    Single 1-Day walk session booked.
+                  </div>
                 )}
               </div>
 
@@ -4232,7 +4433,134 @@ ${portalUrl}`
           color: var(--muted);
           white-space: nowrap;
         }
+        /* Single Line Search & Sort / Filter Bar */
+        .walking-search-sort-bar {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 14px;
+          width: 100%;
+          flex-wrap: nowrap;
+        }
+
+        .walking-search-wrap {
+          position: relative;
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          align-items: center;
+        }
+
+        .walking-search-icon {
+          position: absolute;
+          left: 11px;
+          color: var(--muted);
+          pointer-events: none;
+          flex-shrink: 0;
+        }
+
+        .walking-search-input {
+          width: 100%;
+          height: 38px;
+          padding-left: 32px;
+          padding-right: 28px;
+          border-radius: 12px;
+          font-size: 13px;
+          background: var(--card);
+          border: 1px solid var(--border);
+          box-sizing: border-box;
+        }
+
+        .walking-search-input:focus {
+          border-color: var(--accent);
+          outline: none;
+        }
+
+        .walking-search-clear-btn {
+          position: absolute;
+          right: 7px;
+          background: none;
+          border: none;
+          color: var(--muted);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 4px;
+          border-radius: 50%;
+        }
+
+        .walking-select-wrap {
+          position: relative;
+          display: flex;
+          align-items: center;
+          flex-shrink: 0;
+        }
+
+        .walking-select-icon {
+          position: absolute;
+          left: 10px;
+          color: var(--accent);
+          pointer-events: none;
+          z-index: 1;
+        }
+
+        .walking-filter-select,
+        .walking-sort-select {
+          height: 38px;
+          padding: 0 10px 0 28px;
+          font-size: 12px;
+          font-weight: 700;
+          border-radius: 12px;
+          background: var(--card);
+          border: 1px solid var(--border);
+          color: var(--text);
+          cursor: pointer;
+          box-sizing: border-box;
+          white-space: nowrap;
+        }
+
+        .walking-filter-select {
+          max-width: 170px;
+        }
+
+        .walking-sort-select {
+          max-width: 150px;
+        }
+
         @media (max-width: 600px) {
+          .walking-search-sort-bar {
+            gap: 6px;
+            margin-bottom: 12px;
+          }
+          .walking-search-input {
+            height: 36px;
+            font-size: 12px;
+            padding-left: 28px;
+            padding-right: 24px;
+          }
+          .walking-search-icon {
+            left: 9px;
+            width: 13px;
+            height: 13px;
+          }
+          .walking-select-icon {
+            left: 8px;
+            width: 13px;
+            height: 13px;
+          }
+          .walking-filter-select,
+          .walking-sort-select {
+            height: 36px;
+            font-size: 11px;
+            padding: 0 6px 0 24px;
+          }
+          .walking-filter-select {
+            max-width: 110px;
+          }
+          .walking-sort-select {
+            max-width: 96px;
+          }
           .walking-sticky-bar {
             bottom: 8px;
           }
@@ -4250,6 +4578,18 @@ ${portalUrl}`
             padding: 7px 14px !important;
             font-size: 12px !important;
             white-space: nowrap;
+          }
+        }
+
+        @media (max-width: 360px) {
+          .walking-search-sort-bar {
+            gap: 4px;
+          }
+          .walking-filter-select {
+            max-width: 95px;
+          }
+          .walking-sort-select {
+            max-width: 84px;
           }
         }
       `}</style>
