@@ -67,6 +67,8 @@ export default function NotificationBell() {
   const { isAdmin } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const [markingAll, setMarkingAll] = useState(false)
+  const [readSuccess, setReadSuccess] = useState(false)
   const ref = useRef(null)
 
   useEffect(() => {
@@ -79,6 +81,21 @@ export default function NotificationBell() {
     const willOpen = !open
     setOpen(willOpen)
     if (willOpen) requestBrowserPermission?.()
+  }
+
+  const handleMarkAllRead = async (e) => {
+    e.stopPropagation()
+    if (markingAll || unreadCount === 0) return
+    setMarkingAll(true)
+    try {
+      await markAllRead()
+      setReadSuccess(true)
+      setTimeout(() => setReadSuccess(false), 2200)
+    } catch (err) {
+      console.warn('Failed to mark all read:', err)
+    } finally {
+      setMarkingAll(false)
+    }
   }
 
   const openNotification = async (notification) => {
@@ -118,15 +135,43 @@ export default function NotificationBell() {
             <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text)' }}>Notifications</span>
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
-                <button type="button" onClick={markAllRead} style={{ fontSize: '11px', color: 'var(--accent)', cursor: 'pointer' }} aria-label="Mark all notifications read">
+                <button
+                  type="button"
+                  onClick={handleMarkAllRead}
+                  disabled={markingAll}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all hover:opacity-90 active:scale-95 cursor-pointer"
+                  style={{
+                    background: 'var(--accent-bg)',
+                    color: 'var(--accent)',
+                    border: '1px solid var(--accent-border)',
+                    minHeight: '28px',
+                    opacity: markingAll ? 0.6 : 1,
+                  }}
+                  title="Mark all notifications as read"
+                  aria-label="Mark all notifications read"
+                >
                   <CheckCheck size={14} />
+                  <span style={{ fontSize: '11px' }}>{markingAll ? 'Marking...' : 'Mark all read'}</span>
                 </button>
               )}
-              <button type="button" onClick={() => setOpen(false)} style={{ color: 'var(--muted)' }} aria-label="Close notifications">
-                <X size={15} />
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                style={{ color: 'var(--muted)' }}
+                aria-label="Close notifications"
+              >
+                <X size={16} />
               </button>
             </div>
           </div>
+
+          {readSuccess && (
+            <div style={{ padding: '6px 16px', background: 'rgba(16, 185, 129, 0.15)', borderBottom: '1px solid rgba(16, 185, 129, 0.3)', color: '#059669', fontSize: '11.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <CheckCircle2 size={13} />
+              <span>All notifications marked as read</span>
+            </div>
+          )}
 
           {browserPermission !== 'granted' && (
             <div style={{ padding: '8px 16px', background: 'var(--accent-bg)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>

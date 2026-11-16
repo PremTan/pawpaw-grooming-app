@@ -113,16 +113,16 @@ service cloud.firestore {
         return request.auth != null &&
                (
                  isAdmin() ||
+                 data.toAdmin == true ||
                  request.auth.uid == data.userId ||
-                 (data.userEmail is string && data.userEmail != "" && request.auth.token.email.lower() == data.userEmail.lower())
+                 ('email' in request.auth.token && request.auth.token.email != null && data.userEmail is string && data.userEmail != "" && request.auth.token.email.lower() == data.userEmail.lower())
                );
       }
 
       allow read: if isRecipient(resource.data);
       allow create: if isNotBlocked() &&
                     (request.resource.data.userId is string || request.resource.data.userEmail is string);
-      allow update: if isNotBlocked() &&
-                    (isAdmin() || isRecipient(resource.data)) &&
+      allow update: if request.auth != null &&
                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       allow delete: if isNotBlocked() && (isAdmin() || isRecipient(resource.data));
     }

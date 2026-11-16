@@ -13,7 +13,32 @@ const canUseBrowserNotifications = () => typeof window !== 'undefined' && 'Notif
 const createdAtMs = (notification) =>
   notification.createdAt?.toMillis?.() ||
   notification.createdAt?.toDate?.()?.getTime?.() ||
-  (notification.createdAt ? new Date(notification.createdAt).getTime() : Date.now())
+  (notification.createdAt ? new Date(notification.createdAt).getTime() : 0)
+
+const PAWPAW_ALERTED_KEY = 'pawpaw_alerted_notif_ids'
+const PAWPAW_READ_KEY = 'pawpaw_read_notifications'
+
+function getStoredIdSet(key) {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw)
+    return new Set(Array.isArray(parsed) ? parsed : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function saveStoredIdSet(key, set, max = 200) {
+  if (typeof window === 'undefined') return
+  try {
+    const arr = Array.from(set).slice(-max)
+    localStorage.setItem(key, JSON.stringify(arr))
+  } catch (err) {
+    console.warn(`Could not save ${key} to localStorage:`, err)
+  }
+}
 
 export function NotificationProvider({ children }) {
   const { user, isAdmin } = useAuth()
@@ -21,32 +46,55 @@ export function NotificationProvider({ children }) {
   const [notificationError, setNotificationError] = useState('')
   const [browserPermission, setBrowserPermission] = useState(() => canUseBrowserNotifications() ? window.Notification.permission : 'unsupported')
   const [fcmStatus, setFcmStatus] = useState('idle')
+
   const seenIdsRef = useRef(new Set())
-  const initializedRef = useRef(false)
+  const loadedSourcesRef = useRef(new Set())
+  const sessionStartRef = useRef(Date.now())
+  const alertedIdsRef = useRef(getStoredIdSet(PAWPAW_ALERTED_KEY))
+  const locallyReadRef = useRef(getStoredIdSet(PAWPAW_READ_KEY))
+  const recentAlertsRef = useRef(new Map())
+
   const unreadCount = notifications.filter(n => !n.read).length
 
   const PUSH_ICON = 'https://res.cloudinary.com/doawldbnh/image/upload/w_192,h_192,c_fit,f_png,q_auto/v1792509878/v5xliyxwuirgzhp6ict6.png'
-  const recentAlertsRef = useRef(new Map())
 
   const showBrowserNotification = async (notification) => {
     if (!canUseBrowserNotifications() || window.Notification.permission !== 'granted') return
 
-    const tag = notification.tag || (notification.bookingId ? `pawpaw-booking-${notification.bookingId}` : (notification.id ? `pawpaw-notif-${notification.id}` : 'pawpaw-alert'))
     const now = Date.now()
+    const notifCreated = createdAtMs(notification)
+
+    // 1. Guard against historical notifications (> 2 mins old or before current session)
+    if (notifCreated > 0 && (now - notifCreated > 120000 || notifCreated < sessionStartRef.current - 5000)) {
+      return
+    }
+
+    // 2. Global deduplication by signature (prevents double-popups from FCM + Firestore)
+    const title = notification.title || 'Paw Paw Pet Grooming'
+    const body = notification.message || notification.body || ''
+    const bookingId = notification.bookingId || ''
+    const sig = `${title}:::${body}:::${bookingId}`
+
+    if (recentAlertsRef.current.has(sig)) {
+      const lastTime = recentAlertsRef.current.get(sig)
+      if (now - lastTime < 15000) return
+    }
+    recentAlertsRef.current.set(sig, now)
+
+    // 3. Consistent notification tag
+    const tag = notification.tag || (bookingId ? `pawpaw-booking-${bookingId}` : (notification.id ? `pawpaw-notif-${notification.id}` : 'pawpaw-alert'))
     if (recentAlertsRef.current.has(tag)) {
       const lastTime = recentAlertsRef.current.get(tag)
-      if (now - lastTime < 10000) return
-    }
-    if (notification.bookingId) {
-      const bookingTag = `pawpaw-booking-${notification.bookingId}`
-      if (recentAlertsRef.current.has(bookingTag) && (now - recentAlertsRef.current.get(bookingTag) < 10000)) {
-        return
-      }
-      recentAlertsRef.current.set(bookingTag, now)
+      if (now - lastTime < 15000) return
     }
     recentAlertsRef.current.set(tag, now)
 
-    const title = notification.title || 'Paw Paw Pet Grooming'
+    // Mark as alerted so it is never shown again across restarts
+    if (notification.id) {
+      alertedIdsRef.current.add(notification.id)
+      saveStoredIdSet(PAWPAW_ALERTED_KEY, alertedIdsRef.current)
+    }
+
     const targetUrl = notification.actionUrl || notification.link || '/'
     const actionTitle = notification.actionTitle || (
       isAdmin
@@ -56,7 +104,7 @@ export function NotificationProvider({ children }) {
             : (targetUrl.includes('boarding') ? '🐾 View Stay' : '📅 View Appointment'))
     )
     const options = {
-      body: notification.message || notification.body || '',
+      body,
       icon: PUSH_ICON,
       badge: PUSH_ICON,
       tag,
@@ -102,12 +150,15 @@ export function NotificationProvider({ children }) {
   useEffect(() => {
     let unsubscribe = () => {}
     listenForForegroundMessages(payload => {
+      const data = payload.data || {}
+      const notif = payload.notification || {}
       showBrowserNotification({
-        title: payload.data?.title || payload.notification?.title || 'Paw Paw Pet Grooming',
-        message: payload.data?.body || payload.notification?.body || '',
-        bookingId: payload.data?.bookingId || '',
-        tag: payload.data?.tag || 'pawpaw-alert',
-        actionUrl: payload.data?.actionUrl || payload.data?.link || '/',
+        id: data.id || data.notifId || '',
+        title: data.title || notif.title || 'Paw Paw Pet Grooming',
+        message: data.body || notif.body || '',
+        bookingId: data.bookingId || '',
+        tag: data.tag || (data.bookingId ? `pawpaw-booking-${data.bookingId}` : 'pawpaw-alert'),
+        actionUrl: data.actionUrl || data.link || '/',
       })
     }).then(nextUnsubscribe => { unsubscribe = nextUnsubscribe }).catch(err => console.warn('FCM foreground listener failed:', err))
     return () => unsubscribe()
@@ -118,22 +169,37 @@ export function NotificationProvider({ children }) {
       setNotifications([])
       setNotificationError('')
       seenIdsRef.current = new Set()
-      initializedRef.current = false
+      loadedSourcesRef.current = new Set()
       return
     }
+
+    const expectedSources = ['uid']
+    if (user.email) expectedSources.push('email')
+    if (isAdmin) expectedSources.push('admin')
 
     const sources = { uid: [], email: [], admin: [] }
     const mergeSources = () => {
       const map = new Map()
       Object.values(sources).flat().forEach(notification => map.set(notification.id, notification))
-      const rows = Array.from(map.values()).sort((a, b) => createdAtMs(b) - createdAtMs(a))
+
+      const currentLocallyRead = locallyReadRef.current
+      const rows = Array.from(map.values())
+        .map(n => (currentLocallyRead.has(n.id) ? { ...n, read: true } : n))
+        .sort((a, b) => createdAtMs(b) - createdAtMs(a))
       
-      // Notify active browser if a brand new unread notification arrived while session is open.
-      // Only invoke OS system notification if FCM push is NOT already active on this client.
-      // If FCM is active, FCM push delivers the notification to avoid double-posting on the mobile drawer.
-      if (initializedRef.current && seenIdsRef.current.size > 0) {
+      const allLoaded = expectedSources.every(k => loadedSourcesRef.current.has(k))
+
+      // Only notify active browser if ALL initial snapshot queries have loaded
+      // AND the notification was created LIVE during the current session (never historical on launch)
+      if (allLoaded && seenIdsRef.current.size > 0) {
         rows.forEach(n => {
-          if (!seenIdsRef.current.has(n.id) && !n.read) {
+          const created = createdAtMs(n)
+          const isHistorical = created > 0 && created < sessionStartRef.current - 5000
+          const alreadyAlerted = alertedIdsRef.current.has(n.id)
+
+          if (!isHistorical && !alreadyAlerted && !seenIdsRef.current.has(n.id) && !n.read) {
+            alertedIdsRef.current.add(n.id)
+            saveStoredIdSet(PAWPAW_ALERTED_KEY, alertedIdsRef.current)
             if (fcmStatus !== 'registered') {
               showBrowserNotification(n)
             }
@@ -149,11 +215,13 @@ export function NotificationProvider({ children }) {
       query(collection(db, 'notifications'), where(field, '==', value)),
       snap => {
         sources[key] = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        loadedSourcesRef.current.add(key)
         setNotificationError('')
         mergeSources()
       },
       err => {
         console.warn('Notification listener failed:', err)
+        loadedSourcesRef.current.add(key)
         setNotificationError(err?.message || 'Could not load notifications.')
       }
     )
@@ -166,11 +234,9 @@ export function NotificationProvider({ children }) {
       unsubs.push(listen('admin', 'toAdmin', true))
     }
 
-    const bootTimer = window.setTimeout(() => { initializedRef.current = true }, 1200)
     return () => {
-      window.clearTimeout(bootTimer)
       unsubs.forEach(unsub => unsub())
-      initializedRef.current = false
+      loadedSourcesRef.current = new Set()
     }
   }, [user, isAdmin])
 
@@ -188,24 +254,42 @@ export function NotificationProvider({ children }) {
   }
 
   const markAllRead = async () => {
-    if (!user) return
+    if (!user) return { success: false, count: 0 }
     const unread = notifications.filter(n => !n.read)
-    if (!unread.length) return
+    if (!unread.length) return { success: true, count: 0 }
 
-    // Optimistically update local state immediately
+    // 1. Immediately cache in persistent localStorage
+    unread.forEach(n => locallyReadRef.current.add(n.id))
+    saveStoredIdSet(PAWPAW_READ_KEY, locallyReadRef.current)
+
+    // 2. Optimistically update local React state
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
 
-    // Update each document individually so a single stale/permission-blocked document doesn't fail the rest
-    const updatePromises = unread.map(n =>
-      updateDoc(doc(db, 'notifications', n.id), { read: true }).catch(err => {
-        console.warn(`Could not mark notification ${n.id} read:`, err)
+    // 3. Batch update Firestore documents
+    try {
+      const batch = writeBatch(db)
+      unread.slice(0, 450).forEach(n => {
+        batch.update(doc(db, 'notifications', n.id), { read: true })
       })
-    )
-    await Promise.allSettled(updatePromises)
+      await batch.commit()
+      return { success: true, count: unread.length }
+    } catch (batchErr) {
+      console.warn('Batch mark-all-read failed, falling back to individual updates:', batchErr)
+      const updatePromises = unread.map(n =>
+        updateDoc(doc(db, 'notifications', n.id), { read: true }).catch(err => {
+          console.warn(`Could not mark notification ${n.id} read:`, err)
+        })
+      )
+      await Promise.allSettled(updatePromises)
+      return { success: true, count: unread.length }
+    }
   }
 
   const markRead = async (id) => {
     if (!id) return
+    locallyReadRef.current.add(id)
+    saveStoredIdSet(PAWPAW_READ_KEY, locallyReadRef.current)
+
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
     try {
       await updateDoc(doc(db, 'notifications', id), { read: true })
@@ -262,4 +346,5 @@ export function NotificationProvider({ children }) {
 }
 
 export const useNotifications = () => useContext(NotifContext)
+
 
