@@ -1025,12 +1025,22 @@ export default function WalkerPortal() {
     const active = []
     const upcoming = []
     const completed = []
+    const skipped = []
 
     walks.forEach(w => {
-      if (w.status === WALKING_STATUS.IN_PROGRESS) {
-        active.unshift(w)
-      } else if (w.status === WALKING_STATUS.COMPLETED) {
+      const isSkippedToday = Array.isArray(w.skippedDates) && (
+        w.skippedDates.includes(todayStr) ||
+        (w.date && w.skippedDates.includes(w.date)) ||
+        (w.walkingDate && w.skippedDates.includes(w.walkingDate))
+      )
+
+      if (w.status === WALKING_STATUS.COMPLETED) {
         completed.push(w)
+      } else if (isSkippedToday && w.status !== WALKING_STATUS.IN_PROGRESS) {
+        // Automatically exclude from daily active route
+        skipped.push(w)
+      } else if (w.status === WALKING_STATUS.IN_PROGRESS) {
+        active.unshift(w)
       } else {
         const walkDate = w.date || w.walkingDate || ''
         if (walkDate === todayStr || !walkDate) {
@@ -1043,7 +1053,7 @@ export default function WalkerPortal() {
       }
     })
 
-    return { active, upcoming, completed }
+    return { active, upcoming, completed, skipped }
   }, [walks])
 
   // Recent 5 walks for the home/active screen
@@ -1058,6 +1068,11 @@ export default function WalkerPortal() {
     const isThisActive = w.status === WALKING_STATUS.IN_PROGRESS
     const isCompleted = w.status === WALKING_STATUS.COMPLETED
     const mapLink = w.mapPinUrl || (w.lat && w.lng ? `https://www.google.com/maps?q=${w.lat},${w.lng}` : '')
+    const todayStr = new Date().toISOString().split('T')[0]
+    const isSkippedToday = Array.isArray(w.skippedDates) && (
+      w.skippedDates.includes(todayStr) ||
+      w.skippedDates.includes(w.date || w.walkingDate)
+    )
 
     return (
       <div
@@ -1089,9 +1104,16 @@ export default function WalkerPortal() {
             </div>
           </div>
 
-          <span className={`badge ${isThisActive ? 'badge-confirmed' : isCompleted ? 'badge-completed' : 'badge-pending'}`} style={{ fontSize: '11px' }}>
-            {isThisActive ? '🟢 In Progress' : isCompleted ? 'Completed' : (WALKING_STATUS_LABELS[w.status] || 'Scheduled')}
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+            <span className={`badge ${isSkippedToday ? 'badge-cancelled' : isThisActive ? 'badge-confirmed' : isCompleted ? 'badge-completed' : 'badge-pending'}`} style={{ fontSize: '11px' }}>
+              {isSkippedToday ? '⏸️ Skipped Today' : isThisActive ? '🟢 In Progress' : isCompleted ? 'Completed' : (WALKING_STATUS_LABELS[w.status] || 'Scheduled')}
+            </span>
+            {w.planType && w.planType !== 'single' && (
+              <span className="badge" style={{ background: '#FFF9ED', color: '#B45309', border: '1px solid #FCD34D', fontSize: '10px', fontWeight: 800 }}>
+                {w.planType === 'monthly' ? '🌟 Monthly Pass' : '📦 7-Day Pass'} ({w.completedWalks || 0}/{w.totalWalks || (w.planType === 'monthly' ? 26 : 7)})
+              </span>
+            )}
+          </div>
         </div>
 
         <div style={{ background: 'var(--surface, #F7F2E7)', borderRadius: '12px', padding: '10px 12px', marginBottom: '12px', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1147,8 +1169,31 @@ export default function WalkerPortal() {
           </div>
         )}
 
+        {/* Skipped Today Notice */}
+        {isSkippedToday && (
+          <div style={{
+            background: '#FFFBEB',
+            border: '1.5px dashed #F59E0B',
+            borderRadius: '12px',
+            padding: '12px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            color: '#92400E',
+            marginBottom: '12px',
+          }}>
+            <span style={{ fontSize: '22px', flexShrink: 0 }}>⏸️</span>
+            <div>
+              <strong style={{ fontSize: '13px', display: 'block' }}>Walk Skipped by Parent for Today</strong>
+              <span style={{ fontSize: '11.5px', color: '#B45309', lineHeight: 1.4, display: 'block' }}>
+                Pet parent is out of town / requested a skip for today. No visit needed. Their pass validity was automatically extended.
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Arrival Status & Start Walk Pipeline */}
-        {!isCompleted && !isThisActive && (() => {
+        {!isCompleted && !isThisActive && !isSkippedToday && (() => {
           const arrivalStatus = w.walkerArrivalStatus || 'idle'
           const ownerPhoneClean = (w.phone || w.userPhone || '').replace(/\D/g, '')
           const waNumber = ownerPhoneClean ? (ownerPhoneClean.length === 10 ? `91${ownerPhoneClean}` : ownerPhoneClean) : ''
@@ -1528,14 +1573,14 @@ export default function WalkerPortal() {
         style={{
           position: 'sticky',
           top: 0,
-          zIndex: 100,
-          background: 'rgba(252, 250, 246, 0.96)',
-          backdropFilter: 'blur(10px)',
+          zIndex: 300,
+          background: '#FCFAF6',
           borderBottom: '1px solid var(--border, #F0EAE1)',
           padding: '12px 16px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          boxShadow: '0 2px 10px rgba(34, 23, 17, 0.05)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1717,6 +1762,8 @@ export default function WalkerPortal() {
                   border: '2px solid rgba(192, 136, 32, 0.6)',
                   position: 'relative',
                   overflow: 'hidden',
+                  isolation: 'isolate',
+                  zIndex: 1,
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
@@ -2285,6 +2332,39 @@ export default function WalkerPortal() {
 
             {/* RECENT WALKS (MAX 5) SECTION */}
             <div style={{ marginBottom: '16px' }}>
+              {categorizedWalks.skipped.length > 0 && (
+                <div style={{
+                  background: 'rgba(217, 119, 6, 0.08)',
+                  border: '1.5px solid rgba(217, 119, 6, 0.3)',
+                  borderRadius: '14px',
+                  padding: '10px 14px',
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px'
+                }}>
+                  <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>⏸️</span>
+                    <span>{categorizedWalks.skipped.length} walk{categorizedWalks.skipped.length > 1 ? 's' : ''} skipped today by pet parent (excluded from active route)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setMainPortalTab('all_walks'); setActiveTab('skipped') }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--accent, #C08820)',
+                      fontSize: '12px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    View →
+                  </button>
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: 900, color: 'var(--text, #221711)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Clock size={16} color="var(--accent, #C08820)" /> Upcoming Walks (Recent {Math.min(5, recentWalks.length)})
@@ -2418,6 +2498,26 @@ export default function WalkerPortal() {
               >
                 Completed ({categorizedWalks.completed.length})
               </button>
+              {categorizedWalks.skipped.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('skipped')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '999px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    border: '1.5px solid',
+                    borderColor: activeTab === 'skipped' ? '#d97706' : '#fde68a',
+                    background: activeTab === 'skipped' ? '#d97706' : '#fffbeb',
+                    color: activeTab === 'skipped' ? '#fff' : '#92400e',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  ⏸️ Skipped ({categorizedWalks.skipped.length})
+                </button>
+              )}
             </div>
 
             {/* Walks list */}
@@ -2426,19 +2526,19 @@ export default function WalkerPortal() {
                 <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite', marginBottom: '8px' }} />
                 <div>Loading walks...</div>
               </div>
-            ) : categorizedWalks[activeTab].length === 0 ? (
+            ) : (categorizedWalks[activeTab] || []).length === 0 ? (
               <div style={{ background: 'var(--card, #fff)', borderRadius: '18px', padding: '32px 20px', textAlign: 'center', border: '1.5px dashed var(--border, #F0EAE1)' }}>
                 <Footprints size={32} color="var(--muted, #7E7067)" style={{ marginBottom: '8px', opacity: 0.5 }} />
                 <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text, #221711)', marginBottom: '4px' }}>
                   No walks in this tab
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--muted, #7E7067)' }}>
-                  {activeTab === 'active' ? 'You have no pending walks scheduled for today.' : activeTab === 'upcoming' ? 'No future walks assigned yet.' : 'No completed walks logged yet.'}
+                  {activeTab === 'active' ? 'You have no pending walks scheduled for today.' : activeTab === 'upcoming' ? 'No future walks assigned yet.' : activeTab === 'skipped' ? 'No walks skipped today.' : 'No completed walks logged yet.'}
                 </div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {categorizedWalks[activeTab].map(renderWalkCard)}
+                {(categorizedWalks[activeTab] || []).map(renderWalkCard)}
               </div>
             )}
           </div>

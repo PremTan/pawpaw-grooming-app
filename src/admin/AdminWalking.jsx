@@ -24,6 +24,8 @@ import {
   DEFAULT_WALKING_SETTINGS,
   DEFAULT_WALKING_SLOTS,
   DEFAULT_SERVICEABLE_AREAS,
+  DEFAULT_WALKING_PACKS,
+  calculatePackPrice,
   buildWalkingWhatsAppMessage,
   WALKING_STATUS,
   WALKING_STATUS_LABELS,
@@ -45,6 +47,7 @@ import {
   Info,
   MapPin,
   MessageCircle,
+  Package,
   Phone,
   Plus,
   ReceiptText,
@@ -1483,6 +1486,13 @@ ${portalUrl}`
             >
               <MapPin size={14} /> Serviceable Areas ({settings.serviceableAreas?.length || 0})
             </button>
+            <button
+              type="button"
+              className={`walking-subtab-btn ${settingsTab === 'packs' ? 'active' : ''}`}
+              onClick={() => setSettingsTab('packs')}
+            >
+              <Package size={14} /> Walking Packs ({settings.packs?.enabled !== false ? 'Active' : 'Off'})
+            </button>
           </div>
 
           {/* SUBTAB 1: DURATIONS & PRICING */}
@@ -2106,6 +2116,350 @@ ${portalUrl}`
                   >
                     <Plus size={14} /> Add Area
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SUBTAB 5: WALKING PACKS & SUBSCRIPTIONS */}
+          {settingsTab === 'packs' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Master Pack Toggle */}
+              <div
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '18px 20px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <strong style={{ fontSize: '14.5px', color: 'var(--text)' }}>Weekly & Monthly Walking Packs</strong>
+                      <span
+                        style={{
+                          fontSize: '10.5px',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          background: (settings.packs?.enabled ?? true) ? '#dcfce7' : '#fee2e2',
+                          color: (settings.packs?.enabled ?? true) ? '#15803d' : '#b91c1c',
+                          border: `1px solid ${(settings.packs?.enabled ?? true) ? '#bbf7d0' : '#fecaca'}`,
+                        }}
+                      >
+                        {(settings.packs?.enabled ?? true) ? 'Active' : 'Disabled'}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                      Allow pet parents to book 7-Day or Monthly subscription passes upfront with bundle discounts instead of booking daily.
+                    </span>
+                  </div>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: '10px' }}>
+                    <input
+                      type="checkbox"
+                      checked={settings.packs?.enabled ?? true}
+                      onChange={e => setSettings(prev => ({
+                        ...prev,
+                        packs: {
+                          ...(prev.packs || DEFAULT_WALKING_PACKS),
+                          enabled: e.target.checked,
+                        },
+                      }))}
+                      style={{ width: '22px', height: '22px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text)' }}>
+                      {(settings.packs?.enabled ?? true) ? 'Packs Enabled' : 'Packs Disabled'}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Weekly & Monthly Pack Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+                {/* 1. Weekly Pack */}
+                <div
+                  style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '16px',
+                    padding: '18px 20px',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '14px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13.5px', fontWeight: 800, color: 'var(--accent)' }}>
+                      <Package size={16} /> 7-Day Weekly Pack
+                    </div>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.packs?.weekly?.enabled ?? true}
+                        onChange={e => setSettings(prev => ({
+                          ...prev,
+                          packs: {
+                            ...(prev.packs || DEFAULT_WALKING_PACKS),
+                            weekly: {
+                              ...((prev.packs || DEFAULT_WALKING_PACKS).weekly || {}),
+                              enabled: e.target.checked,
+                            },
+                          },
+                        }))}
+                        style={{ accentColor: 'var(--accent)', width: '16px', height: '16px' }}
+                      />
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)' }}>Active</span>
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '3px' }}>
+                        Total Walks in Pack
+                      </label>
+                      <input
+                        type="number"
+                        min="3"
+                        max="14"
+                        className="input"
+                        value={settings.packs?.weekly?.totalWalks ?? 7}
+                        onChange={e => setSettings(prev => ({
+                          ...prev,
+                          packs: {
+                            ...(prev.packs || DEFAULT_WALKING_PACKS),
+                            weekly: {
+                              ...((prev.packs || DEFAULT_WALKING_PACKS).weekly || {}),
+                              totalWalks: Number(e.target.value) || 7,
+                            },
+                          },
+                        }))}
+                        style={{ fontSize: '12.5px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '3px' }}>
+                        Bundle Discount (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        className="input"
+                        value={settings.packs?.weekly?.discountPercent ?? 12}
+                        onChange={e => setSettings(prev => ({
+                          ...prev,
+                          packs: {
+                            ...(prev.packs || DEFAULT_WALKING_PACKS),
+                            weekly: {
+                              ...((prev.packs || DEFAULT_WALKING_PACKS).weekly || {}),
+                              discountPercent: Number(e.target.value) || 0,
+                            },
+                          },
+                        }))}
+                        style={{ fontSize: '12.5px' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '3px' }}>
+                      Badge Text (Shown to Clients)
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={settings.packs?.weekly?.badgeText ?? 'Most Popular'}
+                      onChange={e => setSettings(prev => ({
+                        ...prev,
+                        packs: {
+                          ...(prev.packs || DEFAULT_WALKING_PACKS),
+                          weekly: {
+                            ...((prev.packs || DEFAULT_WALKING_PACKS).weekly || {}),
+                            badgeText: e.target.value,
+                          },
+                        },
+                      }))}
+                      style={{ fontSize: '12.5px' }}
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Monthly Pack */}
+                <div
+                  style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '16px',
+                    padding: '18px 20px',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '14px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13.5px', fontWeight: 800, color: 'var(--accent)' }}>
+                      <Package size={16} /> Monthly Subscription Pack
+                    </div>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.packs?.monthly?.enabled ?? true}
+                        onChange={e => setSettings(prev => ({
+                          ...prev,
+                          packs: {
+                            ...(prev.packs || DEFAULT_WALKING_PACKS),
+                            monthly: {
+                              ...((prev.packs || DEFAULT_WALKING_PACKS).monthly || {}),
+                              enabled: e.target.checked,
+                            },
+                          },
+                        }))}
+                        style={{ accentColor: 'var(--accent)', width: '16px', height: '16px' }}
+                      />
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)' }}>Active</span>
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '3px' }}>
+                        Total Walks (Mon–Sat standard)
+                      </label>
+                      <input
+                        type="number"
+                        min="15"
+                        max="31"
+                        className="input"
+                        value={settings.packs?.monthly?.totalWalks ?? 26}
+                        onChange={e => setSettings(prev => ({
+                          ...prev,
+                          packs: {
+                            ...(prev.packs || DEFAULT_WALKING_PACKS),
+                            monthly: {
+                              ...((prev.packs || DEFAULT_WALKING_PACKS).monthly || {}),
+                              totalWalks: Number(e.target.value) || 26,
+                            },
+                          },
+                        }))}
+                        style={{ fontSize: '12.5px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '3px' }}>
+                        Bundle Discount (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        className="input"
+                        value={settings.packs?.monthly?.discountPercent ?? 22}
+                        onChange={e => setSettings(prev => ({
+                          ...prev,
+                          packs: {
+                            ...(prev.packs || DEFAULT_WALKING_PACKS),
+                            monthly: {
+                              ...((prev.packs || DEFAULT_WALKING_PACKS).monthly || {}),
+                              discountPercent: Number(e.target.value) || 0,
+                            },
+                          },
+                        }))}
+                        style={{ fontSize: '12.5px' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '3px' }}>
+                      Badge Text (Shown to Clients)
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={settings.packs?.monthly?.badgeText ?? 'Best Value (Save 22%)'}
+                      onChange={e => setSettings(prev => ({
+                        ...prev,
+                        packs: {
+                          ...(prev.packs || DEFAULT_WALKING_PACKS),
+                          monthly: {
+                            ...((prev.packs || DEFAULT_WALKING_PACKS).monthly || {}),
+                            badgeText: e.target.value,
+                          },
+                        },
+                      }))}
+                      style={{ fontSize: '12.5px' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Out-of-town / Skip Day Policy Card */}
+              <div
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '18px 20px',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ fontSize: '18px' }}>🗓️</div>
+                    <div>
+                      <strong style={{ fontSize: '14px', color: 'var(--text)' }}>"Skip Day / Going Out" Policy</strong>
+                      <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                        If a parent is out of town, they can tap "Skip Walk" in their bookings. The pack validity auto-extends by +1 day so no walk is lost!
+                      </div>
+                    </div>
+                  </div>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={settings.packs?.allowSkip ?? true}
+                      onChange={e => setSettings(prev => ({
+                        ...prev,
+                        packs: {
+                          ...(prev.packs || DEFAULT_WALKING_PACKS),
+                          allowSkip: e.target.checked,
+                        },
+                      }))}
+                      style={{ accentColor: 'var(--accent)', width: '18px', height: '18px' }}
+                    />
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>Allow Skipping</span>
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--surface)', padding: '12px 14px', borderRadius: '10px' }}>
+                  <Clock size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>Minimum Skip Notice (Hours)</div>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                      Parent must tap skip at least this many hours before the walk slot to prevent unnecessary walker travel.
+                    </div>
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    max="24"
+                    className="input"
+                    value={settings.packs?.minSkipNoticeHours ?? 2}
+                    onChange={e => setSettings(prev => ({
+                      ...prev,
+                      packs: {
+                        ...(prev.packs || DEFAULT_WALKING_PACKS),
+                        minSkipNoticeHours: Number(e.target.value) || 2,
+                      },
+                    }))}
+                    style={{ width: '80px', fontSize: '13px', textAlign: 'center' }}
+                  />
                 </div>
               </div>
             </div>

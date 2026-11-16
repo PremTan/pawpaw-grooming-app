@@ -68,6 +68,7 @@ import {
   DEFAULT_WALKING_SLOTS,
   isWalkingDayOpen,
   parseSlotTimeToMinutes,
+  calculateEstimatedEndDate,
 } from '../utils/walkingSettings'
 import { downloadInvoicePdf } from '../utils/invoicePdf'
 import LiveWalkModal from '../components/LiveWalkModal'
@@ -411,6 +412,92 @@ export default function MyBookings() {
   const [ratingFeedback, setRatingFeedback] = useState('')
   const [submittingRating, setSubmittingRating] = useState(false)
   const [ratingToast, setRatingToast] = useState('')
+
+  // Walking Subscription Skip Day State
+  const [skipModalBooking, setSkipModalBooking] = useState(null)
+  const [savingSkip, setSavingSkip] = useState(false)
+  const [skipToast, setSkipToast] = useState('')
+
+  useEffect(() => {
+    if (!skipToast) return
+    const t = window.setTimeout(() => setSkipToast(''), 4000)
+    return () => window.clearTimeout(t)
+  }, [skipToast])
+
+  const handleToggleSkipDate = async (booking, dateStr) => {
+    if (!booking || !dateStr) return
+    setSavingSkip(true)
+    try {
+      const existingSkips = Array.isArray(booking.skippedDates) ? [...booking.skippedDates] : []
+      const isAlreadySkipped = existingSkips.includes(dateStr)
+      const newSkips = isAlreadySkipped
+        ? existingSkips.filter(d => d !== dateStr)
+        : [...existingSkips, dateStr].sort()
+
+      const newSkippedWalks = newSkips.length
+      const newEstimatedEndDate = calculateEstimatedEndDate({
+        startDateStr: booking.startDate || booking.date || booking.walkingDate,
+        walkCount: Number(booking.totalWalks || (booking.planType === 'monthly' ? 26 : 7)),
+        schedulePattern: booking.schedulePattern || 'weekdays',
+        frequency: booking.frequency || 'once_daily',
+        skippedCount: newSkippedWalks,
+      })
+
+      const patch = {
+        skippedDates: newSkips,
+        skippedWalks: newSkippedWalks,
+        estimatedEndDate: newEstimatedEndDate,
+        updatedAt: serverTimestamp(),
+      }
+
+      await updateDoc(doc(db, 'walkingBookings', booking.id), patch)
+
+      // Notify Walker & Admin if skipping
+      if (!isAlreadySkipped) {
+        const walkerId = booking.assignedWalkerId || booking.assignedTeamMemberId
+        if (walkerId) {
+          addDoc(collection(db, 'walkerNotifications'), {
+            walkerId,
+            title: `⏸️ Walk Skipped by Parent`,
+            message: `${booking.dogName || booking.petName || 'Dog'} walk on ${dateStr} was skipped by parent (Out of town). Pass extended.`,
+            bookingId: booking.id,
+            dogName: booking.dogName || booking.petName || 'Dog',
+            read: false,
+            createdAt: serverTimestamp(),
+          }).catch(() => {})
+        }
+
+        if (sendNotification) {
+          sendNotification('', {
+            userEmail: ADMIN_EMAIL || '',
+            toAdmin: true,
+            title: `⏸️ Dog Walk Skipped: ${booking.dogName || booking.petName || 'Dog'}`,
+            message: `${booking.ownerName || 'Parent'} skipped ${booking.dogName || booking.petName || 'Dog'}'s walk for ${dateStr}. Validity extended to ${newEstimatedEndDate}.`,
+            type: 'walking_skip',
+            bookingId: booking.id,
+            actionUrl: `/admin/walking`,
+          }).catch(() => {})
+        }
+      }
+
+      // Update local state
+      setWalkings(prev => prev.map(w => w.id === booking.id ? { ...w, ...patch } : w))
+      if (selectedWalking?.id === booking.id) {
+        setSelectedWalking(prev => ({ ...prev, ...patch }))
+      }
+      setSkipModalBooking(prev => prev ? { ...prev, ...patch } : null)
+
+      setSkipToast(isAlreadySkipped
+        ? `Walk on ${formatBoardingDate(dateStr)} restored to your schedule!`
+        : `Walk on ${formatBoardingDate(dateStr)} skipped! Pass auto-extended to ${formatBoardingDate(newEstimatedEndDate)}.`
+      )
+    } catch (err) {
+      console.error('Failed to toggle skip day:', err)
+      setSkipToast(`Could not update skip date: ${err.message}`)
+    } finally {
+      setSavingSkip(false)
+    }
+  }
 
   // Lock background scroll when boarding modal is open
   useEffect(() => {
@@ -1566,6 +1653,11 @@ export default function MyBookings() {
                           <span className={`badge ${STATUS_BADGE[w.status] || 'badge-pending'} my-booking-status`}>
                             {statusLabel(w.status)}
                           </span>
+                          {w.planType && w.planType !== 'single' && (
+                            <span className="badge" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 800 }}>
+                              {w.planType === 'monthly' ? '🌟 Monthly Pass' : '📦 7-Day Pass'}
+                            </span>
+                          )}
                           {w.hasEmergency && (
                             <span className="badge" style={{ background: '#fee2e2', color: '#dc2626', border: '1.5px solid #ef4444', fontWeight: 900, animation: 'pawpaw-gps-pulse 1s infinite' }}>
                               🚨 SOS ALERT
@@ -1653,10 +1745,62 @@ export default function MyBookings() {
                             </div>
                           </div>
                         )}
+
+                        {/* Subscription Pack Progress Summary */}
+                        {w.planType && w.planType !== 'single' && (() => {
+                          const total = Number(w.totalWalks || (w.planType === 'monthly' ? 26 : 7))
+                          const completed = Number(w.completedWalks || 0)
+                          const remaining = Math.max(0, total - completed)
+                          const percent = Math.min(100, Math.round((completed / total) * 100))
+                          const skippedCount = Array.isArray(w.skippedDates) ? w.skippedDates.length : Number(w.skippedWalks || 0)
+
+                          return (
+                            <div style={{ marginTop: '12px', background: 'var(--surface)', border: '1px solid var(--accent-border)', borderRadius: '12px', padding: '10px 12px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>
+                                  Pass Progress: {completed}/{total} Walks Done
+                                </span>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--accent)' }}>
+                                  {remaining} Remaining
+                                </span>
+                              </div>
+                              <div style={{ width: '100%', height: '6px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden', marginBottom: '6px' }}>
+                                <div style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent) 0%, #10b981 100%)', borderRadius: '999px', transition: 'width 0.4s ease' }} />
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10.5px', color: 'var(--muted)' }}>
+                                <span>Valid until: <strong>{formatBoardingDate(w.estimatedEndDate || w.date)}</strong></span>
+                                {skippedCount > 0 && (
+                                  <span style={{ color: '#b45309', fontWeight: 700 }}>
+                                    ⏸️ {skippedCount} skipped (extended)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })()}
                       </div>
 
                       {/* Action Bar */}
                       <div className="my-booking-row-actions" onClick={e => e.stopPropagation()}>
+                        {w.planType && w.planType !== 'single' && w.status !== 'cancelled' && w.status !== 'completed' && (
+                          <button
+                            type="button"
+                            className="my-booking-card-btn"
+                            style={{
+                              background: '#fffbeb',
+                              borderColor: '#fde68a',
+                              color: '#b45309',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontWeight: 800,
+                            }}
+                            onClick={() => setSkipModalBooking(w)}
+                            title="Going out of town? Skip an upcoming walk to extend your pass"
+                          >
+                            ⏸️ Skip Day
+                          </button>
+                        )}
                         {w.status === 'in_progress' && (
                           <button
                             type="button"
@@ -3797,6 +3941,21 @@ export default function MyBookings() {
 
               {isPendingOrConfirmed && (
                 <div className="details-modal-footer boarding-modal-footer">
+                  {selectedWalking.planType && selectedWalking.planType !== 'single' && (
+                    <button
+                      type="button"
+                      className="grooming-action-btn"
+                      style={{ background: '#fffbeb', borderColor: '#fde68a', color: '#b45309', fontWeight: 800 }}
+                      onClick={() => {
+                        const target = selectedWalking
+                        setSelectedWalking(null)
+                        setSkipModalBooking(target)
+                      }}
+                    >
+                      ⏸️ Manage Skip Days
+                    </button>
+                  )}
+
                   {(selectedWalking.status === 'pending' || selectedWalking.status === 'under_review' || !selectedWalking.status) && (
                     <button
                       type="button"
@@ -4157,6 +4316,156 @@ export default function MyBookings() {
           initialBooking={liveTrackingWalking}
           onClose={() => setLiveTrackingWalking(null)}
         />
+      )}
+
+      {/* 🗓️ Walking Pass "Skip Day / Going Out" Modal */}
+      {skipModalBooking && (() => {
+        const dogName = skipModalBooking.petName || skipModalBooking.dogName || 'Your Dog'
+        const skipped = Array.isArray(skipModalBooking.skippedDates) ? skipModalBooking.skippedDates : []
+
+        // Generate next 7 upcoming days
+        const upcomingList = []
+        const today = new Date()
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(today)
+          d.setDate(today.getDate() + i)
+          const y = d.getFullYear()
+          const m = String(d.getMonth() + 1).padStart(2, '0')
+          const day = String(d.getDate()).padStart(2, '0')
+          const dateStr = `${y}-${m}-${day}`
+          const isSun = d.getDay() === 0
+          upcomingList.push({
+            dateStr,
+            display: d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }),
+            isSunday: isSun,
+            isSkipped: skipped.includes(dateStr),
+          })
+        }
+
+        return (
+          <div
+            className="my-booking-modal-overlay"
+            onClick={() => !savingSkip && setSkipModalBooking(null)}
+            style={{ zIndex: 1250, background: 'rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(5px)' }}
+          >
+            <section
+              className="my-booking-modal"
+              style={{
+                maxWidth: '480px',
+                width: '100%',
+                padding: '22px',
+                borderRadius: '24px',
+                background: 'var(--surface, #FFFDF9)',
+                border: '1px solid var(--border)',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
+                margin: 'auto',
+                position: 'relative',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '14px', background: '#FEF3C7', border: '1.5px solid #FCD34D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>
+                    🗓️
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: 'var(--text)' }}>
+                      Skip Day / Going Out
+                    </h3>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                      {dogName} · Pass ends {formatBoardingDate(skipModalBooking.estimatedEndDate || skipModalBooking.date)}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSkipModalBooking(null)}
+                  disabled={savingSkip}
+                  style={{ background: 'var(--surface)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text)' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Explanatory Banner */}
+              <div style={{ background: '#F0FDF4', border: '1.2px solid #BBF7D0', borderRadius: '14px', padding: '12px 14px', marginBottom: '16px', fontSize: '12px', color: '#166534', lineHeight: 1.5 }}>
+                <strong>✈️ Going Out of Town Guarantee:</strong>
+                <p style={{ margin: '4px 0 0', color: '#15803d' }}>
+                  If you are out of town or busy on any day, tap <strong>Skip</strong>. We will notify your walker not to come, and your pass validity <strong>automatically extends by +1 day</strong> so zero walks are wasted!
+                </p>
+              </div>
+
+              {/* Upcoming Days List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '340px', overflowY: 'auto', marginBottom: '16px' }}>
+                {upcomingList.map(item => (
+                  <div
+                    key={item.dateStr}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: item.isSkipped ? '#FEF2F2' : 'var(--card, #fff)',
+                      border: `1.5px solid ${item.isSkipped ? '#FECACA' : 'var(--border)'}`,
+                      borderRadius: '12px',
+                      padding: '10px 14px',
+                      gap: '10px',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '13.5px', fontWeight: 800, color: item.isSkipped ? '#991B1B' : 'var(--text)' }}>
+                        {item.display}
+                      </div>
+                      <div style={{ fontSize: '11px', color: item.isSkipped ? '#DC2626' : '#16A34A', fontWeight: 700 }}>
+                        {item.isSkipped ? '⏸️ Skipped (+1 Day Added to Pass)' : '🟢 Walk Scheduled'}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={savingSkip}
+                      onClick={() => handleToggleSkipDate(skipModalBooking, item.dateStr)}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        fontSize: '11.5px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        border: '1.5px solid',
+                        background: item.isSkipped ? '#FFF' : '#FEF3C7',
+                        borderColor: item.isSkipped ? '#CBD5E1' : '#FCD34D',
+                        color: item.isSkipped ? '#475569' : '#B45309',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {item.isSkipped ? '↺ Resume Walk' : '⏸️ Skip Day'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setSkipModalBooking(null)}
+                  className="btn btn-secondary"
+                  style={{ padding: '8px 18px', fontSize: '13px', fontWeight: 700 }}
+                >
+                  Done
+                </button>
+              </div>
+            </section>
+          </div>
+        )
+      })()}
+
+      {/* Skip Day Toast Notification */}
+      {skipToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '16px', zIndex: 99999, maxWidth: 'min(420px, calc(100vw - 32px))' }}>
+          <Toast message={skipToast} type="success" onClose={() => setSkipToast('')} />
+        </div>
       )}
 
       <style>{`

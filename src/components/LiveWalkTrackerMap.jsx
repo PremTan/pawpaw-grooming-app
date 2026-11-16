@@ -250,7 +250,7 @@ export default function LiveWalkTrackerMap({
     : ''
 
   return (
-    <div style={{ position: 'relative', width: '100%', height, borderRadius: '16px', overflow: 'hidden', border: '1.5px solid var(--border)', background: 'var(--surface)' }}>
+    <div style={{ position: 'relative', width: '100%', height, borderRadius: '16px', overflow: 'hidden', border: '1.5px solid var(--border)', background: 'var(--surface)', isolation: 'isolate', zIndex: 1 }}>
       {/* Map Canvas */}
       <div ref={containerRef} style={{ width: '100%', height: '100%', zIndex: 1 }} />
 
@@ -282,7 +282,7 @@ export default function LiveWalkTrackerMap({
       )}
 
       {/* Floating Status Pill (Top Left - Unobstructed) */}
-      <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 1000, maxWidth: 'calc(100% - 20px)' }}>
+      <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 10, maxWidth: 'calc(100% - 20px)' }}>
         {isLive ? (
           <div style={{ background: '#221711', color: '#fff', fontSize: '11px', fontWeight: 800, padding: '5px 12px', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 12px rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.15)', maxWidth: '100%', whiteSpace: 'nowrap' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', animation: 'pawpaw-gps-pulse 1.5s infinite', flexShrink: 0 }} />
@@ -298,7 +298,7 @@ export default function LiveWalkTrackerMap({
 
       {/* Quick Action Floating Controls (Bottom Left - Prevents mobile overlap with status pill) */}
       {showControls && (
-        <div style={{ position: 'absolute', bottom: '10px', left: '10px', zIndex: 1000, display: 'flex', gap: '5px', flexWrap: 'wrap', maxWidth: 'calc(100% - 70px)' }}>
+        <div style={{ position: 'absolute', bottom: '10px', left: '10px', zIndex: 10, display: 'flex', gap: '5px', flexWrap: 'wrap', maxWidth: 'calc(100% - 70px)' }}>
           <button
             type="button"
             onClick={handleRecenter}
@@ -368,8 +368,21 @@ export default function LiveWalkTrackerMap({
         </div>
       )}
 
-      {/* Embedded CSS for pulsing animation */}
+      {/* Embedded CSS for pulsing animation and constrained leaflet layers */}
       <style>{`
+        .leaflet-container {
+          isolation: isolate;
+          z-index: 1 !important;
+        }
+        .leaflet-pane {
+          z-index: 2 !important;
+        }
+        .leaflet-top, .leaflet-bottom {
+          z-index: 5 !important;
+        }
+        .leaflet-control {
+          z-index: 5 !important;
+        }
         @keyframes pawpaw-gps-pulse {
           0% {
             transform: scale(0.8);

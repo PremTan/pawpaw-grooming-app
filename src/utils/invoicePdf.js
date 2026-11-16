@@ -46,19 +46,26 @@ export const getInvoiceSummary = (booking, businessInfo = {}) => {
   }
 
   if (booking?.isWalking || booking?.serviceType === 'walking') {
+    const isPack = booking?.planType && booking?.planType !== 'single'
+    const serviceName = isPack
+      ? (booking?.planType === 'monthly' ? `Monthly Subscription Pass (${booking.totalWalks || 26} Walks)` : `7-Day Weekly Pass (${booking.totalWalks || 7} Walks)`)
+      : `Dog Walking (${booking?.duration || booking?.durationMinutes || 30} Mins Session)`
     return [
       `${shopName} Dog Walking Invoice`,
       `Invoice No: ${invoiceNo}`,
       `Customer: ${booking?.ownerName || '-'}`,
       `Phone: ${booking?.phone || '-'}`,
       `Pet: ${buildPetLabel(booking)}`,
-      `Service: Dog Walking (${booking?.duration || booking?.durationMinutes || 30} Mins Session)`,
-      `Schedule: ${booking?.date || '-'} ${booking?.slot || ''}`.trim(),
+      `Service: ${serviceName}`,
+      isPack
+        ? `Validity: ${booking?.startDate || booking?.date || '-'} to ${booking?.estimatedEndDate || '-'}`
+        : `Schedule: ${booking?.date || '-'} ${booking?.slot || ''}`.trim(),
+      isPack && `Progress: ${booking?.completedWalks || 0}/${booking?.totalWalks || 0} completed${booking?.skippedDates?.length ? ` (${booking.skippedDates.length} skipped)` : ''}`,
       `Pickup: ${booking?.pickupAddress || booking?.address || booking?.area || '-'}`,
       `Amount Paid: ${money(amountPaid)}`,
       `GST: ${gstAmount > 0 ? money(gstAmount) : 'Not applicable'}`,
       `Total: ${money(total)}`,
-    ].join('\n')
+    ].filter(Boolean).join('\n')
   }
 
   return [
@@ -159,14 +166,28 @@ export const buildCustomerInvoiceWhatsAppMessage = (booking, businessInfo = {}) 
       `🏨 *Stay:* ${stayStr} (${days} Day${days > 1 ? 's' : ''})`,
     ].join('\n')
   } else if (isWalking) {
+    const isPack = booking?.planType && booking?.planType !== 'single'
     const durationMins = booking?.duration || booking?.durationMinutes || 30
-    const dateSlot = `${booking?.walkingDate || booking?.date || '-'}${booking?.slot || booking?.walkingSlot ? ` at ${booking.slot || booking.walkingSlot}` : ''}`
-    detailsText = [
-      `🐕 *Pet:* ${petLabel}`,
-      `🦮 *Service:* Dog Walking (${durationMins} Mins Session)`,
-      `📅 *Schedule:* ${dateSlot}`,
-      `📍 *Pickup:* ${booking?.pickupAddress || booking?.address || booking?.area || 'Doorstep Pickup'}`,
-    ].join('\n')
+    const packLabel = booking?.planType === 'monthly' ? `Monthly Subscription Pass (${booking.totalWalks || 26} Walks)` :
+                      booking?.planType === 'weekly' ? `7-Day Weekly Pass (${booking.totalWalks || 7} Walks)` :
+                      `Dog Walking (${durationMins} Mins Session)`
+    if (isPack) {
+      detailsText = [
+        `🐕 *Pet:* ${petLabel}`,
+        `🦮 *Subscription:* ${packLabel}`,
+        `📅 *Validity:* ${booking?.startDate || booking?.date || '-'} to ${booking?.estimatedEndDate || '-'}`,
+        `🚶 *Walks Progress:* ${booking?.completedWalks || 0}/${booking?.totalWalks || 0} completed${booking?.skippedDates?.length ? ` (${booking.skippedDates.length} extended/skipped)` : ''}`,
+        `📍 *Pickup:* ${booking?.pickupAddress || booking?.address || booking?.area || 'Doorstep Pickup'}`,
+      ].join('\n')
+    } else {
+      const dateSlot = `${booking?.walkingDate || booking?.date || '-'}${booking?.slot || booking?.walkingSlot ? ` at ${booking.slot || booking.walkingSlot}` : ''}`
+      detailsText = [
+        `🐕 *Pet:* ${petLabel}`,
+        `🦮 *Service:* Dog Walking (${durationMins} Mins Session)`,
+        `📅 *Schedule:* ${dateSlot}`,
+        `📍 *Pickup:* ${booking?.pickupAddress || booking?.address || booking?.area || 'Doorstep Pickup'}`,
+      ].join('\n')
+    }
   } else {
     const serviceName = booking?.serviceName || 'Grooming Service'
     const dateSlot = `${booking?.date || '-'}${booking?.slot ? ` at ${booking.slot}` : ''}`
@@ -450,8 +471,26 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   doc.setFont('helvetica', 'normal')
   doc.text(serviceValue, margin + 300, 344, { maxWidth: 230, lineHeightFactor: 1.3 })
 
+  const isWalkingPack = isWalking && booking?.planType && booking?.planType !== 'single'
   const tableBody = (Array.isArray(booking?.invoiceItems) && booking.invoiceItems.length > 0)
     ? booking.invoiceItems
+    : isWalkingPack
+    ? [[
+      '01',
+      [
+        booking?.planType === 'monthly'
+          ? `Monthly Dog Walking Pass (${booking?.totalWalks || 26} Walks)`
+          : `7-Day Weekly Dog Walking Pass (${booking?.totalWalks || 7} Walks)`,
+        `Pet: ${buildPetLabel(booking)}`,
+        `Validity: ${booking?.startDate || booking?.date || '-'} to ${booking?.estimatedEndDate || '-'}`,
+        `Daily Frequency: ${booking?.walksPerDay || 1} Walk/Day (${booking?.slot || booking?.walkingSlot || 'Morning & Evening'})`,
+        `Progress: ${booking?.completedWalks || 0} completed, ${(booking?.skippedDates && booking.skippedDates.length) || booking?.skippedWalks || 0} extended/skipped`,
+        `Pickup: ${booking?.pickupAddress || booking?.address || booking?.area || '-'}`,
+      ].join('\n'),
+      `${booking?.totalWalks || (booking?.planType === 'monthly' ? 26 : 7)} Walks`,
+      Number(booking?.perWalkPrice || 199).toLocaleString('en-IN'),
+      Number(booking?.originalSubtotal || (booking?.perWalkPrice ? booking.perWalkPrice * (booking?.totalWalks || 7) : amountPaid)).toLocaleString('en-IN'),
+    ]]
     : isWalking
     ? [[
       '01',
@@ -493,8 +532,15 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   const tableBottom = doc.lastAutoTable.finalY + 14
   const terms = booking?.isBoarding
     ? ['Invoice generated after pet boarding stay is completed.', 'Payment received as recorded by admin.']
+    : isWalkingPack
+    ? [
+        'Consolidated Dog Walking Subscription Pass.',
+        'Total walk credits valid up to pack expiry date.',
+        'Skipped walk days automatically extend the validity date.',
+        'Payment received in full upfront.'
+      ]
     : isWalking
-    ? ['Invoice generated after pet walking session is completed.', 'Payment received as recorded by admin.']
+    ? ['Invoice generated for pet walking session.', 'Payment received as recorded by admin.']
     : ['Invoice is generated only after the appointment is marked completed.', 'Payment received as recorded by admin.']
   drawTextBox(doc, 'Terms and Conditions', terms, margin + 8, tableBottom, 260, 104)
   drawTextBox(doc, 'Customer Note', [booking?.notes || booking?.additionalInstructions || ''], margin + 8, tableBottom + 118, 260, 54)
@@ -506,6 +552,9 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
     ['Sub Total', money(booking?.originalSubtotal || amountPaid)],
     ...(booking?.couponCode ? [
       [`Discount (${booking.couponCode})`, `-Rs ${money(booking.discountAmount || 0)}`]
+    ] : []),
+    ...(isWalkingPack && booking?.discountAmount ? [
+      [`Pack Discount (${booking.discountPercent || ''}%)`, `-Rs ${money(booking.discountAmount || 0)}`]
     ] : []),
     ['GST', gstAmount > 0 ? money(gstAmount) : 'Not applicable'],
     ['Adjustment', money(0)],

@@ -42,6 +42,33 @@ export const DEFAULT_WALKING_DURATIONS = [
   { duration: 60, price: 349, label: '60 Min Walk' },
 ]
 
+export const WALKING_PLAN_TYPES = {
+  SINGLE: 'single',
+  WEEKLY: 'weekly',
+  MONTHLY: 'monthly',
+}
+
+export const DEFAULT_WALKING_PACKS = {
+  enabled: true,
+  minSkipNoticeHours: 2,
+  weekly: {
+    enabled: true,
+    name: 'Weekly Pack',
+    badge: 'Popular',
+    walkCount: 7,
+    discountPercent: 12,
+    description: '7 consecutive walks with your dedicated walker. Includes 1-tap skip day if out of town.',
+  },
+  monthly: {
+    enabled: true,
+    name: 'Monthly Pack',
+    badge: 'Best Value',
+    walkCount: 26,
+    discountPercent: 22,
+    description: '26 walks (Mon–Sat or Daily). Skip days whenever out of town with automatic pack extension.',
+  },
+}
+
 export const DEFAULT_WALKING_SETTINGS = {
   active: true,
   acceptBookings: true,
@@ -50,6 +77,7 @@ export const DEFAULT_WALKING_SETTINGS = {
   rate45Min: 279,
   rate60Min: 349,
   durations: DEFAULT_WALKING_DURATIONS,
+  packs: DEFAULT_WALKING_PACKS,
   maxCapacityPerSlot: 2, // Max dogs scheduled concurrently in the same slot
   operatingDays: DEFAULT_WALKING_DAYS,
   slots: DEFAULT_WALKING_SLOTS,
@@ -197,6 +225,12 @@ export async function fetchWalkingSettings(db, forceRefresh = false) {
       rate45Min: rate45,
       rate60Min: rate60,
       durations,
+      packs: data.packs ? {
+        ...DEFAULT_WALKING_PACKS,
+        ...data.packs,
+        weekly: { ...DEFAULT_WALKING_PACKS.weekly, ...(data.packs?.weekly || {}) },
+        monthly: { ...DEFAULT_WALKING_PACKS.monthly, ...(data.packs?.monthly || {}) },
+      } : DEFAULT_WALKING_PACKS,
       maxCapacityPerSlot: Math.max(1, Number(data.maxCapacityPerSlot) || DEFAULT_WALKING_SETTINGS.maxCapacityPerSlot),
       operatingDays: { ...DEFAULT_WALKING_DAYS, ...(data.operatingDays || {}) },
       slots: Array.isArray(data.slots) && data.slots.length ? data.slots : DEFAULT_WALKING_SLOTS,
@@ -267,6 +301,85 @@ export function parseSlotTimeToMinutes(slotStr) {
   return hours * 60 + minutes
 }
 
+export function calculatePackPrice({
+  planType = 'single',
+  duration = 30,
+  settings = null,
+  frequency = 'once_daily',
+}) {
+  const durations = settings?.durations || DEFAULT_WALKING_DURATIONS
+  const match = durations.find(d => Number(d.duration) === Number(duration))
+  const baseRate = match ? Number(match.price) : (settings?.rate30Min || 199)
+
+  if (planType === 'single') {
+    return {
+      planType: 'single',
+      walkCount: 1,
+      baseRate,
+      regularTotal: baseRate,
+      discountPercent: 0,
+      discountAmount: 0,
+      finalPrice: baseRate,
+      perWalkPrice: baseRate,
+      frequency: 'once_daily',
+    }
+  }
+
+  const packsConfig = settings?.packs || DEFAULT_WALKING_PACKS
+  const packInfo = planType === 'weekly' ? (packsConfig.weekly || DEFAULT_WALKING_PACKS.weekly) : (packsConfig.monthly || DEFAULT_WALKING_PACKS.monthly)
+  const multiplier = frequency === 'twice_daily' ? 2 : 1
+  const count = (Number(packInfo?.walkCount) || (planType === 'weekly' ? 7 : 26)) * multiplier
+  const discountPercent = Number(packInfo?.discountPercent) || (planType === 'weekly' ? 12 : 22)
+
+  const regularTotal = count * baseRate
+  const discountAmount = Math.round((regularTotal * discountPercent) / 100)
+  const finalPrice = Math.max(0, regularTotal - discountAmount)
+  const perWalkPrice = count > 0 ? Math.round(finalPrice / count) : baseRate
+
+  return {
+    planType,
+    walkCount: count,
+    baseRate,
+    regularTotal,
+    discountPercent,
+    discountAmount,
+    finalPrice,
+    perWalkPrice,
+    frequency,
+  }
+}
+
+export function calculateEstimatedEndDate({
+  startDateStr,
+  walkCount = 7,
+  schedulePattern = 'weekdays',
+  frequency = 'once_daily',
+  skippedCount = 0,
+}) {
+  if (!startDateStr) return ''
+  try {
+    const walksPerDay = frequency === 'twice_daily' ? 2 : 1
+    const totalDaysNeeded = Math.ceil((walkCount + (skippedCount * walksPerDay)) / walksPerDay)
+    let current = new Date(`${startDateStr}T00:00:00`)
+    let daysCounted = 0
+
+    while (daysCounted < totalDaysNeeded) {
+      const dayOfWeek = current.getDay() // 0 = Sun, 6 = Sat
+      const isEligible = schedulePattern === 'all_days' || dayOfWeek !== 0
+      if (isEligible) {
+        daysCounted++
+      }
+      if (daysCounted < totalDaysNeeded) {
+        current.setDate(current.getDate() + 1)
+      }
+    }
+
+    return current.toISOString().split('T')[0]
+  } catch {
+    return startDateStr
+  }
+}
+
 export function buildWalkingWhatsAppMessage(booking, shopName = 'Paw Paw Pet Grooming') {
   const dogName = booking.dogName || booking.petName || 'Dog'
   const breed = booking.breed || booking.petBreed ? ` (${booking.breed || booking.petBreed})` : ''
@@ -276,15 +389,22 @@ export function buildWalkingWhatsAppMessage(booking, shopName = 'Paw Paw Pet Gro
   const address = booking.pickupAddress || booking.address || '-'
   const price = booking.totalPrice ? `Rs ${booking.totalPrice}` : 'As confirmed'
   const idShort = (booking.id || '').slice(0, 8).toUpperCase()
+  const planLabel = booking.planType === 'monthly'
+    ? `🗓️ Monthly Pack (${booking.totalWalks || 26} Walks)`
+    : booking.planType === 'weekly'
+    ? `📅 Weekly Pack (${booking.totalWalks || 7} Walks)`
+    : 'Single Walk'
 
   return encodeURIComponent(
     `*Pet Walking Request - ${shopName}*\n\n` +
+    `*Plan:* ${planLabel}\n` +
     `*Owner:* ${booking.ownerName || '-'}\n` +
     `*Phone:* ${booking.phone || '-'}\n` +
     `*Dog:* ${dogName}${breed}\n` +
     `*Duration:* ${duration}\n` +
-    `*Date:* ${dateStr}\n` +
+    `*Start Date:* ${dateStr}\n` +
     `*Time:* ${slotStr}\n` +
+    (booking.eveningSlot ? `*Evening Slot:* ${booking.eveningSlot}\n` : '') +
     `*Pick-up Address:* ${address}\n` +
     `*Area:* ${booking.area || 'Dhayari'}\n` +
     `*Total Rate:* ${price}\n` +

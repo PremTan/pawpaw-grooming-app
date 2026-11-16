@@ -152,7 +152,7 @@ export default function AdminInvoices() {
   const selectedBoarding = completedBoardings.find(b => b.id === selectedBoardingId)
 
   const completedWalkings = useMemo(
-    () => walkings.filter(w => w.status === 'completed'),
+    () => walkings.filter(w => w.status === 'completed' || w.status === 'confirmed' || w.status === 'in_progress' || (w.planType && w.planType !== 'single')),
     [walkings]
   )
   const selectedWalking = completedWalkings.find(w => w.id === selectedWalkingId)
@@ -179,7 +179,14 @@ export default function AdminInvoices() {
 
   const appointmentLabel = booking => `${booking.ownerName || 'Customer'} - ${booking.petName || 'Pet'} - ${booking.date || '-'} - Rs ${money(booking.amountCollected || booking.estimatedTotal)}`
   const boardingLabel = b => `${b.ownerName || 'Customer'} - ${b.petName || 'Pet'} (${b.checkInDate || '-'} to ${b.checkOutDate || '-'}) - Rs ${money(b.totalAmount || (Number(b.estimatedTotal || 0) + Number(b.specialFoodCharge || 0) + Number(b.lateCheckOutCharge || 0)))}`
-  const walkingLabel = w => `${w.ownerName || 'Customer'} - ${w.dogName || w.petName || 'Dog'} (${w.duration || 30}m Walk on ${w.date || '-'}) - Rs ${money(w.totalPrice || w.amountCollected || 199)}`
+  const walkingLabel = w => {
+    const isPack = w.planType && w.planType !== 'single'
+    const planText = w.planType === 'monthly' ? `Monthly Pass (${w.totalWalks || 26} Walks)` :
+                     w.planType === 'weekly' ? `7-Day Pass (7 Walks)` :
+                     `${w.duration || 30}m Walk`
+    const dateText = isPack ? `${w.startDate || w.date || '-'} to ${w.estimatedEndDate || '-'}` : (w.date || '-')
+    return `${w.ownerName || 'Customer'} - ${w.dogName || w.petName || 'Dog'} (${planText} • ${dateText}) - Rs ${money(w.totalPrice || w.amountCollected || 199)}`
+  }
   const customerLabel = customer => `${customer.ownerName || 'Customer'} - ${customer.phone || customer.userEmail || '-'}`
 
   useEffect(() => {
@@ -201,8 +208,7 @@ export default function AdminInvoices() {
       setMode('walking')
       if (pId && walkings.length > 0) {
         const found = walkings.find(
-          w => w.status === 'completed' &&
-               (w.id === pId || shortId(w.id).toUpperCase() === pId.toUpperCase())
+          w => (w.id === pId || shortId(w.id).toUpperCase() === pId.toUpperCase())
         )
         if (found) {
           setSelectedWalkingId(found.id)
@@ -513,28 +519,42 @@ export default function AdminInvoices() {
 
   const generateFromWalking = () => {
     if (!selectedWalking) {
-      const msg = 'Select a completed dog walk first.'
+      const msg = 'Select a dog walk or walking pack first.'
       setToastType('error')
       setToastMessage(msg)
       setError(msg)
       return
     }
 
+    const isPack = selectedWalking.planType && selectedWalking.planType !== 'single'
     const durationMins = selectedWalking.duration || selectedWalking.durationMinutes || 30
     const finalPrice = Number(selectedWalking.totalPrice || selectedWalking.amountCollected || 199)
+    const totalWalks = selectedWalking.totalWalks || (selectedWalking.planType === 'monthly' ? 26 : selectedWalking.planType === 'weekly' ? 7 : 1)
+
+    const packTitle = selectedWalking.planType === 'monthly' ? `Monthly Dog Walking Pass (${totalWalks} Walks)` :
+                      selectedWalking.planType === 'weekly' ? `7-Day Weekly Walking Pass (${totalWalks} Walks)` :
+                      `Dog Walking (${durationMins} Mins Session)`
 
     const items = [
       [
         '01',
         [
-          `Dog Walking (${durationMins} Mins Session)`,
+          packTitle,
           `Pet: ${selectedWalking.dogName || selectedWalking.petName || 'Dog'}${selectedWalking.breed || selectedWalking.petBreed ? ` (${selectedWalking.breed || selectedWalking.petBreed})` : ''}`,
-          `Schedule: ${selectedWalking.date || '-'} at ${selectedWalking.slot || selectedWalking.walkingSlot || '-'}`,
+          isPack
+            ? `Validity: ${selectedWalking.startDate || selectedWalking.date || '-'} to ${selectedWalking.estimatedEndDate || '-'}`
+            : `Schedule: ${selectedWalking.date || '-'} at ${selectedWalking.slot || selectedWalking.walkingSlot || '-'}`,
+          isPack
+            ? `Daily Frequency: ${selectedWalking.walksPerDay || 1} Walk/Day (${selectedWalking.slot || selectedWalking.walkingSlot || 'Morning & Evening'})`
+            : null,
+          isPack && (selectedWalking.completedWalks > 0 || (selectedWalking.skippedDates && selectedWalking.skippedDates.length > 0))
+            ? `Progress: ${selectedWalking.completedWalks || 0}/${totalWalks} completed, ${(selectedWalking.skippedDates && selectedWalking.skippedDates.length) || selectedWalking.skippedWalks || 0} extended/skipped`
+            : null,
           `Pickup: ${selectedWalking.pickupAddress || selectedWalking.address || (selectedWalking.area ? `${selectedWalking.area}, Pune` : 'Doorstep Pickup')}`,
-        ].join('\n'),
-        '1 Session',
-        Number(finalPrice).toLocaleString('en-IN'),
-        Number(finalPrice).toLocaleString('en-IN'),
+        ].filter(Boolean).join('\n'),
+        isPack ? `${totalWalks} Walks` : '1 Session',
+        Number(selectedWalking.perWalkPrice || (isPack ? Math.round(finalPrice / totalWalks) : finalPrice)).toLocaleString('en-IN'),
+        Number(selectedWalking.originalSubtotal || (selectedWalking.perWalkPrice ? selectedWalking.perWalkPrice * totalWalks : finalPrice)).toLocaleString('en-IN'),
       ]
     ]
 
@@ -542,24 +562,34 @@ export default function AdminInvoices() {
       ...selectedWalking,
       isWalking: true,
       serviceType: 'walking',
-      serviceName: `Dog Walking (${durationMins} Mins Session)`,
+      serviceName: packTitle,
       petName: selectedWalking.dogName || selectedWalking.petName || 'Dog',
       petType: 'Dog',
       petBreed: selectedWalking.breed || selectedWalking.petBreed || '',
-      date: selectedWalking.date,
+      date: selectedWalking.date || selectedWalking.startDate,
       slot: selectedWalking.slot || selectedWalking.walkingSlot || '',
       address: selectedWalking.pickupAddress || selectedWalking.address || (selectedWalking.area ? `${selectedWalking.area}, Pune` : ''),
       invoiceItems: items,
       totalAmount: finalPrice,
       amountCollected: finalPrice,
+      originalSubtotal: selectedWalking.originalSubtotal || (selectedWalking.perWalkPrice ? selectedWalking.perWalkPrice * totalWalks : finalPrice),
+      discountAmount: selectedWalking.discountAmount || 0,
+      discountPercent: selectedWalking.discountPercent || 0,
+      planType: selectedWalking.planType || 'single',
+      totalWalks: totalWalks,
+      completedWalks: selectedWalking.completedWalks || 0,
+      skippedWalks: selectedWalking.skippedWalks || (selectedWalking.skippedDates ? selectedWalking.skippedDates.length : 0),
+      skippedDates: selectedWalking.skippedDates || [],
+      startDate: selectedWalking.startDate || selectedWalking.date,
+      estimatedEndDate: selectedWalking.estimatedEndDate || selectedWalking.date,
     }
 
     setError('')
     setToastType('success')
-    setToastMessage('Dog walking invoice generated successfully.')
+    setToastMessage(`${isPack ? 'Consolidated dog walking pass' : 'Dog walking'} invoice generated successfully.`)
     setGenerated({
       booking: invoiceObj,
-      label: `${selectedWalking.ownerName || 'Customer'} - Dog Walking (${shortId(selectedWalking.id)})`,
+      label: `${selectedWalking.ownerName || 'Customer'} - ${packTitle} (${shortId(selectedWalking.id)})`,
     })
     try {
       const pubData = {
@@ -1165,11 +1195,12 @@ export default function AdminInvoices() {
                         fontWeight: 700,
                         padding: '3px 8px',
                         borderRadius: '6px',
-                        background: 'rgba(217,119,6,0.12)',
-                        color: '#d97706',
-                        border: '1px solid rgba(217,119,6,0.25)'
+                        background: selectedWalking.planType === 'monthly' ? 'rgba(16, 185, 129, 0.12)' : selectedWalking.planType === 'weekly' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(217,119,6,0.12)',
+                        color: selectedWalking.planType === 'monthly' ? '#059669' : selectedWalking.planType === 'weekly' ? '#2563eb' : '#d97706',
+                        border: '1px solid',
+                        borderColor: selectedWalking.planType === 'monthly' ? 'rgba(16, 185, 129, 0.3)' : selectedWalking.planType === 'weekly' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(217,119,6,0.25)'
                       }}>
-                        🐾 Dog Walking
+                        {selectedWalking.planType === 'monthly' ? '🏆 Monthly Pass' : selectedWalking.planType === 'weekly' ? '📅 7-Day Pass' : '🐾 Single Walk'}
                       </span>
                     </div>
                   </div>
@@ -1188,21 +1219,30 @@ export default function AdminInvoices() {
 
                       <div style={{ background: 'var(--card)', padding: '9px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                         <span style={{ fontSize: '10.5px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
-                          Walking Duration
+                          {selectedWalking.planType && selectedWalking.planType !== 'single' ? 'Subscription Plan' : 'Walking Duration'}
                         </span>
                         <strong style={{ fontSize: '13px', color: 'var(--text)', display: 'block' }}>
-                          ⏱️ {selectedWalking.duration || selectedWalking.durationMinutes || 30} Mins Session
+                          {selectedWalking.planType && selectedWalking.planType !== 'single'
+                            ? `📦 ${selectedWalking.totalWalks || (selectedWalking.planType === 'monthly' ? 26 : 7)} Walks Pack`
+                            : `⏱️ ${selectedWalking.duration || selectedWalking.durationMinutes || 30} Mins Session`}
                         </strong>
                       </div>
                     </div>
 
                     <div style={{ background: 'var(--card)', padding: '9px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                       <span style={{ fontSize: '10.5px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
-                        Schedule & Pick-up Address
+                        {selectedWalking.planType && selectedWalking.planType !== 'single' ? 'Validity & Schedule' : 'Schedule & Pick-up Address'}
                       </span>
                       <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', lineHeight: 1.35 }}>
-                        📅 {selectedWalking.date || '-'} {selectedWalking.slot ? `• ${selectedWalking.slot}` : ''}
+                        {selectedWalking.planType && selectedWalking.planType !== 'single'
+                          ? `📅 ${selectedWalking.startDate || selectedWalking.date || '-'} to ${selectedWalking.estimatedEndDate || '-'} • ${selectedWalking.walksPerDay || 1} walk/day`
+                          : `📅 ${selectedWalking.date || '-'} ${selectedWalking.slot ? `• ${selectedWalking.slot}` : ''}`}
                       </div>
+                      {selectedWalking.planType && selectedWalking.planType !== 'single' && (
+                        <div style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 600, marginTop: '3px' }}>
+                          🚶 {selectedWalking.completedWalks || 0}/{selectedWalking.totalWalks || 7} walks completed • {(selectedWalking.skippedDates && selectedWalking.skippedDates.length) || selectedWalking.skippedWalks || 0} skipped/extended
+                        </div>
+                      )}
                       <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '3px' }}>
                         📍 {selectedWalking.pickupAddress || selectedWalking.address || selectedWalking.area || 'Doorstep Pickup'}
                       </div>
@@ -1219,9 +1259,16 @@ export default function AdminInvoices() {
                       border: '1px solid var(--accent-border)',
                       marginTop: '2px'
                     }}>
-                      <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>
-                        Total Walk Fee
-                      </span>
+                      <div>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', display: 'block' }}>
+                          {selectedWalking.planType && selectedWalking.planType !== 'single' ? 'Consolidated Pass Fee' : 'Total Walk Fee'}
+                        </span>
+                        {selectedWalking.discountAmount > 0 && (
+                          <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700 }}>
+                            Includes {selectedWalking.discountPercent || ''}% bundle discount (-Rs {money(selectedWalking.discountAmount)})
+                          </span>
+                        )}
+                      </div>
                       <strong style={{ fontSize: '16px', fontWeight: 900, color: 'var(--accent)' }}>
                         Rs {money(selectedWalking.totalPrice || selectedWalking.amountCollected || 199)}
                       </strong>

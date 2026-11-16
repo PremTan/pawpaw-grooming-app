@@ -14,6 +14,10 @@ import {
   parseSlotTimeToMinutes,
   buildWalkingWhatsAppMessage,
   WALKING_STATUS,
+  WALKING_PLAN_TYPES,
+  DEFAULT_WALKING_PACKS,
+  calculatePackPrice,
+  calculateEstimatedEndDate,
 } from '../utils/walkingSettings'
 import {
   ArrowRight,
@@ -32,6 +36,7 @@ import {
   MapPin,
   MessageCircle,
   Navigation,
+  Package,
   PawPrint,
   Phone,
   Plus,
@@ -206,9 +211,13 @@ export default function BookWalking() {
     mapPinUrl: '',
     locationCoords: null,
     // Booking Details
+    planType: 'single', // 'single' | 'weekly' | 'monthly'
+    frequency: 'once_daily', // 'once_daily' | 'twice_daily'
+    schedulePattern: 'weekdays', // 'weekdays' | 'all_days'
     duration: 30, // 30 | 45 | 60
     date: tomorrowStr,
     slot: '',
+    eveningSlot: '',
     customTimeRequested: '',
     notes: '',
     // Contact Info
@@ -641,13 +650,24 @@ export default function BookWalking() {
         { duration: 60, price: settings.rate60Min || 349, label: '60 Min Walk' },
       ]
 
-  const durationPrice = () => {
-    const match = durationsList.find(d => Number(d.duration) === Number(form.duration))
-    if (match) return Number(match.price) || 0
-    if (form.duration === 60) return settings.rate60Min || 349
-    if (form.duration === 45) return settings.rate45Min || 279
-    return settings.rate30Min || 199
-  }
+  const packCalc = calculatePackPrice({
+    planType: form.planType || 'single',
+    duration: Number(form.duration) || 30,
+    settings,
+    frequency: form.frequency || 'once_daily',
+  })
+
+  const estimatedEndDate = form.planType !== 'single'
+    ? calculateEstimatedEndDate({
+        startDateStr: form.date,
+        walkCount: packCalc.walkCount,
+        schedulePattern: form.schedulePattern || 'weekdays',
+        frequency: form.frequency || 'once_daily',
+        skippedCount: 0,
+      })
+    : form.date
+
+  const durationPrice = () => packCalc.finalPrice
 
   const isToday = form.date === todayStr
   const nowMins = new Date().getHours() * 60 + new Date().getMinutes()
@@ -684,6 +704,10 @@ export default function BookWalking() {
       alert('Please choose a walking time slot or specify a custom time.')
       return
     }
+    if (form.frequency === 'twice_daily' && !form.eveningSlot) {
+      alert('Please select an evening walk slot for the 2nd daily walk.')
+      return
+    }
     setStep(3)
   }
 
@@ -705,7 +729,6 @@ export default function BookWalking() {
 
     setSubmitting(true)
     try {
-      const price = durationPrice()
       const cleanPhone = form.phone.replace(/\D/g, '').slice(0, 10)
 
       const selectedPet = pets.find(p => p.id === selectedPetId)
@@ -741,7 +764,23 @@ export default function BookWalking() {
         customTimeRequested: form.customTimeRequested.trim(),
         notes: form.notes.trim(),
         walkerInstructions: form.notes.trim(),
-        totalPrice: price,
+        // Walking Plan & Pack Details
+        planType: form.planType || 'single',
+        frequency: form.frequency || 'once_daily',
+        schedulePattern: form.schedulePattern || 'weekdays',
+        eveningSlot: form.frequency === 'twice_daily' ? (form.eveningSlot || '') : '',
+        totalWalks: packCalc.walkCount,
+        completedWalks: 0,
+        skippedWalks: 0,
+        remainingWalks: packCalc.walkCount,
+        skippedDates: [],
+        startDate: form.date,
+        estimatedEndDate: estimatedEndDate,
+        perWalkPrice: packCalc.perWalkPrice,
+        discountPercent: packCalc.discountPercent,
+        discountAmount: packCalc.discountAmount,
+        totalPrice: packCalc.finalPrice,
+        paymentStatus: 'pending',
         status: WALKING_STATUS.PENDING,
         serviceType: 'walking',
         createdAt: serverTimestamp(),
@@ -1441,6 +1480,143 @@ export default function BookWalking() {
                 <ChevronLeft size={16} /> Back to Dog Info
               </button>
 
+              {/* PLAN SELECTOR (Single Walk vs Weekly Pack vs Monthly Pack) */}
+              <div style={{ marginBottom: '20px' }}>
+                <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Package size={18} color="var(--accent)" /> Choose Walking Plan
+                </h2>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+                  {/* Single Walk */}
+                  <button
+                    type="button"
+                    onClick={() => update('planType', 'single')}
+                    style={{
+                      background: form.planType === 'single' ? 'var(--accent-bg)' : 'var(--surface)',
+                      border: `2px solid ${form.planType === 'single' ? 'var(--accent)' : 'var(--border)'}`,
+                      borderRadius: '14px',
+                      padding: '12px 10px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      position: 'relative',
+                    }}
+                  >
+                    <div style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '2px' }}>Single</div>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: form.planType === 'single' ? 'var(--accent)' : 'var(--text)' }}>1-Day Walk</div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '3px' }}>Pay per walk</div>
+                  </button>
+
+                  {/* 7-Day Weekly Pack */}
+                  <button
+                    type="button"
+                    onClick={() => update('planType', 'weekly')}
+                    style={{
+                      background: form.planType === 'weekly' ? 'var(--accent-bg)' : 'var(--surface)',
+                      border: `2px solid ${form.planType === 'weekly' ? 'var(--accent)' : 'var(--border)'}`,
+                      borderRadius: '14px',
+                      padding: '12px 10px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      position: 'relative',
+                    }}
+                  >
+                    <span style={{ position: 'absolute', top: '-7px', right: '8px', background: '#f59e0b', color: '#fff', fontSize: '9px', fontWeight: 900, padding: '2px 6px', borderRadius: '999px', textTransform: 'uppercase' }}>
+                      12% OFF
+                    </span>
+                    <div style={{ fontSize: '10.5px', fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '2px' }}>Weekly</div>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: form.planType === 'weekly' ? 'var(--accent)' : 'var(--text)' }}>7-Day Pass</div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '3px' }}>Flexible Routine</div>
+                  </button>
+
+                  {/* Monthly Subscription */}
+                  <button
+                    type="button"
+                    onClick={() => update('planType', 'monthly')}
+                    style={{
+                      background: form.planType === 'monthly' ? 'var(--accent-bg)' : 'var(--surface)',
+                      border: `2px solid ${form.planType === 'monthly' ? 'var(--accent)' : 'var(--border)'}`,
+                      borderRadius: '14px',
+                      padding: '12px 10px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      position: 'relative',
+                    }}
+                  >
+                    <span style={{ position: 'absolute', top: '-7px', right: '8px', background: '#10b981', color: '#fff', fontSize: '9px', fontWeight: 900, padding: '2px 6px', borderRadius: '999px', textTransform: 'uppercase' }}>
+                      Save 22%
+                    </span>
+                    <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#10b981', textTransform: 'uppercase', marginBottom: '2px' }}>Monthly</div>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: form.planType === 'monthly' ? 'var(--accent)' : 'var(--text)' }}>Monthly Pass</div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '3px' }}>Best Value</div>
+                  </button>
+                </div>
+
+                {/* Pack details, frequency & Skip Day benefit */}
+                {form.planType !== 'single' && (
+                  <div style={{ marginTop: '12px', background: 'var(--surface)', border: '1px solid var(--accent-border)', borderRadius: '14px', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>Daily Frequency:</span>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={() => update('frequency', 'once_daily')}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: '8px',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            border: `1.5px solid ${form.frequency !== 'twice_daily' ? 'var(--accent)' : 'var(--border)'}`,
+                            background: form.frequency !== 'twice_daily' ? 'var(--accent-bg)' : 'transparent',
+                            color: form.frequency !== 'twice_daily' ? 'var(--accent)' : 'var(--muted)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          ☀️ 1 Walk/Day
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => update('frequency', 'twice_daily')}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: '8px',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            border: `1.5px solid ${form.frequency === 'twice_daily' ? 'var(--accent)' : 'var(--border)'}`,
+                            background: form.frequency === 'twice_daily' ? 'var(--accent-bg)' : 'transparent',
+                            color: form.frequency === 'twice_daily' ? 'var(--accent)' : 'var(--muted)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          ☀️🌙 2 Walks/Day
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Skip Day Guarantee Banner */}
+                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '9px 11px', fontSize: '11.5px', color: '#166534', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '15px', lineHeight: 1 }}>🗓️</span>
+                      <div>
+                        <strong>"Skip Day / Going Out" Guarantee:</strong> If you travel or go out of town on any day, tap "Skip Day" in your bookings. Your pass validity automatically extends by +1 day so zero walks are lost!
+                      </div>
+                    </div>
+
+                    {/* Live Pack Discount Banner */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed var(--border)', fontSize: '12px' }}>
+                      <span style={{ color: 'var(--muted)' }}>
+                        Total: <strong>{packCalc.walkCount} walks</strong> (~₹{packCalc.perWalkPrice}/walk)
+                      </span>
+                      <span style={{ fontWeight: 800, color: '#15803d' }}>
+                        <span style={{ textDecoration: 'line-through', color: 'var(--muted)', marginRight: '6px' }}>₹{packCalc.regularTotal}</span>
+                        ₹{packCalc.finalPrice} (Save ₹{packCalc.discountAmount})
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Clock size={18} color="var(--accent)" /> Select Walking Duration
               </h2>
@@ -1489,7 +1665,7 @@ export default function BookWalking() {
 
               {/* Preferred Walking Date */}
               <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Calendar size={18} color="var(--accent)" /> Walking Date
+                <Calendar size={18} color="var(--accent)" /> {form.planType !== 'single' ? 'Pass Starts On (First Walk Date)' : 'Walking Date'}
               </h2>
 
               <div style={{ marginBottom: '18px' }}>
@@ -1507,6 +1683,11 @@ export default function BookWalking() {
                     }
                   }}
                 />
+                {form.planType !== 'single' && estimatedEndDate && (
+                  <span style={{ fontSize: '11.5px', color: 'var(--accent)', marginTop: '6px', display: 'block', fontWeight: 700 }}>
+                    📅 Estimated Pass Validity: {form.date} to {estimatedEndDate} ({packCalc.walkCount} walks)
+                  </span>
+                )}
                 {!isDayOpen && (
                   <span style={{ fontSize: '12px', color: '#ef4444', marginTop: '6px', display: 'block', fontWeight: 600 }}>
                     ⚠️ {settings.holidays?.includes(form.date) ? 'Paw Paw is closed on this date (Holiday).' : 'Paw Paw is closed for dog walking on this day.'} Please select another day.
@@ -1627,7 +1808,7 @@ export default function BookWalking() {
               </div>
 
               {/* Custom Timing Option */}
-              <div style={{ marginBottom: '24px', background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: '12px', padding: '12px 14px' }}>
+              <div style={{ marginBottom: '16px', background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: '12px', padding: '12px 14px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                   <span style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 600 }}>
                     Can't find a suitable slot?
@@ -1660,10 +1841,48 @@ export default function BookWalking() {
                 )}
               </div>
 
+              {/* Evening Slot Selector if Twice Daily */}
+              {form.frequency === 'twice_daily' && (
+                <div style={{ marginBottom: '22px' }}>
+                  <h3 style={{ fontSize: '14.5px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>🌙</span> Evening Walk Slot (2nd Daily Walk) *
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
+                    {(settings.slots.filter(s => s.toUpperCase().includes('PM')).length > 0
+                      ? settings.slots.filter(s => s.toUpperCase().includes('PM'))
+                      : ['05:00 PM', '06:00 PM', '07:00 PM']
+                    ).map(s => {
+                      const isSel = form.eveningSlot === s
+                      return (
+                        <button
+                          key={`evening-${s}`}
+                          type="button"
+                          onClick={() => update('eveningSlot', s)}
+                          style={{
+                            padding: '10px 4px',
+                            borderRadius: '10px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            border: `1.5px solid ${isSel ? '#15803d' : '#86efac'}`,
+                            background: isSel ? '#16a34a' : '#f0fdf4',
+                            color: isSel ? '#ffffff' : '#15803d',
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                            boxShadow: isSel ? '0 2px 8px rgba(22, 163, 74, 0.35)' : 'none',
+                          }}
+                        >
+                          {s}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={handleStep2Continue}
-                disabled={!isDayOpen || (!form.slot && !form.customTimeRequested.trim())}
+                disabled={!isDayOpen || (!form.slot && !form.customTimeRequested.trim()) || (form.frequency === 'twice_daily' && !form.eveningSlot)}
                 className="btn btn-primary"
                 style={{ width: '100%', justifyContent: 'center', gap: '8px', padding: '12px' }}
               >
@@ -1765,20 +1984,46 @@ export default function BookWalking() {
                     ) : (
                       <span>🐕</span>
                     )}
-                    <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>
-                      {form.dogName} {form.breed ? `(${form.breed})` : ''}
+                    <div>
+                      <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>
+                        {form.dogName} {form.breed ? `(${form.breed})` : ''}
+                      </span>
+                      <span style={{ display: 'block', fontSize: '11px', color: 'var(--accent)', fontWeight: 700 }}>
+                        {form.planType === 'monthly' ? '🌟 Monthly Pass' : form.planType === 'weekly' ? '📦 7-Day Weekly Pass' : '🐶 Single Walk'}
+                        {form.frequency === 'twice_daily' ? ' (2 Walks/Day)' : ' (1 Walk/Day)'}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    {form.planType !== 'single' && packCalc.discountAmount > 0 && (
+                      <div style={{ fontSize: '11px', color: 'var(--muted)', textDecoration: 'line-through' }}>
+                        ₹{packCalc.regularTotal}
+                      </div>
+                    )}
+                    <span style={{ fontSize: '16px', fontWeight: 900, color: 'var(--accent)' }}>
+                      ₹{packCalc.finalPrice}
                     </span>
                   </div>
-                  <span style={{ fontSize: '15px', fontWeight: 900, color: 'var(--accent)' }}>
-                    ₹{durationPrice()}
-                  </span>
                 </div>
+
                 <div style={{ fontSize: '12.5px', color: 'var(--muted)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <div><strong>Duration:</strong> {form.duration} Minutes</div>
-                  <div><strong>Time:</strong> {form.slot || form.customTimeRequested}</div>
-                  <div><strong>Date:</strong> {form.date}</div>
+                  <div><strong>Total Walks:</strong> {packCalc.walkCount} Session{packCalc.walkCount > 1 ? 's' : ''}</div>
+                  <div><strong>Duration:</strong> {form.duration} Minutes / walk</div>
+                  <div><strong>Start Date:</strong> {form.date}</div>
+                  {form.planType !== 'single' && <div><strong>Est. End Date:</strong> {estimatedEndDate}</div>}
+                  <div><strong>Morning Slot:</strong> {form.slot || form.customTimeRequested}</div>
+                  {form.frequency === 'twice_daily' && form.eveningSlot && (
+                    <div><strong>Evening Slot:</strong> {form.eveningSlot}</div>
+                  )}
                   <div><strong>Area:</strong> {form.area}</div>
                 </div>
+
+                {form.planType !== 'single' && (
+                  <div style={{ marginTop: '10px', padding: '6px 10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', fontSize: '11px', color: '#15803d' }}>
+                    ✨ Includes flexible <strong>"Skip Day"</strong> protection: Pass end date extends automatically if you travel!
+                  </div>
+                )}
+
                 <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '8px', borderTop: '1px dashed var(--border)', paddingTop: '6px' }}>
                   <strong>Pick-up:</strong> {form.pickupAddress}
                   {form.mapPinUrl && (
@@ -1798,7 +2043,11 @@ export default function BookWalking() {
                 className="btn btn-primary"
                 style={{ width: '100%', justifyContent: 'center', gap: '8px', padding: '14px', fontSize: '15px' }}
               >
-                {submitting ? 'Submitting Request...' : `Request Dog Walk (Pay ₹${durationPrice()} Later)`}
+                {submitting
+                  ? 'Submitting Request...'
+                  : form.planType !== 'single'
+                    ? `Request Walk Pass (Pay ₹${packCalc.finalPrice} Later)`
+                    : `Request Dog Walk (Pay ₹${packCalc.finalPrice} Later)`}
               </button>
               <span style={{ display: 'block', textAlign: 'center', fontSize: '11.5px', color: 'var(--muted)', marginTop: '8px' }}>
                 No advance payment needed. Admin will confirm your walking schedule shortly.
