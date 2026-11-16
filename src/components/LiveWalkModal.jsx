@@ -13,6 +13,9 @@ import {
   ExternalLink,
   CheckCircle,
   RefreshCw,
+  Gauge,
+  Zap,
+  Flame,
 } from 'lucide-react'
 import LiveWalkTrackerMap from './LiveWalkTrackerMap'
 import {
@@ -20,6 +23,10 @@ import {
   formatDurationMMSS,
   formatDurationHuman,
   calculateTotalRouteDistance,
+  calculatePace,
+  calculateSpeed,
+  calculateCalories,
+  getGpsQuality,
 } from '../utils/geoUtils'
 import { WALKING_STATUS, WALKING_STATUS_LABELS } from '../utils/walkingSettings'
 
@@ -234,43 +241,157 @@ export default function LiveWalkModal({ bookingId, initialBooking, onClose }) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-              {/* Stats Bar (Timer + Distance) */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '10px',
-                  background: 'var(--surface)',
+              {/* 🚨 Emergency SOS Banner */}
+              {booking?.hasEmergency && (
+                <div style={{
+                  background: '#fee2e2',
+                  border: '2px solid #ef4444',
                   borderRadius: '16px',
-                  padding: '12px 16px',
-                  border: '1.5px solid var(--border)',
-                  textAlign: 'center',
-                }}
-              >
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
-                    {isLive ? 'Walk Duration' : 'Total Walk Time'}
-                  </span>
-                  <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--text)', fontFamily: 'monospace' }}>
-                    {isLive ? formatDurationMMSS(elapsedSeconds) : formatDurationHuman(elapsedSeconds)}
-                  </div>
-                  <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 700 }}>
-                    Target: {targetDurationMins} Mins
-                  </span>
-                </div>
+                  padding: '14px 16px',
+                  boxShadow: '0 8px 24px rgba(239, 68, 68, 0.25)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '20px' }}>🚨</span>
+                      <div>
+                        <strong style={{ color: '#dc2626', fontSize: '14px', display: 'block' }}>
+                          WALKER SOS ALERT ACTIVE
+                        </strong>
+                        <span style={{ fontSize: '11.5px', color: '#991b1b' }}>
+                          Reason: {booking.emergencyReason || 'Urgent incident occurred'}
+                        </span>
+                      </div>
+                    </div>
 
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
-                    Distance Walked
-                  </span>
-                  <div style={{ fontSize: '24px', fontWeight: 900, color: '#16a34a', fontFamily: 'monospace' }}>
-                    {formatDistance(distanceMeters)}
+                    {walkerPhone && (
+                      <a
+                        href={`tel:${walkerPhone}`}
+                        style={{
+                          background: '#dc2626',
+                          color: '#fff',
+                          textDecoration: 'none',
+                          borderRadius: '8px',
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <Phone size={13} /> Call Walker Now
+                      </a>
+                    )}
                   </div>
-                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
-                    {routeTrail.length > 0 ? `${routeTrail.length} GPS points` : 'Tracking route'}
-                  </span>
+
+                  {booking.emergencyNote && (
+                    <div style={{ fontSize: '12px', color: '#7f1d1d', fontStyle: 'italic', background: '#fff', padding: '6px 10px', borderRadius: '8px', border: '1px solid #fca5a5' }}>
+                      "{booking.emergencyNote}"
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
+
+              {/* Stats HUD (Time, Distance, Pace, Speed, Burn) */}
+              {(() => {
+                const pace = calculatePace(distanceMeters, elapsedSeconds)
+                const speed = calculateSpeed(distanceMeters, elapsedSeconds, booking?.liveLocation?.speed)
+                const calories = booking?.estimatedCalories || calculateCalories(distanceMeters, elapsedSeconds)
+                const gpsQuality = getGpsQuality(booking?.liveLocation?.accuracy)
+
+                return (
+                  <div>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(2, 1fr)',
+                        gap: '10px',
+                        background: 'var(--surface)',
+                        borderRadius: '16px',
+                        padding: '12px 14px',
+                        border: '1.5px solid var(--border)',
+                        textAlign: 'center',
+                      }}
+                    >
+                      {/* 1. Time */}
+                      <div>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '3px' }}>
+                          <Clock size={11} /> {isLive ? 'Walk Duration' : 'Total Walk Time'}
+                        </span>
+                        <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--text)', fontFamily: 'monospace' }}>
+                          {isLive ? formatDurationMMSS(elapsedSeconds) : formatDurationHuman(elapsedSeconds)}
+                        </div>
+                        <span style={{ fontSize: '10.5px', color: 'var(--accent)', fontWeight: 700 }}>
+                          Target: {targetDurationMins} Mins
+                        </span>
+                      </div>
+
+                      {/* 2. Distance */}
+                      <div>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '3px' }}>
+                          <Footprints size={11} /> Distance Walked
+                        </span>
+                        <div style={{ fontSize: '24px', fontWeight: 900, color: '#16a34a', fontFamily: 'monospace' }}>
+                          {formatDistance(distanceMeters)}
+                        </div>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)' }}>
+                          {routeTrail.length > 0 ? `${routeTrail.length} GPS points` : 'Tracking route'}
+                        </span>
+                      </div>
+
+                      {/* 3. Pace */}
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '3px' }}>
+                          <Gauge size={11} /> Avg Pace
+                        </span>
+                        <div style={{ fontSize: '18px', fontWeight: 800, color: '#0284c7', fontFamily: 'monospace' }}>
+                          {booking?.walkPace || pace.formatted}
+                        </div>
+                        <span style={{ fontSize: '10px', color: 'var(--muted)' }}>
+                          Minutes / km
+                        </span>
+                      </div>
+
+                      {/* 4. Speed */}
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '3px' }}>
+                          <Zap size={11} /> Speed
+                        </span>
+                        <div style={{ fontSize: '18px', fontWeight: 800, color: '#d97706', fontFamily: 'monospace' }}>
+                          {booking?.walkSpeedKmh ? `${booking.walkSpeedKmh} km/h` : speed.formatted}
+                        </div>
+                        <span style={{ fontSize: '10px', color: 'var(--muted)' }}>
+                          Walking speed
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Calories + GPS quality footer chip */}
+                    <div style={{
+                      marginTop: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '6px 12px',
+                      background: 'var(--card)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '10px',
+                      fontSize: '11px',
+                      color: 'var(--muted)',
+                    }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#ea580c', fontWeight: 700 }}>
+                        <Flame size={12} /> Active Burn: ~{calories} kcal
+                      </span>
+                      {isLive && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: gpsQuality.color }} />
+                          <span style={{ color: gpsQuality.color, fontWeight: 700 }}>GPS: {gpsQuality.label}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Interactive Live Map */}
               <div>

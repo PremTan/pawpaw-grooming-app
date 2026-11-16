@@ -33,6 +33,7 @@ import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, validateImageFile } from '../utils/imageCompression'
 import petWalkingHero from '../assets/pet-walking-hero.jpg'
 import LiveWalkModal from '../components/LiveWalkModal'
+import { formatDistance, formatDurationHuman, calculatePace, calculateCalories } from '../utils/geoUtils'
 import {
   Calendar,
   Check,
@@ -62,6 +63,8 @@ import {
   UserRound,
   Share2,
   Copy,
+  Star,
+  AlertOctagon,
 } from 'lucide-react'
 
 const money = (val) => Number(val || 0).toLocaleString('en-IN')
@@ -91,6 +94,46 @@ const QUICK_CANCEL_REASONS = [
   'Emergency reason',
 ]
 
+const generateWhatsAppReportMessage = (booking) => {
+  if (!booking) return ''
+  const dogName = booking.dogName || booking.petName || 'Dog'
+  const breed = booking.breed || booking.dogBreed || ''
+  const report = booking.walkReport || {}
+  const durationSec = report.durationSeconds || booking.walkDurationSeconds || 0
+  const distanceM = report.distanceMeters || booking.walkDistanceMeters || 0
+
+  let msg = `🐾 *Paw Paw Pet Walking - Walk Report Card* 🐾\n`
+  msg += `------------------------------------\n`
+  msg += `🐶 *Pet:* ${dogName}${breed ? ` (${breed})` : ''}\n`
+  if (report.walkerName || booking.assignedWalkerName) {
+    msg += `🚶 *Walker:* ${report.walkerName || booking.assignedWalkerName}\n`
+  }
+  msg += `⏱️ *Duration:* ${formatDurationHuman(durationSec)}\n`
+  msg += `📍 *Distance Walked:* ${formatDistance(distanceM)}\n`
+  const pace = booking.walkPace || calculatePace(distanceM, durationSec).formatted
+  const calories = booking.estimatedCalories || calculateCalories(distanceM, durationSec)
+  msg += `⚡ *Avg Pace:* ${pace}\n`
+  msg += `🔥 *Estimated Burn:* ~${calories} kcal\n`
+  msg += `💧 *Pee Breaks:* ${report.peeCount ?? booking.walkActivities?.pee ?? 0}\n`
+  msg += `💩 *Poop Breaks:* ${report.pooCount ?? booking.walkActivities?.poo ?? 0}\n`
+  msg += `🥤 *Hydrated:* ${(report.waterGiven ?? booking.walkActivities?.water) ? 'Yes 💧' : 'No'}\n`
+  msg += `🍖 *Treats:* ${report.treatCount ?? booking.walkActivities?.treats ?? 0}\n`
+  if (report.notes || booking.walkerNotes) {
+    msg += `📝 *Walker Note:* "${report.notes || booking.walkerNotes}"\n`
+  }
+  if (report.photos?.length || booking.walkPhotos?.length) {
+    const photos = report.photos || booking.walkPhotos || []
+    msg += `📸 *Photos (${photos.length}):*\n`
+    photos.forEach((url, i) => {
+      msg += `Photo ${i + 1}: ${url}\n`
+    })
+  }
+  msg += `------------------------------------\n`
+  msg += `Thank you for choosing Paw Paw Pet Care! ❤️🐕\n`
+  msg += `Tracked with real-time GPS & care monitoring.`
+  return encodeURIComponent(msg)
+}
+
 export default function AdminWalking() {
   const navigate = useNavigate()
   const { sendNotification } = useNotifications() || {}
@@ -117,7 +160,7 @@ export default function AdminWalking() {
   // Confirm & Walker Assignment Modal
   const [confirmTarget, setConfirmTarget] = useState(null)
   const [confirmWalkerId, setConfirmWalkerId] = useState('')
-  const [confirmSendWhatsApp, setConfirmSendWhatsApp] = useState(true)
+  const [confirmSendWhatsApp, setConfirmSendWhatsApp] = useState(false)
 
   // Settings State
   const [settings, setSettings] = useState(DEFAULT_WALKING_SETTINGS)
@@ -490,7 +533,7 @@ ${portalUrl}`
     } else {
       setConfirmWalkerId('')
     }
-    setConfirmSendWhatsApp(true)
+    setConfirmSendWhatsApp(false)
   }
 
   // Confirm booking & assign selected walker
@@ -565,6 +608,31 @@ ${portalUrl}`
       setConfirmTarget(null)
     } catch (err) {
       alert(`Could not confirm walk: ${err.message}`)
+    } finally {
+      setUpdatingId('')
+    }
+  }
+
+  // Resolve Walker Emergency
+  const handleAdminResolveEmergency = async (booking) => {
+    if (!booking) return
+    setUpdatingId(booking.id)
+    try {
+      const patch = {
+        hasEmergency: false,
+        emergencyStatus: 'resolved',
+        emergencyResolvedAt: serverTimestamp(),
+        emergencyResolvedBy: 'admin',
+        updatedAt: serverTimestamp(),
+      }
+      await updateDoc(doc(db, 'walkingBookings', booking.id), patch)
+      setBookings(prev => prev.map(b => b.id === booking.id ? { ...b, ...patch } : b))
+      if (selectedBooking?.id === booking.id) {
+        setSelectedBooking(prev => ({ ...prev, ...patch }))
+      }
+      setToastMessage('Emergency alert marked as resolved.')
+    } catch (err) {
+      alert(`Could not resolve emergency: ${err.message}`)
     } finally {
       setUpdatingId('')
     }
@@ -911,6 +979,51 @@ ${portalUrl}`
             </div>
           </div>
 
+          {/* 🚨 Global Emergency SOS Banner in Admin Panel */}
+          {(() => {
+            const emergencies = bookings.filter(b => b.hasEmergency)
+            if (emergencies.length === 0) return null
+
+            return (
+              <div style={{
+                background: '#fee2e2',
+                border: '2px solid #ef4444',
+                borderRadius: '16px',
+                padding: '16px 20px',
+                marginBottom: '16px',
+                boxShadow: '0 8px 30px rgba(220, 38, 38, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <AlertOctagon size={24} />
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: '15px', color: '#991b1b', display: 'block' }}>
+                      🚨 ACTIVE WALKER SOS EMERGENCY ({emergencies.length} Walk{emergencies.length > 1 ? 's' : ''})
+                    </strong>
+                    <span style={{ fontSize: '12.5px', color: '#b91c1c' }}>
+                      {emergencies.map(e => `${e.dogName || 'Dog'} (${e.assignedTeamMemberName || 'Walker'}) - ${e.emergencyReason || 'Urgent incident'}`).join(' · ')}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => openBookingDetails(emergencies[0])}
+                  className="btn"
+                  style={{ background: '#dc2626', color: '#fff', fontWeight: 800, fontSize: '13px', padding: '9px 16px', borderRadius: '10px' }}
+                >
+                  View Emergency Details 🚨
+                </button>
+              </div>
+            )
+          })()}
+
           {/* Bookings List Cards */}
           {loadingBookings ? (
             <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--muted)', background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)' }}>
@@ -986,6 +1099,26 @@ ${portalUrl}`
                         <span className={`badge ${WALKING_STATUS_BADGES[b.status] || 'badge-pending'}`}>
                           {WALKING_STATUS_LABELS[b.status] || b.status}
                         </span>
+                        {b.hasEmergency && (
+                          <span className="badge" style={{ background: '#fee2e2', color: '#dc2626', border: '1.5px solid #ef4444', fontWeight: 900 }}>
+                            🚨 SOS ALERT
+                          </span>
+                        )}
+                        {b.status === WALKING_STATUS.CONFIRMED && b.walkerArrivalStatus === 'on_the_way' && (
+                          <span className="badge" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+                            🚗 On The Way
+                          </span>
+                        )}
+                        {b.status === WALKING_STATUS.CONFIRMED && b.walkerArrivalStatus === 'arrived' && (
+                          <span className="badge" style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}>
+                            📍 At Doorstep
+                          </span>
+                        )}
+                        {b.status === WALKING_STATUS.COMPLETED && b.walkerRating && (
+                          <span className="badge" style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <Star size={11} fill="#f59e0b" color="#f59e0b" /> {b.walkerRating}/5
+                          </span>
+                        )}
                         <span style={{ fontSize: '15px', fontWeight: 900, color: 'var(--accent)' }}>
                           ₹{money(b.totalPrice)}
                         </span>
@@ -2039,6 +2172,21 @@ ${portalUrl}`
                     <span className={`badge ${WALKING_STATUS_BADGES[selectedBooking.status] || 'badge-pending'}`}>
                       {WALKING_STATUS_LABELS[selectedBooking.status] || selectedBooking.status}
                     </span>
+                    {selectedBooking.status === WALKING_STATUS.CONFIRMED && selectedBooking.walkerArrivalStatus === 'on_the_way' && (
+                      <span className="badge" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+                        🚗 Walker On The Way
+                      </span>
+                    )}
+                    {selectedBooking.status === WALKING_STATUS.CONFIRMED && selectedBooking.walkerArrivalStatus === 'arrived' && (
+                      <span className="badge" style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}>
+                        📍 At Doorstep
+                      </span>
+                    )}
+                    {selectedBooking.hasEmergency && (
+                      <span className="badge" style={{ background: '#fee2e2', color: '#dc2626', border: '1.5px solid #ef4444', fontWeight: 900 }}>
+                        🚨 EMERGENCY SOS ACTIVE
+                      </span>
+                    )}
                   </div>
                   <span style={{ fontSize: '11.5px', color: 'var(--muted)', display: 'block', marginTop: '2px' }}>
                     Request ID: #{selectedBooking.id.slice(0, 8).toUpperCase()}
@@ -2085,6 +2233,64 @@ ${portalUrl}`
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               
+              {/* 🚨 High-Priority Emergency Notice Banner in Admin Details */}
+              {selectedBooking.hasEmergency && (
+                <div style={{
+                  background: '#fee2e2',
+                  border: '2px solid #ef4444',
+                  borderRadius: '16px',
+                  padding: '16px',
+                  boxShadow: '0 8px 24px rgba(239, 68, 68, 0.25)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '24px' }}>🚨</span>
+                      <div>
+                        <strong style={{ fontSize: '15px', color: '#dc2626', display: 'block' }}>
+                          WALKER SOS EMERGENCY ACTIVE
+                        </strong>
+                        <span style={{ fontSize: '12px', color: '#991b1b' }}>
+                          Reported by: <strong>{selectedBooking.assignedTeamMemberName || 'Walker'}</strong> ({selectedBooking.assignedTeamMemberPhone || '-'})
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      {selectedBooking.emergencyWalkerLocation?.lat && (
+                        <a
+                          href={`https://maps.google.com/?q=${selectedBooking.emergencyWalkerLocation.lat},${selectedBooking.emergencyWalkerLocation.lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-secondary"
+                          style={{ fontSize: '12px', fontWeight: 800, padding: '7px 12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <MapPin size={13} /> Walker GPS Pin ↗
+                        </a>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleAdminResolveEmergency(selectedBooking)}
+                        disabled={updatingId === selectedBooking.id}
+                        className="btn"
+                        style={{ background: '#16a34a', color: '#fff', fontSize: '12px', fontWeight: 800, padding: '7px 14px', borderRadius: '8px' }}
+                      >
+                        {updatingId === selectedBooking.id ? 'Resolving...' : '✅ Mark Resolved'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#fff', border: '1px solid #fca5a5', borderRadius: '10px', padding: '10px 12px', fontSize: '12.5px', color: '#7f1d1d' }}>
+                    <div><strong>Emergency Issue:</strong> {selectedBooking.emergencyReason || 'Urgent incident occurred'}</div>
+                    {selectedBooking.emergencyNote && (
+                      <div style={{ fontStyle: 'italic', marginTop: '4px' }}>
+                        "{selectedBooking.emergencyNote}"
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* SECTION: Billing & Walk Fee (EDITABLE even after completed!) */}
               <div style={{ background: 'var(--accent-bg)', border: '1.5px solid var(--accent-border)', borderRadius: '14px', padding: '14px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
@@ -2250,6 +2456,31 @@ ${portalUrl}`
                   )}
                 </div>
 
+                {selectedBooking.walkerArrivalStatus && selectedBooking.walkerArrivalStatus !== 'idle' && (
+                  <div style={{
+                    marginBottom: '10px',
+                    padding: '8px 12px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: selectedBooking.walkerArrivalStatus === 'arrived' ? '#f0fdf4' : '#eff6ff',
+                    border: `1px solid ${selectedBooking.walkerArrivalStatus === 'arrived' ? '#bbf7d0' : '#bfdbfe'}`,
+                    color: selectedBooking.walkerArrivalStatus === 'arrived' ? '#166534' : '#1e40af',
+                  }}>
+                    <span style={{ fontSize: '16px' }}>{selectedBooking.walkerArrivalStatus === 'arrived' ? '🔔' : '🚗'}</span>
+                    <div>
+                      <strong>Walker Status: {selectedBooking.walkerArrivalStatus === 'arrived' ? 'Arrived at Doorstep' : 'On The Way to Location'}</strong>
+                      <div style={{ fontSize: '11px', opacity: 0.85 }}>
+                        {selectedBooking.walkerArrivalStatus === 'arrived'
+                          ? `Walker reached customer's doorstep`
+                          : `Walker marked heading towards pickup`}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' }}>
                   <select
                     className="input"
@@ -2317,6 +2548,171 @@ ${portalUrl}`
                       <Footprints size={15} />
                       {selectedBooking.status === WALKING_STATUS.IN_PROGRESS ? 'Watch Live GPS Walk' : 'View Recorded Walk Route Map'}
                     </button>
+                  </div>
+                )}
+
+                {/* 🐾 Walk Report Card in Admin Panel */}
+                {(selectedBooking.walkReport || selectedBooking.walkActivities) && (
+                  <div style={{ marginTop: '12px', background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: '14px', padding: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        🐾 Walk Report Card
+                      </span>
+                      {selectedBooking.phone && (
+                        <a
+                          href={`https://wa.me/${(selectedBooking.whatsappNumber || selectedBooking.phone).replace(/\D/g, '')}?text=${generateWhatsAppReportMessage(selectedBooking)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: '#25D366',
+                            color: '#fff',
+                            borderRadius: '8px',
+                            padding: '4px 10px',
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <MessageCircle size={13} /> Send Report on WhatsApp
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Stats Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', textAlign: 'center', marginBottom: '10px' }}>
+                      <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '10px', padding: '6px 2px' }}>
+                        <span style={{ fontSize: '14px', display: 'block' }}>💧</span>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#1E40AF' }}>
+                          {(selectedBooking.walkReport?.peeCount ?? selectedBooking.walkActivities?.pee) || 0} Pee
+                        </span>
+                      </div>
+                      <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '10px', padding: '6px 2px' }}>
+                        <span style={{ fontSize: '14px', display: 'block' }}>💩</span>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#92400E' }}>
+                          {(selectedBooking.walkReport?.pooCount ?? selectedBooking.walkActivities?.poo) || 0} Poo
+                        </span>
+                      </div>
+                      <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '10px', padding: '6px 2px' }}>
+                        <span style={{ fontSize: '14px', display: 'block' }}>🥤</span>
+                        <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#065F46' }}>
+                          {selectedBooking.walkReport?.waterGiven || selectedBooking.walkActivities?.water ? 'Hydrated' : 'No'}
+                        </span>
+                      </div>
+                      <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '10px', padding: '6px 2px' }}>
+                        <span style={{ fontSize: '14px', display: 'block' }}>🦴</span>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#78350F' }}>
+                          {(selectedBooking.walkReport?.treatCount ?? selectedBooking.walkActivities?.treats) || 0} Treats
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Distance, Duration, Pace & Calories */}
+                    {(selectedBooking.walkDistanceMeters || selectedBooking.walkDurationSeconds || selectedBooking.walkReport?.distanceMeters) && (() => {
+                      const dist = selectedBooking.walkReport?.distanceMeters || selectedBooking.walkDistanceMeters || 0
+                      const dur = selectedBooking.walkReport?.durationSeconds || selectedBooking.walkDurationSeconds || 0
+                      const pace = selectedBooking.walkPace || calculatePace(dist, dur).formatted
+                      const cal = selectedBooking.estimatedCalories || calculateCalories(dist, dur)
+
+                      return (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '10px' }}>
+                          <div style={{ background: 'var(--card)', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Distance</span>
+                            <strong style={{ fontSize: '12px', color: '#16a34a' }}>
+                              {formatDistance(dist)}
+                            </strong>
+                          </div>
+                          <div style={{ background: 'var(--card)', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Duration</span>
+                            <strong style={{ fontSize: '12px', color: 'var(--text)' }}>
+                              {formatDurationHuman(dur)}
+                            </strong>
+                          </div>
+                          <div style={{ background: 'var(--card)', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Avg Pace</span>
+                            <strong style={{ fontSize: '12px', color: '#0284c7' }}>
+                              {pace}
+                            </strong>
+                          </div>
+                          <div style={{ background: 'var(--card)', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Calories</span>
+                            <strong style={{ fontSize: '12px', color: '#ea580c' }}>
+                              ~{cal} kcal
+                            </strong>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Walker Notes */}
+                    {(selectedBooking.walkReport?.notes || selectedBooking.walkerNotes) && (
+                      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px' }}>
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '2px' }}>Walker's Note:</span>
+                        <p style={{ margin: 0, fontSize: '12px', color: 'var(--text)', fontStyle: 'italic', lineHeight: 1.4 }}>
+                          "{selectedBooking.walkReport?.notes || selectedBooking.walkerNotes}"
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Walk Photos */}
+                    {(selectedBooking.walkReport?.photos?.length > 0 || (Array.isArray(selectedBooking.walkPhotos) && selectedBooking.walkPhotos.length > 0)) && (
+                      <div>
+                        <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>Photos from Walk:</span>
+                        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                          {(selectedBooking.walkReport?.photos || selectedBooking.walkPhotos || []).map((pUrl, idx) => (
+                            <a key={idx} href={pUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '64px', height: '64px', borderRadius: '10px', overflow: 'hidden', border: '1.5px solid var(--border)', flexShrink: 0 }}>
+                              <img src={pUrl} alt="Walk memory" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 🌟 Pet Parent Review & Rating */}
+                {selectedBooking.walkerRating && (
+                  <div style={{ marginTop: '12px', background: '#FFFDF5', border: '1.5px solid #FDE68A', borderRadius: '14px', padding: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        ⭐ Parent Review & Rating
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#B45309', fontWeight: 700 }}>
+                        {selectedBooking.ownerName || 'Pet Parent'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <Star
+                          key={star}
+                          size={18}
+                          fill={star <= selectedBooking.walkerRating ? '#F59E0B' : 'none'}
+                          color={star <= selectedBooking.walkerRating ? '#F59E0B' : '#D1D5DB'}
+                        />
+                      ))}
+                      <strong style={{ marginLeft: '6px', fontSize: '13px', color: '#B45309' }}>
+                        {selectedBooking.walkerRating} / 5 Stars
+                      </strong>
+                    </div>
+
+                    {Array.isArray(selectedBooking.walkerCompliments) && selectedBooking.walkerCompliments.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '8px' }}>
+                        {selectedBooking.walkerCompliments.map((comp, i) => (
+                          <span key={i} style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '8px', padding: '2px 8px', fontSize: '11px', fontWeight: 700, color: '#92400E' }}>
+                            {comp}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {selectedBooking.walkerFeedback && (
+                      <p style={{ margin: 0, fontSize: '12px', color: 'var(--text)', fontStyle: 'italic', background: '#fff', border: '1px solid #FDE68A', borderRadius: '10px', padding: '8px 10px', lineHeight: 1.4 }}>
+                        "{selectedBooking.walkerFeedback}"
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

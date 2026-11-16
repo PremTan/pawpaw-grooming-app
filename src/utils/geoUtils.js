@@ -68,3 +68,71 @@ export function formatDurationHuman(seconds = 0) {
   if (secs === 0) return `${mins}m`
   return `${mins}m ${secs}s`
 }
+
+/**
+ * Calculates average walking pace (minutes per km).
+ * Returns formatted string like "11'45\" /km" or "--'--\" /km" if distance is too small.
+ */
+export function calculatePace(distanceMeters = 0, elapsedSeconds = 0) {
+  const km = Number(distanceMeters || 0) / 1000
+  const secs = Number(elapsedSeconds || 0)
+  if (km < 0.05 || secs < 15) {
+    return { paceMinKm: 0, formatted: `--'--" /km` }
+  }
+  const paceSecondsPerKm = secs / km
+  // Cap at realistic walking pace (e.g. 45 min/km max)
+  if (paceSecondsPerKm > 2700) {
+    return { paceMinKm: 45, formatted: `45'00" /km` }
+  }
+  const mins = Math.floor(paceSecondsPerKm / 60)
+  const remainingSecs = Math.round(paceSecondsPerKm % 60)
+  return {
+    paceMinKm: +(paceSecondsPerKm / 60).toFixed(2),
+    formatted: `${mins}'${String(remainingSecs).padStart(2, '0')}" /km`,
+  }
+}
+
+/**
+ * Calculates walking speed in km/h.
+ * Can prefer live GPS speed if provided, falling back to average speed over duration.
+ */
+export function calculateSpeed(distanceMeters = 0, elapsedSeconds = 0, liveSpeedMps = null) {
+  if (liveSpeedMps != null && liveSpeedMps > 0.2 && liveSpeedMps < 12) {
+    const kmh = liveSpeedMps * 3.6
+    return { speedKmH: +kmh.toFixed(1), formatted: `${kmh.toFixed(1)} km/h` }
+  }
+  const km = Number(distanceMeters || 0) / 1000
+  const hours = Number(elapsedSeconds || 0) / 3600
+  if (hours <= 0 || km <= 0.02) {
+    return { speedKmH: 0, formatted: '0.0 km/h' }
+  }
+  const kmh = km / hours
+  const safeKmh = Math.min(kmh, 15) // dog walking cap
+  return { speedKmH: +safeKmh.toFixed(1), formatted: `${safeKmh.toFixed(1)} km/h` }
+}
+
+/**
+ * Calculates estimated active calories burned by pet & walker during the walk.
+ * Standard average ~50 kcal per km for moderate walking.
+ */
+export function calculateCalories(distanceMeters = 0, elapsedSeconds = 0) {
+  const km = Number(distanceMeters || 0) / 1000
+  const mins = Number(elapsedSeconds || 0) / 60
+  // Blend distance (45 kcal/km) and duration (1.5 kcal/min base metabolism)
+  const burned = Math.round(km * 45 + mins * 1.5)
+  return burned > 0 ? burned : 0
+}
+
+/**
+ * Returns human-readable label and color for GPS accuracy
+ */
+export function getGpsQuality(accuracyMeters) {
+  if (accuracyMeters == null || isNaN(accuracyMeters)) {
+    return { label: 'Detecting GPS', color: '#9ca3af' }
+  }
+  const m = Math.round(accuracyMeters)
+  if (m <= 8) return { label: `Strong (±${m}m)`, color: '#22c55e' }
+  if (m <= 18) return { label: `Good (±${m}m)`, color: '#16a34a' }
+  if (m <= 35) return { label: `Moderate (±${m}m)`, color: '#eab308' }
+  return { label: `Weak (±${m}m)`, color: '#f97316' }
+}

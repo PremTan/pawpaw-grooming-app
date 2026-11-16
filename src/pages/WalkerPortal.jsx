@@ -14,7 +14,7 @@ import {
   serverTimestamp,
   arrayUnion,
 } from 'firebase/firestore'
-import { db } from '../firebase'
+import { ADMIN_EMAIL, db } from '../firebase'
 import {
   Footprints,
   Play,
@@ -41,14 +41,32 @@ import {
   Bell,
   X,
   ListOrdered,
+  Camera,
+  Droplets,
+  Bone,
+  Share2,
+  Car,
+  Gauge,
+  Zap,
+  Flame,
+  Star,
+  AlertOctagon,
+  PhoneCall,
+  ShieldAlert,
 } from 'lucide-react'
 import LiveWalkTrackerMap from '../components/LiveWalkTrackerMap'
+import { uploadToCloudinary } from '../utils/cloudinary'
+import { validateImageFile } from '../utils/imageCompression'
 import {
   calculateDistanceMeters,
   calculateTotalRouteDistance,
   formatDistance,
   formatDurationMMSS,
   formatDurationHuman,
+  calculatePace,
+  calculateSpeed,
+  calculateCalories,
+  getGpsQuality,
 } from '../utils/geoUtils'
 import { WALKING_STATUS, WALKING_STATUS_LABELS } from '../utils/walkingSettings'
 import {
@@ -59,6 +77,15 @@ import {
   saveWalkerSession,
   clearWalkerSession,
 } from '../utils/walkerAuth'
+
+const SOS_REASON_OPTIONS = [
+  '🐕 Pet Medical / Sickness / Injury',
+  '🏃 Pet Slipped Leash / Escaped',
+  '⚡ Dog Fight / Aggressive Animal',
+  '🚶 Walker Medical Emergency',
+  '⚠️ Traffic / Safety Incident',
+  '🚨 Other Immediate Emergency',
+]
 
 // Gentle Web Audio chime for assignment notification
 function playAssignmentChime() {
@@ -117,12 +144,25 @@ export default function WalkerPortal() {
   const [completingConfirm, setCompletingConfirm] = useState(false)
   const [completionSuccess, setCompletionSuccess] = useState(null)
 
+  // Walk Activity Log & Report Card State
+  const [activities, setActivities] = useState({ pee: 0, poo: 0, water: false, treats: 0 })
+  const [walkPhotos, setWalkPhotos] = useState([])
+  const [walkerNotes, setWalkerNotes] = useState('')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+
+  // Walker SOS / Emergency State
+  const [showSosModal, setShowSosModal] = useState(false)
+  const [sosReason, setSosReason] = useState('🐕 Pet Medical / Sickness / Injury')
+  const [sosNote, setSosNote] = useState('')
+  const [broadcastingSos, setBroadcastingSos] = useState(false)
+
   // Notifications State
   const [newAssignmentAlert, setNewAssignmentAlert] = useState(null)
   const initialNotifCheckDoneRef = useRef(false)
 
   const watchIdRef = useRef(null)
   const wakeLockRef = useRef(null)
+  const elapsedSecondsRef = useRef(0)
   const lastTrailPointRef = useRef(null)
   const timerIntervalRef = useRef(null)
 
@@ -320,6 +360,7 @@ export default function WalkerPortal() {
 
     const updateTimer = () => {
       const elapsed = Math.max(0, Math.floor((Date.now() - startMs) / 1000))
+      elapsedSecondsRef.current = elapsed
       setElapsedSeconds(elapsed)
     }
 
@@ -330,6 +371,126 @@ export default function WalkerPortal() {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
     }
   }, [activeWalk?.id, activeWalk?.status, activeWalk?.walkStartedAt])
+
+  // Sync walk activities & notes from activeWalk
+  useEffect(() => {
+    if (activeWalk?.id) {
+      if (activeWalk.walkActivities) {
+        setActivities({
+          pee: Number(activeWalk.walkActivities.pee || 0),
+          poo: Number(activeWalk.walkActivities.poo || 0),
+          water: Boolean(activeWalk.walkActivities.water),
+          treats: Number(activeWalk.walkActivities.treats || 0),
+        })
+      } else {
+        setActivities({ pee: 0, poo: 0, water: false, treats: 0 })
+      }
+      if (Array.isArray(activeWalk.walkPhotos)) {
+        setWalkPhotos(activeWalk.walkPhotos)
+      } else {
+        setWalkPhotos([])
+      }
+      if (typeof activeWalk.walkerNotes === 'string') {
+        setWalkerNotes(activeWalk.walkerNotes)
+      } else {
+        setWalkerNotes('')
+      }
+    }
+  }, [activeWalk?.id])
+
+  // Log one-tap activity during walk
+  const handleLogActivity = async (type) => {
+    if (!activeWalk?.id) return
+    const next = { ...activities }
+    if (type === 'pee') next.pee = (next.pee || 0) + 1
+    if (type === 'poo') next.poo = (next.poo || 0) + 1
+    if (type === 'water') next.water = !next.water
+    if (type === 'treats') next.treats = (next.treats || 0) + 1
+
+    setActivities(next)
+    try {
+      await updateDoc(doc(db, 'walkingBookings', activeWalk.id), {
+        walkActivities: next,
+        updatedAt: serverTimestamp(),
+      })
+    } catch (err) {
+      console.warn('Failed to save activity:', err)
+    }
+  }
+
+  // Upload photo taken during walk
+  const handleAddWalkPhoto = async (file) => {
+    if (!file || !activeWalk?.id) return
+    try {
+      validateImageFile(file)
+    } catch (err) {
+      alert(err.message)
+      return
+    }
+    setUploadingPhoto(true)
+    try {
+      const url = await uploadToCloudinary(file)
+      const nextPhotos = [...walkPhotos, url]
+      setWalkPhotos(nextPhotos)
+      await updateDoc(doc(db, 'walkingBookings', activeWalk.id), {
+        walkPhotos: arrayUnion(url),
+        updatedAt: serverTimestamp(),
+      })
+    } catch (err) {
+      alert(err.message || 'Photo upload failed. Please try again.')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
+  const handleRemoveWalkPhoto = async (index) => {
+    if (!activeWalk?.id) return
+    const nextPhotos = walkPhotos.filter((_, i) => i !== index)
+    setWalkPhotos(nextPhotos)
+    try {
+      await updateDoc(doc(db, 'walkingBookings', activeWalk.id), {
+        walkPhotos: nextPhotos,
+        updatedAt: serverTimestamp(),
+      })
+    } catch (err) {
+      console.warn('Failed to remove photo:', err)
+    }
+  }
+
+  // Generate WhatsApp message with report card details
+  const generateWhatsAppReportMessage = (success) => {
+    if (!success) return ''
+    const { dogName, breed, durationSec, distanceM, report } = success
+    let msg = `🐾 *Paw Paw Pet Walking - Walk Report Card* 🐾\n`
+    msg += `------------------------------------\n`
+    msg += `🐶 *Pet:* ${dogName}${breed ? ` (${breed})` : ''}\n`
+    if (report?.walkerName) {
+      msg += `🚶 *Walker:* ${report.walkerName}\n`
+    }
+    msg += `⏱️ *Duration:* ${formatDurationHuman(durationSec)}\n`
+    msg += `📍 *Distance Walked:* ${formatDistance(distanceM)}\n`
+    const pace = calculatePace(distanceM, durationSec).formatted
+    const calories = calculateCalories(distanceM, durationSec)
+    msg += `⚡ *Avg Pace:* ${pace}\n`
+    msg += `🔥 *Estimated Burn:* ~${calories} kcal\n`
+    msg += `💧 *Pee Breaks:* ${report?.peeCount || 0}\n`
+    msg += `💩 *Poop Breaks:* ${report?.pooCount || 0}\n`
+    msg += `🥤 *Hydrated:* ${report?.waterGiven ? 'Yes 💧' : 'No'}\n`
+    msg += `🦴 *Treats:* ${report?.treatCount || 0}\n`
+    if (report?.notes) {
+      msg += `📝 *Walker Note:* "${report.notes}"\n`
+    }
+    if (report?.photos?.length) {
+      msg += `📸 *Photos (${report.photos.length}):*\n`
+      report.photos.forEach((url, i) => {
+        msg += `Photo ${i + 1}: ${url}\n`
+      })
+    }
+    msg += `------------------------------------\n`
+    msg += `Thank you for choosing Paw Paw Pet Care! ❤️🐕\n`
+    msg += `Tracked with real-time GPS & care monitoring.`
+    return encodeURIComponent(msg)
+  }
 
   // GPS Watcher for Active Walk
   useEffect(() => {
@@ -364,6 +525,14 @@ export default function WalkerPortal() {
       const now = Date.now()
       const timeSinceLastPush = now - lastServerPushTime
 
+      // GPS Drift / Jump Filtering: Reject wild jumps (> 45m accuracy or impossible speed)
+      if (last && accuracy && accuracy > 45) {
+        return
+      }
+      if (last && distFromLast > 70 && (now - (last.t || 0)) < 5000) {
+        return
+      }
+
       if (distFromLast >= 6 || timeSinceLastPush > 20000 || !last) {
         lastTrailPointRef.current = point
         lastServerPushTime = now
@@ -372,6 +541,11 @@ export default function WalkerPortal() {
           const updated = [...prev, point]
           const newDistance = calculateTotalRouteDistance(updated)
           setTotalDistanceMeters(newDistance)
+
+          const secs = elapsedSecondsRef.current || 1
+          const currentPaceObj = calculatePace(newDistance, secs)
+          const currentSpeedObj = calculateSpeed(newDistance, secs, speed)
+          const estCalories = calculateCalories(newDistance, secs)
 
           updateDoc(doc(db, 'walkingBookings', activeWalk.id), {
             liveLocation: {
@@ -384,6 +558,9 @@ export default function WalkerPortal() {
             },
             routeTrail: arrayUnion(point),
             walkDistanceMeters: newDistance,
+            walkPace: currentPaceObj.formatted,
+            walkSpeedKmh: currentSpeedObj.speedKmH,
+            estimatedCalories: estCalories,
           }).catch(err => console.warn('Could not stream GPS update:', err))
 
           return updated
@@ -513,6 +690,47 @@ export default function WalkerPortal() {
     setCurrentWalker(null)
   }
 
+  // UPDATE ARRIVAL STATUS (On My Way / Arrived at Doorstep)
+  const handleUpdateArrivalStatus = async (booking, newStatus) => {
+    if (!booking?.id) return
+    setActionLoading(true)
+    try {
+      const isArrived = newStatus === 'arrived'
+      const patch = {
+        walkerArrivalStatus: newStatus,
+        updatedAt: serverTimestamp(),
+      }
+      if (newStatus === 'on_the_way') {
+        patch.walkerOnTheWayAt = serverTimestamp()
+      } else if (newStatus === 'arrived') {
+        patch.walkerArrivedAt = serverTimestamp()
+      }
+
+      await updateDoc(doc(db, 'walkingBookings', booking.id), patch)
+
+      // Notify Pet Parent
+      if (booking.userId) {
+        addDoc(collection(db, 'notifications'), {
+          userId: booking.userId,
+          title: isArrived
+            ? `🔔 Your Walker has arrived at your doorstep!`
+            : `🚗 Your Walker is on the way!`,
+          message: isArrived
+            ? `${currentWalker?.name || 'Your walker'} has reached your doorstep for ${booking.dogName || booking.petName || 'your dog'}'s walk! Please hand over when ready.`
+            : `${currentWalker?.name || 'Your walker'} is heading towards your location for ${booking.dogName || booking.petName || 'your dog'}'s walk.`,
+          actionUrl: '/my-bookings?tab=walking',
+          type: isArrived ? 'walker_arrived' : 'walker_on_the_way',
+          read: false,
+          createdAt: serverTimestamp(),
+        }).catch(() => {})
+      }
+    } catch (err) {
+      alert(`Could not update arrival status: ${err.message}`)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   // START WALK
   const handleStartWalk = async (booking) => {
     if (!booking) return
@@ -606,12 +824,36 @@ export default function WalkerPortal() {
 
       const finalDuration = elapsedSeconds
       const finalDistance = totalDistanceMeters
+      const finalPace = calculatePace(finalDistance, finalDuration).formatted
+      const finalCalories = calculateCalories(finalDistance, finalDuration)
+
+      const walkReport = {
+        durationSeconds: finalDuration,
+        distanceMeters: finalDistance,
+        pace: finalPace,
+        calories: finalCalories,
+        peeCount: Number(activities.pee || 0),
+        pooCount: Number(activities.poo || 0),
+        waterGiven: Boolean(activities.water),
+        treatCount: Number(activities.treats || 0),
+        photos: walkPhotos || [],
+        notes: String(walkerNotes || '').trim(),
+        walkerName: currentWalker?.name || 'Walker',
+        walkerPhone: currentWalker?.phone || '',
+        completedAt: new Date().toISOString(),
+      }
 
       const patch = {
         status: WALKING_STATUS.COMPLETED,
         walkCompletedAt: serverTimestamp(),
         walkDurationSeconds: finalDuration,
         walkDistanceMeters: finalDistance,
+        walkPace: finalPace,
+        estimatedCalories: finalCalories,
+        walkActivities: activities,
+        walkPhotos: walkPhotos,
+        walkerNotes: String(walkerNotes || '').trim(),
+        walkReport,
         updatedAt: serverTimestamp(),
       }
 
@@ -621,7 +863,7 @@ export default function WalkerPortal() {
         addDoc(collection(db, 'notifications'), {
           userId: activeWalk.userId,
           title: `🎉 ${activeWalk.dogName || activeWalk.petName || 'Your pet'}'s walk is completed!`,
-          message: `Walk finished! Total time: ${formatDurationHuman(finalDuration)}, Distance: ${formatDistance(finalDistance)}.`,
+          message: `Walk finished! Total time: ${formatDurationHuman(finalDuration)}, Distance: ${formatDistance(finalDistance)}. Tap to view Walk Report Card!`,
           actionUrl: '/my-bookings?tab=walking',
           type: 'walking_completed',
           read: false,
@@ -631,9 +873,13 @@ export default function WalkerPortal() {
 
       setCompletionSuccess({
         dogName: activeWalk.dogName || activeWalk.petName || 'Dog',
+        breed: activeWalk.breed || activeWalk.dogBreed || '',
+        petPhotoUrl: activeWalk.petPhotoUrl || '',
         durationSec: finalDuration,
         distanceM: finalDistance,
-        ownerPhone: activeWalk.phone || '',
+        ownerPhone: activeWalk.phone || activeWalk.customerPhone || '',
+        ownerName: activeWalk.ownerName || activeWalk.customerName || '',
+        report: walkReport,
       })
 
       setActiveWalkId('')
@@ -641,6 +887,9 @@ export default function WalkerPortal() {
       setElapsedSeconds(0)
       setRouteTrail([])
       setTotalDistanceMeters(0)
+      setActivities({ pee: 0, poo: 0, water: false, treats: 0 })
+      setWalkPhotos([])
+      setWalkerNotes('')
     } catch (err) {
       alert(`Could not complete walk: ${err.message}`)
     } finally {
@@ -656,6 +905,96 @@ export default function WalkerPortal() {
       } catch {}
     }
     setNewAssignmentAlert(null)
+  }
+
+  // BROADCAST SOS ALERT
+  const handleBroadcastSos = async () => {
+    if (!activeWalk) return
+    setBroadcastingSos(true)
+    try {
+      const emergencyData = {
+        hasEmergency: true,
+        emergencyReason: sosReason,
+        emergencyNote: String(sosNote || '').trim(),
+        emergencyTriggeredAt: serverTimestamp(),
+        emergencyStatus: 'active',
+        emergencyWalkerLocation: currentGps ? {
+          lat: currentGps.lat,
+          lng: currentGps.lng,
+          accuracy: currentGps.accuracy || null,
+        } : null,
+        updatedAt: serverTimestamp(),
+      }
+
+      await updateDoc(doc(db, 'walkingBookings', activeWalk.id), emergencyData)
+
+      // Notify Pet Parent with High Priority
+      if (activeWalk.userId) {
+        addDoc(collection(db, 'notifications'), {
+          userId: activeWalk.userId,
+          title: `🚨 EMERGENCY ALERT: ${activeWalk.dogName || activeWalk.petName || 'Dog'}'s Walk`,
+          message: `Walker ${currentWalker?.name || 'Walker'} reported an emergency: "${sosReason}" ${sosNote ? `(${sosNote})` : ''}. Please call walker immediately!`,
+          actionUrl: '/my-bookings?tab=walking',
+          type: 'walker_sos_alert',
+          priority: 'high',
+          read: false,
+          createdAt: serverTimestamp(),
+        }).catch(() => {})
+      }
+
+      // Notify Admin
+      addDoc(collection(db, 'notifications'), {
+        userEmail: ADMIN_EMAIL || '',
+        toAdmin: true,
+        title: `🚨 SOS EMERGENCY: Walk #${activeWalk.id.slice(0, 8).toUpperCase()}`,
+        message: `Walker ${currentWalker?.name || 'Walker'} triggered SOS for ${activeWalk.dogName || 'Dog'}: "${sosReason}". Walker phone: ${currentWalker?.phone || '-'}, Owner: ${activeWalk.phone || '-'}`,
+        actionUrl: '/admin/walking',
+        type: 'walking_sos_admin',
+        priority: 'high',
+        read: false,
+        createdAt: serverTimestamp(),
+      }).catch(() => {})
+
+      alert('🚨 Emergency broadcast sent! Pet parent and admin have been notified.')
+    } catch (err) {
+      alert(`Could not broadcast SOS: ${err.message}`)
+    } finally {
+      setBroadcastingSos(false)
+    }
+  }
+
+  // RESOLVE SOS EMERGENCY
+  const handleResolveSos = async () => {
+    if (!activeWalk) return
+    setBroadcastingSos(true)
+    try {
+      await updateDoc(doc(db, 'walkingBookings', activeWalk.id), {
+        hasEmergency: false,
+        emergencyStatus: 'resolved',
+        emergencyResolvedAt: serverTimestamp(),
+        emergencyResolvedBy: currentWalker?.name || 'Walker',
+        updatedAt: serverTimestamp(),
+      })
+
+      if (activeWalk.userId) {
+        addDoc(collection(db, 'notifications'), {
+          userId: activeWalk.userId,
+          title: `✅ Emergency Resolved: ${activeWalk.dogName || 'Dog'}'s Walk`,
+          message: `Walker ${currentWalker?.name || 'Walker'} marked the previous safety alert as resolved. The walk is continuing safely.`,
+          actionUrl: '/my-bookings?tab=walking',
+          type: 'walker_sos_resolved',
+          read: false,
+          createdAt: serverTimestamp(),
+        }).catch(() => {})
+      }
+
+      setShowSosModal(false)
+      alert('Emergency marked as resolved.')
+    } catch (err) {
+      alert(`Could not resolve SOS: ${err.message}`)
+    } finally {
+      setBroadcastingSos(false)
+    }
   }
 
   // Group walks by category
@@ -786,34 +1125,250 @@ export default function WalkerPortal() {
           </div>
         )}
 
-        {/* Action Button: Start Walk */}
-        {!isCompleted && !isThisActive && (
-          <button
-            type="button"
-            onClick={() => handleStartWalk(w)}
-            disabled={actionLoading || !!activeWalkId}
-            className="btn btn-primary"
-            style={{
-              width: '100%',
-              padding: '11px',
-              fontSize: '13.5px',
-              fontWeight: 800,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              opacity: !!activeWalkId ? 0.6 : 1,
-            }}
-          >
-            <Play size={15} fill="currentColor" />
-            {activeWalkId ? 'Another Walk Is Currently Active' : 'Start This Dog Walk'}
-          </button>
-        )}
+        {/* Arrival Status & Start Walk Pipeline */}
+        {!isCompleted && !isThisActive && (() => {
+          const arrivalStatus = w.walkerArrivalStatus || 'idle'
+          const ownerPhoneClean = (w.phone || w.userPhone || '').replace(/\D/g, '')
+          const waNumber = ownerPhoneClean ? (ownerPhoneClean.length === 10 ? `91${ownerPhoneClean}` : ownerPhoneClean) : ''
+          const waOnTheWayMsg = encodeURIComponent(`Hi ${w.userName || 'Pet Parent'}! 🐾 This is ${currentWalker?.name || 'your Paw Paw Walker'}. I am on my way to pick up ${w.dogName || 'your pet'} for the scheduled walk! 🚗`)
+          const waArrivedMsg = encodeURIComponent(`Hi ${w.userName || 'Pet Parent'}! 🔔 This is ${currentWalker?.name || 'your Paw Paw Walker'}. I have arrived at your doorstep for ${w.dogName || 'your pet'}'s walk! Please hand over when ready. 🐕`)
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {/* Status Banner when On The Way or Arrived */}
+              {arrivalStatus === 'on_the_way' && (
+                <div style={{
+                  background: '#eff6ff',
+                  border: '1.5px solid #bfdbfe',
+                  borderRadius: '12px',
+                  padding: '9px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                    <span style={{ fontSize: '18px' }}>🚗</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#1e40af' }}>You're On The Way</div>
+                      <div style={{ fontSize: '11px', color: '#3b82f6' }}>Parent notified in real-time</div>
+                    </div>
+                  </div>
+                  {waNumber && (
+                    <a
+                      href={`https://wa.me/${waNumber}?text=${waOnTheWayMsg}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn"
+                      style={{
+                        padding: '5px 9px',
+                        fontSize: '11px',
+                        background: '#25D366',
+                        color: '#fff',
+                        borderRadius: '8px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        textDecoration: 'none',
+                        fontWeight: 700,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <MessageCircle size={12} /> WhatsApp
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {arrivalStatus === 'arrived' && (
+                <div style={{
+                  background: '#f0fdf4',
+                  border: '1.5px solid #bbf7d0',
+                  borderRadius: '12px',
+                  padding: '9px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                    <span style={{ fontSize: '18px' }}>🔔</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#166534' }}>At Doorstep!</div>
+                      <div style={{ fontSize: '11px', color: '#15803d' }}>Ready to pick up {w.dogName || 'dog'}</div>
+                    </div>
+                  </div>
+                  {waNumber && (
+                    <a
+                      href={`https://wa.me/${waNumber}?text=${waArrivedMsg}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn"
+                      style={{
+                        padding: '5px 9px',
+                        fontSize: '11px',
+                        background: '#25D366',
+                        color: '#fff',
+                        borderRadius: '8px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        textDecoration: 'none',
+                        fontWeight: 700,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <MessageCircle size={12} /> WhatsApp
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {/* Arrival Quick Action Buttons */}
+              {arrivalStatus === 'idle' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateArrivalStatus(w, 'on_the_way')}
+                    disabled={actionLoading}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '8px 10px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      borderRadius: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      background: '#eff6ff',
+                      color: '#1d4ed8',
+                      borderColor: '#bfdbfe',
+                    }}
+                  >
+                    <Car size={13} /> On My Way
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateArrivalStatus(w, 'arrived')}
+                    disabled={actionLoading}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '8px 10px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      borderRadius: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      background: '#f0fdf4',
+                      color: '#15803d',
+                      borderColor: '#bbf7d0',
+                    }}
+                  >
+                    <MapPin size={13} /> At Doorstep
+                  </button>
+                </div>
+              )}
+
+              {arrivalStatus === 'on_the_way' && (
+                <button
+                  type="button"
+                  onClick={() => handleUpdateArrivalStatus(w, 'arrived')}
+                  disabled={actionLoading}
+                  className="btn btn-secondary"
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    background: '#f0fdf4',
+                    color: '#15803d',
+                    borderColor: '#bbf7d0',
+                  }}
+                >
+                  <MapPin size={13} /> Tap When You Reach Doorstep
+                </button>
+              )}
+
+              {/* Primary Action Button: Start Walk */}
+              <button
+                type="button"
+                onClick={() => handleStartWalk(w)}
+                disabled={actionLoading || !!activeWalkId}
+                className="btn btn-primary"
+                style={{
+                  width: '100%',
+                  padding: '11px',
+                  fontSize: '13.5px',
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  opacity: !!activeWalkId ? 0.6 : 1,
+                  background: arrivalStatus === 'arrived' ? '#16a34a' : 'var(--accent, #C08820)',
+                  borderColor: arrivalStatus === 'arrived' ? '#15803d' : 'var(--accent, #C08820)',
+                }}
+              >
+                <Play size={15} fill="currentColor" />
+                {activeWalkId ? 'Another Walk Is Currently Active' : 'Start Live GPS Walk'}
+              </button>
+            </div>
+          )
+        })()}
 
         {isCompleted && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', color: 'var(--muted, #7E7067)', paddingTop: '4px' }}>
-            <span>⏱️ {formatDurationHuman(w.walkDurationSeconds || 1800)}</span>
-            <span>🚶‍♂️ {formatDistance(w.walkDistanceMeters || 1000)}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', color: 'var(--muted, #7E7067)' }}>
+              <span>⏱️ {formatDurationHuman(w.walkDurationSeconds || 1800)}</span>
+              <span>🚶‍♂️ {formatDistance(w.walkDistanceMeters || 1000)}</span>
+            </div>
+
+            {w.walkerRating ? (
+              <div style={{ background: '#FFFDF5', border: '1px solid #FDE68A', borderRadius: '10px', padding: '8px 10px', marginTop: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <Star
+                        key={star}
+                        size={12}
+                        fill={star <= w.walkerRating ? '#F59E0B' : 'none'}
+                        color={star <= w.walkerRating ? '#F59E0B' : '#D1D5DB'}
+                      />
+                    ))}
+                    <strong style={{ marginLeft: '4px', fontSize: '11.5px', color: '#B45309' }}>
+                      {w.walkerRating} / 5 Stars
+                    </strong>
+                  </span>
+                  <span style={{ fontSize: '10px', color: '#B45309', fontWeight: 700 }}>Parent Review</span>
+                </div>
+                {Array.isArray(w.walkerCompliments) && w.walkerCompliments.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '4px' }}>
+                    {w.walkerCompliments.map((comp, i) => (
+                      <span key={i} style={{ background: '#FEF3C7', borderRadius: '6px', padding: '1px 6px', fontSize: '10px', fontWeight: 700, color: '#92400E' }}>
+                        {comp}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {w.walkerFeedback && (
+                  <p style={{ margin: 0, fontSize: '11px', color: 'var(--text)', fontStyle: 'italic', lineHeight: 1.35 }}>
+                    "{w.walkerFeedback}"
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div style={{ fontSize: '11px', color: 'var(--muted, #7E7067)', fontStyle: 'italic', paddingTop: '2px' }}>
+                ⭐ Awaiting parent review
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -962,9 +1517,23 @@ export default function WalkerPortal() {
                 Walker
               </span>
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--muted, #7E7067)' }}>
-              {currentWalker.phone || 'Paw Paw Partner'}
-            </div>
+            {(() => {
+              const completedRatedWalks = walks.filter(w => w.status === WALKING_STATUS.COMPLETED && w.walkerRating)
+              const walkerAvgRating = completedRatedWalks.length > 0
+                ? (completedRatedWalks.reduce((sum, w) => sum + Number(w.walkerRating || 0), 0) / completedRatedWalks.length).toFixed(1)
+                : null
+
+              return (
+                <div style={{ fontSize: '11px', color: 'var(--muted, #7E7067)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>{currentWalker.phone || 'Paw Paw Partner'}</span>
+                  {walkerAvgRating && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: '#B45309', fontWeight: 800, background: '#FFFDF5', border: '1px solid #FDE68A', padding: '1px 6px', borderRadius: '6px' }}>
+                      <Star size={11} fill="#F59E0B" color="#F59E0B" /> {walkerAvgRating} ({completedRatedWalks.length})
+                    </span>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         </div>
 
@@ -1124,12 +1693,73 @@ export default function WalkerPortal() {
                     WALK IN PROGRESS · LIVE GPS
                   </div>
 
-                  {gpsAccuracy !== null && (
-                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <ShieldCheck size={13} color="#4ade80" /> GPS accuracy: ±{gpsAccuracy}m
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {/* 🚨 SOS Emergency Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowSosModal(true)}
+                      style={{
+                        background: activeWalk.hasEmergency ? '#dc2626' : 'rgba(239, 68, 68, 0.25)',
+                        border: '1.5px solid #ef4444',
+                        color: '#fff',
+                        borderRadius: '999px',
+                        padding: '4px 12px',
+                        fontSize: '11.5px',
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        boxShadow: activeWalk.hasEmergency ? '0 0 14px rgba(239, 68, 68, 0.8)' : 'none',
+                      }}
+                    >
+                      <AlertOctagon size={13} color="#fff" />
+                      {activeWalk.hasEmergency ? '🚨 SOS ACTIVE' : '🚨 SOS Emergency'}
+                    </button>
+
+                    {gpsAccuracy !== null && (
+                      <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <ShieldCheck size={13} color="#4ade80" /> ±{gpsAccuracy}m
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                {/* Active Emergency Banner */}
+                {activeWalk.hasEmergency && (
+                  <div style={{
+                    background: 'rgba(239, 68, 68, 0.25)',
+                    border: '1.5px solid #ef4444',
+                    borderRadius: '14px',
+                    padding: '10px 14px',
+                    marginBottom: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    animation: 'fadeIn 0.2s ease',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '18px' }}>🚨</span>
+                      <div>
+                        <strong style={{ color: '#fca5a5', fontSize: '12px', display: 'block' }}>
+                          Emergency Alert Broadcast Active
+                        </strong>
+                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.85)' }}>
+                          {activeWalk.emergencyReason || 'Safety incident reported'} · Parent & Admin Notified
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowSosModal(true)}
+                      className="btn"
+                      style={{ background: '#ef4444', color: '#fff', fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: '8px' }}
+                    >
+                      Manage SOS
+                    </button>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
                   <div style={{ width: '56px', height: '56px', borderRadius: '18px', background: 'rgba(255,255,255,0.1)', border: '2px solid #C08820', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px', flexShrink: 0, overflow: 'hidden' }}>
@@ -1152,44 +1782,103 @@ export default function WalkerPortal() {
                   </div>
                 </div>
 
-                {/* Live Stats */}
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '12px',
-                    background: 'rgba(255,255,255,0.06)',
-                    borderRadius: '16px',
-                    padding: '14px 16px',
-                    marginBottom: '16px',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    textAlign: 'center',
-                  }}
-                >
-                  <div>
-                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-                      Elapsed Walk Time
-                    </span>
-                    <div style={{ fontSize: '28px', fontWeight: 900, color: '#fff', letterSpacing: '-1px', fontFamily: 'monospace' }}>
-                      {formatDurationMMSS(elapsedSeconds)}
-                    </div>
-                    <span style={{ fontSize: '11px', color: '#D49B2E', fontWeight: 700 }}>
-                      Target: {activeWalk.duration || 30} Mins
-                    </span>
-                  </div>
+                {/* Live GPS & Fitness Stats HUD */}
+                {(() => {
+                  const pace = calculatePace(totalDistanceMeters, elapsedSeconds)
+                  const speed = calculateSpeed(totalDistanceMeters, elapsedSeconds, currentGps?.speed)
+                  const calories = calculateCalories(totalDistanceMeters, elapsedSeconds)
+                  const gpsQuality = getGpsQuality(gpsAccuracy)
 
-                  <div>
-                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-                      Distance Walked
-                    </span>
-                    <div style={{ fontSize: '28px', fontWeight: 900, color: '#4ade80', letterSpacing: '-1px', fontFamily: 'monospace' }}>
-                      {formatDistance(totalDistanceMeters)}
+                  return (
+                    <div style={{ marginBottom: '16px' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2, 1fr)',
+                          gap: '10px',
+                          background: 'rgba(255,255,255,0.06)',
+                          borderRadius: '16px',
+                          padding: '14px 14px',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          textAlign: 'center',
+                        }}
+                      >
+                        {/* 1. Time */}
+                        <div>
+                          <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '4px' }}>
+                            <Clock size={11} /> Walk Time
+                          </span>
+                          <div style={{ fontSize: '26px', fontWeight: 900, color: '#fff', letterSpacing: '-0.5px', fontFamily: 'monospace' }}>
+                            {formatDurationMMSS(elapsedSeconds)}
+                          </div>
+                          <span style={{ fontSize: '10.5px', color: '#D49B2E', fontWeight: 700 }}>
+                            Target: {activeWalk.duration || 30} Mins
+                          </span>
+                        </div>
+
+                        {/* 2. Distance */}
+                        <div>
+                          <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '4px' }}>
+                            <Footprints size={11} /> Distance
+                          </span>
+                          <div style={{ fontSize: '26px', fontWeight: 900, color: '#4ade80', letterSpacing: '-0.5px', fontFamily: 'monospace' }}>
+                            {formatDistance(totalDistanceMeters)}
+                          </div>
+                          <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.6)' }}>
+                            {routeTrail.length} GPS points
+                          </span>
+                        </div>
+
+                        {/* 3. Pace */}
+                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '10px' }}>
+                          <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '4px' }}>
+                            <Gauge size={11} /> Avg Pace
+                          </span>
+                          <div style={{ fontSize: '20px', fontWeight: 900, color: '#38bdf8', fontFamily: 'monospace' }}>
+                            {pace.formatted}
+                          </div>
+                          <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.5)' }}>
+                            Minutes / km
+                          </span>
+                        </div>
+
+                        {/* 4. Speed */}
+                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '10px' }}>
+                          <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '4px' }}>
+                            <Zap size={11} /> Speed
+                          </span>
+                          <div style={{ fontSize: '20px', fontWeight: 900, color: '#fbbf24', fontFamily: 'monospace' }}>
+                            {speed.formatted}
+                          </div>
+                          <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.5)' }}>
+                            Walking pace
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Extra fitness strip: Calories + GPS Signal */}
+                      <div style={{
+                        marginTop: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '7px 12px',
+                        background: 'rgba(255,255,255,0.04)',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        color: 'rgba(255,255,255,0.7)',
+                      }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#fb923c', fontWeight: 700 }}>
+                          <Flame size={13} /> Active Burn: ~{calories} kcal
+                        </span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: gpsQuality.color }} />
+                          <span style={{ color: gpsQuality.color, fontWeight: 700 }}>GPS: {gpsQuality.label}</span>
+                        </span>
+                      </div>
                     </div>
-                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>
-                      {routeTrail.length} GPS trail points
-                    </span>
-                  </div>
-                </div>
+                  )
+                })()}
 
                 {/* GPS Warning if error */}
                 {gpsError && (
@@ -1258,6 +1947,227 @@ export default function WalkerPortal() {
                       <MessageCircle size={14} /> WhatsApp
                     </a>
                   )}
+                </div>
+
+                {/* 🐾 Live Walk Activity Log & Photos */}
+                <div style={{ background: 'rgba(255, 255, 255, 0.08)', borderRadius: '16px', padding: '14px', marginBottom: '16px', border: '1px solid rgba(255, 255, 255, 0.12)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🐾 Care & Activity Tracker
+                    </span>
+                    <span style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.65)' }}>
+                      Tap to log for pet parent
+                    </span>
+                  </div>
+
+                  {/* Quick Action Chips: Pee, Poo, Water, Treat */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '14px' }}>
+                    {/* Pee Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleLogActivity('pee')}
+                      style={{
+                        background: activities.pee > 0 ? 'rgba(59, 130, 246, 0.3)' : 'rgba(255, 255, 255, 0.08)',
+                        border: `1.5px solid ${activities.pee > 0 ? '#60a5fa' : 'rgba(255, 255, 255, 0.15)'}`,
+                        borderRadius: '12px',
+                        padding: '8px 4px',
+                        color: '#fff',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '3px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <span style={{ fontSize: '18px', lineHeight: 1 }}>💧</span>
+                      <span style={{ fontSize: '11px', fontWeight: 800 }}>
+                        {activities.pee > 0 ? `${activities.pee} Pee` : 'Pee'}
+                      </span>
+                      <span style={{ fontSize: '9px', color: 'rgba(255, 255, 255, 0.65)' }}>+1 Tap</span>
+                    </button>
+
+                    {/* Poo Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleLogActivity('poo')}
+                      style={{
+                        background: activities.poo > 0 ? 'rgba(217, 119, 6, 0.3)' : 'rgba(255, 255, 255, 0.08)',
+                        border: `1.5px solid ${activities.poo > 0 ? '#f59e0b' : 'rgba(255, 255, 255, 0.15)'}`,
+                        borderRadius: '12px',
+                        padding: '8px 4px',
+                        color: '#fff',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '3px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <span style={{ fontSize: '18px', lineHeight: 1 }}>💩</span>
+                      <span style={{ fontSize: '11px', fontWeight: 800 }}>
+                        {activities.poo > 0 ? `${activities.poo} Poo` : 'Poop'}
+                      </span>
+                      <span style={{ fontSize: '9px', color: 'rgba(255, 255, 255, 0.65)' }}>+1 Tap</span>
+                    </button>
+
+                    {/* Water Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleLogActivity('water')}
+                      style={{
+                        background: activities.water ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255, 255, 255, 0.08)',
+                        border: `1.5px solid ${activities.water ? '#34d399' : 'rgba(255, 255, 255, 0.15)'}`,
+                        borderRadius: '12px',
+                        padding: '8px 4px',
+                        color: '#fff',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '3px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <span style={{ fontSize: '18px', lineHeight: 1 }}>🥤</span>
+                      <span style={{ fontSize: '11px', fontWeight: 800 }}>
+                        {activities.water ? 'Hydrated' : 'Water'}
+                      </span>
+                      <span style={{ fontSize: '9px', color: activities.water ? '#34d399' : 'rgba(255, 255, 255, 0.65)' }}>
+                        {activities.water ? '✓ Given' : 'Tap to log'}
+                      </span>
+                    </button>
+
+                    {/* Treat Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleLogActivity('treats')}
+                      style={{
+                        background: activities.treats > 0 ? 'rgba(234, 179, 8, 0.3)' : 'rgba(255, 255, 255, 0.08)',
+                        border: `1.5px solid ${activities.treats > 0 ? '#facc15' : 'rgba(255, 255, 255, 0.15)'}`,
+                        borderRadius: '12px',
+                        padding: '8px 4px',
+                        color: '#fff',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '3px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <span style={{ fontSize: '18px', lineHeight: 1 }}>🦴</span>
+                      <span style={{ fontSize: '11px', fontWeight: 800 }}>
+                        {activities.treats > 0 ? `${activities.treats} Treats` : 'Treat'}
+                      </span>
+                      <span style={{ fontSize: '9px', color: 'rgba(255, 255, 255, 0.65)' }}>+1 Tap</span>
+                    </button>
+                  </div>
+
+                  {/* Snap Photo & Photo Thumbnails */}
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <label
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: 'rgba(255, 255, 255, 0.15)',
+                          color: '#fff',
+                          borderRadius: '10px',
+                          padding: '8px 12px',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          cursor: uploadingPhoto ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        <Camera size={14} />
+                        {uploadingPhoto ? 'Uploading photo...' : '📸 Snap / Add Photo'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          disabled={uploadingPhoto}
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0]
+                            if (f) handleAddWalkPhoto(f)
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+
+                      {walkPhotos.length > 0 && (
+                        <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.7)' }}>
+                          {walkPhotos.length} photo{walkPhotos.length > 1 ? 's' : ''} attached
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Photo Strip */}
+                    {walkPhotos.length > 0 && (
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
+                        {walkPhotos.map((url, i) => (
+                          <div key={i} style={{ position: 'relative', width: '64px', height: '64px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, border: '1.5px solid rgba(255,255,255,0.3)' }}>
+                            <img src={url} alt={`Walk photo ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveWalkPhoto(i)}
+                              style={{
+                                position: 'absolute',
+                                top: '2px',
+                                right: '2px',
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '50%',
+                                background: 'rgba(0,0,0,0.7)',
+                                color: '#fff',
+                                border: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                padding: 0,
+                              }}
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Walker's Note for Pet Parent */}
+                  <div>
+                    <textarea
+                      value={walkerNotes}
+                      onChange={(e) => {
+                        setWalkerNotes(e.target.value)
+                        if (activeWalk?.id) {
+                          updateDoc(doc(db, 'walkingBookings', activeWalk.id), {
+                            walkerNotes: e.target.value,
+                          }).catch(() => {})
+                        }
+                      }}
+                      placeholder="Add note for owner (e.g. Bruno walked gently & made friends in the park!)..."
+                      rows={2}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        background: 'rgba(0, 0, 0, 0.25)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        borderRadius: '10px',
+                        padding: '8px 10px',
+                        fontSize: '12px',
+                        color: '#fff',
+                        resize: 'none',
+                        outline: 'none',
+                        fontFamily: 'inherit',
+                      }}
+                    />
+                  </div>
                 </div>
 
                 {/* Complete Walk Button */}
@@ -1502,43 +2412,406 @@ export default function WalkerPortal() {
           </div>
         )}
 
-        {/* Walk Completed Celebration Popup */}
+        {/* Walk Completed Celebration & Report Card Modal */}
         {completionSuccess && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-            <div style={{ background: 'var(--card, #fff)', maxWidth: '420px', width: '100%', borderRadius: '24px', padding: '24px', textAlign: 'center', border: '1.5px solid var(--border, #F0EAE1)', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
-              <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-                <CheckCircle size={36} />
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+            <div style={{ background: '#FCFAF6', maxWidth: '440px', width: '100%', maxHeight: '92vh', overflowY: 'auto', borderRadius: '24px', padding: '24px', border: '1.5px solid #EADBBE', boxShadow: '0 20px 48px rgba(0,0,0,0.3)', boxSizing: 'border-box' }}>
+              {/* Top Banner */}
+              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
+                  <CheckCircle size={32} />
+                </div>
+                <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--accent, #C08820)' }}>
+                  Official Walk Report Card
+                </span>
+                <h3 style={{ fontSize: '22px', fontWeight: 900, color: '#221711', margin: '4px 0 2px' }}>
+                  {completionSuccess.dogName}'s Walk Report 🐾
+                </h3>
+                <p style={{ fontSize: '12px', color: '#7E7067', margin: 0 }}>
+                  Completed by {completionSuccess.report?.walkerName || currentWalker?.name || 'Walker'}
+                </p>
               </div>
 
-              <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text, #221711)', margin: '0 0 6px' }}>
-                Walk Completed! 🎉
-              </h3>
-              <p style={{ fontSize: '13px', color: 'var(--muted, #7E7067)', margin: '0 0 16px' }}>
-                Great walk with <strong>{completionSuccess.dogName}</strong>! All live route data has been saved.
-              </p>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'var(--surface, #F7F2E7)', borderRadius: '14px', padding: '12px', marginBottom: '18px', textAlign: 'center' }}>
+              {/* Primary Metrics: Duration, Distance, Pace, Calories */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', background: '#F7F2E7', borderRadius: '16px', padding: '12px 6px', marginBottom: '14px', textAlign: 'center' }}>
                 <div>
-                  <span style={{ fontSize: '11px', color: 'var(--muted, #7E7067)', display: 'block' }}>Total Time</span>
-                  <strong style={{ fontSize: '16px', color: 'var(--text, #221711)' }}>{formatDurationHuman(completionSuccess.durationSec)}</strong>
+                  <span style={{ fontSize: '10px', color: '#7E7067', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>Duration</span>
+                  <strong style={{ fontSize: '14px', color: '#221711' }}>{formatDurationHuman(completionSuccess.durationSec)}</strong>
                 </div>
                 <div>
-                  <span style={{ fontSize: '11px', color: 'var(--muted, #7E7067)', display: 'block' }}>Distance</span>
-                  <strong style={{ fontSize: '16px', color: 'var(--accent, #C08820)' }}>{formatDistance(completionSuccess.distanceM)}</strong>
+                  <span style={{ fontSize: '10px', color: '#7E7067', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>Distance</span>
+                  <strong style={{ fontSize: '14px', color: '#16a34a' }}>{formatDistance(completionSuccess.distanceM)}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '10px', color: '#7E7067', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>Avg Pace</span>
+                  <strong style={{ fontSize: '14px', color: '#0284c7' }}>{completionSuccess.report?.pace || calculatePace(completionSuccess.distanceM, completionSuccess.durationSec).formatted}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '10px', color: '#7E7067', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>Calories</span>
+                  <strong style={{ fontSize: '14px', color: '#ea580c' }}>~{completionSuccess.report?.calories || calculateCalories(completionSuccess.distanceM, completionSuccess.durationSec)} kcal</strong>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setCompletionSuccess(null)}
-                className="btn btn-primary"
-                style={{ width: '100%', fontSize: '13.5px', padding: '11px' }}
-              >
-                Back to Schedule
-              </button>
+              {/* Activity Chips: Pee, Poo, Water, Treats */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '14px', textAlign: 'center' }}>
+                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '12px', padding: '8px 4px' }}>
+                  <span style={{ fontSize: '16px', display: 'block' }}>💧</span>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#1E40AF' }}>{completionSuccess.report?.peeCount || 0} Pee</span>
+                </div>
+                <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '12px', padding: '8px 4px' }}>
+                  <span style={{ fontSize: '16px', display: 'block' }}>💩</span>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#92400E' }}>{completionSuccess.report?.pooCount || 0} Poo</span>
+                </div>
+                <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '12px', padding: '8px 4px' }}>
+                  <span style={{ fontSize: '16px', display: 'block' }}>🥤</span>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#065F46' }}>{completionSuccess.report?.waterGiven ? 'Yes' : 'No'}</span>
+                </div>
+                <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '12px', padding: '8px 4px' }}>
+                  <span style={{ fontSize: '16px', display: 'block' }}>🦴</span>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#78350F' }}>{completionSuccess.report?.treatCount || 0} Treats</span>
+                </div>
+              </div>
+
+              {/* Walker's Personal Note */}
+              {completionSuccess.report?.notes && (
+                <div style={{ background: '#fff', border: '1px solid #EADBBE', borderRadius: '12px', padding: '12px', marginBottom: '14px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#7E7067', display: 'block', marginBottom: '4px' }}>Walker's Note:</span>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#221711', fontStyle: 'italic', lineHeight: 1.4 }}>
+                    "{completionSuccess.report.notes}"
+                  </p>
+                </div>
+              )}
+
+              {/* Walk Photos Gallery */}
+              {completionSuccess.report?.photos?.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#7E7067', display: 'block', marginBottom: '6px' }}>Walk Photos:</span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))', gap: '8px' }}>
+                    {completionSuccess.report.photos.map((pUrl, idx) => (
+                      <a key={idx} href={pUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', aspectRatio: '1', borderRadius: '10px', overflow: 'hidden', border: '1px solid #EADBBE' }}>
+                        <img src={pUrl} alt="Walk memory" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {completionSuccess.ownerPhone && (
+                  <a
+                    href={`https://wa.me/91${String(completionSuccess.ownerPhone).replace(/\D/g, '')}?text=${generateWhatsAppReportMessage(completionSuccess)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      background: '#25D366',
+                      color: '#fff',
+                      borderRadius: '14px',
+                      padding: '12px',
+                      fontSize: '14px',
+                      fontWeight: 800,
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 14px rgba(37, 211, 102, 0.3)',
+                    }}
+                  >
+                    <MessageCircle size={18} /> Share Report Card on WhatsApp
+                  </a>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setCompletionSuccess(null)}
+                  className="btn btn-secondary"
+                  style={{ width: '100%', fontSize: '13px', padding: '10px', justifyContent: 'center' }}
+                >
+                  Back to Schedule
+                </button>
+              </div>
             </div>
           </div>
         )}
+
+        {/* ======================================================== */}
+        {/* 🚨 WALKER EMERGENCY / SOS MODAL                         */}
+        {/* ======================================================== */}
+        {showSosModal && activeWalk && (() => {
+          const dogName = activeWalk.dogName || activeWalk.petName || 'Dog'
+          const breed = activeWalk.breed || activeWalk.dogBreed || ''
+          const ownerPhone = activeWalk.phone || activeWalk.customerPhone || ''
+          const emergencyPhone = activeWalk.emergencyContact || ''
+          const mapsLink = currentGps?.lat ? `https://maps.google.com/?q=${currentGps.lat},${currentGps.lng}` : ''
+          const vetSearchLink = currentGps?.lat
+            ? `https://www.google.com/maps/search/veterinary+clinic+near+me/@${currentGps.lat},${currentGps.lng},15z`
+            : 'https://www.google.com/maps/search/veterinary+clinic+near+me'
+
+          const waSosText = encodeURIComponent(
+            `🚨 *URGENT EMERGENCY ALERT - Paw Paw Pet Walking* 🚨\n\n` +
+            `🐶 *Pet:* ${dogName}${breed ? ` (${breed})` : ''}\n` +
+            `🚶 *Walker:* ${currentWalker?.name || 'Walker'} (${currentWalker?.phone || ''})\n` +
+            `⚠️ *Emergency:* ${sosReason}\n` +
+            (sosNote ? `📝 *Details:* "${sosNote}"\n` : '') +
+            (mapsLink ? `📍 *My Current Location Pin:* ${mapsLink}\n\n` : '\n') +
+            `Please contact me or meet me immediately!`
+          )
+
+          const ownerPhoneClean = ownerPhone.replace(/\D/g, '')
+          const waNumber = ownerPhoneClean ? (ownerPhoneClean.length === 10 ? `91${ownerPhoneClean}` : ownerPhoneClean) : ''
+
+          return (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 100000,
+                background: 'rgba(20, 15, 12, 0.85)',
+                backdropFilter: 'blur(6px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '16px',
+                boxSizing: 'border-box',
+                animation: 'fadeIn 0.2s ease-out',
+              }}
+              onClick={() => !broadcastingSos && setShowSosModal(false)}
+            >
+              <div
+                style={{
+                  background: '#FFFFFF',
+                  width: '100%',
+                  maxWidth: '460px',
+                  maxHeight: '92vh',
+                  overflowY: 'auto',
+                  borderRadius: '24px',
+                  padding: '24px 20px',
+                  boxShadow: '0 24px 60px rgba(220, 38, 38, 0.35)',
+                  border: '2.5px solid #ef4444',
+                }}
+                onClick={e => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: '#fee2e2', border: '1.5px solid #fca5a5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc2626' }}>
+                      <AlertOctagon size={24} />
+                    </div>
+                    <div>
+                      <h2 style={{ fontSize: '18px', fontWeight: 900, color: '#dc2626', margin: 0 }}>
+                        Emergency / SOS
+                      </h2>
+                      <span style={{ fontSize: '12px', color: '#7E7067' }}>
+                        Active Walk: <strong>{dogName}</strong> ({activeWalk.ownerName || 'Parent'})
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSosModal(false)}
+                    disabled={broadcastingSos}
+                    style={{ background: '#F0EAE1', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#221711' }}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* Status notice if active */}
+                {activeWalk.hasEmergency ? (
+                  <div style={{ background: '#fee2e2', border: '1.5px solid #ef4444', borderRadius: '14px', padding: '12px', marginBottom: '16px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 900, color: '#991b1b', marginBottom: '4px' }}>
+                      🚨 SOS Broadcast is Currently ACTIVE
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: '#b91c1c', marginBottom: '10px' }}>
+                      Reason: "{activeWalk.emergencyReason}" · Owner & Admin were notified.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleResolveSos}
+                      disabled={broadcastingSos}
+                      className="btn"
+                      style={{ background: '#16a34a', color: '#fff', fontSize: '12px', fontWeight: 800, padding: '7px 16px', borderRadius: '10px' }}
+                    >
+                      {broadcastingSos ? 'Updating...' : '✅ Mark Emergency Resolved'}
+                    </button>
+                  </div>
+                ) : null}
+
+                {/* SECTION 1: 1-Tap Urgent Calls */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#991b1b', letterSpacing: '0.5px', display: 'block', marginBottom: '8px' }}>
+                    ⚡ Instant Emergency Calls
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+                    {ownerPhone && (
+                      <a
+                        href={`tel:${ownerPhone}`}
+                        style={{
+                          background: '#16a34a',
+                          color: '#fff',
+                          textDecoration: 'none',
+                          borderRadius: '12px',
+                          padding: '11px 14px',
+                          fontSize: '13.5px',
+                          fontWeight: 800,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          boxShadow: '0 4px 12px rgba(22, 163, 74, 0.25)',
+                        }}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <PhoneCall size={16} /> Call Pet Parent ({activeWalk.ownerName || 'Parent'})
+                        </span>
+                        <span style={{ fontSize: '12px', opacity: 0.9 }}>{ownerPhone}</span>
+                      </a>
+                    )}
+
+                    {emergencyPhone && (
+                      <a
+                        href={`tel:${emergencyPhone}`}
+                        style={{
+                          background: '#ea580c',
+                          color: '#fff',
+                          textDecoration: 'none',
+                          borderRadius: '12px',
+                          padding: '11px 14px',
+                          fontSize: '13.5px',
+                          fontWeight: 800,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <PhoneCall size={16} /> Call Emergency Contact
+                        </span>
+                        <span style={{ fontSize: '12px', opacity: 0.9 }}>{emergencyPhone}</span>
+                      </a>
+                    )}
+
+                    <a
+                      href={vetSearchLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        background: '#eff6ff',
+                        color: '#1d4ed8',
+                        border: '1.5px solid #bfdbfe',
+                        textDecoration: 'none',
+                        borderRadius: '12px',
+                        padding: '10px 14px',
+                        fontSize: '13px',
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        🏥 Find Nearest Vet Clinic (GPS Map)
+                      </span>
+                      <span>↗</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* SECTION 2: Broadcast SOS Alert */}
+                <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: '16px', padding: '14px', marginBottom: '14px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#991b1b', letterSpacing: '0.5px', display: 'block', marginBottom: '8px' }}>
+                    🚨 Broadcast Urgent Alert (Notify Parent & Admin)
+                  </label>
+
+                  <div style={{ marginBottom: '10px' }}>
+                    <span style={{ fontSize: '11.5px', color: '#7f1d1d', fontWeight: 700, display: 'block', marginBottom: '6px' }}>Select Reason:</span>
+                    <select
+                      className="input"
+                      value={sosReason}
+                      onChange={e => setSosReason(e.target.value)}
+                      style={{ width: '100%', fontSize: '12.5px', padding: '9px', borderRadius: '10px', border: '1.5px solid #f87171' }}
+                    >
+                      {SOS_REASON_OPTIONS.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: '12px' }}>
+                    <textarea
+                      className="input"
+                      rows={2}
+                      value={sosNote}
+                      onChange={e => setSosNote(e.target.value)}
+                      placeholder="Brief details (e.g. dog bleeding paw, dog slipped collar at park)..."
+                      style={{ width: '100%', fontSize: '12px', padding: '8px 10px', borderRadius: '10px', resize: 'none' }}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleBroadcastSos}
+                    disabled={broadcastingSos}
+                    className="btn"
+                    style={{
+                      width: '100%',
+                      background: '#dc2626',
+                      borderColor: '#b91c1c',
+                      color: '#fff',
+                      fontSize: '13.5px',
+                      fontWeight: 900,
+                      padding: '11px',
+                      borderRadius: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 14px rgba(220, 38, 38, 0.35)',
+                    }}
+                  >
+                    <AlertOctagon size={16} />
+                    {broadcastingSos ? 'Sending High-Priority SOS...' : 'Broadcast SOS Alert 🚨'}
+                  </button>
+
+                  {waNumber && (
+                    <a
+                      href={`https://wa.me/${waNumber}?text=${waSosText}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        marginTop: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        background: '#25D366',
+                        color: '#fff',
+                        textDecoration: 'none',
+                        fontSize: '12.5px',
+                        fontWeight: 800,
+                        padding: '9px',
+                        borderRadius: '10px',
+                      }}
+                    >
+                      <MessageCircle size={15} /> Send WhatsApp SOS with Live GPS Pin
+                    </a>
+                  )}
+                </div>
+
+                {/* Close Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowSosModal(false)}
+                  disabled={broadcastingSos}
+                  className="btn btn-secondary"
+                  style={{ width: '100%', fontSize: '13px', padding: '10px', justifyContent: 'center' }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )
+        })()}
       </main>
     </div>
   )

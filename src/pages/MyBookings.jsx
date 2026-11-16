@@ -47,6 +47,8 @@ import {
   Utensils,
   Wallet,
   X,
+  Star,
+  ThumbsUp,
 } from 'lucide-react'
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -69,6 +71,7 @@ import {
 } from '../utils/walkingSettings'
 import { downloadInvoicePdf } from '../utils/invoicePdf'
 import LiveWalkModal from '../components/LiveWalkModal'
+import { formatDistance, formatDurationHuman, calculatePace, calculateCalories } from '../utils/geoUtils'
 
 const STATUS_BADGE = {
   pending: 'badge-pending',
@@ -129,6 +132,23 @@ function formatPetAge(dob) {
     }
   } catch {}
   return dob
+}
+
+const WALK_COMPLIMENT_OPTIONS = [
+  '🐾 Gentle with Dog',
+  '⏱️ On-Time Arrival',
+  '📸 Great Walk Photos',
+  '💧 Well Hydrated',
+  '🐕 Energetic & Playful',
+  '⭐ Highly Recommend',
+]
+
+const RATING_SCORE_LABELS = {
+  5: 'Outstanding! 🌟',
+  4: 'Very Good! 🐶',
+  3: 'Good 👍',
+  2: 'Could be better 😕',
+  1: 'Poor experience 😞',
 }
 
 function parseAppointmentStart(booking) {
@@ -382,6 +402,15 @@ export default function MyBookings() {
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState('')
   const [invoiceToast, setInvoiceToast] = useState('')
   const [invoiceToastType, setInvoiceToastType] = useState('success')
+
+  // Walking Review & Rating State
+  const [ratingTarget, setRatingTarget] = useState(null)
+  const [ratingScore, setRatingScore] = useState(5)
+  const [ratingHover, setRatingHover] = useState(0)
+  const [ratingCompliments, setRatingCompliments] = useState([])
+  const [ratingFeedback, setRatingFeedback] = useState('')
+  const [submittingRating, setSubmittingRating] = useState(false)
+  const [ratingToast, setRatingToast] = useState('')
 
   // Lock background scroll when boarding modal is open
   useEffect(() => {
@@ -739,6 +768,91 @@ export default function MyBookings() {
       setReschedulingWalkingId('')
     }
   }
+
+  // Open Rating Modal
+  const handleOpenRatingModal = (booking) => {
+    setRatingTarget(booking)
+    setRatingScore(booking.walkerRating || 5)
+    setRatingHover(0)
+    setRatingCompliments(booking.walkerCompliments || [])
+    setRatingFeedback(booking.walkerFeedback || '')
+  }
+
+  // Toggle compliment chip
+  const handleToggleCompliment = (comp) => {
+    setRatingCompliments(prev =>
+      prev.includes(comp) ? prev.filter(c => c !== comp) : [...prev, comp]
+    )
+  }
+
+  // Submit Rating & Review
+  const handleSubmitWalkerRating = async () => {
+    if (!ratingTarget) return
+    setSubmittingRating(true)
+    try {
+      const walkerId = ratingTarget.assignedWalkerId || ratingTarget.assignedTeamMemberId || ''
+      const walkerName = ratingTarget.assignedWalkerName || ratingTarget.assignedTeamMemberName || 'Paw Paw Walker'
+
+      const ratingPatch = {
+        walkerRating: ratingScore,
+        walkerFeedback: String(ratingFeedback || '').trim(),
+        walkerCompliments: ratingCompliments || [],
+        walkerRatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }
+
+      await updateDoc(doc(db, 'walkingBookings', ratingTarget.id), ratingPatch)
+
+      // Mirror to reviews collection for public display & analytics
+      addDoc(collection(db, 'reviews'), {
+        userId: user?.uid || ratingTarget.userId || '',
+        userEmail: user?.email || ratingTarget.userEmail || '',
+        userName: user?.displayName || ratingTarget.ownerName || 'Pet Parent',
+        rating: ratingScore,
+        comment: String(ratingFeedback || '').trim() || `Rated ${ratingScore}/5 stars for ${ratingTarget.dogName || ratingTarget.petName || 'dog'}'s walk with ${walkerName}`,
+        compliments: ratingCompliments || [],
+        petName: ratingTarget.dogName || ratingTarget.petName || 'Dog',
+        service: 'Dog Walking',
+        walkerId,
+        walkerName,
+        bookingId: ratingTarget.id,
+        source: 'walk_review',
+        active: true,
+        createdAt: serverTimestamp(),
+      }).catch(err => console.warn('Could not mirror to reviews collection:', err))
+
+      // Notify the Walker
+      if (walkerId) {
+        addDoc(collection(db, 'walkerNotifications'), {
+          walkerId,
+          title: `⭐ New ${ratingScore}-Star Rating!`,
+          message: `${ratingTarget.ownerName || 'Pet parent'} rated your walk with ${ratingTarget.dogName || ratingTarget.petName || 'dog'} ${ratingScore}/5 stars!${ratingFeedback ? ` "${ratingFeedback}"` : ''}`,
+          bookingId: ratingTarget.id,
+          rating: ratingScore,
+          read: false,
+          createdAt: serverTimestamp(),
+        }).catch(err => console.warn('Could not notify walker:', err))
+      }
+
+      setWalkings(prev => prev.map(b => b.id === ratingTarget.id ? { ...b, ...ratingPatch } : b))
+      if (selectedWalking?.id === ratingTarget.id) {
+        setSelectedWalking(prev => ({ ...prev, ...ratingPatch }))
+      }
+
+      setRatingToast(`Thank you! Your ${ratingScore}-star review for ${walkerName} has been submitted. ⭐`)
+      setRatingTarget(null)
+    } catch (err) {
+      alert(`Could not submit rating: ${err.message}`)
+    } finally {
+      setSubmittingRating(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!ratingToast) return
+    const t = window.setTimeout(() => setRatingToast(''), 4000)
+    return () => window.clearTimeout(t)
+  }, [ratingToast])
 
   useEffect(() => {
     fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
@@ -1121,6 +1235,11 @@ export default function MyBookings() {
           <Toast message={invoiceToast} type={invoiceToastType} onClose={() => setInvoiceToast('')} />
         </div>
       )}
+      {ratingToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300, marginTop: '216px' }}>
+          <Toast message={ratingToast} type="success" onClose={() => setRatingToast('')} />
+        </div>
+      )}
       <div className="my-bookings-shell">
         <div className="my-bookings-header">
           <div className="my-bookings-title-group">
@@ -1433,6 +1552,41 @@ export default function MyBookings() {
                           <span className={`badge ${STATUS_BADGE[w.status] || 'badge-pending'} my-booking-status`}>
                             {statusLabel(w.status)}
                           </span>
+                          {w.hasEmergency && (
+                            <span className="badge" style={{ background: '#fee2e2', color: '#dc2626', border: '1.5px solid #ef4444', fontWeight: 900, animation: 'pawpaw-gps-pulse 1s infinite' }}>
+                              🚨 SOS ALERT
+                            </span>
+                          )}
+                          {w.hasEmergency && (
+                          <div style={{ marginTop: '10px', padding: '10px 14px', background: '#fee2e2', border: '1.5px solid #ef4444', borderRadius: '12px', fontSize: '12px', color: '#991b1b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '18px' }}>🚨</span>
+                              <div>
+                                <strong style={{ color: '#dc2626', display: 'block' }}>Emergency Reported by Walker</strong>
+                                <span style={{ fontSize: '11px', color: '#b91c1c' }}>{w.emergencyReason || 'Incident during walk'} {w.emergencyNote ? `· "${w.emergencyNote}"` : ''}</span>
+                              </div>
+                            </div>
+                            {(w.assignedTeamMemberPhone || w.assignedWalkerPhone) && (
+                              <a
+                                href={`tel:${w.assignedTeamMemberPhone || w.assignedWalkerPhone}`}
+                                style={{ background: '#dc2626', color: '#fff', textDecoration: 'none', padding: '5px 10px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <Phone size={12} /> Call Walker
+                              </a>
+                            )}
+                          </div>
+                        )}
+                        {w.status === 'confirmed' && w.walkerArrivalStatus === 'on_the_way' && (
+                            <span className="badge" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+                              🚗 On The Way
+                            </span>
+                          )}
+                          {w.status === 'confirmed' && w.walkerArrivalStatus === 'arrived' && (
+                            <span className="badge" style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}>
+                              🔔 At Doorstep!
+                            </span>
+                          )}
                           <span className="badge" style={{ background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent-border)' }}>
                             {duration}m Walk
                           </span>
@@ -1466,6 +1620,45 @@ export default function MyBookings() {
                             </div>
                           </div>
                         </div>
+
+                        {w.hasEmergency && (
+                          <div style={{ marginTop: '10px', padding: '10px 14px', background: '#fee2e2', border: '1.5px solid #ef4444', borderRadius: '12px', fontSize: '12px', color: '#991b1b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '18px' }}>🚨</span>
+                              <div>
+                                <strong style={{ color: '#dc2626', display: 'block' }}>Emergency Reported by Walker</strong>
+                                <span style={{ fontSize: '11px', color: '#b91c1c' }}>{w.emergencyReason || 'Incident during walk'} {w.emergencyNote ? `· "${w.emergencyNote}"` : ''}</span>
+                              </div>
+                            </div>
+                            {(w.assignedTeamMemberPhone || w.assignedWalkerPhone) && (
+                              <a
+                                href={`tel:${w.assignedTeamMemberPhone || w.assignedWalkerPhone}`}
+                                style={{ background: '#dc2626', color: '#fff', textDecoration: 'none', padding: '5px 10px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <Phone size={12} /> Call Walker
+                              </a>
+                            )}
+                          </div>
+                        )}
+                        {w.status === 'confirmed' && w.walkerArrivalStatus === 'on_the_way' && (
+                          <div style={{ marginTop: '10px', padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', fontSize: '12px', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '16px' }}>🚗</span>
+                            <div>
+                              <strong>Walker is on the way!</strong>
+                              <div style={{ fontSize: '11px', color: '#3b82f6' }}>{w.assignedTeamMemberName || w.assignedWalkerName || 'Your walker'} is heading to pick up {petName}.</div>
+                            </div>
+                          </div>
+                        )}
+                        {w.status === 'confirmed' && w.walkerArrivalStatus === 'arrived' && (
+                          <div style={{ marginTop: '10px', padding: '8px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', fontSize: '12px', color: '#166534', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '16px' }}>🔔</span>
+                            <div>
+                              <strong>Walker is at your doorstep!</strong>
+                              <div style={{ fontSize: '11px', color: '#15803d' }}>Please hand over {petName} to {w.assignedTeamMemberName || w.assignedWalkerName || 'the walker'}.</div>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Action Bar */}
@@ -1515,6 +1708,44 @@ export default function MyBookings() {
                         >
                           Details
                         </button>
+
+                        {w.status === 'completed' && w.walkerRating && (
+                          <button
+                            type="button"
+                            className="my-booking-card-btn"
+                            style={{
+                              background: '#fffbeb',
+                              borderColor: '#fde68a',
+                              color: '#b45309',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontWeight: 800,
+                            }}
+                            onClick={() => handleOpenRatingModal(w)}
+                            title="View or edit your review"
+                          >
+                            <Star size={12} fill="#f59e0b" color="#f59e0b" /> {w.walkerRating}/5
+                          </button>
+                        )}
+                        {w.status === 'completed' && !w.walkerRating && (
+                          <button
+                            type="button"
+                            className="my-booking-card-btn"
+                            style={{
+                              background: '#f59e0b',
+                              borderColor: '#d97706',
+                              color: '#fff',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontWeight: 800,
+                            }}
+                            onClick={() => handleOpenRatingModal(w)}
+                          >
+                            <Star size={12} fill="#fff" /> Rate Walker
+                          </button>
+                        )}
 
                         {w.status === 'completed' && allowInvoice && (
                           <button
@@ -3035,12 +3266,77 @@ export default function MyBookings() {
                     {selectedWalking.status === 'cancelled' && <X size={13} />}
                     <span>{statusLabel(selectedWalking.status)}</span>
                   </span>
+                  {selectedWalking.hasEmergency && (
+                    <span className="boarding-status-pill" style={{ background: '#fee2e2', color: '#dc2626', border: '1.5px solid #ef4444', fontWeight: 900 }}>
+                      🚨 EMERGENCY SOS ACTIVE
+                    </span>
+                  )}
+                  {selectedWalking.status === 'confirmed' && selectedWalking.walkerArrivalStatus === 'on_the_way' && (
+                    <span className="boarding-status-pill" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+                      🚗 Walker On The Way
+                    </span>
+                  )}
+                  {selectedWalking.status === 'confirmed' && selectedWalking.walkerArrivalStatus === 'arrived' && (
+                    <span className="boarding-status-pill" style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}>
+                      🔔 Walker At Doorstep!
+                    </span>
+                  )}
                   <span className="details-ref-id">{shortId(selectedWalking.id)}</span>
                 </div>
               </div>
 
               {/* Modal Scrollable Body */}
               <div className="details-modal-body">
+                {/* 🚨 High-Priority Emergency Notice Banner */}
+                {selectedWalking.hasEmergency && (
+                  <div style={{ background: '#fee2e2', border: '2px solid #ef4444', borderRadius: '16px', padding: '16px', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '24px' }}>🚨</span>
+                      <div>
+                        <strong style={{ fontSize: '15px', color: '#dc2626', display: 'block' }}>
+                          SAFETY / EMERGENCY ALERT ON THIS WALK
+                        </strong>
+                        <span style={{ fontSize: '12px', color: '#991b1b' }}>
+                          Reported by Walker: <strong>{selectedWalking.assignedTeamMemberName || 'Walker'}</strong>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ background: '#fff', border: '1px solid #fca5a5', borderRadius: '10px', padding: '10px 12px', marginBottom: '10px' }}>
+                      <div style={{ fontSize: '12px', color: '#7f1d1d' }}>
+                        <strong>Emergency Reason:</strong> {selectedWalking.emergencyReason || 'Urgent incident'}
+                      </div>
+                      {selectedWalking.emergencyNote && (
+                        <div style={{ fontSize: '12px', color: '#7f1d1d', fontStyle: 'italic', marginTop: '4px' }}>
+                          "{selectedWalking.emergencyNote}"
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {(selectedWalking.assignedTeamMemberPhone || selectedWalking.assignedWalkerPhone) && (
+                        <a
+                          href={`tel:${selectedWalking.assignedTeamMemberPhone || selectedWalking.assignedWalkerPhone}`}
+                          className="btn"
+                          style={{ flex: 1, minWidth: '160px', background: '#dc2626', color: '#fff', fontSize: '13px', fontWeight: 800, padding: '10px 14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', textDecoration: 'none', borderRadius: '10px' }}
+                        >
+                          <Phone size={14} /> Call Walker Immediately
+                        </a>
+                      )}
+                      {selectedWalking.emergencyWalkerLocation?.lat && (
+                        <a
+                          href={`https://maps.google.com/?q=${selectedWalking.emergencyWalkerLocation.lat},${selectedWalking.emergencyWalkerLocation.lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-secondary"
+                          style={{ flex: 1, minWidth: '160px', fontSize: '13px', fontWeight: 800, padding: '10px 14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', textDecoration: 'none', borderRadius: '10px' }}
+                        >
+                          <MapPin size={14} /> Open Live GPS Location ↗
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
                 {/* SECTION 1: Dog & Owner Details */}
                 <div className="boarding-section-card">
                   <div className="section-card-header">
@@ -3256,6 +3552,30 @@ export default function MyBookings() {
                       )}
                     </div>
 
+                    {selectedWalking.status === 'confirmed' && selectedWalking.walkerArrivalStatus === 'on_the_way' && (
+                      <div style={{ marginTop: '10px', padding: '10px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', fontSize: '12.5px', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '18px' }}>🚗</span>
+                        <div>
+                          <strong>Walker is on the way!</strong>
+                          <div style={{ fontSize: '11.5px', color: '#3b82f6' }}>
+                            {selectedWalking.assignedTeamMemberName || 'Your walker'} is heading towards your location for the pickup.
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedWalking.status === 'confirmed' && selectedWalking.walkerArrivalStatus === 'arrived' && (
+                      <div style={{ marginTop: '10px', padding: '10px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', fontSize: '12.5px', color: '#166534', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '18px' }}>🔔</span>
+                        <div>
+                          <strong>Walker has arrived at your doorstep!</strong>
+                          <div style={{ fontSize: '11.5px', color: '#15803d' }}>
+                            Please hand over {petName} to start the walk.
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {(selectedWalking.status === 'in_progress' || (Array.isArray(selectedWalking.routeTrail) && selectedWalking.routeTrail.length > 0)) && (
                       <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed var(--border)' }}>
                         <button
@@ -3281,6 +3601,187 @@ export default function MyBookings() {
                           {selectedWalking.status === 'in_progress' ? 'Open Live GPS Dog Walk Tracker' : 'View Recorded Walk Route'}
                         </button>
                       </div>
+                    )}
+
+                    {/* 🐾 Walk Report Card for Pet Parent */}
+                    {(selectedWalking.walkReport || selectedWalking.walkActivities) && (
+                      <div style={{ marginTop: '14px', background: 'var(--surface, #FAF6EE)', border: '1.5px solid var(--border, #EADBBE)', borderRadius: '16px', padding: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <span style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            🐾 Walk Report Card
+                          </span>
+                          <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
+                            {selectedWalking.walkReport?.walkerName ? `by ${selectedWalking.walkReport.walkerName}` : 'Completed Session'}
+                          </span>
+                        </div>
+
+                        {/* Stats Row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', textAlign: 'center', marginBottom: '10px' }}>
+                          <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '10px', padding: '6px 2px' }}>
+                            <span style={{ fontSize: '14px', display: 'block' }}>💧</span>
+                            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#1E40AF' }}>
+                              {(selectedWalking.walkReport?.peeCount ?? selectedWalking.walkActivities?.pee) || 0} Pee
+                            </span>
+                          </div>
+                          <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '10px', padding: '6px 2px' }}>
+                            <span style={{ fontSize: '14px', display: 'block' }}>💩</span>
+                            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#92400E' }}>
+                              {(selectedWalking.walkReport?.pooCount ?? selectedWalking.walkActivities?.poo) || 0} Poo
+                            </span>
+                          </div>
+                          <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '10px', padding: '6px 2px' }}>
+                            <span style={{ fontSize: '14px', display: 'block' }}>🥤</span>
+                            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#065F46' }}>
+                              {selectedWalking.walkReport?.waterGiven || selectedWalking.walkActivities?.water ? 'Hydrated' : 'No'}
+                            </span>
+                          </div>
+                          <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '10px', padding: '6px 2px' }}>
+                            <span style={{ fontSize: '14px', display: 'block' }}>🦴</span>
+                            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#78350F' }}>
+                              {(selectedWalking.walkReport?.treatCount ?? selectedWalking.walkActivities?.treats) || 0} Treats
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Distance, Duration, Pace & Calories */}
+                        {(selectedWalking.walkDistanceMeters || selectedWalking.walkDurationSeconds || selectedWalking.walkReport?.distanceMeters) && (() => {
+                          const dist = selectedWalking.walkReport?.distanceMeters || selectedWalking.walkDistanceMeters || 0
+                          const dur = selectedWalking.walkReport?.durationSeconds || selectedWalking.walkDurationSeconds || 0
+                          const pace = selectedWalking.walkPace || calculatePace(dist, dur).formatted
+                          const cal = selectedWalking.estimatedCalories || calculateCalories(dist, dur)
+
+                          return (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '10px' }}>
+                              <div style={{ background: '#fff', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Distance</span>
+                                <strong style={{ fontSize: '12px', color: '#16a34a' }}>
+                                  {formatDistance(dist)}
+                                </strong>
+                              </div>
+                              <div style={{ background: '#fff', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Duration</span>
+                                <strong style={{ fontSize: '12px', color: 'var(--text)' }}>
+                                  {formatDurationHuman(dur)}
+                                </strong>
+                              </div>
+                              <div style={{ background: '#fff', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Avg Pace</span>
+                                <strong style={{ fontSize: '12px', color: '#0284c7' }}>
+                                  {pace}
+                                </strong>
+                              </div>
+                              <div style={{ background: '#fff', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Calories</span>
+                                <strong style={{ fontSize: '12px', color: '#ea580c' }}>
+                                  ~{cal} kcal
+                                </strong>
+                              </div>
+                            </div>
+                          )
+                        })()}
+
+                        {/* Walker Notes */}
+                        {(selectedWalking.walkReport?.notes || selectedWalking.walkerNotes) && (
+                          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '2px' }}>Walker's Message:</span>
+                            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text)', fontStyle: 'italic', lineHeight: 1.4 }}>
+                              "{selectedWalking.walkReport?.notes || selectedWalking.walkerNotes}"
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Walk Photos */}
+                        {(selectedWalking.walkReport?.photos?.length > 0 || (Array.isArray(selectedWalking.walkPhotos) && selectedWalking.walkPhotos.length > 0)) && (
+                          <div>
+                            <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>Photos from Walk:</span>
+                            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                              {(selectedWalking.walkReport?.photos || selectedWalking.walkPhotos || []).map((pUrl, idx) => (
+                                <a key={idx} href={pUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '64px', height: '64px', borderRadius: '10px', overflow: 'hidden', border: '1.5px solid var(--border)', flexShrink: 0 }}>
+                                  <img src={pUrl} alt="Walk memory" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 🌟 Walker Review by Pet Parent */}
+                    {selectedWalking.status === 'completed' && (
+                      selectedWalking.walkerRating ? (
+                        <div style={{ marginTop: '14px', background: '#FFFDF5', border: '1.5px solid #FDE68A', borderRadius: '16px', padding: '14px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#92400E', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              ⭐ Your Rating & Review
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRatingModal(selectedWalking)}
+                              style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '11px', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                            >
+                              Edit Review
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
+                            {[1, 2, 3, 4, 5].map(star => (
+                              <Star
+                                key={star}
+                                size={18}
+                                fill={star <= selectedWalking.walkerRating ? '#F59E0B' : 'none'}
+                                color={star <= selectedWalking.walkerRating ? '#F59E0B' : '#D1D5DB'}
+                              />
+                            ))}
+                            <strong style={{ marginLeft: '6px', fontSize: '13px', color: '#B45309' }}>
+                              {selectedWalking.walkerRating} / 5 Stars
+                            </strong>
+                          </div>
+
+                          {Array.isArray(selectedWalking.walkerCompliments) && selectedWalking.walkerCompliments.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '8px' }}>
+                              {selectedWalking.walkerCompliments.map((comp, i) => (
+                                <span key={i} style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '8px', padding: '3px 8px', fontSize: '11px', fontWeight: 700, color: '#92400E' }}>
+                                  {comp}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {selectedWalking.walkerFeedback && (
+                            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text)', fontStyle: 'italic', background: '#fff', border: '1px solid #FDE68A', borderRadius: '10px', padding: '8px 10px' }}>
+                              "{selectedWalking.walkerFeedback}"
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: '14px', background: '#FFFDF5', border: '1.5px dashed #F59E0B', borderRadius: '16px', padding: '14px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>
+                            How was {selectedWalking.petName || 'your dog'}'s walk?
+                          </div>
+                          <p style={{ margin: '0 0 10px', fontSize: '12px', color: 'var(--muted)' }}>
+                            Leave a quick rating for {selectedWalking.assignedTeamMemberName || 'your walker'} to share feedback!
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRatingModal(selectedWalking)}
+                            className="btn btn-primary"
+                            style={{
+                              background: '#F59E0B',
+                              borderColor: '#D97706',
+                              color: '#fff',
+                              fontWeight: 800,
+                              fontSize: '12.5px',
+                              padding: '8px 18px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              margin: '0 auto',
+                            }}
+                          >
+                            <Star size={14} fill="#fff" /> Rate Walker (1-5 Stars)
+                          </button>
+                        </div>
+                      )
                     )}
                   </div>
                 )}
@@ -3330,6 +3831,167 @@ export default function MyBookings() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* 🌟 Dedicated Walk Rating & Review Modal */}
+      {ratingTarget && (() => {
+        const dogName = ratingTarget.petName || ratingTarget.dogName || 'Your Dog'
+        const walkerName = ratingTarget.assignedTeamMemberName || ratingTarget.assignedWalkerName || 'Paw Paw Walker'
+
+        return (
+          <div className="my-booking-modal-overlay" onClick={() => !submittingRating && setRatingTarget(null)}>
+            <div
+              className="my-booking-modal-card"
+              style={{ maxWidth: '440px', padding: '24px', borderRadius: '24px' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '14px', background: '#FEF3C7', border: '1.5px solid #FCD34D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>
+                    ⭐
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: 'var(--text)' }}>
+                      Rate Walk & Walker
+                    </h3>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                      {dogName}'s session with {walkerName}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRatingTarget(null)}
+                  disabled={submittingRating}
+                  style={{ background: 'var(--surface)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text)' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* 5 Interactive Stars */}
+              <div style={{ textAlign: 'center', margin: '16px 0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '8px' }}>
+                  {[1, 2, 3, 4, 5].map((star) => {
+                    const active = (ratingHover || ratingScore) >= star
+                    return (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setRatingScore(star)}
+                        onMouseEnter={() => setRatingHover(star)}
+                        onMouseLeave={() => setRatingHover(0)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          transform: active ? 'scale(1.15)' : 'scale(1)',
+                          transition: 'transform 0.15s ease',
+                        }}
+                        aria-label={`${star} Stars`}
+                      >
+                        <Star
+                          size={32}
+                          fill={active ? '#F59E0B' : 'none'}
+                          color={active ? '#F59E0B' : '#D1D5DB'}
+                          strokeWidth={active ? 1.5 : 2}
+                        />
+                      </button>
+                    )
+                  })}
+                </div>
+                <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#B45309' }}>
+                  {RATING_SCORE_LABELS[ratingHover || ratingScore] || 'Tap a star to rate'}
+                </div>
+              </div>
+
+              {/* Compliments multi-select chips */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '8px' }}>
+                  What did you like most? (Optional)
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {WALK_COMPLIMENT_OPTIONS.map(comp => {
+                    const selected = ratingCompliments.includes(comp)
+                    return (
+                      <button
+                        key={comp}
+                        type="button"
+                        onClick={() => handleToggleCompliment(comp)}
+                        style={{
+                          background: selected ? '#FEF3C7' : 'var(--surface)',
+                          border: `1.5px solid ${selected ? '#F59E0B' : 'var(--border)'}`,
+                          color: selected ? '#92400E' : 'var(--text)',
+                          borderRadius: '999px',
+                          padding: '6px 12px',
+                          fontSize: '11.5px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {comp}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Written Feedback Textarea */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                  Feedback for Walker (Optional)
+                </label>
+                <textarea
+                  className="input"
+                  rows={3}
+                  value={ratingFeedback}
+                  onChange={e => setRatingFeedback(e.target.value)}
+                  placeholder={`Write a few words about ${dogName}'s experience with ${walkerName}...`}
+                  style={{ width: '100%', fontSize: '13px', padding: '10px 12px', borderRadius: '12px', resize: 'vertical' }}
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setRatingTarget(null)}
+                  disabled={submittingRating}
+                  className="btn btn-secondary"
+                  style={{ flex: 1, padding: '10px', fontSize: '13px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmitWalkerRating}
+                  disabled={submittingRating}
+                  className="btn btn-primary"
+                  style={{
+                    flex: 2,
+                    padding: '10px',
+                    fontSize: '13px',
+                    fontWeight: 800,
+                    background: '#F59E0B',
+                    borderColor: '#D97706',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  {submittingRating ? 'Submitting...' : `Submit ${ratingScore}-Star Review ⭐`}
+                </button>
+              </div>
             </div>
           </div>
         )
