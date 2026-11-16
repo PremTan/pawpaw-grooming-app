@@ -1,7 +1,7 @@
 // src/pages/MyBookings.jsx
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp, Timestamp, onSnapshot } from 'firebase/firestore'
+import { collection, query, where, orderBy, getDocs, doc, setDoc, updateDoc, addDoc, serverTimestamp, Timestamp, onSnapshot } from 'firebase/firestore'
 import {
   AlertCircle,
   ArrowRight,
@@ -613,7 +613,7 @@ export default function MyBookings() {
       setBoardingCancelTarget(null)
       setBoardingCancelReason('')
     } catch (err) {
-      alert('Could not cancel boarding reservation. Please try again.')
+      setCancelToast('Could not cancel boarding reservation. Please try again.')
     }
     setCancellingBoardingId('')
   }
@@ -671,7 +671,7 @@ export default function MyBookings() {
       setWalkingCancelTarget(null)
       setWalkingCancelReason('')
     } catch (err) {
-      alert('Could not cancel walking booking. Please try again.')
+      setCancelToast('Could not cancel walking booking. Please try again.')
     }
     setCancellingWalkingId('')
   }
@@ -763,7 +763,7 @@ export default function MyBookings() {
       setWalkingRescheduleDate('')
       setWalkingRescheduleSlot('')
     } catch (err) {
-      alert('Could not reschedule walking appointment. Please try again.')
+      setRescheduleToast('Could not reschedule walking appointment. Please try again.')
     } finally {
       setReschedulingWalkingId('')
     }
@@ -839,10 +839,17 @@ export default function MyBookings() {
         setSelectedWalking(prev => ({ ...prev, ...ratingPatch }))
       }
 
-      setRatingToast(`Thank you! Your ${ratingScore}-star review for ${walkerName} has been submitted. ⭐`)
+      setRatingToast({
+        message: `Thank you! Your ${ratingScore}-star review for ${walkerName} has been submitted. ⭐`,
+        type: 'success',
+      })
       setRatingTarget(null)
     } catch (err) {
-      alert(`Could not submit rating: ${err.message}`)
+      console.error('Failed to submit walker rating:', err)
+      setRatingToast({
+        message: `Could not submit rating: ${err.message || 'Please try again'}`,
+        type: 'error',
+      })
     } finally {
       setSubmittingRating(false)
     }
@@ -1096,7 +1103,7 @@ export default function MyBookings() {
       }
     } catch (err) {
       console.error('FIREBASE ERROR:', err)
-      alert('Could not update booking. Please try again.')
+      setRescheduleToast('Could not update booking. Please try again.')
     }
     setSavingEdit(false)
   }
@@ -1179,7 +1186,7 @@ export default function MyBookings() {
       setRescheduleToast('Appointment rescheduled successfully.')
     } catch (err) {
       console.error('FIREBASE ERROR:', err)
-      alert('Could not reschedule booking. Please try again.')
+      setRescheduleToast('Could not reschedule booking. Please try again.')
     }
     setReschedulingId('')
   }
@@ -1213,33 +1220,40 @@ export default function MyBookings() {
       setCancelToast('Appointment cancelled successfully.')
     } catch (err) {
       console.error("FIREBASE ERROR:", err);
-      alert('Could not cancel booking. Please try again.')
+      setCancelToast('Could not cancel booking. Please try again.')
     }
     setCancellingId('')
   }
 
   return (
     <div className="my-bookings-page">
-      {cancelToast && (
-        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
-          <Toast message={cancelToast} type="success" onClose={() => setCancelToast('')} />
-        </div>
-      )}
-      {rescheduleToast && (
-        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300, marginTop: '72px' }}>
-          <Toast message={rescheduleToast} type={rescheduleToast.includes('Cannot') ? 'error' : 'success'} onClose={() => setRescheduleToast('')} />
-        </div>
-      )}
-      {invoiceToast && (
-        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300, marginTop: '144px' }}>
-          <Toast message={invoiceToast} type={invoiceToastType} onClose={() => setInvoiceToast('')} />
-        </div>
-      )}
-      {ratingToast && (
-        <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300, marginTop: '216px' }}>
-          <Toast message={ratingToast} type="success" onClose={() => setRatingToast('')} />
-        </div>
-      )}
+      {/* Toast notifications */}
+      <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1400, display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: 'min(420px, calc(100vw - 36px))', pointerEvents: 'none' }}>
+        {cancelToast && (
+          <div style={{ pointerEvents: 'auto' }}>
+            <Toast message={cancelToast} type={cancelToast.toLowerCase().includes('could not') || cancelToast.toLowerCase().includes('cannot') ? 'error' : 'success'} onClose={() => setCancelToast('')} />
+          </div>
+        )}
+        {rescheduleToast && (
+          <div style={{ pointerEvents: 'auto' }}>
+            <Toast message={rescheduleToast} type={rescheduleToast.toLowerCase().includes('could not') || rescheduleToast.toLowerCase().includes('cannot') ? 'error' : 'success'} onClose={() => setRescheduleToast('')} />
+          </div>
+        )}
+        {invoiceToast && (
+          <div style={{ pointerEvents: 'auto' }}>
+            <Toast message={invoiceToast} type={invoiceToastType} onClose={() => setInvoiceToast('')} />
+          </div>
+        )}
+        {ratingToast && (
+          <div style={{ pointerEvents: 'auto' }}>
+            <Toast
+              message={typeof ratingToast === 'string' ? ratingToast : ratingToast.message}
+              type={typeof ratingToast === 'string' ? 'success' : (ratingToast.type || 'success')}
+              onClose={() => setRatingToast(null)}
+            />
+          </div>
+        )}
+      </div>
       <div className="my-bookings-shell">
         <div className="my-bookings-header">
           <div className="my-bookings-title-group">
@@ -1557,27 +1571,7 @@ export default function MyBookings() {
                               🚨 SOS ALERT
                             </span>
                           )}
-                          {w.hasEmergency && (
-                          <div style={{ marginTop: '10px', padding: '10px 14px', background: '#fee2e2', border: '1.5px solid #ef4444', borderRadius: '12px', fontSize: '12px', color: '#991b1b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontSize: '18px' }}>🚨</span>
-                              <div>
-                                <strong style={{ color: '#dc2626', display: 'block' }}>Emergency Reported by Walker</strong>
-                                <span style={{ fontSize: '11px', color: '#b91c1c' }}>{w.emergencyReason || 'Incident during walk'} {w.emergencyNote ? `· "${w.emergencyNote}"` : ''}</span>
-                              </div>
-                            </div>
-                            {(w.assignedTeamMemberPhone || w.assignedWalkerPhone) && (
-                              <a
-                                href={`tel:${w.assignedTeamMemberPhone || w.assignedWalkerPhone}`}
-                                style={{ background: '#dc2626', color: '#fff', textDecoration: 'none', padding: '5px 10px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}
-                                onClick={e => e.stopPropagation()}
-                              >
-                                <Phone size={12} /> Call Walker
-                              </a>
-                            )}
-                          </div>
-                        )}
-                        {w.status === 'confirmed' && w.walkerArrivalStatus === 'on_the_way' && (
+                          {w.status === 'confirmed' && w.walkerArrivalStatus === 'on_the_way' && (
                             <span className="badge" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
                               🚗 On The Way
                             </span>
@@ -3842,10 +3836,25 @@ export default function MyBookings() {
         const walkerName = ratingTarget.assignedTeamMemberName || ratingTarget.assignedWalkerName || 'Paw Paw Walker'
 
         return (
-          <div className="my-booking-modal-overlay" onClick={() => !submittingRating && setRatingTarget(null)}>
-            <div
-              className="my-booking-modal-card"
-              style={{ maxWidth: '440px', padding: '24px', borderRadius: '24px' }}
+          <div
+            className="my-booking-modal-overlay"
+            onClick={() => !submittingRating && setRatingTarget(null)}
+            style={{ zIndex: 1200, background: 'rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)' }}
+          >
+            <section
+              className="my-booking-modal"
+              style={{
+                maxWidth: '460px',
+                width: '100%',
+                padding: '24px',
+                borderRadius: '24px',
+                background: 'var(--surface, #FFFDF9)',
+                border: '1px solid var(--border)',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
+                margin: 'auto',
+                position: 'relative',
+                zIndex: 1201,
+              }}
               onClick={e => e.stopPropagation()}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -3992,7 +4001,7 @@ export default function MyBookings() {
                   {submittingRating ? 'Submitting...' : `Submit ${ratingScore}-Star Review ⭐`}
                 </button>
               </div>
-            </div>
+            </section>
           </div>
         )
       })()}
@@ -5429,14 +5438,15 @@ export default function MyBookings() {
           }
 
           .my-bookings-stat-card {
-            flex: 0 0 84px;
-            min-width: 84px;
-            padding: 10px 10px;
+            flex: 1 1 0;
+            min-width: 78px;
+            padding: 10px 8px;
           }
 
           .my-bookings-stat-card span {
             font-size: 8px;
-            letter-spacing: 0.8px;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
           }
 
           .my-bookings-stat-card strong {
@@ -5545,25 +5555,27 @@ export default function MyBookings() {
 
           .my-booking-row-actions {
             display: flex;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            align-items: center;
             gap: 6px;
             width: 100%;
           }
 
           .my-booking-card-btn {
-            flex: 1 1 0;
-            min-width: 0;
+            flex: 0 0 auto;
+            width: auto;
+            min-width: auto;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 4px;
+            gap: 5px;
             text-align: center;
-            padding: 7px 4px;
+            padding: 6px 12px;
             font-size: 11.5px;
+            border-radius: 8px;
             box-sizing: border-box;
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
           }
 
           .my-booking-card-btn svg {

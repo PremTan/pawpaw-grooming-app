@@ -55,6 +55,7 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 import LiveWalkTrackerMap from '../components/LiveWalkTrackerMap'
+import Toast from '../components/Toast'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { validateImageFile } from '../utils/imageCompression'
 import {
@@ -155,6 +156,15 @@ export default function WalkerPortal() {
   const [sosReason, setSosReason] = useState('🐕 Pet Medical / Sickness / Injury')
   const [sosNote, setSosNote] = useState('')
   const [broadcastingSos, setBroadcastingSos] = useState(false)
+
+  // In-app Toast popup state
+  const [portalToast, setPortalToast] = useState(null)
+
+  useEffect(() => {
+    if (!portalToast) return
+    const t = window.setTimeout(() => setPortalToast(null), 4000)
+    return () => window.clearTimeout(t)
+  }, [portalToast])
 
   // Notifications State
   const [newAssignmentAlert, setNewAssignmentAlert] = useState(null)
@@ -424,7 +434,7 @@ export default function WalkerPortal() {
     try {
       validateImageFile(file)
     } catch (err) {
-      alert(err.message)
+      setPortalToast({ message: err.message, type: 'error' })
       return
     }
     setUploadingPhoto(true)
@@ -437,7 +447,7 @@ export default function WalkerPortal() {
         updatedAt: serverTimestamp(),
       })
     } catch (err) {
-      alert(err.message || 'Photo upload failed. Please try again.')
+      setPortalToast({ message: err.message || 'Photo upload failed. Please try again.', type: 'error' })
     } finally {
       setUploadingPhoto(false)
     }
@@ -725,7 +735,7 @@ export default function WalkerPortal() {
         }).catch(() => {})
       }
     } catch (err) {
-      alert(`Could not update arrival status: ${err.message}`)
+      setPortalToast({ message: `Could not update arrival status: ${err.message}`, type: 'error' })
     } finally {
       setActionLoading(false)
     }
@@ -739,7 +749,7 @@ export default function WalkerPortal() {
 
     try {
       if (!navigator.geolocation) {
-        alert('Your device does not support GPS geolocation.')
+        setPortalToast({ message: 'Your device does not support GPS geolocation.', type: 'error' })
         setActionLoading(false)
         return
       }
@@ -788,7 +798,7 @@ export default function WalkerPortal() {
         async (err) => {
           console.warn('Initial GPS permission error:', err)
           if (err.code === 1) {
-            alert('Location access is required to track the dog walk live for pet parents. Please allow location permissions in your browser settings.')
+            setPortalToast({ message: 'Location access is required to track the dog walk live for pet parents. Please allow location permissions in your browser settings.', type: 'error' })
           } else {
             const patch = {
               status: WALKING_STATUS.IN_PROGRESS,
@@ -805,7 +815,7 @@ export default function WalkerPortal() {
         { enableHighAccuracy: true, timeout: 10000 }
       )
     } catch (err) {
-      alert(`Could not start walk: ${err.message}`)
+      setPortalToast({ message: `Could not start walk: ${err.message}`, type: 'error' })
       setActionLoading(false)
     }
   }
@@ -891,7 +901,7 @@ export default function WalkerPortal() {
       setWalkPhotos([])
       setWalkerNotes('')
     } catch (err) {
-      alert(`Could not complete walk: ${err.message}`)
+      setPortalToast({ message: `Could not complete walk: ${err.message}`, type: 'error' })
     } finally {
       setActionLoading(false)
     }
@@ -955,9 +965,15 @@ export default function WalkerPortal() {
         createdAt: serverTimestamp(),
       }).catch(() => {})
 
-      alert('🚨 Emergency broadcast sent! Pet parent and admin have been notified.')
+      setPortalToast({
+        message: '🚨 Emergency broadcast sent! Pet parent and admin have been notified.',
+        type: 'success',
+      })
     } catch (err) {
-      alert(`Could not broadcast SOS: ${err.message}`)
+      setPortalToast({
+        message: `Could not broadcast SOS: ${err.message}`,
+        type: 'error',
+      })
     } finally {
       setBroadcastingSos(false)
     }
@@ -989,9 +1005,15 @@ export default function WalkerPortal() {
       }
 
       setShowSosModal(false)
-      alert('Emergency marked as resolved.')
+      setPortalToast({
+        message: '✅ Emergency marked as resolved.',
+        type: 'success',
+      })
     } catch (err) {
-      alert(`Could not resolve SOS: ${err.message}`)
+      setPortalToast({
+        message: `Could not resolve SOS: ${err.message}`,
+        type: 'error',
+      })
     } finally {
       setBroadcastingSos(false)
     }
@@ -1388,6 +1410,11 @@ export default function WalkerPortal() {
   if (!session || !currentWalker) {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--bg, #FCFAF6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 16px', boxSizing: 'border-box' }}>
+        {portalToast && (
+          <div style={{ position: 'fixed', top: '18px', right: '16px', zIndex: 99999, maxWidth: 'min(420px, calc(100vw - 32px))' }}>
+            <Toast message={portalToast.message} type={portalToast.type || 'success'} onClose={() => setPortalToast(null)} />
+          </div>
+        )}
         <div style={{ width: '100%', maxWidth: '420px', background: 'var(--card, #FFFFFF)', borderRadius: '24px', padding: '28px 22px', border: '1.5px solid var(--border, #F0EAE1)', boxShadow: '0 16px 40px rgba(0,0,0,0.06)', textAlign: 'center' }}>
           
           <div style={{ width: '64px', height: '64px', background: 'linear-gradient(135deg, #C08820 0%, #D49B2E 100%)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: '#fff', boxShadow: '0 6px 18px rgba(192, 136, 32, 0.35)' }}>
@@ -1490,6 +1517,11 @@ export default function WalkerPortal() {
   // --- VIEW: Authenticated Walker Dashboard ---
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg, #FCFAF6)', paddingBottom: '70px' }}>
+      {portalToast && (
+        <div style={{ position: 'fixed', top: '18px', right: '16px', zIndex: 99999, maxWidth: 'min(420px, calc(100vw - 32px))' }}>
+          <Toast message={portalToast.message} type={portalToast.type || 'success'} onClose={() => setPortalToast(null)} />
+        </div>
+      )}
       
       {/* Top Walker Header Bar */}
       <header
