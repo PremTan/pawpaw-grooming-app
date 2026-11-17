@@ -195,18 +195,42 @@ export default function AdminTeam() {
     loadSectionSettings()
   }, [user, profile])
 
+  const getRoleFallbackBio = (role = '') => {
+    const r = (role || '').toLowerCase()
+    if (r.includes('walker')) return 'Specializes in active leash walks, positive reinforcement, and safe hydration breaks.'
+    if (r.includes('groom')) return 'Specializes in gentle handling, breed styling, and calm, stress-free spa baths.'
+    if (r.includes('board') || r.includes('care')) return 'Dedicated to 24/7 attentive care, fun playtime routines, and cozy companionship.'
+    return 'Dedicated to treating every pet with patient kindness, safety, and loving care.'
+  }
+
+  const getRoleFallbackSkills = (role = '') => {
+    const r = (role || '').toLowerCase()
+    if (r.includes('walker')) return 'Leash Training, GPS Tracked, Hydration Care'
+    if (r.includes('groom')) return 'Breed Styling, Spa Baths, Fear-Free'
+    if (r.includes('board') || r.includes('care')) return '24/7 Supervision, Playtime Care, Safety First'
+    return 'Pet Safety, Fear-Free Care, Loved by Dogs'
+  }
+
+  const getRoleFallbackActionLabel = (role = '') => {
+    const r = (role || '').toLowerCase()
+    if (r.includes('walker')) return 'Book Dog Walking'
+    if (r.includes('board') || r.includes('care')) return 'Book Boarding'
+    return 'Book Grooming'
+  }
+
   const openShowcaseModal = () => {
     const map = {}
     members.forEach(m => {
+      const skillsStr = Array.isArray(m.skills) ? m.skills.join(', ') : (m.skills || '')
       map[m.id] = {
         rating: m.rating || '5.0',
         verified: m.verified !== false,
         badgeText: m.badgeText || 'Verified',
-        tagline: m.tagline || '',
-        experience: m.experience || '',
-        bio: m.bio || '',
-        skills: Array.isArray(m.skills) ? m.skills.join(', ') : (m.skills || ''),
-        bookingButtonText: m.bookingButtonText || '',
+        tagline: m.tagline || 'Dedicated Specialist',
+        experience: m.experience || '3+ Years Experience',
+        bio: m.bio || getRoleFallbackBio(m.role),
+        skills: skillsStr || getRoleFallbackSkills(m.role),
+        bookingButtonText: m.bookingButtonText || getRoleFallbackActionLabel(m.role),
         showOnWeb: m.showOnWeb !== false,
         showOnHome: m.showOnHome === true,
         order: m.order !== undefined && m.order !== null ? String(m.order) : (m.homeOrder !== undefined && m.homeOrder !== null ? String(m.homeOrder) : ''),
@@ -1341,7 +1365,12 @@ Your password has been reset by Admin. Please tap the link below to set your new
                           {selectedMember.isOwner ? <span className="badge badge-completed">Owner</span> : <span className="badge badge-online">{selectedMember.role || 'Team Member'}</span>}
                           {!selectedMember.isOwner && selectedMember.active === false && <span className="badge badge-cancelled">Inactive</span>}
                         </div>
-                        <p><Mail size={13} /> {selectedMember.email || '-'}</p>
+                        <p style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', wordBreak: 'break-all', overflowWrap: 'anywhere' }}>
+                          <Mail size={13} style={{ flexShrink: 0, marginTop: '3px' }} />
+                          <span style={{ wordBreak: 'break-all', overflowWrap: 'anywhere', minWidth: 0, flex: 1, lineHeight: 1.35 }}>
+                            {selectedMember.email || '-'}
+                          </span>
+                        </p>
                         <p>
                           <Phone size={13} />
                           {selectedMember.phone ? (
@@ -2043,15 +2072,16 @@ Your password has been reset by Admin. Please tap the link below to set your new
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {members.filter(m => m.active !== false).map(m => {
+                    const skillsStr = Array.isArray(m.skills) ? m.skills.join(', ') : (m.skills || '')
                     const sc = memberShowcase[m.id] || {
                       rating: m.rating || '5.0',
                       verified: m.verified !== false,
                       badgeText: m.badgeText || 'Verified',
-                      tagline: m.tagline || '',
-                      experience: m.experience || '',
-                      bio: m.bio || '',
-                      skills: Array.isArray(m.skills) ? m.skills.join(', ') : (m.skills || ''),
-                      bookingButtonText: m.bookingButtonText || '',
+                      tagline: m.tagline || 'Dedicated Specialist',
+                      experience: m.experience || '3+ Years Experience',
+                      bio: m.bio || getRoleFallbackBio(m.role),
+                      skills: skillsStr || getRoleFallbackSkills(m.role),
+                      bookingButtonText: m.bookingButtonText || getRoleFallbackActionLabel(m.role),
                       showOnWeb: m.showOnWeb !== false,
                       showOnHome: m.showOnHome === true,
                       order: m.order !== undefined && m.order !== null ? String(m.order) : (m.homeOrder !== undefined && m.homeOrder !== null ? String(m.homeOrder) : ''),
