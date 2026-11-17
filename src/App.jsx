@@ -20,6 +20,7 @@ import Reviews     from './pages/Reviews'
 import Login       from './pages/Login'
 // Lazy-loaded secondary pages
 const Gallery = lazy(() => import('./pages/Gallery'))
+const Team = lazy(() => import('./pages/Team'))
 const ServiceDetail = lazy(() => import('./pages/ServiceDetail'))
 const PublicInvoice = lazy(() => import('./pages/PublicInvoice'))
 const WalkerPortal = lazy(() => import('./pages/WalkerPortal'))
@@ -149,6 +150,7 @@ export default function App() {
         <Route path="services" element={<Services />} />
         <Route path="services/:serviceId" element={<ServiceDetail />} />
         <Route path="reviews" element={<Reviews />} />
+        <Route path="team" element={<Team />} />
         <Route path="gallery" element={<Gallery />} />
         <Route path="login" element={<Login />} />
         <Route path="book" element={<ProtectedRoute><Book /></ProtectedRoute>} />

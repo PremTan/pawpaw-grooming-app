@@ -22,7 +22,7 @@ import boardingDogAvatar from '../assets/boarding-dog-avatar.png'
 import boardingCatAvatar from '../assets/boarding-cat-avatar.png'
 import petWalkingHero from '../assets/pet-walking-hero.jpg'
 import petGroomingCroppedHero from '../assets/pet-grooming-cropped-hero.jpg'
-import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils, Footprints, Hotel } from 'lucide-react'
+import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils, Footprints, Hotel, Users } from 'lucide-react'
 
 const HERO_FALLBACK_IMAGE = '/hero-fallback.jpg'
 const DEFAULT_HERO_IMAGES = [
@@ -1403,6 +1403,13 @@ export default function Home() {
   const [shopName, setShopName] = useState(() => cachedHomeSectionsData?.shopName || 'Paw Paw Pet Grooming')
   const [googleReviewUrl, setGoogleReviewUrl] = useState(() => cachedHomeSectionsData?.googleReviewUrl || '')
   const [homePetImages, setHomePetImages] = useState(() => cachedHomeSectionsData?.homePetImages || { cta: '', follow: '' })
+  const [teamMembers, setTeamMembers] = useState([])
+  const [teamSettings, setTeamSettings] = useState({
+    badge: 'Certified & Passionate',
+    title: 'Meet Our Pet Care Team',
+    description: 'Loving groomers, certified dog walkers, and devoted caretakers who treat every furry guest like family.',
+    enabled: true,
+  })
   const [footerInfo, setFooterInfo] = useState(() => cachedHomeSectionsData?.footerInfo || { tagline: '', socials: [], phones: [], email: '' })
   const [walkingSettings, setWalkingSettings] = useState(() => cachedWalkingSettings)
   const [boardingSettings, setBoardingSettings] = useState(() => cachedBoardingSettings)
@@ -1477,6 +1484,8 @@ export default function Home() {
         featuresResult,
         homeStatsResult,
         businessInfoResult,
+        teamResult,
+        teamSettingsResult,
       ] = await Promise.allSettled([
         getDocs(query(collection(db, 'reviews'), orderBy('createdAt', 'desc'), limit(6))),
         getDocs(query(collection(db, 'gallery'), limit(12))),
@@ -1485,6 +1494,8 @@ export default function Home() {
         getDoc(doc(db, 'settings', 'whyChooseUs')),
         getDoc(doc(db, 'settings', 'homeStats')),
         fetchBusinessInfo(db),
+        getDocs(collection(db, 'teamMembers')),
+        getDoc(doc(db, 'settings', 'teamSection')),
       ])
 
       try {
@@ -1545,6 +1556,31 @@ export default function Home() {
         setStats(calculatedStats)
         setReviews(revs)
         setServiceDetails(details)
+
+        if (teamSettingsResult?.status === 'fulfilled' && teamSettingsResult.value.exists()) {
+          setTeamSettings(prev => ({ ...prev, ...teamSettingsResult.value.data() }))
+        }
+
+        const allTeam = teamResult?.status === 'fulfilled'
+          ? teamResult.value.docs
+              .map(d => ({ id: d.id, ...d.data() }))
+              .filter(m => m.active !== false)
+          : []
+
+        // If admin has explicitly chosen members to show on home screen, prioritize only those
+        const homeFeatured = allTeam.filter(m => m.showOnHome === true)
+        const candidates = homeFeatured.length > 0
+          ? homeFeatured
+          : allTeam.filter(m => m.showOnWeb !== false)
+
+        // Sort by admin order (1, 2, 3...)
+        candidates.sort((a, b) => {
+          const orderA = typeof a.order === 'number' ? a.order : (typeof a.homeOrder === 'number' ? a.homeOrder : 999)
+          const orderB = typeof b.order === 'number' ? b.order : (typeof b.homeOrder === 'number' ? b.homeOrder : 999)
+          return orderA - orderB
+        })
+
+        setTeamMembers(candidates)
 
         let loadedPackages = []
         if (packagesResult.status === 'fulfilled') {
@@ -1956,6 +1992,87 @@ export default function Home() {
                 Rate Us on Google <ExternalLink size={15} />
               </a>
             )}
+          </div>
+        </section>
+      )}
+
+      {/* Meet Our Team Section */}
+      {teamMembers.length > 0 && teamSettings.enabled !== false && (
+        <section className="home-team-section">
+          <div className="home-team-head home-fade-up">
+            <p className="section-label"><PawPrint size={13} /> {teamSettings.badge || 'Certified & Passionate'} <PawPrint size={13} /></p>
+            <h2 className="home-team-title">{teamSettings.title || 'Meet Our Pet Care Team'}</h2>
+            <p className="home-team-sub">
+              {teamSettings.description || 'Loving groomers, certified dog walkers, and devoted caretakers who treat every furry guest like family.'}
+            </p>
+          </div>
+
+          <div className="home-team-grid">
+            {teamMembers.slice(0, 6).map((member, i) => {
+              const roleLower = (member.role || '').toLowerCase()
+              const isWalker = roleLower.includes('walk')
+              const isGroomer = roleLower.includes('groom')
+              const isBoarding = roleLower.includes('board') || roleLower.includes('care')
+              const badgeClass = isWalker ? 'badge-walker' : isGroomer ? 'badge-groomer' : isBoarding ? 'badge-boarding' : 'badge-specialist'
+
+              return (
+                <div
+                  key={member.id || i}
+                  className="home-team-card home-fade-up"
+                  style={{ '--fade-delay': `${i * 80}ms` }}
+                >
+                  {/* Solid Opaque Role Badge */}
+                  <div className={`home-team-pill ${badgeClass}`}>
+                    {isWalker ? <Footprints size={12} /> : isGroomer ? <Scissors size={12} /> : <PawPrint size={12} />}
+                    <span>{member.role || 'Pet Specialist'}</span>
+                  </div>
+
+                  {/* Avatar with Double Ring Frame */}
+                  <div className="home-team-avatar-frame">
+                    <div className="home-team-avatar-inner">
+                      {member.photoUrl ? (
+                        <img src={member.photoUrl} alt={member.name} className="home-team-avatar-img" loading="lazy" />
+                      ) : (
+                        <div className="home-team-avatar-fallback">
+                          <Users size={32} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <h3 className="home-team-name">{member.name}</h3>
+
+                  {member.experience ? (
+                    <span className="home-team-exp">
+                      <Sparkles size={11} /> {member.experience}
+                    </span>
+                  ) : (
+                    <span className="home-team-exp-default">
+                      <Heart size={11} /> Dedicated Pet Lover
+                    </span>
+                  )}
+
+                  {member.bio && (
+                    <p className="home-team-bio">
+                      "{member.bio}"
+                    </p>
+                  )}
+
+                  <Link
+                    to={isWalker ? '/walking' : isBoarding ? '/boarding' : '/book'}
+                    className="home-team-card-btn"
+                  >
+                    {isWalker ? 'Book Walk' : isBoarding ? 'Book Stay' : 'Book Grooming'} <ArrowRight size={12} />
+                  </Link>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="home-team-actions home-fade-up stagger-1">
+            <Link to="/team" className="btn btn-secondary">
+              Meet All Team Members <ArrowRight size={16} />
+            </Link>
           </div>
         </section>
       )}

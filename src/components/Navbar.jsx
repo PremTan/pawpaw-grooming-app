@@ -19,6 +19,7 @@ import {
   Phone,
   Scissors,
   User,
+  Users,
   X,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -173,6 +174,7 @@ export default function Navbar() {
     { path: '/walking', label: 'Pet Walking', icon: <Footprints size={14} /> },
     { path: '/gallery', label: 'Gallery', icon: <Image size={14} /> },
     { path: '/reviews', label: 'Reviews', icon: <MessageSquare size={14} /> },
+    { path: '/team', label: 'Our Team', icon: <Users size={14} /> },
     { path: '/?view=public#contact', label: 'Contact Us', icon: <Phone size={14} /> },
   ]
 
@@ -536,7 +538,12 @@ export default function Navbar() {
               <MessageSquare size={15} /> Reviews
             </Link>
 
-            {/* 9. Contact Us */}
+            {/* 9. Our Team */}
+            <Link to="/team" onClick={() => setMenuOpen(false)} style={mobileLinkStyle(isActive('/team'))}>
+              <Users size={15} /> Our Team
+            </Link>
+
+            {/* 10. Contact Us */}
             <Link to="/?view=public#contact" onClick={() => setMenuOpen(false)} style={mobileLinkStyle(isActive('/?view=public#contact'))}>
               <Phone size={15} /> Contact Us
             </Link>
