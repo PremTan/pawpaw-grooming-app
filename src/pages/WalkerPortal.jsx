@@ -837,7 +837,18 @@ export default function WalkerPortal() {
       const finalPace = calculatePace(finalDistance, finalDuration).formatted
       const finalCalories = calculateCalories(finalDistance, finalDuration)
 
+      const isMultiDay = Boolean(activeWalk.planType && activeWalk.planType !== 'single')
+      const totalExpected = Number(activeWalk.totalWalks || (activeWalk.planType === 'monthly' ? (activeWalk.frequency === 'twice_daily' ? 52 : 26) : (activeWalk.frequency === 'twice_daily' ? 14 : 7)))
+      const currentCompleted = Math.max(Number(activeWalk.completedWalks || 0), (Array.isArray(activeWalk.walkReports) ? activeWalk.walkReports.length : (activeWalk.walkReport || activeWalk.walkCompletedAt ? 1 : 0)))
+      const newCompleted = currentCompleted + 1
+      const isFullyFinished = !isMultiDay || (newCompleted >= totalExpected)
+
       const walkReport = {
+        id: `rep_${Date.now()}`,
+        walkIndex: newCompleted,
+        totalWalks: totalExpected,
+        date: activeWalk.date || new Date().toISOString().split('T')[0],
+        completedAt: new Date().toISOString(),
         durationSeconds: finalDuration,
         distanceMeters: finalDistance,
         pace: finalPace,
@@ -850,12 +861,20 @@ export default function WalkerPortal() {
         notes: String(walkerNotes || '').trim(),
         walkerName: currentWalker?.name || 'Walker',
         walkerPhone: currentWalker?.phone || '',
-        completedAt: new Date().toISOString(),
+        walkerRating: null,
+        walkerFeedback: '',
       }
 
+      const existingReports = Array.isArray(activeWalk.walkReports)
+        ? activeWalk.walkReports
+        : (activeWalk.walkReport ? [activeWalk.walkReport] : [])
+      const updatedReports = [...existingReports, walkReport]
+
       const patch = {
-        status: WALKING_STATUS.COMPLETED,
+        status: isFullyFinished ? WALKING_STATUS.COMPLETED : WALKING_STATUS.CONFIRMED,
+        completedWalks: newCompleted,
         walkCompletedAt: serverTimestamp(),
+        lastWalkCompletedAt: serverTimestamp(),
         walkDurationSeconds: finalDuration,
         walkDistanceMeters: finalDistance,
         walkPace: finalPace,
@@ -864,16 +883,20 @@ export default function WalkerPortal() {
         walkPhotos: walkPhotos,
         walkerNotes: String(walkerNotes || '').trim(),
         walkReport,
+        walkReports: updatedReports,
         updatedAt: serverTimestamp(),
       }
 
       await updateDoc(doc(db, 'walkingBookings', activeWalk.id), patch)
 
       if (activeWalk.userId) {
+        const notifTitle = isMultiDay
+          ? `🎉 Walk #${newCompleted} of ${totalExpected} completed for ${activeWalk.dogName || activeWalk.petName || 'your pet'}!`
+          : `🎉 ${activeWalk.dogName || activeWalk.petName || 'Your pet'}'s walk is completed!`
         addDoc(collection(db, 'notifications'), {
           userId: activeWalk.userId,
-          title: `🎉 ${activeWalk.dogName || activeWalk.petName || 'Your pet'}'s walk is completed!`,
-          message: `Walk finished! Total time: ${formatDurationHuman(finalDuration)}, Distance: ${formatDistance(finalDistance)}. Tap to view Walk Report Card!`,
+          title: notifTitle,
+          message: `Walk #${newCompleted} finished! Time: ${formatDurationHuman(finalDuration)}, Distance: ${formatDistance(finalDistance)}. Tap to view Walk Report Card & Rate your walker!`,
           actionUrl: '/my-bookings?tab=walking',
           type: 'walking_completed',
           read: false,
@@ -1034,7 +1057,12 @@ export default function WalkerPortal() {
         (w.walkingDate && w.skippedDates.includes(w.walkingDate))
       )
 
-      if (w.status === WALKING_STATUS.COMPLETED) {
+      const isMulti = Boolean(w.planType && w.planType !== 'single')
+      const totalExpected = Number(w.totalWalks || (w.planType === 'monthly' ? (w.frequency === 'twice_daily' ? 52 : 26) : (w.frequency === 'twice_daily' ? 14 : 7)))
+      const completedCount = Math.max(Number(w.completedWalks || 0), (Array.isArray(w.walkReports) ? w.walkReports.length : (w.walkReport || w.walkCompletedAt ? 1 : 0)))
+      const isFullyFinished = !isMulti ? w.status === WALKING_STATUS.COMPLETED : (completedCount >= totalExpected)
+
+      if (isFullyFinished) {
         completed.push(w)
       } else if (isSkippedToday && w.status !== WALKING_STATUS.IN_PROGRESS) {
         // Automatically exclude from daily active route

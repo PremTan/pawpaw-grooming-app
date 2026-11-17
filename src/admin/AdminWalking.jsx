@@ -98,24 +98,27 @@ const QUICK_CANCEL_REASONS = [
   'Emergency reason',
 ]
 
-const generateWhatsAppReportMessage = (booking) => {
+const generateWhatsAppReportMessage = (booking, customReport = null) => {
   if (!booking) return ''
   const dogName = booking.dogName || booking.petName || 'Dog'
   const breed = booking.breed || booking.dogBreed || ''
-  const report = booking.walkReport || {}
+  const report = customReport || booking.walkReport || {}
   const durationSec = report.durationSeconds || booking.walkDurationSeconds || 0
   const distanceM = report.distanceMeters || booking.walkDistanceMeters || 0
 
   let msg = `🐾 *Paw Paw Pet Walking - Walk Report Card* 🐾\n`
   msg += `------------------------------------\n`
   msg += `🐶 *Pet:* ${dogName}${breed ? ` (${breed})` : ''}\n`
+  if (report.walkIndex) {
+    msg += `🚶 *Walk Session:* #${report.walkIndex}\n`
+  }
   if (report.walkerName || booking.assignedWalkerName) {
     msg += `🚶 *Walker:* ${report.walkerName || booking.assignedWalkerName}\n`
   }
   msg += `⏱️ *Duration:* ${formatDurationHuman(durationSec)}\n`
   msg += `📍 *Distance Walked:* ${formatDistance(distanceM)}\n`
-  const pace = booking.walkPace || calculatePace(distanceM, durationSec).formatted
-  const calories = booking.estimatedCalories || calculateCalories(distanceM, durationSec)
+  const pace = report.pace || booking.walkPace || calculatePace(distanceM, durationSec).formatted
+  const calories = report.calories || booking.estimatedCalories || calculateCalories(distanceM, durationSec)
   msg += `⚡ *Avg Pace:* ${pace}\n`
   msg += `🔥 *Estimated Burn:* ~${calories} kcal\n`
   msg += `💧 *Pee Breaks:* ${report.peeCount ?? booking.walkActivities?.pee ?? 0}\n`
@@ -143,6 +146,7 @@ export default function AdminWalking() {
   const { sendNotification } = useNotifications() || {}
 
   const [activeTab, setActiveTab] = useState('bookings') // 'bookings' | 'settings'
+  const [adminReportIndex, setAdminReportIndex] = useState(0)
   const [bookings, setBookings] = useState([])
   const [loadingBookings, setLoadingBookings] = useState(true)
   const [statusFilter, setStatusFilter] = useState('all')
@@ -1183,9 +1187,24 @@ ${portalUrl}`
                             1-Day Walk
                           </span>
                         )}
-                        <span className={`badge ${WALKING_STATUS_BADGES[b.status] || 'badge-pending'}`}>
-                          {WALKING_STATUS_LABELS[b.status] || b.status}
-                        </span>
+                        {(() => {
+                          const isMulti = Boolean(b.planType && b.planType !== 'single')
+                          const total = Number(b.totalWalks || (b.planType === 'monthly' ? (b.frequency === 'twice_daily' ? 52 : 26) : (b.frequency === 'twice_daily' ? 14 : 7)))
+                          const completed = Math.max(Number(b.completedWalks || 0), (Array.isArray(b.walkReports) ? b.walkReports.length : (b.walkCompletedAt || b.walkReport ? 1 : 0)))
+                          const isFinished = isMulti ? completed >= total : b.status === WALKING_STATUS.COMPLETED
+                          const displayStatus = isMulti && !isFinished
+                            ? (b.status === WALKING_STATUS.IN_PROGRESS ? WALKING_STATUS.IN_PROGRESS : WALKING_STATUS.CONFIRMED)
+                            : b.status
+                          const displayLabel = isMulti && !isFinished
+                            ? (b.status === WALKING_STATUS.IN_PROGRESS ? 'In Progress' : 'Active Pass')
+                            : (WALKING_STATUS_LABELS[b.status] || b.status)
+
+                          return (
+                            <span className={`badge ${WALKING_STATUS_BADGES[displayStatus] || 'badge-pending'}`}>
+                              {displayLabel}
+                            </span>
+                          )
+                        })()}
                         {b.hasEmergency && (
                           <span className="badge" style={{ background: '#fee2e2', color: '#dc2626', border: '1.5px solid #ef4444', fontWeight: 900 }}>
                             🚨 SOS ALERT
@@ -1248,9 +1267,8 @@ ${portalUrl}`
 
                     {/* Multi-Day Pass Progress Banner */}
                     {b.planType && b.planType !== 'single' && (() => {
-                      const total = Number(b.totalWalks || (b.planType === 'monthly' ? 26 : 7))
-                      const completed = Number(b.completedWalks || 0)
-                      const remaining = Math.max(0, total - completed)
+                      const total = Number(b.totalWalks || (b.planType === 'monthly' ? (b.frequency === 'twice_daily' ? 52 : 26) : (b.frequency === 'twice_daily' ? 14 : 7)))
+                      const completed = Math.max(Number(b.completedWalks || 0), (Array.isArray(b.walkReports) ? b.walkReports.length : (b.walkCompletedAt || b.walkReport ? 1 : 0)))
                       const percent = Math.min(100, Math.round((completed / total) * 100))
                       const skippedCount = Array.isArray(b.skippedDates) ? b.skippedDates.length : Number(b.skippedWalks || 0)
                       const planTitle = b.planType === 'monthly' ? 'Monthly Pass' : '7-Day Pass'
@@ -1270,8 +1288,8 @@ ${portalUrl}`
                               {planTitle} Progress:
                               <span style={{ color: 'var(--accent)' }}>{completed}/{total} Walks Done</span>
                             </span>
-                            <span style={{ fontSize: '11px', fontWeight: 800, color: remaining === 0 ? '#15803d' : '#b45309', background: 'var(--card)', padding: '2px 8px', borderRadius: '999px', border: '1px solid var(--border)' }}>
-                              {remaining} Remaining
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', background: 'var(--card)', padding: '2px 8px', borderRadius: '999px', border: '1px solid var(--border)' }}>
+                              {percent}%
                             </span>
                           </div>
                           <div style={{ width: '100%', height: '6px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden', marginBottom: '6px' }}>
@@ -2819,9 +2837,8 @@ ${portalUrl}`
                 </div>
 
                 {selectedBooking.planType && selectedBooking.planType !== 'single' ? (() => {
-                  const total = Number(selectedBooking.totalWalks || (selectedBooking.planType === 'monthly' ? 26 : 7))
-                  const completed = Number(selectedBooking.completedWalks || 0)
-                  const remaining = Math.max(0, total - completed)
+                  const total = Number(selectedBooking.totalWalks || (selectedBooking.planType === 'monthly' ? (selectedBooking.frequency === 'twice_daily' ? 52 : 26) : (selectedBooking.frequency === 'twice_daily' ? 14 : 7)))
+                  const completed = Math.max(Number(selectedBooking.completedWalks || 0), (Array.isArray(selectedBooking.walkReports) ? selectedBooking.walkReports.length : (selectedBooking.walkCompletedAt || selectedBooking.walkReport ? 1 : 0)))
                   const percent = Math.min(100, Math.round((completed / total) * 100))
                   const skippedCount = Array.isArray(selectedBooking.skippedDates) ? selectedBooking.skippedDates.length : Number(selectedBooking.skippedWalks || 0)
 
@@ -2830,11 +2847,7 @@ ${portalUrl}`
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', fontSize: '12.5px', marginBottom: '10px' }}>
                         <div>
                           <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Walk Progress</span>
-                          <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{completed} / {total} Done</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Walks Remaining</span>
-                          <strong style={{ color: remaining === 0 ? '#10b981' : '#b45309', fontSize: '14px' }}>{remaining} Remaining</strong>
+                          <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{completed} / {total} Done ({percent}%)</strong>
                         </div>
                         <div>
                           <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Frequency</span>
@@ -3095,125 +3108,173 @@ ${portalUrl}`
               </div>
 
               {/* 🐾 Walk Report Card in Admin Panel (Independent Card) */}
-              {(selectedBooking.walkReport || selectedBooking.walkActivities) && (
-                <div className="walking-details-section">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Footprints size={14} color="var(--accent)" /> Walk Report Card
-                    </span>
-                    {selectedBooking.phone && (
-                      <a
-                        href={`https://wa.me/${(selectedBooking.whatsappNumber || selectedBooking.phone).replace(/\D/g, '')}?text=${generateWhatsAppReportMessage(selectedBooking)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          background: '#25D366',
-                          color: '#fff',
-                          borderRadius: '8px',
-                          padding: '4px 10px',
-                          fontSize: '11px',
-                          fontWeight: 800,
-                          textDecoration: 'none',
-                        }}
-                      >
-                        <MessageCircle size={13} /> Send Report on WhatsApp
-                      </a>
-                    )}
-                  </div>
+              {(selectedBooking.walkReport || selectedBooking.walkActivities || (Array.isArray(selectedBooking.walkReports) && selectedBooking.walkReports.length > 0)) && (() => {
+                const adminReports = Array.isArray(selectedBooking.walkReports) && selectedBooking.walkReports.length > 0
+                  ? selectedBooking.walkReports
+                  : (selectedBooking.walkReport ? [selectedBooking.walkReport] : [])
+                const currentReport = adminReports[adminReportIndex] || adminReports[0] || selectedBooking.walkReport || {}
 
-                  {/* Care Activities Stats Grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '6px', textAlign: 'center', marginBottom: '8px' }}>
-                    <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '10px', padding: '6px 2px' }}>
-                      <span style={{ fontSize: '14px', display: 'block' }}>💧</span>
-                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#1E40AF', whiteSpace: 'nowrap' }}>
-                        {(selectedBooking.walkReport?.peeCount ?? selectedBooking.walkActivities?.pee) || 0} Pee
+                return (
+                  <div className="walking-details-section">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Footprints size={14} color="var(--accent)" /> Walk Report Card {adminReports.length > 1 ? `(${adminReports.length} Walks)` : ''}
                       </span>
+                      {selectedBooking.phone && (
+                        <a
+                          href={`https://wa.me/${(selectedBooking.whatsappNumber || selectedBooking.phone).replace(/\D/g, '')}?text=${generateWhatsAppReportMessage(selectedBooking, currentReport)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: '#25D366',
+                            color: '#fff',
+                            borderRadius: '8px',
+                            padding: '4px 10px',
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <MessageCircle size={13} /> Send Report on WhatsApp
+                        </a>
+                      )}
                     </div>
-                    <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '10px', padding: '6px 2px' }}>
-                      <span style={{ fontSize: '14px', display: 'block' }}>💩</span>
-                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#92400E', whiteSpace: 'nowrap' }}>
-                        {(selectedBooking.walkReport?.pooCount ?? selectedBooking.walkActivities?.poo) || 0} Poo
-                      </span>
-                    </div>
-                    <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '10px', padding: '6px 2px' }}>
-                      <span style={{ fontSize: '14px', display: 'block' }}>🥤</span>
-                      <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#065F46', whiteSpace: 'nowrap' }}>
-                        {selectedBooking.walkReport?.waterGiven || selectedBooking.walkActivities?.water ? 'Hydrated' : 'No'}
-                      </span>
-                    </div>
-                    <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '10px', padding: '6px 2px' }}>
-                      <span style={{ fontSize: '14px', display: 'block' }}>🦴</span>
-                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#78350F', whiteSpace: 'nowrap' }}>
-                        {(selectedBooking.walkReport?.treatCount ?? selectedBooking.walkActivities?.treats) || 0} Treats
-                      </span>
-                    </div>
-                  </div>
 
-                  {/* Distance, Duration, Pace & Calories Metrics */}
-                  {(selectedBooking.walkDistanceMeters || selectedBooking.walkDurationSeconds || selectedBooking.walkReport?.distanceMeters) && (() => {
-                    const dist = selectedBooking.walkReport?.distanceMeters || selectedBooking.walkDistanceMeters || 0
-                    const dur = selectedBooking.walkReport?.durationSeconds || selectedBooking.walkDurationSeconds || 0
-                    const pace = selectedBooking.walkPace || calculatePace(dist, dur).formatted
-                    const cal = selectedBooking.estimatedCalories || calculateCalories(dist, dur)
-
-                    return (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '6px', marginBottom: '8px' }}>
-                        <div style={{ background: 'var(--card)', borderRadius: '10px', padding: '7px 3px', textAlign: 'center', border: '1px solid var(--border)', minWidth: 0 }}>
-                          <span style={{ fontSize: '9.5px', color: 'var(--muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600, whiteSpace: 'nowrap' }}>Distance</span>
-                          <strong style={{ fontSize: '12px', color: '#16a34a', whiteSpace: 'nowrap', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {formatDistance(dist)}
-                          </strong>
-                        </div>
-                        <div style={{ background: 'var(--card)', borderRadius: '10px', padding: '7px 3px', textAlign: 'center', border: '1px solid var(--border)', minWidth: 0 }}>
-                          <span style={{ fontSize: '9.5px', color: 'var(--muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600, whiteSpace: 'nowrap' }}>Duration</span>
-                          <strong style={{ fontSize: '12px', color: 'var(--text)', whiteSpace: 'nowrap', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {formatDurationHuman(dur)}
-                          </strong>
-                        </div>
-                        <div style={{ background: 'var(--card)', borderRadius: '10px', padding: '7px 3px', textAlign: 'center', border: '1px solid var(--border)', minWidth: 0 }}>
-                          <span style={{ fontSize: '9.5px', color: 'var(--muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600, whiteSpace: 'nowrap' }}>Avg Pace</span>
-                          <strong style={{ fontSize: '11.5px', color: '#0284c7', whiteSpace: 'nowrap', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {pace}
-                          </strong>
-                        </div>
-                        <div style={{ background: 'var(--card)', borderRadius: '10px', padding: '7px 3px', textAlign: 'center', border: '1px solid var(--border)', minWidth: 0 }}>
-                          <span style={{ fontSize: '9.5px', color: 'var(--muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600, whiteSpace: 'nowrap' }}>Calories</span>
-                          <strong style={{ fontSize: '11.5px', color: '#ea580c', whiteSpace: 'nowrap', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            ~{cal} kcal
-                          </strong>
-                        </div>
-                      </div>
-                    )
-                  })()}
-
-                  {/* Walker Notes */}
-                  {(selectedBooking.walkReport?.notes || selectedBooking.walkerNotes) && (
-                    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '9px 12px', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '2px' }}>Walker's Note:</span>
-                      <p style={{ margin: 0, fontSize: '12px', color: 'var(--text)', fontStyle: 'italic', lineHeight: 1.4 }}>
-                        "{selectedBooking.walkReport?.notes || selectedBooking.walkerNotes}"
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Walk Photos */}
-                  {(selectedBooking.walkReport?.photos?.length > 0 || (Array.isArray(selectedBooking.walkPhotos) && selectedBooking.walkPhotos.length > 0)) && (
-                    <div>
-                      <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>Photos from Walk:</span>
-                      <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-                        {(selectedBooking.walkReport?.photos || selectedBooking.walkPhotos || []).map((pUrl, idx) => (
-                          <a key={idx} href={pUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '64px', height: '64px', borderRadius: '10px', overflow: 'hidden', border: '1.5px solid var(--border)', flexShrink: 0 }}>
-                            <img src={pUrl} alt="Walk memory" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          </a>
+                    {/* Session Switcher if multiple reports exist */}
+                    {adminReports.length > 1 && (
+                      <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '6px', marginBottom: '10px' }}>
+                        {adminReports.map((r, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setAdminReportIndex(idx)}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: '999px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              border: '1.5px solid',
+                              borderColor: adminReportIndex === idx ? 'var(--accent)' : 'var(--border)',
+                              background: adminReportIndex === idx ? 'var(--accent)' : 'var(--card)',
+                              color: adminReportIndex === idx ? '#fff' : 'var(--text)',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            Walk #{idx + 1} {r.walkerRating ? `⭐${r.walkerRating}` : ''}
+                          </button>
                         ))}
                       </div>
+                    )}
+
+                    {/* Care Activities Stats Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '6px', textAlign: 'center', marginBottom: '8px' }}>
+                      <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '10px', padding: '6px 2px' }}>
+                        <span style={{ fontSize: '14px', display: 'block' }}>💧</span>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#1E40AF', whiteSpace: 'nowrap' }}>
+                          {(currentReport?.peeCount ?? selectedBooking.walkActivities?.pee) || 0} Pee
+                        </span>
+                      </div>
+                      <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '10px', padding: '6px 2px' }}>
+                        <span style={{ fontSize: '14px', display: 'block' }}>💩</span>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#92400E', whiteSpace: 'nowrap' }}>
+                          {(currentReport?.pooCount ?? selectedBooking.walkActivities?.poo) || 0} Poo
+                        </span>
+                      </div>
+                      <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '10px', padding: '6px 2px' }}>
+                        <span style={{ fontSize: '14px', display: 'block' }}>🥤</span>
+                        <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#065F46', whiteSpace: 'nowrap' }}>
+                          {currentReport?.waterGiven || selectedBooking.walkActivities?.water ? 'Hydrated' : 'No'}
+                        </span>
+                      </div>
+                      <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '10px', padding: '6px 2px' }}>
+                        <span style={{ fontSize: '14px', display: 'block' }}>🦴</span>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#78350F', whiteSpace: 'nowrap' }}>
+                          {(currentReport?.treatCount ?? selectedBooking.walkActivities?.treats) || 0} Treats
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </div>
-              )}
+
+                    {/* Distance, Duration, Pace & Calories Metrics */}
+                    {(selectedBooking.walkDistanceMeters || selectedBooking.walkDurationSeconds || currentReport?.distanceMeters || currentReport?.durationSeconds) && (() => {
+                      const dist = currentReport?.distanceMeters || selectedBooking.walkDistanceMeters || 0
+                      const dur = currentReport?.durationSeconds || selectedBooking.walkDurationSeconds || 0
+                      const pace = currentReport?.pace || selectedBooking.walkPace || calculatePace(dist, dur).formatted
+                      const cal = currentReport?.calories || selectedBooking.estimatedCalories || calculateCalories(dist, dur)
+
+                      return (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '6px', marginBottom: '8px' }}>
+                          <div style={{ background: 'var(--card)', borderRadius: '10px', padding: '7px 3px', textAlign: 'center', border: '1px solid var(--border)', minWidth: 0 }}>
+                            <span style={{ fontSize: '9.5px', color: 'var(--muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600, whiteSpace: 'nowrap' }}>Distance</span>
+                            <strong style={{ fontSize: '12px', color: '#16a34a', whiteSpace: 'nowrap', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {formatDistance(dist)}
+                            </strong>
+                          </div>
+                          <div style={{ background: 'var(--card)', borderRadius: '10px', padding: '7px 3px', textAlign: 'center', border: '1px solid var(--border)', minWidth: 0 }}>
+                            <span style={{ fontSize: '9.5px', color: 'var(--muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600, whiteSpace: 'nowrap' }}>Duration</span>
+                            <strong style={{ fontSize: '12px', color: 'var(--text)', whiteSpace: 'nowrap', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {formatDurationHuman(dur)}
+                            </strong>
+                          </div>
+                          <div style={{ background: 'var(--card)', borderRadius: '10px', padding: '7px 3px', textAlign: 'center', border: '1px solid var(--border)', minWidth: 0 }}>
+                            <span style={{ fontSize: '9.5px', color: 'var(--muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600, whiteSpace: 'nowrap' }}>Avg Pace</span>
+                            <strong style={{ fontSize: '11.5px', color: '#0284c7', whiteSpace: 'nowrap', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {pace}
+                            </strong>
+                          </div>
+                          <div style={{ background: 'var(--card)', borderRadius: '10px', padding: '7px 3px', textAlign: 'center', border: '1px solid var(--border)', minWidth: 0 }}>
+                            <span style={{ fontSize: '9.5px', color: 'var(--muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600, whiteSpace: 'nowrap' }}>Calories</span>
+                            <strong style={{ fontSize: '11.5px', color: '#ea580c', whiteSpace: 'nowrap', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              ~{cal} kcal
+                            </strong>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Walker Notes */}
+                    {(currentReport?.notes || selectedBooking.walkerNotes) && (
+                      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '9px 12px', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '2px' }}>Walker's Note:</span>
+                        <p style={{ margin: 0, fontSize: '12px', color: 'var(--text)', fontStyle: 'italic', lineHeight: 1.4 }}>
+                          "{currentReport?.notes || selectedBooking.walkerNotes}"
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Walk Photos */}
+                    {(currentReport?.photos?.length > 0 || (Array.isArray(selectedBooking.walkPhotos) && selectedBooking.walkPhotos.length > 0)) && (
+                      <div style={{ marginBottom: '8px' }}>
+                        <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>Photos from Walk:</span>
+                        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                          {(currentReport?.photos || selectedBooking.walkPhotos || []).map((pUrl, idx) => (
+                            <a key={idx} href={pUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '60px', height: '60px', borderRadius: '10px', overflow: 'hidden', border: '1.5px solid var(--border)', flexShrink: 0 }}>
+                              <img src={pUrl} alt="Walk memory" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Per-Session Rating info if customer rated this session */}
+                    {currentReport?.walkerRating && (
+                      <div style={{ background: '#FFFDF5', border: '1px solid #FDE68A', borderRadius: '10px', padding: '8px 12px', marginTop: '6px' }}>
+                        <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#B45309', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Star size={12} fill="#F59E0B" color="#F59E0B" /> Rated {currentReport.walkerRating}/5 Stars by Customer for this walk
+                        </span>
+                        {currentReport.walkerFeedback && (
+                          <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--text)', fontStyle: 'italic' }}>
+                            "{currentReport.walkerFeedback}"
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* 🌟 Pet Parent Review & Rating (Independent Card) */}
               {selectedBooking.walkerRating && (
@@ -4621,18 +4682,23 @@ ${portalUrl}`
 
         @media (max-width: 640px) {
           .walking-details-overlay {
-            padding: 8px 4px !important;
-            align-items: flex-start !important;
-            padding-top: max(8px, env(safe-area-inset-top)) !important;
+            padding: 20px 16px !important;
+            align-items: center !important;
+            padding-left: max(16px, env(safe-area-inset-left)) !important;
+            padding-right: max(16px, env(safe-area-inset-right)) !important;
+            padding-top: max(18px, env(safe-area-inset-top)) !important;
+            padding-bottom: max(18px, env(safe-area-inset-bottom)) !important;
           }
           .walking-details-card {
-            padding: 12px 8px !important;
-            border-radius: 14px !important;
-            max-height: 95vh !important;
+            padding: 20px 16px !important;
+            border-radius: 20px !important;
+            max-height: 90vh !important;
+            margin: auto !important;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45) !important;
           }
           .walking-details-section {
-            padding: 10px 8px !important;
-            border-radius: 10px !important;
+            padding: 12px 14px !important;
+            border-radius: 12px !important;
           }
         }
       `}</style>

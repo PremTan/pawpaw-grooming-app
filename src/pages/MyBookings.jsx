@@ -152,6 +152,37 @@ const RATING_SCORE_LABELS = {
   1: 'Poor experience 😞',
 }
 
+function getWalkReportsList(booking) {
+  if (!booking) return []
+  if (Array.isArray(booking.walkReports) && booking.walkReports.length > 0) {
+    return booking.walkReports
+  }
+  if (booking.walkReport || booking.walkActivities || booking.walkCompletedAt) {
+    return [{
+      id: 'rep_1',
+      walkIndex: 1,
+      totalWalks: Number(booking.totalWalks || (booking.planType === 'monthly' ? (booking.frequency === 'twice_daily' ? 52 : 26) : (booking.frequency === 'twice_daily' ? 14 : 7))),
+      date: booking.date || '',
+      completedAt: booking.walkCompletedAt?.toDate ? booking.walkCompletedAt.toDate().toISOString() : new Date().toISOString(),
+      durationSeconds: booking.walkDurationSeconds || booking.walkReport?.durationSeconds || 0,
+      distanceMeters: booking.walkDistanceMeters || booking.walkReport?.distanceMeters || 0,
+      pace: booking.walkPace || booking.walkReport?.pace || '',
+      calories: booking.estimatedCalories || booking.walkReport?.calories || 0,
+      peeCount: booking.walkReport?.peeCount ?? booking.walkActivities?.pee ?? 0,
+      pooCount: booking.walkReport?.pooCount ?? booking.walkActivities?.poo ?? 0,
+      waterGiven: booking.walkReport?.waterGiven ?? booking.walkActivities?.water ?? false,
+      treatCount: booking.walkReport?.treatCount ?? booking.walkActivities?.treats ?? 0,
+      photos: booking.walkReport?.photos || booking.walkPhotos || [],
+      notes: booking.walkReport?.notes || booking.walkerNotes || '',
+      walkerName: booking.walkReport?.walkerName || booking.assignedTeamMemberName || booking.assignedWalkerName || 'Walker',
+      walkerPhone: booking.walkReport?.walkerPhone || booking.assignedTeamMemberPhone || '',
+      walkerRating: booking.walkReport?.walkerRating || booking.walkerRating || null,
+      walkerFeedback: booking.walkReport?.walkerFeedback || booking.walkerFeedback || '',
+    }]
+  }
+  return []
+}
+
 function parseAppointmentStart(booking) {
   if (booking.bookingStartAt?.toDate) return booking.bookingStartAt.toDate()
   if (!booking.date) return null
@@ -406,12 +437,18 @@ export default function MyBookings() {
 
   // Walking Review & Rating State
   const [ratingTarget, setRatingTarget] = useState(null)
+  const [ratingSessionIndex, setRatingSessionIndex] = useState(null) // null = overall, number = specific walkReport index
   const [ratingScore, setRatingScore] = useState(5)
   const [ratingHover, setRatingHover] = useState(0)
   const [ratingCompliments, setRatingCompliments] = useState([])
   const [ratingFeedback, setRatingFeedback] = useState('')
   const [submittingRating, setSubmittingRating] = useState(false)
   const [ratingToast, setRatingToast] = useState('')
+
+  // Walking Reports Modal State
+  const [reportsModalBooking, setReportsModalBooking] = useState(null)
+  const [selectedReportIndex, setSelectedReportIndex] = useState(0)
+  const [detailsReportIndex, setDetailsReportIndex] = useState(0)
 
   // Walking Subscription Skip Day State
   const [skipModalBooking, setSkipModalBooking] = useState(null)
@@ -856,13 +893,23 @@ export default function MyBookings() {
     }
   }
 
-  // Open Rating Modal
-  const handleOpenRatingModal = (booking) => {
+  // Open Rating Modal (Overall or specific session index)
+  const handleOpenRatingModal = (booking, sessionIndex = null) => {
     setRatingTarget(booking)
-    setRatingScore(booking.walkerRating || 5)
-    setRatingHover(0)
-    setRatingCompliments(booking.walkerCompliments || [])
-    setRatingFeedback(booking.walkerFeedback || '')
+    setRatingSessionIndex(sessionIndex)
+    const reports = getWalkReportsList(booking)
+    if (sessionIndex !== null && reports[sessionIndex]) {
+      const rep = reports[sessionIndex]
+      setRatingScore(rep.walkerRating || booking.walkerRating || 5)
+      setRatingHover(0)
+      setRatingCompliments(rep.walkerCompliments || booking.walkerCompliments || [])
+      setRatingFeedback(rep.walkerFeedback || '')
+    } else {
+      setRatingScore(booking.walkerRating || 5)
+      setRatingHover(0)
+      setRatingCompliments(booking.walkerCompliments || [])
+      setRatingFeedback(booking.walkerFeedback || '')
+    }
   }
 
   // Toggle compliment chip
@@ -881,11 +928,39 @@ export default function MyBookings() {
       const walkerName = ratingTarget.assignedWalkerName || ratingTarget.assignedTeamMemberName || 'Paw Paw Walker'
 
       const ratingPatch = {
-        walkerRating: ratingScore,
-        walkerFeedback: String(ratingFeedback || '').trim(),
-        walkerCompliments: ratingCompliments || [],
-        walkerRatedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+      }
+
+      const existingReports = getWalkReportsList(ratingTarget)
+      let updatedReports = [...existingReports]
+
+      if (ratingSessionIndex !== null && updatedReports[ratingSessionIndex]) {
+        // Rating a specific walk session
+        updatedReports[ratingSessionIndex] = {
+          ...updatedReports[ratingSessionIndex],
+          walkerRating: ratingScore,
+          walkerFeedback: String(ratingFeedback || '').trim(),
+          walkerCompliments: ratingCompliments || [],
+          ratedAt: new Date().toISOString(),
+        }
+        ratingPatch.walkReports = updatedReports
+
+        // Also update primary walkerRating if not set yet or this is latest report
+        if (!ratingTarget.walkerRating || ratingSessionIndex === updatedReports.length - 1) {
+          ratingPatch.walkerRating = ratingScore
+          ratingPatch.walkerFeedback = String(ratingFeedback || '').trim()
+          ratingPatch.walkerCompliments = ratingCompliments || []
+          ratingPatch.walkerRatedAt = serverTimestamp()
+        }
+      } else {
+        // Rating overall booking
+        ratingPatch.walkerRating = ratingScore
+        ratingPatch.walkerFeedback = String(ratingFeedback || '').trim()
+        ratingPatch.walkerCompliments = ratingCompliments || []
+        ratingPatch.walkerRatedAt = serverTimestamp()
+        if (updatedReports.length > 0) {
+          ratingPatch.walkReports = updatedReports
+        }
       }
 
       await updateDoc(doc(db, 'walkingBookings', ratingTarget.id), ratingPatch)
@@ -903,7 +978,8 @@ export default function MyBookings() {
         walkerId,
         walkerName,
         bookingId: ratingTarget.id,
-        source: 'walk_review',
+        sessionIndex: ratingSessionIndex,
+        source: ratingSessionIndex !== null ? `walk_session_${ratingSessionIndex + 1}` : 'walk_review',
         active: true,
         createdAt: serverTimestamp(),
       }).catch(err => console.warn('Could not mirror to reviews collection:', err))
@@ -913,7 +989,7 @@ export default function MyBookings() {
         addDoc(collection(db, 'walkerNotifications'), {
           walkerId,
           title: `⭐ New ${ratingScore}-Star Rating!`,
-          message: `${ratingTarget.ownerName || 'Pet parent'} rated your walk with ${ratingTarget.dogName || ratingTarget.petName || 'dog'} ${ratingScore}/5 stars!${ratingFeedback ? ` "${ratingFeedback}"` : ''}`,
+          message: `${ratingTarget.ownerName || 'Pet parent'} rated ${ratingSessionIndex !== null ? `Walk #${ratingSessionIndex + 1}` : 'your walk'} with ${ratingTarget.dogName || ratingTarget.petName || 'dog'} ${ratingScore}/5 stars!${ratingFeedback ? ` "${ratingFeedback}"` : ''}`,
           bookingId: ratingTarget.id,
           rating: ratingScore,
           read: false,
@@ -925,12 +1001,16 @@ export default function MyBookings() {
       if (selectedWalking?.id === ratingTarget.id) {
         setSelectedWalking(prev => ({ ...prev, ...ratingPatch }))
       }
+      if (reportsModalBooking?.id === ratingTarget.id) {
+        setReportsModalBooking(prev => ({ ...prev, ...ratingPatch }))
+      }
 
       setRatingToast({
         message: `Thank you! Your ${ratingScore}-star review for ${walkerName} has been submitted. ⭐`,
         type: 'success',
       })
       setRatingTarget(null)
+      setRatingSessionIndex(null)
     } catch (err) {
       console.error('Failed to submit walker rating:', err)
       setRatingToast({
@@ -1650,9 +1730,24 @@ export default function MyBookings() {
                           <small><Clock size={12} /> {walkSlot}</small>
                         </div>
                         <div className="my-booking-badges">
-                          <span className={`badge ${STATUS_BADGE[w.status] || 'badge-pending'} my-booking-status`}>
-                            {statusLabel(w.status)}
-                          </span>
+                          {(() => {
+                            const isMulti = Boolean(w.planType && w.planType !== 'single')
+                            const total = Number(w.totalWalks || (w.planType === 'monthly' ? (w.frequency === 'twice_daily' ? 52 : 26) : (w.frequency === 'twice_daily' ? 14 : 7)))
+                            const completed = Math.max(Number(w.completedWalks || 0), (Array.isArray(w.walkReports) ? w.walkReports.length : (w.walkCompletedAt || w.walkReport ? 1 : 0)))
+                            const isFinished = isMulti ? completed >= total : w.status === 'completed'
+                            const displayStatus = isMulti && !isFinished
+                              ? (w.status === 'in_progress' ? 'in_progress' : 'confirmed')
+                              : w.status
+                            const displayStatusLabel = isMulti && !isFinished
+                              ? (w.status === 'in_progress' ? 'Walking Now' : 'Active Pass')
+                              : statusLabel(w.status)
+
+                            return (
+                              <span className={`badge ${STATUS_BADGE[displayStatus] || 'badge-pending'} my-booking-status`}>
+                                {displayStatusLabel}
+                              </span>
+                            )
+                          })()}
                           {w.planType && w.planType !== 'single' && (
                             <span className="badge" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 800 }}>
                               {w.planType === 'monthly' ? '🌟 Monthly Pass' : '📦 7-Day Pass'}
@@ -1749,9 +1844,8 @@ export default function MyBookings() {
 
                       {/* Subscription Pack Progress Summary - Full Width Clean Banner */}
                       {w.planType && w.planType !== 'single' && (() => {
-                        const total = Number(w.totalWalks || (w.planType === 'monthly' ? 26 : 7))
-                        const completed = Number(w.completedWalks || 0)
-                        const remaining = Math.max(0, total - completed)
+                        const total = Number(w.totalWalks || (w.planType === 'monthly' ? (w.frequency === 'twice_daily' ? 52 : 26) : (w.frequency === 'twice_daily' ? 14 : 7)))
+                        const completed = Math.max(Number(w.completedWalks || 0), (Array.isArray(w.walkReports) ? w.walkReports.length : (w.walkCompletedAt || w.walkReport ? 1 : 0)))
                         const percent = Math.min(100, Math.round((completed / total) * 100))
                         const skippedCount = Array.isArray(w.skippedDates) ? w.skippedDates.length : Number(w.skippedWalks || 0)
                         const planLabel = w.planType === 'monthly' ? 'Monthly Pass' : '7-Day Pass'
@@ -1769,17 +1863,17 @@ export default function MyBookings() {
                             }}
                           >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '13px' }}>{w.planType === 'monthly' ? '👑' : '📦'}</span>
-                                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '14px' }}>{w.planType === 'monthly' ? '👑' : '📦'}</span>
+                                <span style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text)' }}>
                                   {planLabel} Progress
                                 </span>
-                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-bg)', padding: '1px 7px', borderRadius: '6px', border: '1px solid var(--accent-border)' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--accent)', background: 'var(--accent-bg)', padding: '2px 8px', borderRadius: '6px', border: '1px solid var(--accent-border)' }}>
                                   {completed}/{total} Done
                                 </span>
                               </div>
-                              <span style={{ fontSize: '11.5px', fontWeight: 800, color: remaining === 0 ? '#10b981' : '#b45309' }}>
-                                {remaining} walk{remaining === 1 ? '' : 's'} remaining
+                              <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)' }}>
+                                {percent}%
                               </span>
                             </div>
 
@@ -1815,7 +1909,11 @@ export default function MyBookings() {
 
                       {/* Action Bar */}
                       <div className="my-booking-row-actions" onClick={e => e.stopPropagation()}>
-                        {w.planType && w.planType !== 'single' && w.status !== 'cancelled' && w.status !== 'completed' && (
+                        {w.planType && w.planType !== 'single' && w.status !== 'cancelled' && (() => {
+                          const total = Number(w.totalWalks || (w.planType === 'monthly' ? (w.frequency === 'twice_daily' ? 52 : 26) : (w.frequency === 'twice_daily' ? 14 : 7)))
+                          const completed = Math.max(Number(w.completedWalks || 0), (Array.isArray(w.walkReports) ? w.walkReports.length : (w.walkCompletedAt || w.walkReport ? 1 : 0)))
+                          return completed < total
+                        })() && (
                           <button
                             type="button"
                             className="my-booking-card-btn"
@@ -1834,6 +1932,31 @@ export default function MyBookings() {
                             ⏸️ Skip Day
                           </button>
                         )}
+
+                        {/* 🐾 Daily Walk Reports Button */}
+                        {getWalkReportsList(w).length > 0 && (
+                          <button
+                            type="button"
+                            className="my-booking-card-btn"
+                            style={{
+                              background: '#ecfdf5',
+                              borderColor: '#a7f3d0',
+                              color: '#065f46',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontWeight: 800,
+                            }}
+                            onClick={() => {
+                              setReportsModalBooking(w)
+                              setSelectedReportIndex(Math.max(0, getWalkReportsList(w).length - 1))
+                            }}
+                            title="View daily walk report card, photos, care activities and ratings"
+                          >
+                            <Footprints size={12} /> Walk Report{getWalkReportsList(w).length > 1 ? `s (${getWalkReportsList(w).length})` : ''}
+                          </button>
+                        )}
+
                         {w.status === 'in_progress' && (
                           <button
                             type="button"
@@ -1854,7 +1977,7 @@ export default function MyBookings() {
                           </button>
                         )}
 
-                        {w.status === 'completed' && (Array.isArray(w.routeTrail) && w.routeTrail.length > 0) && (
+                        {(w.status === 'completed' || getWalkReportsList(w).length > 0) && (Array.isArray(w.routeTrail) && w.routeTrail.length > 0) && (
                           <button
                             type="button"
                             className="my-booking-card-btn"
@@ -1880,41 +2003,25 @@ export default function MyBookings() {
                           Details
                         </button>
 
-                        {w.status === 'completed' && w.walkerRating && (
+                        {/* Rate Walker Button */}
+                        {getWalkReportsList(w).length > 0 && (
                           <button
                             type="button"
                             className="my-booking-card-btn"
                             style={{
-                              background: '#fffbeb',
-                              borderColor: '#fde68a',
-                              color: '#b45309',
+                              background: w.walkerRating ? '#fffbeb' : '#f59e0b',
+                              borderColor: w.walkerRating ? '#fde68a' : '#d97706',
+                              color: w.walkerRating ? '#b45309' : '#fff',
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '4px',
                               fontWeight: 800,
                             }}
-                            onClick={() => handleOpenRatingModal(w)}
-                            title="View or edit your review"
+                            onClick={() => handleOpenRatingModal(w, null)}
+                            title="Leave a review for your walker"
                           >
-                            <Star size={12} fill="#f59e0b" color="#f59e0b" /> {w.walkerRating}/5
-                          </button>
-                        )}
-                        {w.status === 'completed' && !w.walkerRating && (
-                          <button
-                            type="button"
-                            className="my-booking-card-btn"
-                            style={{
-                              background: '#f59e0b',
-                              borderColor: '#d97706',
-                              color: '#fff',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              fontWeight: 800,
-                            }}
-                            onClick={() => handleOpenRatingModal(w)}
-                          >
-                            <Star size={12} fill="#fff" /> Rate Walker
+                            <Star size={12} fill={w.walkerRating ? '#f59e0b' : '#fff'} color={w.walkerRating ? '#f59e0b' : '#fff'} />
+                            {w.walkerRating ? `${w.walkerRating}/5` : 'Rate Walker'}
                           </button>
                         )}
 
@@ -3775,119 +3882,171 @@ export default function MyBookings() {
                     )}
 
                     {/* 🐾 Walk Report Card for Pet Parent */}
-                    {(selectedWalking.walkReport || selectedWalking.walkActivities) && (
-                      <div style={{ marginTop: '14px', background: 'var(--surface, #FAF6EE)', border: '1.5px solid var(--border, #EADBBE)', borderRadius: '16px', padding: '14px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                          <span style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            🐾 Walk Report Card
-                          </span>
-                          <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
-                            {selectedWalking.walkReport?.walkerName ? `by ${selectedWalking.walkReport.walkerName}` : 'Completed Session'}
-                          </span>
-                        </div>
-
-                        {/* Stats Row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', textAlign: 'center', marginBottom: '10px' }}>
-                          <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '10px', padding: '6px 2px' }}>
-                            <span style={{ fontSize: '14px', display: 'block' }}>💧</span>
-                            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#1E40AF' }}>
-                              {(selectedWalking.walkReport?.peeCount ?? selectedWalking.walkActivities?.pee) || 0} Pee
+                    {getWalkReportsList(selectedWalking).length > 0 && (() => {
+                      const reports = getWalkReportsList(selectedWalking)
+                      const rep = reports[detailsReportIndex] || reports[0]
+                      return (
+                        <div style={{ marginTop: '14px', background: 'var(--surface, #FAF6EE)', border: '1.5px solid var(--border, #EADBBE)', borderRadius: '16px', padding: '14px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                            <span style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              🐾 Walk Report Card
+                            </span>
+                            <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
+                              {rep.walkerName ? `by ${rep.walkerName}` : 'Completed Session'}
                             </span>
                           </div>
-                          <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '10px', padding: '6px 2px' }}>
-                            <span style={{ fontSize: '14px', display: 'block' }}>💩</span>
-                            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#92400E' }}>
-                              {(selectedWalking.walkReport?.pooCount ?? selectedWalking.walkActivities?.poo) || 0} Poo
-                            </span>
-                          </div>
-                          <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '10px', padding: '6px 2px' }}>
-                            <span style={{ fontSize: '14px', display: 'block' }}>🥤</span>
-                            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#065F46' }}>
-                              {selectedWalking.walkReport?.waterGiven || selectedWalking.walkActivities?.water ? 'Hydrated' : 'No'}
-                            </span>
-                          </div>
-                          <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '10px', padding: '6px 2px' }}>
-                            <span style={{ fontSize: '14px', display: 'block' }}>🦴</span>
-                            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#78350F' }}>
-                              {(selectedWalking.walkReport?.treatCount ?? selectedWalking.walkActivities?.treats) || 0} Treats
-                            </span>
-                          </div>
-                        </div>
 
-                        {/* Distance, Duration, Pace & Calories */}
-                        {(selectedWalking.walkDistanceMeters || selectedWalking.walkDurationSeconds || selectedWalking.walkReport?.distanceMeters) && (() => {
-                          const dist = selectedWalking.walkReport?.distanceMeters || selectedWalking.walkDistanceMeters || 0
-                          const dur = selectedWalking.walkReport?.durationSeconds || selectedWalking.walkDurationSeconds || 0
-                          const pace = selectedWalking.walkPace || calculatePace(dist, dur).formatted
-                          const cal = selectedWalking.estimatedCalories || calculateCalories(dist, dur)
-
-                          return (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '10px' }}>
-                              <div style={{ background: '#fff', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
-                                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Distance</span>
-                                <strong style={{ fontSize: '12px', color: '#16a34a' }}>
-                                  {formatDistance(dist)}
-                                </strong>
-                              </div>
-                              <div style={{ background: '#fff', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
-                                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Duration</span>
-                                <strong style={{ fontSize: '12px', color: 'var(--text)' }}>
-                                  {formatDurationHuman(dur)}
-                                </strong>
-                              </div>
-                              <div style={{ background: '#fff', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
-                                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Avg Pace</span>
-                                <strong style={{ fontSize: '12px', color: '#0284c7' }}>
-                                  {pace}
-                                </strong>
-                              </div>
-                              <div style={{ background: '#fff', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
-                                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Calories</span>
-                                <strong style={{ fontSize: '12px', color: '#ea580c' }}>
-                                  ~{cal} kcal
-                                </strong>
-                              </div>
-                            </div>
-                          )
-                        })()}
-
-                        {/* Walker Notes */}
-                        {(selectedWalking.walkReport?.notes || selectedWalking.walkerNotes) && (
-                          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px' }}>
-                            <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '2px' }}>Walker's Message:</span>
-                            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text)', fontStyle: 'italic', lineHeight: 1.4 }}>
-                              "{selectedWalking.walkReport?.notes || selectedWalking.walkerNotes}"
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Walk Photos */}
-                        {(selectedWalking.walkReport?.photos?.length > 0 || (Array.isArray(selectedWalking.walkPhotos) && selectedWalking.walkPhotos.length > 0)) && (
-                          <div>
-                            <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>Photos from Walk:</span>
-                            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-                              {(selectedWalking.walkReport?.photos || selectedWalking.walkPhotos || []).map((pUrl, idx) => (
-                                <a key={idx} href={pUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '64px', height: '64px', borderRadius: '10px', overflow: 'hidden', border: '1.5px solid var(--border)', flexShrink: 0 }}>
-                                  <img src={pUrl} alt="Walk memory" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                </a>
+                          {reports.length > 1 && (
+                            <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '6px', marginBottom: '10px' }}>
+                              {reports.map((r, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => setDetailsReportIndex(idx)}
+                                  style={{
+                                    padding: '5px 12px',
+                                    borderRadius: '999px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    border: '1.5px solid',
+                                    borderColor: (detailsReportIndex || 0) === idx ? 'var(--accent)' : 'var(--border)',
+                                    background: (detailsReportIndex || 0) === idx ? 'var(--accent)' : 'var(--card)',
+                                    color: (detailsReportIndex || 0) === idx ? '#fff' : 'var(--text)',
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  Walk #{idx + 1} {r.walkerRating ? `⭐${r.walkerRating}` : ''}
+                                </button>
                               ))}
                             </div>
+                          )}
+
+                          {/* Stats Row */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', textAlign: 'center', marginBottom: '10px' }}>
+                            <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '10px', padding: '6px 2px' }}>
+                              <span style={{ fontSize: '14px', display: 'block' }}>💧</span>
+                              <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#1E40AF' }}>
+                                {rep.peeCount || 0} Pee
+                              </span>
+                            </div>
+                            <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '10px', padding: '6px 2px' }}>
+                              <span style={{ fontSize: '14px', display: 'block' }}>💩</span>
+                              <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#92400E' }}>
+                                {rep.pooCount || 0} Poo
+                              </span>
+                            </div>
+                            <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '10px', padding: '6px 2px' }}>
+                              <span style={{ fontSize: '14px', display: 'block' }}>🥤</span>
+                              <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#065F46' }}>
+                                {rep.waterGiven ? 'Hydrated' : 'No'}
+                              </span>
+                            </div>
+                            <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '10px', padding: '6px 2px' }}>
+                              <span style={{ fontSize: '14px', display: 'block' }}>🦴</span>
+                              <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#78350F' }}>
+                                {rep.treatCount || 0} Treats
+                              </span>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    )}
+
+                          {/* Distance, Duration, Pace & Calories */}
+                          {(rep.distanceMeters || rep.durationSeconds) && (() => {
+                            const dist = rep.distanceMeters || 0
+                            const dur = rep.durationSeconds || 0
+                            const pace = rep.pace || calculatePace(dist, dur).formatted
+                            const cal = rep.calories || calculateCalories(dist, dur)
+
+                            return (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '10px' }}>
+                                <div style={{ background: '#fff', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                                  <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Distance</span>
+                                  <strong style={{ fontSize: '12px', color: '#16a34a' }}>
+                                    {formatDistance(dist)}
+                                  </strong>
+                                </div>
+                                <div style={{ background: '#fff', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                                  <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Duration</span>
+                                  <strong style={{ fontSize: '12px', color: 'var(--text)' }}>
+                                    {formatDurationHuman(dur)}
+                                  </strong>
+                                </div>
+                                <div style={{ background: '#fff', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                                  <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Avg Pace</span>
+                                  <strong style={{ fontSize: '12px', color: '#0284c7' }}>
+                                    {pace}
+                                  </strong>
+                                </div>
+                                <div style={{ background: '#fff', borderRadius: '10px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                                  <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Calories</span>
+                                  <strong style={{ fontSize: '12px', color: '#ea580c' }}>
+                                    ~{cal} kcal
+                                  </strong>
+                                </div>
+                              </div>
+                            )
+                          })()}
+
+                          {/* Walker Notes */}
+                          {rep.notes && (
+                            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px' }}>
+                              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '2px' }}>Walker's Message:</span>
+                              <p style={{ margin: 0, fontSize: '12px', color: 'var(--text)', fontStyle: 'italic', lineHeight: 1.4 }}>
+                                "{rep.notes}"
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Walk Photos */}
+                          {Array.isArray(rep.photos) && rep.photos.length > 0 && (
+                            <div style={{ marginBottom: '10px' }}>
+                              <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>Photos from Walk:</span>
+                              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                                {rep.photos.map((pUrl, idx) => (
+                                  <a key={idx} href={pUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '64px', height: '64px', borderRadius: '10px', overflow: 'hidden', border: '1.5px solid var(--border)', flexShrink: 0 }}>
+                                    <img src={pUrl} alt="Walk memory" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Rating button for this session */}
+                          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: '10px', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            {rep.walkerRating ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '12px', fontWeight: 700, color: '#b45309' }}>
+                                  ⭐ Rated {rep.walkerRating}/5 Stars
+                                </span>
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+                                Rate this walk session:
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRatingModal(selectedWalking, detailsReportIndex || 0)}
+                              style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', color: 'var(--accent)', borderRadius: '8px', padding: '4px 10px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                            >
+                              {rep.walkerRating ? 'Edit Rating' : '⭐ Rate This Walk'}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })()}
 
                     {/* 🌟 Walker Review by Pet Parent */}
-                    {selectedWalking.status === 'completed' && (
+                    {(selectedWalking.status === 'completed' || getWalkReportsList(selectedWalking).length > 0) && (
                       selectedWalking.walkerRating ? (
                         <div style={{ marginTop: '14px', background: '#FFFDF5', border: '1.5px solid #FDE68A', borderRadius: '16px', padding: '14px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#92400E', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              ⭐ Your Rating & Review
+                              ⭐ Your Overall Rating & Review
                             </span>
                             <button
                               type="button"
-                              onClick={() => handleOpenRatingModal(selectedWalking)}
+                              onClick={() => handleOpenRatingModal(selectedWalking, null)}
                               style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '11px', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
                             >
                               Edit Review
@@ -3934,7 +4093,7 @@ export default function MyBookings() {
                           </p>
                           <button
                             type="button"
-                            onClick={() => handleOpenRatingModal(selectedWalking)}
+                            onClick={() => handleOpenRatingModal(selectedWalking, null)}
                             className="btn btn-primary"
                             style={{
                               background: '#F59E0B',
@@ -4022,10 +4181,274 @@ export default function MyBookings() {
         )
       })()}
 
+      {/* 🐾 Dedicated Daily Walk Reports Modal */}
+      {reportsModalBooking && (() => {
+        const reports = getWalkReportsList(reportsModalBooking)
+        const activeReport = reports[selectedReportIndex] || reports[0]
+        const dogName = reportsModalBooking.petName || reportsModalBooking.dogName || 'Your Dog'
+        const planTitle = reportsModalBooking.planType === 'monthly' ? 'Monthly Pass' : (reportsModalBooking.planType === 'weekly' ? '7-Day Pass' : 'Daily Walk')
+
+        return (
+          <div
+            className="my-booking-modal-overlay"
+            onClick={() => setReportsModalBooking(null)}
+            style={{ zIndex: 1100, background: 'rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)' }}
+          >
+            <section
+              className="my-booking-modal"
+              style={{
+                maxWidth: '520px',
+                width: '100%',
+                padding: '22px',
+                borderRadius: '24px',
+                background: 'var(--surface, #FFFDF9)',
+                border: '1px solid var(--border)',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
+                margin: 'auto',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#ECFDF5', border: '1.5px solid #A7F3D0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#059669' }}>
+                    <Footprints size={20} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '16.5px', fontWeight: 900, color: 'var(--text)' }}>
+                      Daily Walk Reports
+                    </h3>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                      {dogName} · {planTitle} ({reports.length} Report{reports.length > 1 ? 's' : ''} logged)
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReportsModalBooking(null)}
+                  style={{ background: 'var(--surface)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text)' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Walk Sessions Tabs */}
+              {reports.length > 1 && (
+                <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '14px' }}>
+                  {reports.map((rep, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedReportIndex(idx)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '999px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        border: '1.5px solid',
+                        borderColor: selectedReportIndex === idx ? 'var(--accent)' : 'var(--border)',
+                        background: selectedReportIndex === idx ? 'var(--accent)' : 'var(--card)',
+                        color: selectedReportIndex === idx ? '#fff' : 'var(--text)',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      Walk #{idx + 1} {rep.date ? `· ${rep.date}` : ''} {rep.walkerRating ? `⭐${rep.walkerRating}` : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Current Active Report Content */}
+              {activeReport ? (
+                <div>
+                  {/* Session Header Meta */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '10px 14px', marginBottom: '12px' }}>
+                    <div>
+                      <strong style={{ fontSize: '13px', color: 'var(--text)', display: 'block' }}>
+                        Walk Session #{activeReport.walkIndex || (selectedReportIndex + 1)}
+                      </strong>
+                      <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                        {activeReport.completedAt ? new Date(activeReport.completedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : (activeReport.date || 'Completed')}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-bg)', padding: '3px 10px', borderRadius: '8px', border: '1px solid var(--accent-border)' }}>
+                      by {activeReport.walkerName || 'Walker'}
+                    </span>
+                  </div>
+
+                  {/* 4 Care Stat Badges */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', textAlign: 'center', marginBottom: '12px' }}>
+                    <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '12px', padding: '8px 2px' }}>
+                      <span style={{ fontSize: '16px', display: 'block' }}>💧</span>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#1E40AF' }}>
+                        {activeReport.peeCount || 0} Pee
+                      </span>
+                    </div>
+                    <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '12px', padding: '8px 2px' }}>
+                      <span style={{ fontSize: '16px', display: 'block' }}>💩</span>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#92400E' }}>
+                        {activeReport.pooCount || 0} Poo
+                      </span>
+                    </div>
+                    <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '12px', padding: '8px 2px' }}>
+                      <span style={{ fontSize: '16px', display: 'block' }}>🥤</span>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#065F46' }}>
+                        {activeReport.waterGiven ? 'Hydrated' : 'No'}
+                      </span>
+                    </div>
+                    <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '12px', padding: '8px 2px' }}>
+                      <span style={{ fontSize: '16px', display: 'block' }}>🦴</span>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#78350F' }}>
+                        {activeReport.treatCount || 0} Treats
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Physical Metrics Grid */}
+                  {(activeReport.distanceMeters || activeReport.durationSeconds) && (() => {
+                    const dist = activeReport.distanceMeters || 0
+                    const dur = activeReport.durationSeconds || 0
+                    const pace = activeReport.pace || calculatePace(dist, dur).formatted
+                    const cal = activeReport.calories || calculateCalories(dist, dur)
+
+                    return (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '12px' }}>
+                        <div style={{ background: 'var(--card)', borderRadius: '12px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                          <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Distance</span>
+                          <strong style={{ fontSize: '12.5px', color: '#16a34a' }}>{formatDistance(dist)}</strong>
+                        </div>
+                        <div style={{ background: 'var(--card)', borderRadius: '12px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                          <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Duration</span>
+                          <strong style={{ fontSize: '12.5px', color: 'var(--text)' }}>{formatDurationHuman(dur)}</strong>
+                        </div>
+                        <div style={{ background: 'var(--card)', borderRadius: '12px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                          <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Avg Pace</span>
+                          <strong style={{ fontSize: '12px', color: '#0284c7' }}>{pace}</strong>
+                        </div>
+                        <div style={{ background: 'var(--card)', borderRadius: '12px', padding: '8px 4px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                          <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Calories</span>
+                          <strong style={{ fontSize: '12px', color: '#ea580c' }}>~{cal} kcal</strong>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {/* Walker Message */}
+                  {activeReport.notes && (
+                    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px', marginBottom: '12px' }}>
+                      <span style={{ fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
+                        Walker Note:
+                      </span>
+                      <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--text)', fontStyle: 'italic', lineHeight: 1.45 }}>
+                        "{activeReport.notes}"
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Photos */}
+                  {Array.isArray(activeReport.photos) && activeReport.photos.length > 0 && (
+                    <div style={{ marginBottom: '14px' }}>
+                      <span style={{ fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                        Walk Memories ({activeReport.photos.length}):
+                      </span>
+                      <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                        {activeReport.photos.map((pUrl, idx) => (
+                          <a key={idx} href={pUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '76px', height: '76px', borderRadius: '12px', overflow: 'hidden', border: '1.5px solid var(--border)', flexShrink: 0 }}>
+                            <img src={pUrl} alt="Walk memory" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Per-Session Rating Section */}
+                  <div style={{ background: '#FFFDF5', border: '1.5px solid #FDE68A', borderRadius: '14px', padding: '14px', textAlign: 'center', marginTop: '10px' }}>
+                    {activeReport.walkerRating ? (
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 800, color: '#92400E' }}>
+                            ⭐ Your Rating for Walk #{activeReport.walkIndex || (selectedReportIndex + 1)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRatingModal(reportsModalBooking, selectedReportIndex)}
+                            style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '11px', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                          >
+                            Edit
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px', marginBottom: '6px' }}>
+                          {[1, 2, 3, 4, 5].map(s => (
+                            <Star key={s} size={16} fill={s <= activeReport.walkerRating ? '#F59E0B' : 'none'} color={s <= activeReport.walkerRating ? '#F59E0B' : '#D1D5DB'} />
+                          ))}
+                          <strong style={{ marginLeft: '4px', fontSize: '12.5px', color: '#B45309' }}>
+                            {activeReport.walkerRating} / 5 Stars
+                          </strong>
+                        </div>
+                        {activeReport.walkerFeedback && (
+                          <p style={{ margin: 0, fontSize: '11.5px', color: 'var(--text)', fontStyle: 'italic' }}>
+                            "{activeReport.walkerFeedback}"
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)', marginBottom: '3px' }}>
+                          How was Walk #{activeReport.walkIndex || (selectedReportIndex + 1)}?
+                        </div>
+                        <p style={{ margin: '0 0 10px', fontSize: '11.5px', color: 'var(--muted)' }}>
+                          Rate this specific walk session to let your walker know how they did!
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRatingModal(reportsModalBooking, selectedReportIndex)}
+                          className="btn btn-primary"
+                          style={{ background: '#F59E0B', borderColor: '#D97706', color: '#fff', fontWeight: 800, fontSize: '12px', padding: '6px 16px', display: 'inline-flex', alignItems: 'center', gap: '4px', margin: '0 auto' }}
+                        >
+                          <Star size={13} fill="#fff" /> Rate Walk #{activeReport.walkIndex || (selectedReportIndex + 1)}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--muted)' }}>
+                  No report available for this session yet.
+                </div>
+              )}
+
+              {/* Modal Footer */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+                <button
+                  type="button"
+                  onClick={() => handleOpenRatingModal(reportsModalBooking, null)}
+                  style={{ background: 'none', border: 'none', color: '#B45309', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <Star size={13} fill="#F59E0B" color="#F59E0B" /> Rate Walker Overall
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReportsModalBooking(null)}
+                  className="btn btn-secondary"
+                  style={{ padding: '7px 18px', fontSize: '12.5px', fontWeight: 700 }}
+                >
+                  Close
+                </button>
+              </div>
+            </section>
+          </div>
+        )
+      })()}
+
       {/* 🌟 Dedicated Walk Rating & Review Modal */}
       {ratingTarget && (() => {
         const dogName = ratingTarget.petName || ratingTarget.dogName || 'Your Dog'
         const walkerName = ratingTarget.assignedTeamMemberName || ratingTarget.assignedWalkerName || 'Paw Paw Walker'
+        const reports = getWalkReportsList(ratingTarget)
 
         return (
           <div
@@ -4049,17 +4472,17 @@ export default function MyBookings() {
               }}
               onClick={e => e.stopPropagation()}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ width: '42px', height: '42px', borderRadius: '14px', background: '#FEF3C7', border: '1.5px solid #FCD34D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>
                     ⭐
                   </div>
                   <div>
                     <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: 'var(--text)' }}>
-                      Rate Walk & Walker
+                      {ratingSessionIndex !== null ? `Rate Walk #${ratingSessionIndex + 1}` : 'Rate Walk & Walker'}
                     </h3>
                     <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                      {dogName}'s session with {walkerName}
+                      {dogName}'s {ratingSessionIndex !== null ? `session #${ratingSessionIndex + 1}` : 'walks'} with {walkerName}
                     </span>
                   </div>
                 </div>
@@ -4072,6 +4495,61 @@ export default function MyBookings() {
                   <X size={16} />
                 </button>
               </div>
+
+              {/* Session Switcher if multiple reports exist */}
+              {reports.length > 1 && (
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', overflowX: 'auto', paddingBottom: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRatingSessionIndex(null)
+                      setRatingScore(ratingTarget.walkerRating || 5)
+                      setRatingFeedback(ratingTarget.walkerFeedback || '')
+                      setRatingCompliments(ratingTarget.walkerCompliments || [])
+                    }}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '999px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      border: '1.5px solid',
+                      borderColor: ratingSessionIndex === null ? 'var(--accent)' : 'var(--border)',
+                      background: ratingSessionIndex === null ? 'var(--accent)' : 'var(--card)',
+                      color: ratingSessionIndex === null ? '#fff' : 'var(--text)',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    ⭐ Overall Rating
+                  </button>
+                  {reports.map((rep, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setRatingSessionIndex(idx)
+                        setRatingScore(rep.walkerRating || ratingTarget.walkerRating || 5)
+                        setRatingFeedback(rep.walkerFeedback || '')
+                        setRatingCompliments(rep.walkerCompliments || [])
+                      }}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '999px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        border: '1.5px solid',
+                        borderColor: ratingSessionIndex === idx ? 'var(--accent)' : 'var(--border)',
+                        background: ratingSessionIndex === idx ? 'var(--accent)' : 'var(--card)',
+                        color: ratingSessionIndex === idx ? '#fff' : 'var(--text)',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Walk #{idx + 1} {rep.walkerRating ? `⭐${rep.walkerRating}` : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* 5 Interactive Stars */}
               <div style={{ textAlign: 'center', margin: '16px 0' }}>
