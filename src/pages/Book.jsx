@@ -528,13 +528,13 @@ export default function Book() {
 
   const S = {
     page: { background: 'var(--bg)', paddingTop: 'var(--navbar-height, 98px)', minHeight: '100vh', transition: 'padding-top 0.25s ease' },
-    wrap: { maxWidth: '680px', margin: '0 auto', padding: '24px 20px 80px' },
-    card: { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '32px' },
+    wrap: { maxWidth: '680px', margin: '0 auto', padding: '20px 16px 100px' },
+    card: { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '24px 18px' },
     label: { fontSize: '11px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '6px' },
     back: { display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', marginBottom: '20px', padding: 0 },
     stepNum: (s) => ({
-      width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: '13px', fontWeight: 700,
+      width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: '11px', fontWeight: 700,
       background: step > s ? 'var(--gradient)' : step === s ? 'var(--accent-bg)' : 'var(--surface)',
       color: step > s ? '#000' : step === s ? 'var(--accent)' : 'var(--muted)',
       border: step > s ? 'none' : step === s ? '2px solid var(--accent)' : '1px solid var(--border)',
@@ -548,7 +548,7 @@ export default function Book() {
           <Toast message={bookingToast} type="success" onClose={() => setBookingToast('')} />
         </div>
       )}
-      <div ref={bookingTopRef} style={{ ...S.wrap, textAlign: 'center' }}>
+      <div ref={bookingTopRef} className="book-page-wrap" style={{ ...S.wrap, textAlign: 'center' }}>
         {/* Top Hero Section with Floating Paws & Check Badge */}
         <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '22px', paddingTop: '6px' }}>
           {/* Subtle background floating paws */}
@@ -589,11 +589,11 @@ export default function Book() {
             </div>
           </div>
 
-          <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '30px', fontWeight: 800, color: 'var(--text)', marginBottom: '8px' }}>Booking Request Sent!</h2>
-          <p style={{ color: 'var(--muted)', marginBottom: '18px' }}>Your appointment request has been received. We'll confirm it shortly.</p>
+          <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '24px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Booking Request Sent!</h2>
+          <p style={{ color: 'var(--muted)', fontSize: '13px', marginBottom: '16px' }}>Your appointment request has been received. We'll confirm it shortly.</p>
         </div>
 
-        <div style={{ ...S.card, textAlign: 'left', marginBottom: '20px' }}>
+        <div className="book-card-responsive" style={{ ...S.card, textAlign: 'left', marginBottom: '20px' }}>
           {[
             { label: 'Booking ID', value: `#${bookingRef.id.slice(0, 8).toUpperCase()}`, gold: true },
             { label: 'Service', value: bookingLabel },
@@ -606,17 +606,17 @@ export default function Book() {
             { label: 'Payment', value: getPaymentModeLabel(bookingRef.paymentMode || paymentMode) },
             { label: 'Address', value: form.bookingType === 'home' ? form.address : null },
           ].filter(row => row.value).map(row => (
-            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-              <span style={{ color: 'var(--muted)', fontSize: '13px' }}>{row.label}</span>
-              <span style={{ color: row.gold ? 'var(--accent)' : 'var(--text)', fontSize: '13px', fontWeight: row.gold ? 700 : 500, fontFamily: row.gold ? '"DM Mono",monospace' : 'inherit' }}>{row.value}</span>
+            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--muted)', fontSize: '13px', flexShrink: 0 }}>{row.label}</span>
+              <span style={{ color: row.gold ? 'var(--accent)' : 'var(--text)', fontSize: '13px', fontWeight: row.gold ? 800 : 600, fontFamily: row.gold ? '"DM Mono",monospace' : 'inherit', textAlign: 'right', wordBreak: 'break-word' }}>{row.value}</span>
             </div>
           ))}
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
-          <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="btn" style={{ background: '#25D366', color: '#fff', padding: '12px 24px' }}><MessageCircle size={16} /> Send to WhatsApp</a>
-          <button onClick={() => navigate('/my-bookings')} className="btn btn-primary">View My Bookings</button>
-          <button onClick={() => { setDone(false); setStep(1); setForm(p => ({ ...p, slot: '' })) }} className="btn btn-secondary">Book Another</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '380px', margin: '0 auto', paddingBottom: '36px' }}>
+          <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="btn" style={{ background: '#25D366', color: '#fff', padding: '12px 20px', justifyContent: 'center', fontWeight: 700 }}><MessageCircle size={16} /> Send to WhatsApp</a>
+          <button onClick={() => navigate('/my-bookings')} className="btn btn-primary" style={{ padding: '12px 20px', justifyContent: 'center' }}>View My Bookings</button>
+          <button onClick={() => { setDone(false); setStep(1); setForm(p => ({ ...p, slot: '' })) }} className="btn btn-secondary" style={{ padding: '10px 20px', justifyContent: 'center' }}>Book Another</button>
         </div>
       </div>
     </div>
@@ -629,29 +629,29 @@ export default function Book() {
           <Toast message={bookingToast} type="success" onClose={() => setBookingToast('')} />
         </div>
       )}
-      <div ref={bookingTopRef} style={S.wrap}>
-        <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '32px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Book Appointment</h1>
-        <p style={{ color: 'var(--muted)', marginBottom: '28px', fontSize: '14px' }}>Fill the details below to schedule your visit</p>
+      <div ref={bookingTopRef} className="book-page-wrap" style={S.wrap}>
+        <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '22px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>Book Appointment</h1>
+        <p style={{ color: 'var(--muted)', marginBottom: '16px', fontSize: '12.5px' }}>Fill the details below to schedule your visit</p>
         {isBlocked && (
-          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', fontSize: '13px', padding: '12px 14px', borderRadius: '12px', marginBottom: '18px' }}>
+          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', fontSize: '13px', padding: '12px 14px', borderRadius: '12px', marginBottom: '16px' }}>
             Your account is blocked from creating new bookings. You can still log in and view your account.
           </div>
         )}
 
         {/* Steps */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '28px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '18px', flexWrap: 'wrap' }}>
           {[{ n: 1, label: 'Service' }, { n: 2, label: 'Pet Details' }, { n: 3, label: 'Date & Time' }].map((s, i, arr) => (
-            <div key={s.n} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                <div style={S.stepNum(s.n)}>{step > s.n ? <CheckCircle size={16} /> : s.n}</div>
+            <div key={s.n} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                <div style={S.stepNum(s.n)}>{step > s.n ? <CheckCircle size={13} /> : s.n}</div>
                 <span style={{ fontSize: '10px', color: step === s.n ? 'var(--accent)' : 'var(--muted)', fontWeight: step === s.n ? 700 : 400 }}>{s.label}</span>
               </div>
-              {i < arr.length - 1 && <div style={{ width: '32px', height: '2px', background: step > s.n ? 'var(--accent)' : 'var(--border)', borderRadius: '1px', marginBottom: '16px' }} />}
+              {i < arr.length - 1 && <div style={{ width: '24px', height: '2px', background: step > s.n ? 'var(--accent)' : 'var(--border)', borderRadius: '1px', marginBottom: '14px' }} />}
             </div>
           ))}
         </div>
 
-        <div className={step === 1 ? 'book-step-one' : undefined} style={step === 1 ? undefined : S.card}>
+        <div className={step === 1 ? 'book-step-one' : 'book-card-responsive'} style={step === 1 ? undefined : S.card}>
           {/* Step 1 - Service */}
           {step === 1 && (
             <div className="book-step-one-inner">
@@ -763,36 +763,101 @@ export default function Book() {
                     <Link to="/my-pets" style={{ color: 'var(--accent)', fontSize: '12px', fontWeight: 700, textDecoration: 'none' }}>Manage pets</Link>
                   </div>
                   {pets.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
                       {pets.map(pet => {
                         const sel = selectedPetId === pet.id
                         return (
-                          <button key={pet.id} onClick={() => applyPet(pet)}
+                          <button
+                            key={pet.id}
+                            type="button"
+                            onClick={() => applyPet(pet)}
                             style={{
-                              display: 'flex', alignItems: 'center', gap: '10px',
-                              padding: '10px', borderRadius: '12px', textAlign: 'left', cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '8px 10px',
+                              borderRadius: '12px',
+                              textAlign: 'left',
+                              cursor: 'pointer',
                               border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
                               background: sel ? 'var(--accent-bg)' : 'var(--surface)',
-                              transition: 'all 0.15s',
+                              transition: 'all 0.15s ease',
+                              minWidth: 0,
                             }}
                           >
                             {pet.photoUrl ? (
-                              <img src={pet.photoUrl} alt={pet.name} style={{ width: '44px', height: '44px', borderRadius: '12px', objectFit: 'cover', flexShrink: 0 }} />
+                              <img
+                                src={pet.photoUrl}
+                                alt={pet.name}
+                                style={{
+                                  width: '36px',
+                                  height: '36px',
+                                  borderRadius: '50%',
+                                  objectFit: 'cover',
+                                  border: `1px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
+                                  flexShrink: 0,
+                                }}
+                              />
                             ) : (
-                              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><PawPrint size={18} /></div>
+                              <div
+                                style={{
+                                  width: '36px',
+                                  height: '36px',
+                                  borderRadius: '50%',
+                                  background: 'var(--card)',
+                                  border: `1px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: 'var(--accent)',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <PawPrint size={16} />
+                              </div>
                             )}
                             <div style={{ minWidth: 0, flex: 1 }}>
-                              <div style={{ color: sel ? 'var(--accent)' : 'var(--text)', fontSize: '13px', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pet.name}</div>
-                              <div style={{ color: 'var(--muted)', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pet.type}{pet.breed ? ` - ${pet.breed}` : ''}</div>
+                              <div
+                                style={{
+                                  color: sel ? 'var(--accent)' : 'var(--text)',
+                                  fontSize: '12.5px',
+                                  fontWeight: 800,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {pet.name}
+                              </div>
+                              <div
+                                style={{
+                                  color: 'var(--muted)',
+                                  fontSize: '10.5px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {pet.breed || pet.type}
+                              </div>
                             </div>
-                            <div style={{
-                              width: '20px', height: '20px', borderRadius: '6px', flexShrink: 0,
-                              border: `2px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
-                              background: sel ? 'var(--accent)' : 'transparent',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              color: '#000', fontWeight: 700, fontSize: '11px',
-                            }}>
-                              {sel ? <CheckCircle size={13} /> : ''}
+                            <div
+                              style={{
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '50%',
+                                flexShrink: 0,
+                                border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
+                                background: sel ? 'var(--accent)' : 'transparent',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#000',
+                                fontWeight: 700,
+                                fontSize: '10px',
+                              }}
+                            >
+                              {sel ? <CheckCircle size={12} /> : ''}
                             </div>
                           </button>
                         )
@@ -902,10 +967,29 @@ export default function Book() {
                 {visitOptions.length === 0 ? (
                   <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', borderRadius: '12px', padding: '12px', fontSize: '13px' }}>No appointments are available for this date.</div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
                     {visitOptions.map(option => (
-                      <button key={option.type} type="button" onClick={() => setForm(p => ({ ...p, bookingType: option.type, slot: '' }))}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', borderRadius: '12px', cursor: 'pointer', border: `1.5px solid ${form.bookingType === option.type ? 'var(--accent)' : 'var(--border)'}`, background: form.bookingType === option.type ? 'var(--accent-bg)' : 'var(--surface)', color: form.bookingType === option.type ? 'var(--accent)' : 'var(--text)', fontWeight: 700 }}>
+                      <button
+                        key={option.type}
+                        type="button"
+                        onClick={() => setForm(p => ({ ...p, bookingType: option.type, slot: '' }))}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px',
+                          padding: '12px 10px',
+                          borderRadius: '12px',
+                          cursor: 'pointer',
+                          border: `1.5px solid ${form.bookingType === option.type ? 'var(--accent)' : 'var(--border)'}`,
+                          background: form.bookingType === option.type ? 'var(--accent-bg)' : 'var(--surface)',
+                          color: form.bookingType === option.type ? 'var(--accent)' : 'var(--text)',
+                          fontWeight: 700,
+                          fontSize: '13px',
+                          whiteSpace: 'nowrap',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
                         {option.icon} {option.label}
                       </button>
                     ))}
@@ -965,7 +1049,7 @@ export default function Book() {
 
               <div style={{ marginBottom: '20px' }}>
                 <label style={S.label}><Clock size={11} style={{ display: 'inline', marginRight: '4px' }} /> Time Slot *</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '8px' }}>
+                <div className="book-slot-grid" style={{ marginTop: '8px' }}>
                   {availableSlots.map(slot => {
                     const isPast = isToday && !isFutureSlotForDate(form.date, slot)
                     const isBooked = bookedSlots.includes(slot)

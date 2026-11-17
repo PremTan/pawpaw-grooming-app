@@ -143,7 +143,11 @@ export default function AdminTeam() {
   const [searchQuery, setSearchQuery] = useState('')
   const [roleTab, setRoleTab] = useState('All')
   const [memberShowcase, setMemberShowcase] = useState({})
-  const [expandedShowcaseMember, setExpandedShowcaseMember] = useState(null)
+  const [editingShowcaseMemberId, setEditingShowcaseMemberId] = useState(null)
+  const editingShowcaseMember = useMemo(
+    () => members.find(m => m.id === editingShowcaseMemberId) || null,
+    [members, editingShowcaseMemberId]
+  )
 
   const adminPhoto = profile?.photoURL || user?.photoURL || ''
   const adminName = profile?.name || profile?.displayName || user?.displayName || 'Prem Tandalekar'
@@ -2086,230 +2090,104 @@ Your password has been reset by Admin. Please tap the link below to set your new
                       showOnHome: m.showOnHome === true,
                       order: m.order !== undefined && m.order !== null ? String(m.order) : (m.homeOrder !== undefined && m.homeOrder !== null ? String(m.homeOrder) : ''),
                     }
-                    const isExpanded = expandedShowcaseMember === m.id
 
                     return (
                       <div
                         key={m.id}
                         style={{
                           borderRadius: '12px',
-                          border: isExpanded ? '1.5px solid var(--accent)' : '1px solid var(--border)',
-                          background: isExpanded ? 'var(--accent-bg)' : 'var(--surface)',
-                          overflow: 'hidden',
-                          transition: 'all 0.15s ease',
+                          border: '1px solid var(--border)',
+                          background: 'var(--surface)',
+                          padding: '10px 14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '10px',
+                          flexWrap: 'wrap',
                         }}
                       >
-                        {/* Member Header Bar */}
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '10px 14px',
-                            gap: '10px',
-                            flexWrap: 'wrap',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '160px' }}>
-                            <div style={{ width: '36px', height: '36px', borderRadius: '50%', overflow: 'hidden', background: 'var(--border)', flexShrink: 0 }}>
-                              {m.photoUrl ? (
-                                <img src={m.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              ) : (
-                                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800, color: 'var(--muted)' }}>
-                                  {(m.name || 'T')[0]}
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <strong style={{ fontSize: '13.5px', color: 'var(--text)' }}>{m.name}</strong>
-                                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#B45309', background: '#FFFBEB', padding: '1px 6px', borderRadius: '4px', border: '1px solid #FCD34D' }}>
-                                  ⭐ {sc.rating || '5.0'}
-                                </span>
-                              </div>
-                              <small style={{ fontSize: '11px', color: 'var(--muted)' }}>{m.role || 'Staff'}</small>
-                            </div>
+                        {/* Member Identity */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '150px' }}>
+                          <div style={{ width: '38px', height: '38px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: '1.5px solid var(--accent-border)' }}>
+                            <Avatar person={m} size={18} />
                           </div>
-
-                          {/* Quick Toggles */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--text)', cursor: 'pointer', margin: 0 }}>
-                              <input
-                                type="checkbox"
-                                checked={sc.showOnWeb !== false}
-                                onChange={e => updateMemberShowcase(m.id, 'showOnWeb', e.target.checked)}
-                                style={{ width: '15px', height: '15px', accentColor: 'var(--accent)', cursor: 'pointer' }}
-                              />
-                              <span>On Web</span>
-                            </label>
-
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700, color: 'var(--text)', cursor: 'pointer', margin: 0 }}>
-                              <input
-                                type="checkbox"
-                                checked={sc.showOnHome === true}
-                                onChange={e => updateMemberShowcase(m.id, 'showOnHome', e.target.checked)}
-                                style={{ width: '15px', height: '15px', accentColor: 'var(--accent)', cursor: 'pointer' }}
-                              />
-                              <span>⭐ Home</span>
-                            </label>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)' }}>Order:</span>
-                              <input
-                                type="number"
-                                min="1"
-                                placeholder="1"
-                                value={sc.order || ''}
-                                onChange={e => updateMemberShowcase(m.id, 'order', e.target.value)}
-                                disabled={!sc.showOnHome}
-                                style={{
-                                  width: '46px',
-                                  padding: '3px 6px',
-                                  fontSize: '11.5px',
-                                  textAlign: 'center',
-                                  borderRadius: '6px',
-                                  border: '1px solid var(--border)',
-                                  background: sc.showOnHome ? 'var(--card)' : '#f3f4f6',
-                                  color: 'var(--text)',
-                                }}
-                                title="Home screen display sequence"
-                              />
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <strong style={{ fontSize: '13.5px', color: 'var(--text)' }}>{m.name}</strong>
+                              <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#B45309', background: '#FFFBEB', padding: '1px 6px', borderRadius: '4px', border: '1px solid #FCD34D' }}>
+                                ⭐ {sc.rating || '5.0'}
+                              </span>
                             </div>
-
-                            <button
-                              type="button"
-                              onClick={() => setExpandedShowcaseMember(isExpanded ? null : m.id)}
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: '6px',
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                background: isExpanded ? 'var(--accent)' : 'var(--card)',
-                                color: isExpanded ? '#ffffff' : 'var(--text)',
-                                border: '1px solid var(--accent-border)',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                              }}
-                            >
-                              {isExpanded ? 'Hide Details ▲' : 'Showcase Details ▼'}
-                            </button>
+                            <small style={{ fontSize: '11px', color: 'var(--muted)' }}>{m.role || 'Staff'}</small>
                           </div>
                         </div>
 
-                        {/* Expandable Details Editor */}
-                        {isExpanded && (
-                          <div style={{ padding: '14px', borderTop: '1px solid var(--accent-border)', background: 'var(--card)' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '10px' }}>
-                              <div>
-                                <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
-                                  ⭐ Rating Score
-                                </label>
-                                <input
-                                  className="input"
-                                  value={sc.rating || ''}
-                                  onChange={e => updateMemberShowcase(m.id, 'rating', e.target.value)}
-                                  placeholder="5.0"
-                                  style={{ fontSize: '12px', padding: '6px 10px' }}
-                                />
-                              </div>
+                        {/* Quick Toggles & Edit Button */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: 'var(--text)', cursor: 'pointer', margin: 0 }}>
+                            <input
+                              type="checkbox"
+                              checked={sc.showOnWeb !== false}
+                              onChange={e => updateMemberShowcase(m.id, 'showOnWeb', e.target.checked)}
+                              style={{ width: '15px', height: '15px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+                            />
+                            <span>On Web</span>
+                          </label>
 
-                              <div>
-                                <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
-                                  Badge Text
-                                </label>
-                                <input
-                                  className="input"
-                                  value={sc.badgeText || ''}
-                                  onChange={e => updateMemberShowcase(m.id, 'badgeText', e.target.value)}
-                                  placeholder="Verified"
-                                  style={{ fontSize: '12px', padding: '6px 10px' }}
-                                />
-                              </div>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 700, color: 'var(--text)', cursor: 'pointer', margin: 0 }}>
+                            <input
+                              type="checkbox"
+                              checked={sc.showOnHome === true}
+                              onChange={e => updateMemberShowcase(m.id, 'showOnHome', e.target.checked)}
+                              style={{ width: '15px', height: '15px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+                            />
+                            <span>⭐ Home</span>
+                          </label>
 
-                              <div style={{ display: 'flex', alignItems: 'center', paddingTop: '16px' }}>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--text)', cursor: 'pointer', margin: 0 }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={sc.verified !== false}
-                                    onChange={e => updateMemberShowcase(m.id, 'verified', e.target.checked)}
-                                    style={{ width: '15px', height: '15px', accentColor: 'var(--accent)', cursor: 'pointer' }}
-                                  />
-                                  <span>Show "✓ Verified" Badge</span>
-                                </label>
-                              </div>
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginBottom: '10px' }}>
-                              <div>
-                                <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
-                                  Tagline / Specialty Title
-                                </label>
-                                <input
-                                  className="input"
-                                  value={sc.tagline || ''}
-                                  onChange={e => updateMemberShowcase(m.id, 'tagline', e.target.value)}
-                                  placeholder="e.g. Dedicated Specialist"
-                                  style={{ fontSize: '12px', padding: '6px 10px' }}
-                                />
-                              </div>
-                              <div>
-                                <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
-                                  Experience Subtitle
-                                </label>
-                                <input
-                                  className="input"
-                                  value={sc.experience || ''}
-                                  onChange={e => updateMemberShowcase(m.id, 'experience', e.target.value)}
-                                  placeholder="e.g. 3+ Years Experience"
-                                  style={{ fontSize: '12px', padding: '6px 10px' }}
-                                />
-                              </div>
-                            </div>
-
-                            <div style={{ marginBottom: '10px' }}>
-                              <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
-                                Customer Quote / Bio Description
-                              </label>
-                              <textarea
-                                className="input"
-                                rows={2}
-                                value={sc.bio || ''}
-                                onChange={e => updateMemberShowcase(m.id, 'bio', e.target.value)}
-                                placeholder="e.g. Specializes in active leash walks, positive reinforcement, and safe hydration breaks."
-                                style={{ resize: 'vertical', minHeight: '48px', fontSize: '12px', padding: '6px 10px' }}
-                              />
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
-                              <div>
-                                <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
-                                  Specialty Skill Chips (Comma-separated)
-                                </label>
-                                <input
-                                  className="input"
-                                  value={sc.skills || ''}
-                                  onChange={e => updateMemberShowcase(m.id, 'skills', e.target.value)}
-                                  placeholder="e.g. Leash Training, GPS Tracked, Hydration Care"
-                                  style={{ fontSize: '12px', padding: '6px 10px' }}
-                                />
-                              </div>
-                              <div>
-                                <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
-                                  Booking Button Label (Optional)
-                                </label>
-                                <input
-                                  className="input"
-                                  value={sc.bookingButtonText || ''}
-                                  onChange={e => updateMemberShowcase(m.id, 'bookingButtonText', e.target.value)}
-                                  placeholder="e.g. Book Dog Walking"
-                                  style={{ fontSize: '12px', padding: '6px 10px' }}
-                                />
-                              </div>
-                            </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)' }}>Order:</span>
+                            <input
+                              type="number"
+                              min="1"
+                              placeholder="1"
+                              value={sc.order || ''}
+                              onChange={e => updateMemberShowcase(m.id, 'order', e.target.value)}
+                              disabled={!sc.showOnHome}
+                              style={{
+                                width: '44px',
+                                padding: '3px 6px',
+                                fontSize: '11.5px',
+                                textAlign: 'center',
+                                borderRadius: '6px',
+                                border: '1px solid var(--border)',
+                                background: sc.showOnHome ? 'var(--card)' : '#f3f4f6',
+                                color: 'var(--text)',
+                              }}
+                              title="Home screen display sequence"
+                            />
                           </div>
-                        )}
+
+                          <button
+                            type="button"
+                            onClick={() => setEditingShowcaseMemberId(m.id)}
+                            style={{
+                              padding: '5px 12px',
+                              borderRadius: '7px',
+                              fontSize: '11.5px',
+                              fontWeight: 700,
+                              background: 'var(--card)',
+                              color: 'var(--accent)',
+                              border: '1.5px solid var(--accent-border)',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                            }}
+                          >
+                            <Edit3 size={12} /> Edit Details
+                          </button>
+                        </div>
                       </div>
                     )
                   })}
@@ -2328,6 +2206,299 @@ Your password has been reset by Admin. Please tap the link below to set your new
           </div>
         </div>
       )}
+
+      {/* MODAL: Dedicated Full-Width Member Showcase Details Editor */}
+      {editingShowcaseMember && (() => {
+        const m = editingShowcaseMember
+        const skillsStr = Array.isArray(m.skills) ? m.skills.join(', ') : (m.skills || '')
+        const sc = memberShowcase[m.id] || {
+          rating: m.rating || '5.0',
+          verified: m.verified !== false,
+          badgeText: m.badgeText || 'Verified',
+          tagline: m.tagline || 'Dedicated Specialist',
+          experience: m.experience || '3+ Years Experience',
+          bio: m.bio || getRoleFallbackBio(m.role),
+          skills: skillsStr || getRoleFallbackSkills(m.role),
+          bookingButtonText: m.bookingButtonText || getRoleFallbackActionLabel(m.role),
+          showOnWeb: m.showOnWeb !== false,
+          showOnHome: m.showOnHome === true,
+          order: m.order !== undefined && m.order !== null ? String(m.order) : (m.homeOrder !== undefined && m.homeOrder !== null ? String(m.homeOrder) : ''),
+        }
+
+        return (
+          <div
+            className="modal-overlay"
+            style={{ zIndex: 1200 }}
+            onClick={() => setEditingShowcaseMemberId(null)}
+          >
+            <div
+              className="modal-box"
+              style={{
+                maxWidth: '580px',
+                width: '100%',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                padding: '24px',
+                boxShadow: '0 24px 48px rgba(0,0,0,0.3)',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderBottom: '1px solid var(--border)',
+                  paddingBottom: '14px',
+                  marginBottom: '18px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    style={{
+                      width: '46px',
+                      height: '46px',
+                      borderRadius: '50%',
+                      overflow: 'hidden',
+                      border: '2px solid var(--accent-border)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Avatar person={m} size={22} />
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: '17px', fontWeight: 800, margin: '0 0 2px', color: 'var(--text)' }}>
+                      {m.name}
+                    </h2>
+                    <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted)' }}>
+                      {m.role || 'Staff'} • Website Showcase & Ratings
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingShowcaseMemberId(null)}
+                  className="icon-btn"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--muted)',
+                    padding: '6px',
+                  }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Quick Visibility Bar */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 14px',
+                    background: 'var(--surface)',
+                    borderRadius: '10px',
+                    border: '1px solid var(--border)',
+                    flexWrap: 'wrap',
+                    gap: '10px',
+                  }}
+                >
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600, color: 'var(--text)', cursor: 'pointer', margin: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={sc.showOnWeb !== false}
+                      onChange={e => updateMemberShowcase(m.id, 'showOnWeb', e.target.checked)}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+                    />
+                    <span>Show on Public Website</span>
+                  </label>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 700, color: 'var(--text)', cursor: 'pointer', margin: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={sc.showOnHome === true}
+                        onChange={e => updateMemberShowcase(m.id, 'showOnHome', e.target.checked)}
+                        style={{ width: '16px', height: '16px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+                      />
+                      <span>⭐ Home Screen</span>
+                    </label>
+                    {sc.showOnHome && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Seq:</span>
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="1"
+                          value={sc.order || ''}
+                          onChange={e => updateMemberShowcase(m.id, 'order', e.target.value)}
+                          style={{
+                            width: '44px',
+                            padding: '3px 6px',
+                            fontSize: '12px',
+                            textAlign: 'center',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border)',
+                            background: 'var(--card)',
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Rating & Badge Text */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                      ⭐ Rating Score
+                    </label>
+                    <input
+                      className="input"
+                      value={sc.rating || ''}
+                      onChange={e => updateMemberShowcase(m.id, 'rating', e.target.value)}
+                      placeholder="5.0"
+                      style={{ fontSize: '13px', padding: '8px 12px' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                      Badge Text
+                    </label>
+                    <input
+                      className="input"
+                      value={sc.badgeText || ''}
+                      onChange={e => updateMemberShowcase(m.id, 'badgeText', e.target.value)}
+                      placeholder="Verified"
+                      style={{ fontSize: '13px', padding: '8px 12px' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Verified Badge Checkbox */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: 'var(--text)', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={sc.verified !== false}
+                    onChange={e => updateMemberShowcase(m.id, 'verified', e.target.checked)}
+                    style={{ width: '16px', height: '16px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+                  />
+                  <span>Show "✓ Verified" Badge on Card</span>
+                </label>
+
+                {/* Tagline & Experience */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                      Tagline / Specialty Title
+                    </label>
+                    <input
+                      className="input"
+                      value={sc.tagline || ''}
+                      onChange={e => updateMemberShowcase(m.id, 'tagline', e.target.value)}
+                      placeholder="e.g. Dedicated Specialist"
+                      style={{ fontSize: '13px', padding: '8px 12px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                      Experience Subtitle
+                    </label>
+                    <input
+                      className="input"
+                      value={sc.experience || ''}
+                      onChange={e => updateMemberShowcase(m.id, 'experience', e.target.value)}
+                      placeholder="e.g. 3+ Years Experience"
+                      style={{ fontSize: '13px', padding: '8px 12px' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Customer Quote / Bio Description */}
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                    Customer Quote / Bio Description
+                  </label>
+                  <textarea
+                    className="input"
+                    rows={3}
+                    value={sc.bio || ''}
+                    onChange={e => updateMemberShowcase(m.id, 'bio', e.target.value)}
+                    placeholder="e.g. Specializes in active leash walks, positive reinforcement, and safe hydration breaks."
+                    style={{
+                      width: '100%',
+                      resize: 'vertical',
+                      minHeight: '85px',
+                      fontSize: '13px',
+                      lineHeight: '1.45',
+                      padding: '10px 12px',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  <small style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginTop: '4px' }}>
+                    Shown in quotes on the public website and team cards.
+                  </small>
+                </div>
+
+                {/* Specialty Skill Chips */}
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                    Specialty Skill Chips (Comma-separated)
+                  </label>
+                  <input
+                    className="input"
+                    value={sc.skills || ''}
+                    onChange={e => updateMemberShowcase(m.id, 'skills', e.target.value)}
+                    placeholder="e.g. Leash Training, GPS Tracked, Hydration Care"
+                    style={{ width: '100%', fontSize: '13px', padding: '8px 12px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                {/* Booking Button Label */}
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                    Booking Button Label (Optional)
+                  </label>
+                  <input
+                    className="input"
+                    value={sc.bookingButtonText || ''}
+                    onChange={e => updateMemberShowcase(m.id, 'bookingButtonText', e.target.value)}
+                    placeholder="e.g. Book Dog Walking"
+                    style={{ width: '100%', fontSize: '13px', padding: '8px 12px', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '10px',
+                  marginTop: '20px',
+                  paddingTop: '14px',
+                  borderTop: '1px solid var(--border)',
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => setEditingShowcaseMemberId(null)}
+                  style={{ minWidth: '100px' }}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

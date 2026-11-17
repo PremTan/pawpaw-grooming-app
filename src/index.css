@@ -13291,31 +13291,31 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 }
 
 .book-section-head {
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 
 .book-section-head h2 {
   color: #11100e;
-  font-size: 26px;
-  line-height: 1.15;
+  font-size: 17px;
+  line-height: 1.25;
   font-weight: 800;
-  margin: 0 0 8px;
+  margin: 0 0 3px;
   letter-spacing: 0;
 }
 
 .book-section-head p {
   color: #777068;
-  font-size: 16px;
+  font-size: 12.5px;
   line-height: 1.35;
   margin: 0;
 }
 
 .book-section-head-compact {
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .book-section-head-compact h2 {
-  font-size: 25px;
+  font-size: 16.5px;
 }
 
 .book-service-grid {
@@ -13615,6 +13615,43 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 
   .book-selection-copy span {
     font-size: 14px;
+  }
+}
+
+/* Booking Step Responsive & Spacious Layout */
+.book-page-wrap {
+  padding: 24px 20px 80px;
+}
+.book-card-responsive {
+  padding: 28px 24px;
+}
+.book-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.book-slot-grid .slot-btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .book-page-wrap {
+    padding: 16px 12px 80px !important;
+  }
+  .book-card-responsive {
+    padding: 18px 14px !important;
+    border-radius: 16px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .book-slot-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 6px !important;
+  }
+  .book-slot-grid .slot-btn {
+    font-size: 11.5px !important;
+    padding: 9px 4px !important;
   }
 }
 
