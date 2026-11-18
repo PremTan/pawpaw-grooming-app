@@ -3538,12 +3538,33 @@ export default function MyBookings() {
 
                 {/* Row 2: Status badge and Request ID */}
                 <div className="details-header-sub-row">
-                  <span className={`boarding-status-pill ${selectedWalking.status || 'pending'}`}>
-                    {selectedWalking.status === 'completed' && <CheckCircle2 size={13} />}
-                    {selectedWalking.status === 'confirmed' && <Check size={13} />}
-                    {selectedWalking.status === 'cancelled' && <X size={13} />}
-                    <span>{statusLabel(selectedWalking.status)}</span>
-                  </span>
+                  {(() => {
+                    const isMulti = Boolean(selectedWalking.planType && selectedWalking.planType !== 'single')
+                    const total = Number(selectedWalking.totalWalks || (selectedWalking.planType === 'monthly' ? (selectedWalking.frequency === 'twice_daily' ? 52 : 26) : (selectedWalking.frequency === 'twice_daily' ? 14 : 7)))
+                    const completed = Math.max(Number(selectedWalking.completedWalks || 0), (Array.isArray(selectedWalking.walkReports) ? selectedWalking.walkReports.length : (selectedWalking.walkCompletedAt || selectedWalking.walkReport ? 1 : 0)))
+                    const isFinished = isMulti ? completed >= total : selectedWalking.status === 'completed'
+                    const displayStatus = isMulti && !isFinished
+                      ? (selectedWalking.status === 'in_progress' ? 'in_progress' : 'confirmed')
+                      : (selectedWalking.status || 'pending')
+                    const displayStatusLabel = isMulti && !isFinished
+                      ? (selectedWalking.status === 'in_progress' ? 'Walking Now' : `Active Pass (${completed}/${total} Done)`)
+                      : statusLabel(selectedWalking.status)
+
+                    return (
+                      <span className={`boarding-status-pill ${displayStatus}`}>
+                        {displayStatus === 'completed' && <CheckCircle2 size={13} />}
+                        {displayStatus === 'confirmed' && <Check size={13} />}
+                        {displayStatus === 'cancelled' && <X size={13} />}
+                        {displayStatus === 'in_progress' && <Footprints size={13} />}
+                        <span>{displayStatusLabel}</span>
+                      </span>
+                    )
+                  })()}
+                  {selectedWalking.planType && selectedWalking.planType !== 'single' && (
+                    <span className="boarding-status-pill" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 800 }}>
+                      {selectedWalking.planType === 'monthly' ? '🌟 Monthly Pass' : '📦 7-Day Pass'}
+                    </span>
+                  )}
                   {selectedWalking.hasEmergency && (
                     <span className="boarding-status-pill" style={{ background: '#fee2e2', color: '#dc2626', border: '1.5px solid #ef4444', fontWeight: 900 }}>
                       🚨 EMERGENCY SOS ACTIVE
@@ -3565,6 +3586,44 @@ export default function MyBookings() {
 
               {/* Modal Scrollable Body */}
               <div className="details-modal-body">
+                {/* 📦 Multi-Day Pass Progress Banner */}
+                {selectedWalking.planType && selectedWalking.planType !== 'single' && (() => {
+                  const total = Number(selectedWalking.totalWalks || (selectedWalking.planType === 'monthly' ? (selectedWalking.frequency === 'twice_daily' ? 52 : 26) : (selectedWalking.frequency === 'twice_daily' ? 14 : 7)))
+                  const completed = Math.max(Number(selectedWalking.completedWalks || 0), (Array.isArray(selectedWalking.walkReports) ? selectedWalking.walkReports.length : (selectedWalking.walkCompletedAt || selectedWalking.walkReport ? 1 : 0)))
+                  const percent = Math.min(100, Math.round((completed / total) * 100))
+                  const planTitle = selectedWalking.planType === 'monthly' ? 'Monthly Pass' : '7-Day Pass'
+                  const remaining = Math.max(0, total - completed)
+
+                  return (
+                    <div
+                      style={{
+                        background: 'rgba(192, 136, 32, 0.06)',
+                        border: '1.5px solid rgba(192, 136, 32, 0.25)',
+                        borderRadius: '16px',
+                        padding: '12px 16px',
+                        marginBottom: '14px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Package size={15} color="var(--accent)" />
+                          {planTitle} Progress:
+                          <span style={{ color: 'var(--accent)' }}>{completed}/{total} Walks Done</span>
+                        </span>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', background: 'var(--card)', padding: '2px 8px', borderRadius: '999px', border: '1px solid var(--border)' }}>
+                          {percent}%
+                        </span>
+                      </div>
+                      <div style={{ width: '100%', height: '8px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden', marginBottom: '8px' }}>
+                        <div style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent) 0%, #10b981 100%)', borderRadius: '999px', transition: 'width 0.3s ease' }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', color: 'var(--muted)', flexWrap: 'wrap', gap: '6px' }}>
+                        <span>Remaining: <strong style={{ color: 'var(--text)' }}>{remaining} Walks</strong></span>
+                        <span>Valid until: <strong style={{ color: 'var(--text)' }}>{selectedWalking.estimatedEndDate || selectedWalking.date}</strong></span>
+                      </div>
+                    </div>
+                  )
+                })()}
                 {/* 🚨 High-Priority Emergency Notice Banner */}
                 {selectedWalking.hasEmergency && (
                   <div style={{ background: '#fee2e2', border: '2px solid #ef4444', borderRadius: '16px', padding: '16px', marginBottom: '14px' }}>
@@ -3885,11 +3944,14 @@ export default function MyBookings() {
                     {getWalkReportsList(selectedWalking).length > 0 && (() => {
                       const reports = getWalkReportsList(selectedWalking)
                       const rep = reports[detailsReportIndex] || reports[0]
+                      const isMulti = Boolean(selectedWalking.planType && selectedWalking.planType !== 'single')
+                      const totalWalks = Number(selectedWalking.totalWalks || (selectedWalking.planType === 'monthly' ? (selectedWalking.frequency === 'twice_daily' ? 52 : 26) : (selectedWalking.frequency === 'twice_daily' ? 14 : 7)))
+
                       return (
                         <div style={{ marginTop: '14px', background: 'var(--surface, #FAF6EE)', border: '1.5px solid var(--border, #EADBBE)', borderRadius: '16px', padding: '14px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
                             <span style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              🐾 Walk Report Card
+                              🐾 Walk Report Card {isMulti ? `— Walk #${rep.walkIndex || (detailsReportIndex + 1)} of ${totalWalks}` : ''}
                             </span>
                             <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>
                               {rep.walkerName ? `by ${rep.walkerName}` : 'Completed Session'}
@@ -3916,7 +3978,7 @@ export default function MyBookings() {
                                     whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  Walk #{idx + 1} {r.walkerRating ? `⭐${r.walkerRating}` : ''}
+                                  Walk #{r.walkIndex || idx + 1} {r.date ? `(${r.date})` : ''} {r.walkerRating ? `⭐${r.walkerRating}` : ''}
                                 </button>
                               ))}
                             </div>

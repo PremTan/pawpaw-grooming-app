@@ -159,6 +159,7 @@ export default function WalkerPortal() {
 
   // In-app Toast popup state
   const [portalToast, setPortalToast] = useState(null)
+  const [expandedCardReports, setExpandedCardReports] = useState({})
 
   useEffect(() => {
     if (!portalToast) return
@@ -771,6 +772,9 @@ export default function WalkerPortal() {
             routeTrail: [initialPoint],
             walkDistanceMeters: 0,
             assignedWalkerStartedAt: serverTimestamp(),
+            walkActivities: { pee: 0, poo: 0, water: false, treats: 0 },
+            walkPhotos: [],
+            walkerNotes: '',
           }
 
           await updateDoc(doc(db, 'walkingBookings', booking.id), patch)
@@ -791,6 +795,10 @@ export default function WalkerPortal() {
           setRouteTrail([initialPoint])
           setCurrentGps({ lat, lng, accuracy })
           setTotalDistanceMeters(0)
+          setElapsedSeconds(0)
+          setActivities({ pee: 0, poo: 0, water: false, treats: 0 })
+          setWalkPhotos([])
+          setWalkerNotes('')
           lastTrailPointRef.current = initialPoint
           setActionLoading(false)
           setMainPortalTab('live') // Switch to live view immediately
@@ -805,9 +813,18 @@ export default function WalkerPortal() {
               walkStartedAt: serverTimestamp(),
               routeTrail: [],
               walkDistanceMeters: 0,
+              walkActivities: { pee: 0, poo: 0, water: false, treats: 0 },
+              walkPhotos: [],
+              walkerNotes: '',
             }
             await updateDoc(doc(db, 'walkingBookings', booking.id), patch)
             setActiveWalkId(booking.id)
+            setRouteTrail([])
+            setTotalDistanceMeters(0)
+            setElapsedSeconds(0)
+            setActivities({ pee: 0, poo: 0, water: false, treats: 0 })
+            setWalkPhotos([])
+            setWalkerNotes('')
             setMainPortalTab('live')
           }
           setActionLoading(false)
@@ -875,6 +892,9 @@ export default function WalkerPortal() {
         completedWalks: newCompleted,
         walkCompletedAt: serverTimestamp(),
         lastWalkCompletedAt: serverTimestamp(),
+        walkerArrivalStatus: 'idle',
+        routeTrail: [],
+        liveLocation: null,
         walkDurationSeconds: finalDuration,
         walkDistanceMeters: finalDistance,
         walkPace: finalPace,
@@ -1094,13 +1114,21 @@ export default function WalkerPortal() {
   // Reusable Walk Card Renderer
   const renderWalkCard = (w) => {
     const isThisActive = w.status === WALKING_STATUS.IN_PROGRESS
-    const isCompleted = w.status === WALKING_STATUS.COMPLETED
+    const isMulti = Boolean(w.planType && w.planType !== 'single')
+    const totalExpected = Number(w.totalWalks || (w.planType === 'monthly' ? (w.frequency === 'twice_daily' ? 52 : 26) : (w.frequency === 'twice_daily' ? 14 : 7)))
+    const completedCount = Math.max(Number(w.completedWalks || 0), (Array.isArray(w.walkReports) ? w.walkReports.length : (w.walkReport || w.walkCompletedAt ? 1 : 0)))
+    const isFullyFinished = !isMulti ? w.status === WALKING_STATUS.COMPLETED : (completedCount >= totalExpected)
+    const isCompleted = isFullyFinished
     const mapLink = w.mapPinUrl || (w.lat && w.lng ? `https://www.google.com/maps?q=${w.lat},${w.lng}` : '')
     const todayStr = new Date().toISOString().split('T')[0]
     const isSkippedToday = Array.isArray(w.skippedDates) && (
       w.skippedDates.includes(todayStr) ||
       w.skippedDates.includes(w.date || w.walkingDate)
     )
+    const allReports = Array.isArray(w.walkReports) && w.walkReports.length > 0
+      ? w.walkReports
+      : (w.walkReport ? [w.walkReport] : [])
+    const areReportsExpanded = Boolean(expandedCardReports[w.id])
 
     return (
       <div
@@ -1133,12 +1161,12 @@ export default function WalkerPortal() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-            <span className={`badge ${isSkippedToday ? 'badge-cancelled' : isThisActive ? 'badge-confirmed' : isCompleted ? 'badge-completed' : 'badge-pending'}`} style={{ fontSize: '11px' }}>
-              {isSkippedToday ? '⏸️ Skipped Today' : isThisActive ? '🟢 In Progress' : isCompleted ? 'Completed' : (WALKING_STATUS_LABELS[w.status] || 'Scheduled')}
+            <span className={`badge ${isSkippedToday ? 'badge-cancelled' : isThisActive ? 'badge-confirmed' : isCompleted ? 'badge-completed' : (isMulti && completedCount > 0 ? 'badge-confirmed' : 'badge-pending')}`} style={{ fontSize: '11px' }}>
+              {isSkippedToday ? '⏸️ Skipped Today' : isThisActive ? '🟢 In Progress' : isCompleted ? 'Completed' : (isMulti && completedCount > 0 ? `Active Pass (${completedCount}/${totalExpected} Done)` : (WALKING_STATUS_LABELS[w.status] || 'Scheduled'))}
             </span>
             {w.planType && w.planType !== 'single' && (
               <span className="badge" style={{ background: '#FFF9ED', color: '#B45309', border: '1px solid #FCD34D', fontSize: '10px', fontWeight: 800 }}>
-                {w.planType === 'monthly' ? '🌟 Monthly Pass' : '📦 7-Day Pass'} ({w.completedWalks || 0}/{w.totalWalks || (w.planType === 'monthly' ? 26 : 7)})
+                {w.planType === 'monthly' ? '🌟 Monthly Pass' : '📦 7-Day Pass'} ({completedCount}/{totalExpected})
               </span>
             )}
           </div>
@@ -1194,6 +1222,98 @@ export default function WalkerPortal() {
         {w.behaviorNotes && (
           <div style={{ fontSize: '11.5px', color: '#b45309', background: '#fef3c7', padding: '6px 10px', borderRadius: '8px', marginBottom: '12px' }}>
             <strong>⚠️ Note:</strong> {w.behaviorNotes}
+          </div>
+        )}
+
+        {/* 📋 Past Walk Reports (Expandable) */}
+        {allReports.length > 0 && (
+          <div style={{ marginBottom: '12px' }}>
+            <button
+              type="button"
+              onClick={() => setExpandedCardReports(prev => ({ ...prev, [w.id]: !prev[w.id] }))}
+              style={{
+                width: '100%',
+                background: areReportsExpanded ? 'rgba(192, 136, 32, 0.1)' : 'var(--surface, #F7F2E7)',
+                border: '1px solid var(--border, #F0EAE1)',
+                borderRadius: '10px',
+                padding: '7px 12px',
+                fontSize: '11.5px',
+                fontWeight: 700,
+                color: 'var(--accent, #C08820)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+              }}
+            >
+              <span>📋 Past Walk Reports ({allReports.length}{isMulti ? ` / ${totalExpected}` : ''})</span>
+              <span>{areReportsExpanded ? '▲ Hide' : '▼ View'}</span>
+            </button>
+
+            {areReportsExpanded && (
+              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {allReports.map((rep, idx) => (
+                  <div
+                    key={rep.id || idx}
+                    style={{
+                      background: '#fff',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: '10px',
+                      padding: '10px',
+                      fontSize: '11.5px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <strong style={{ color: 'var(--text, #221711)' }}>
+                        Walk #{rep.walkIndex || (idx + 1)}{isMulti ? ` of ${totalExpected}` : ''}
+                      </strong>
+                      <span style={{ color: 'var(--muted, #7E7067)', fontSize: '10.5px' }}>
+                        {rep.date || (rep.completedAt ? new Date(rep.completedAt).toLocaleDateString() : '')}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '6px' }}>
+                      <div style={{ background: '#EFF6FF', borderRadius: '6px', padding: '3px 2px', fontSize: '10px', color: '#1E40AF', fontWeight: 700 }}>
+                        💧 {rep.peeCount || 0} Pee
+                      </div>
+                      <div style={{ background: '#FEF3C7', borderRadius: '6px', padding: '3px 2px', fontSize: '10px', color: '#92400E', fontWeight: 700 }}>
+                        💩 {rep.pooCount || 0} Poo
+                      </div>
+                      <div style={{ background: '#ECFDF5', borderRadius: '6px', padding: '3px 2px', fontSize: '10px', color: '#065F46', fontWeight: 700 }}>
+                        🥤 {rep.waterGiven ? 'Yes' : 'No'}
+                      </div>
+                      <div style={{ background: '#FFFBEB', borderRadius: '6px', padding: '3px 2px', fontSize: '10px', color: '#78350F', fontWeight: 700 }}>
+                        🦴 {rep.treatCount || 0}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted, #7E7067)', fontSize: '11px', marginBottom: rep.notes ? '4px' : '0' }}>
+                      <span>⏱️ {formatDurationHuman(rep.durationSeconds || 0)}</span>
+                      <span>🚶‍♂️ {formatDistance(rep.distanceMeters || 0)}</span>
+                    </div>
+
+                    {rep.notes && (
+                      <div style={{ fontStyle: 'italic', color: 'var(--text, #221711)', background: 'var(--surface, #F7F2E7)', padding: '4px 8px', borderRadius: '6px', marginTop: '4px' }}>
+                        "{rep.notes}"
+                      </div>
+                    )}
+
+                    {Array.isArray(rep.photos) && rep.photos.length > 0 && (
+                      <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', marginTop: '6px' }}>
+                        {rep.photos.map((ph, pi) => (
+                          <img
+                            key={pi}
+                            src={ph}
+                            alt=""
+                            style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1413,7 +1533,11 @@ export default function WalkerPortal() {
                 }}
               >
                 <Play size={15} fill="currentColor" />
-                {activeWalkId ? 'Another Walk Is Currently Active' : 'Start Live GPS Walk'}
+                {activeWalkId
+                  ? 'Another Walk Is Currently Active'
+                  : isMulti
+                    ? `Start Live GPS Walk (Walk #${completedCount + 1} of ${totalExpected})`
+                    : 'Start Live GPS Walk'}
               </button>
             </div>
           )

@@ -448,11 +448,24 @@ ${portalUrl}`
         status: newStatus,
         updatedAt: serverTimestamp(),
       }
+      const isMulti = Boolean(booking.planType && booking.planType !== 'single')
+      const totalExpected = Number(booking.totalWalks || (booking.planType === 'monthly' ? (booking.frequency === 'twice_daily' ? 52 : 26) : (booking.frequency === 'twice_daily' ? 14 : 7)))
+      const currentCompleted = Math.max(Number(booking.completedWalks || 0), (Array.isArray(booking.walkReports) ? booking.walkReports.length : (booking.walkReport || booking.walkCompletedAt ? 1 : 0)))
+      const newCompleted = currentCompleted + 1
+      const isFullyFinished = !isMulti || (newCompleted >= totalExpected)
+
       if (newStatus === WALKING_STATUS.CONFIRMED) {
         patch.confirmedAt = serverTimestamp()
       }
-      if (newStatus === WALKING_STATUS.COMPLETED) {
+      if (newStatus === WALKING_STATUS.COMPLETED && isMulti && !isFullyFinished) {
+        patch.status = WALKING_STATUS.CONFIRMED
+        patch.completedWalks = newCompleted
+        patch.lastWalkCompletedAt = serverTimestamp()
+        patch.walkerArrivalStatus = 'idle'
+      } else if (newStatus === WALKING_STATUS.COMPLETED) {
+        patch.status = WALKING_STATUS.COMPLETED
         patch.completedAt = serverTimestamp()
+        patch.walkerArrivalStatus = 'idle'
       }
       if (newStatus === WALKING_STATUS.CANCELLED) {
         patch.cancelledAt = serverTimestamp()
@@ -2658,9 +2671,29 @@ ${portalUrl}`
                         {selectedBooking.breed || selectedBooking.petBreed}
                       </span>
                     )}
-                    <span className={`badge ${WALKING_STATUS_BADGES[selectedBooking.status] || 'badge-pending'}`}>
-                      {WALKING_STATUS_LABELS[selectedBooking.status] || selectedBooking.status}
-                    </span>
+                    {(() => {
+                      const isMulti = Boolean(selectedBooking.planType && selectedBooking.planType !== 'single')
+                      const total = Number(selectedBooking.totalWalks || (selectedBooking.planType === 'monthly' ? (selectedBooking.frequency === 'twice_daily' ? 52 : 26) : (selectedBooking.frequency === 'twice_daily' ? 14 : 7)))
+                      const completed = Math.max(Number(selectedBooking.completedWalks || 0), (Array.isArray(selectedBooking.walkReports) ? selectedBooking.walkReports.length : (selectedBooking.walkCompletedAt || selectedBooking.walkReport ? 1 : 0)))
+                      const isFinished = isMulti ? completed >= total : selectedBooking.status === WALKING_STATUS.COMPLETED
+                      const displayStatus = isMulti && !isFinished
+                        ? (selectedBooking.status === WALKING_STATUS.IN_PROGRESS ? WALKING_STATUS.IN_PROGRESS : WALKING_STATUS.CONFIRMED)
+                        : selectedBooking.status
+                      const displayLabel = isMulti && !isFinished
+                        ? (selectedBooking.status === WALKING_STATUS.IN_PROGRESS ? 'In Progress' : `Active Pass (${completed}/${total} Done)`)
+                        : (WALKING_STATUS_LABELS[selectedBooking.status] || selectedBooking.status)
+
+                      return (
+                        <span className={`badge ${WALKING_STATUS_BADGES[displayStatus] || 'badge-pending'}`}>
+                          {displayLabel}
+                        </span>
+                      )
+                    })()}
+                    {selectedBooking.planType && selectedBooking.planType !== 'single' && (
+                      <span className="badge" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 800 }}>
+                        {selectedBooking.planType === 'monthly' ? '🌟 Monthly Pass' : '📦 7-Day Pass'}
+                      </span>
+                    )}
                     {selectedBooking.status === WALKING_STATUS.CONFIRMED && selectedBooking.walkerArrivalStatus === 'on_the_way' && (
                       <span className="badge" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
                         🚗 Walker On The Way
@@ -2721,6 +2754,44 @@ ${portalUrl}`
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+              {/* Multi-Day Pass Progress Banner in Admin Details */}
+              {selectedBooking.planType && selectedBooking.planType !== 'single' && (() => {
+                const total = Number(selectedBooking.totalWalks || (selectedBooking.planType === 'monthly' ? (selectedBooking.frequency === 'twice_daily' ? 52 : 26) : (selectedBooking.frequency === 'twice_daily' ? 14 : 7)))
+                const completed = Math.max(Number(selectedBooking.completedWalks || 0), (Array.isArray(selectedBooking.walkReports) ? selectedBooking.walkReports.length : (selectedBooking.walkCompletedAt || selectedBooking.walkReport ? 1 : 0)))
+                const percent = Math.min(100, Math.round((completed / total) * 100))
+                const planTitle = selectedBooking.planType === 'monthly' ? 'Monthly Pass' : '7-Day Pass'
+                const remaining = Math.max(0, total - completed)
+
+                return (
+                  <div
+                    style={{
+                      background: 'rgba(192, 136, 32, 0.05)',
+                      border: '1.5px solid rgba(192, 136, 32, 0.25)',
+                      borderRadius: '14px',
+                      padding: '12px 16px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Package size={15} color="var(--accent)" />
+                        {planTitle} Progress:
+                        <span style={{ color: 'var(--accent)' }}>{completed}/{total} Walks Done</span>
+                      </span>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', background: 'var(--card)', padding: '2px 8px', borderRadius: '999px', border: '1px solid var(--border)' }}>
+                        {percent}%
+                      </span>
+                    </div>
+                    <div style={{ width: '100%', height: '8px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden', marginBottom: '8px' }}>
+                      <div style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent) 0%, #10b981 100%)', borderRadius: '999px', transition: 'width 0.3s ease' }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', color: 'var(--muted)', flexWrap: 'wrap', gap: '6px' }}>
+                      <span>Remaining: <strong style={{ color: 'var(--text)' }}>{remaining} Walks</strong></span>
+                      <span>Valid until: <strong style={{ color: 'var(--text)' }}>{selectedBooking.estimatedEndDate || selectedBooking.date}</strong></span>
+                    </div>
+                  </div>
+                )
+              })()}
               
               {/* 🚨 High-Priority Emergency Notice Banner in Admin Details */}
               {selectedBooking.hasEmergency && (
@@ -3118,7 +3189,7 @@ ${portalUrl}`
                   <div className="walking-details-section">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
                       <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Footprints size={14} color="var(--accent)" /> Walk Report Card {adminReports.length > 1 ? `(${adminReports.length} Walks)` : ''}
+                        <Footprints size={14} color="var(--accent)" /> Walk Report Card {selectedBooking.planType && selectedBooking.planType !== 'single' ? `(Walk #${currentReport.walkIndex || adminReportIndex + 1} of ${selectedBooking.totalWalks || (selectedBooking.planType === 'monthly' ? (selectedBooking.frequency === 'twice_daily' ? 52 : 26) : (selectedBooking.frequency === 'twice_daily' ? 14 : 7))})` : adminReports.length > 1 ? `(${adminReports.length} Walks)` : ''}
                       </span>
                       {selectedBooking.phone && (
                         <a
@@ -3164,7 +3235,7 @@ ${portalUrl}`
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            Walk #{idx + 1} {r.walkerRating ? `⭐${r.walkerRating}` : ''}
+                            Walk #{r.walkIndex || idx + 1} {r.date ? `(${r.date})` : ''} {r.walkerRating ? `⭐${r.walkerRating}` : ''}
                           </button>
                         ))}
                       </div>
