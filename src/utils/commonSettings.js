@@ -7,6 +7,8 @@ export const DEFAULT_COMMON_SETTINGS = {
   allowCustomerInvoiceDownload: false,
   emergencyClosure: false,
   emergencyNotice: '',
+  closureStartDate: '',
+  reopenDate: '',
   servicesActive: {
     grooming: true,
     walking: true,
@@ -32,12 +34,24 @@ export function normalizeCommonSettings(data = {}) {
     ? { ...data.holidayLabels }
     : {}
 
+  const today = new Date().toISOString().slice(0, 10)
+  const closureStartDate = String(data.closureStartDate || '').trim()
+  const reopenDate = String(data.reopenDate || data.closureEndDate || '').trim()
+  let emergencyClosure = Boolean(data.emergencyClosure)
+
+  // Auto-expire closure if expected reopen date has arrived or passed
+  if (emergencyClosure && reopenDate && today >= reopenDate) {
+    emergencyClosure = false
+  }
+
   return {
     holidays,
     holidayLabels,
     allowCustomerInvoiceDownload: Boolean(data.allowCustomerInvoiceDownload),
-    emergencyClosure: Boolean(data.emergencyClosure),
+    emergencyClosure,
     emergencyNotice: String(data.emergencyNotice || '').trim(),
+    closureStartDate,
+    reopenDate,
     servicesActive: {
       grooming: data.servicesActive?.grooming !== false,
       walking: data.servicesActive?.walking !== false,
@@ -55,7 +69,20 @@ export async function fetchCommonSettings(db, forceRefresh = false) {
   try {
     const snap = await getDoc(doc(db, 'settings', 'commonSettings'))
     if (snap.exists()) {
-      const normalized = normalizeCommonSettings(snap.data())
+      const raw = snap.data() || {}
+      const today = new Date().toISOString().slice(0, 10)
+      const reopenDate = String(raw.reopenDate || raw.closureEndDate || '').trim()
+
+      // If reopen date has passed, auto-sync back to Firestore so state is permanently inactive
+      if (raw.emergencyClosure && reopenDate && today >= reopenDate) {
+        setDoc(doc(db, 'settings', 'commonSettings'), {
+          emergencyClosure: false,
+          autoReopenedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true }).catch(() => {})
+      }
+
+      const normalized = normalizeCommonSettings(raw)
       cachedCommonSettings = normalized
       cachedCommonSettingsTime = now
       return normalized
@@ -114,5 +141,41 @@ export function isCommonHoliday(commonSettings, dateString) {
 export function getHolidayReason(commonSettings, dateString) {
   if (!dateString || !commonSettings) return ''
   return commonSettings.holidayLabels?.[dateString] || 'Holiday'
+}
+
+/**
+ * Checks whether emergency center closure is currently effective for the given date (or today).
+ * Takes into account optional closureStartDate and auto-expiration on reopenDate.
+ */
+export function isEmergencyClosureActive(commonSettings, targetDateString = null) {
+  if (!commonSettings || !commonSettings.emergencyClosure) return false
+  const today = new Date().toISOString().slice(0, 10)
+  const checkDate = targetDateString || today
+
+  // If reopen date has already passed today, the entire closure is auto-expired
+  const reopenDate = String(commonSettings.reopenDate || commonSettings.closureEndDate || '').trim()
+  if (reopenDate && today >= reopenDate) {
+    return false
+  }
+
+  // If checking a future date against reopenDate
+  if (reopenDate && checkDate >= reopenDate) {
+    return false
+  }
+
+  // If a future closure start date is set and checkDate is before it
+  const startDate = String(commonSettings.closureStartDate || '').trim()
+  if (startDate && checkDate < startDate) {
+    return false
+  }
+
+  return true
+}
+
+/**
+ * Checks if a specific appointment date falls within the emergency closure window.
+ */
+export function isDateWithinClosure(commonSettings, dateString) {
+  return isEmergencyClosureActive(commonSettings, dateString)
 }
 

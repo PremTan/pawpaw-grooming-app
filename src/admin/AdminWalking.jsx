@@ -2754,44 +2754,6 @@ ${portalUrl}`
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-              {/* Multi-Day Pass Progress Banner in Admin Details */}
-              {selectedBooking.planType && selectedBooking.planType !== 'single' && (() => {
-                const total = Number(selectedBooking.totalWalks || (selectedBooking.planType === 'monthly' ? (selectedBooking.frequency === 'twice_daily' ? 52 : 26) : (selectedBooking.frequency === 'twice_daily' ? 14 : 7)))
-                const completed = Math.max(Number(selectedBooking.completedWalks || 0), (Array.isArray(selectedBooking.walkReports) ? selectedBooking.walkReports.length : (selectedBooking.walkCompletedAt || selectedBooking.walkReport ? 1 : 0)))
-                const percent = Math.min(100, Math.round((completed / total) * 100))
-                const planTitle = selectedBooking.planType === 'monthly' ? 'Monthly Pass' : '7-Day Pass'
-                const remaining = Math.max(0, total - completed)
-
-                return (
-                  <div
-                    style={{
-                      background: 'rgba(192, 136, 32, 0.05)',
-                      border: '1.5px solid rgba(192, 136, 32, 0.25)',
-                      borderRadius: '14px',
-                      padding: '12px 16px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Package size={15} color="var(--accent)" />
-                        {planTitle} Progress:
-                        <span style={{ color: 'var(--accent)' }}>{completed}/{total} Walks Done</span>
-                      </span>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', background: 'var(--card)', padding: '2px 8px', borderRadius: '999px', border: '1px solid var(--border)' }}>
-                        {percent}%
-                      </span>
-                    </div>
-                    <div style={{ width: '100%', height: '8px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden', marginBottom: '8px' }}>
-                      <div style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent) 0%, #10b981 100%)', borderRadius: '999px', transition: 'width 0.3s ease' }} />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', color: 'var(--muted)', flexWrap: 'wrap', gap: '6px' }}>
-                      <span>Remaining: <strong style={{ color: 'var(--text)' }}>{remaining} Walks</strong></span>
-                      <span>Valid until: <strong style={{ color: 'var(--text)' }}>{selectedBooking.estimatedEndDate || selectedBooking.date}</strong></span>
-                    </div>
-                  </div>
-                )
-              })()}
               
               {/* 🚨 High-Priority Emergency Notice Banner in Admin Details */}
               {selectedBooking.hasEmergency && (
@@ -2919,6 +2881,10 @@ ${portalUrl}`
                         <div>
                           <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Walk Progress</span>
                           <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{completed} / {total} Done ({percent}%)</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Remaining</span>
+                          <strong style={{ color: 'var(--text)', fontSize: '14px' }}>{Math.max(0, total - completed)} Walks</strong>
                         </div>
                         <div>
                           <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Frequency</span>

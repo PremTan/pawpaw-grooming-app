@@ -9,6 +9,7 @@ import Spinner from '../components/Spinner'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { fetchWalkingSettings } from '../utils/walkingSettings'
 import { fetchBoardingSettings } from '../utils/boardingSettings'
+import { fetchBookingSettings } from '../utils/bookingSettings'
 import { useAuth } from '../context/AuthContext'
 import petWalkingHero from '../assets/pet-walking-hero.jpg'
 import boardingHeroPets from '../assets/boarding-hero-pets.png'
@@ -30,19 +31,21 @@ export default function Services() {
   const [adminPhone, setAdminPhone] = useState('')
   const [walkingSettings, setWalkingSettings] = useState(null)
   const [boardingSettings, setBoardingSettings] = useState(null)
+  const [bookingSettings, setBookingSettings] = useState(null)
   const [showWalkingModal, setShowWalkingModal] = useState(false)
   const [showBoardingModal, setShowBoardingModal] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [statsSnap, pSnap, dSnap, businessInfo, walkingSet, boardingSet] = await Promise.all([
+        const [statsSnap, pSnap, dSnap, businessInfo, walkingSet, boardingSet, bookingSet] = await Promise.all([
           getDoc(doc(db, 'settings', 'homeStats')),
           getDocs(collection(db, 'packages')),
           getDocs(collection(db, 'serviceDetails')),
           fetchBusinessInfo(db),
           fetchWalkingSettings(db),
           fetchBoardingSettings(db),
+          fetchBookingSettings(db),
         ])
         const c = statsSnap.exists() && statsSnap.data().perServiceBookings ? statsSnap.data().perServiceBookings : {}
         const details = {}
@@ -53,6 +56,7 @@ export default function Services() {
         setAdminPhone(businessInfo.whatsappNumber || '')
         setWalkingSettings(walkingSet)
         setBoardingSettings(boardingSet)
+        setBookingSettings(bookingSet)
       } catch { }
       setLoading(false)
     }
@@ -172,7 +176,13 @@ export default function Services() {
         </div>
         <div className="services-card-actions">
           {item.detailTo ? <Link to={item.detailTo} className="btn btn-secondary">View Details</Link> : <span />}
-          <Link to={item.bookTo} className="btn btn-primary">{item.isPackage ? 'Book Package' : 'Book Now'} <ArrowRight size={16} /></Link>
+          {(!bookingSettings || bookingSettings?.acceptBookings !== false) ? (
+            <Link to={item.bookTo} className="btn btn-primary">{item.isPackage ? 'Book Package' : 'Book Now'} <ArrowRight size={16} /></Link>
+          ) : (
+            <span className="btn btn-secondary disabled" style={{ cursor: 'not-allowed', opacity: 0.85, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Clock size={14} /> Closed
+            </span>
+          )}
         </div>
       </article>
     )
@@ -230,9 +240,15 @@ export default function Services() {
                   <button type="button" className="btn btn-secondary" onClick={() => setShowWalkingModal(true)}>
                     View Details
                   </button>
-                  <Link to="/book-walking" className="btn btn-primary">
-                    Book a Walk <ArrowRight size={16} />
-                  </Link>
+                  {(!walkingSettings || walkingSettings?.acceptBookings !== false) ? (
+                    <Link to="/book-walking" className="btn btn-primary">
+                      Book a Walk <ArrowRight size={16} />
+                    </Link>
+                  ) : (
+                    <span className="btn btn-secondary disabled" style={{ cursor: 'not-allowed', opacity: 0.85, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <Clock size={14} /> Closed
+                    </span>
+                  )}
                 </div>
               </article>
 
@@ -274,9 +290,15 @@ export default function Services() {
                   <button type="button" className="btn btn-secondary" onClick={() => setShowBoardingModal(true)}>
                     View Details
                   </button>
-                  <Link to="/boarding" className="btn btn-primary">
-                    Book Boarding <ArrowRight size={16} />
-                  </Link>
+                  {(!boardingSettings || boardingSettings?.acceptBookings !== false) ? (
+                    <Link to="/boarding" className="btn btn-primary">
+                      Book Boarding <ArrowRight size={16} />
+                    </Link>
+                  ) : (
+                    <span className="btn btn-secondary disabled" style={{ cursor: 'not-allowed', opacity: 0.85, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <Clock size={14} /> Closed
+                    </span>
+                  )}
                 </div>
               </article>
             </div>

@@ -1,4 +1,5 @@
 import { doc, getDoc } from 'firebase/firestore'
+import { isEmergencyClosureActive, isDateWithinClosure } from './commonSettings'
 
 export const DAYS = [
   { key: 'sun', label: 'Sunday' },
@@ -125,6 +126,11 @@ export function normalizeBookingSettings(raw = {}) {
     weekly,
     holidays: Array.isArray(data.holidays) ? data.holidays.filter(Boolean) : [],
     blockedSlots: normalizeBlockedSlots(data.blockedSlots),
+    emergencyClosure: Boolean(data.emergencyClosure),
+    emergencyNotice: String(data.emergencyNotice || '').trim(),
+    closureStartDate: String(data.closureStartDate || '').trim(),
+    reopenDate: String(data.reopenDate || '').trim(),
+    acceptBookings: data.acceptBookings !== false && !data.emergencyClosure,
   }
 }
 
@@ -184,9 +190,14 @@ export async function fetchBookingSettings(db, forceRefresh = false) {
         if (commonData.allowCustomerInvoiceDownload !== undefined) {
           normalized.allowCustomerInvoiceDownload = Boolean(commonData.allowCustomerInvoiceDownload)
         }
-        if (commonData.emergencyClosure && commonData.servicesActive?.grooming === false) {
+        const isEmergActive = isEmergencyClosureActive(commonData)
+        const isGroomingDisabled = commonData.servicesActive?.grooming === false
+        if (isEmergActive || isGroomingDisabled) {
           normalized.emergencyClosure = true
-          normalized.emergencyNotice = commonData.emergencyNotice || ''
+          normalized.emergencyNotice = commonData.emergencyNotice || (isEmergActive ? 'Paw Paw Centre is temporarily closed for new online bookings.' : 'Pet Grooming service is temporarily paused for new bookings.')
+          normalized.closureStartDate = commonData.closureStartDate || ''
+          normalized.reopenDate = commonData.reopenDate || ''
+          normalized.acceptBookings = false
         }
       }
     } catch (e) {
@@ -231,6 +242,9 @@ export function getAvailabilityForDate(settings, dateString) {
   const normalized = normalizeBookingSettings(settings)
   if (!dateString || normalized.holidays.includes(dateString)) {
     return { open: false, storeSlots: [], homeSlots: [], reasons: ['Holiday'] }
+  }
+  if (normalized.emergencyClosure && isDateWithinClosure(normalized, dateString)) {
+    return { open: false, storeSlots: [], homeSlots: [], reasons: ['Center Temporarily Closed'] }
   }
   const day = normalized.weekly[dayKeyFromDate(dateString)]
   if (!day || day.open === false) {

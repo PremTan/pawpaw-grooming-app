@@ -5,7 +5,7 @@ import { collection, addDoc, getDocs, onSnapshot, query, where, serverTimestamp,
 import { ADMIN_EMAIL, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
-import { ArrowRight, Calendar, Clock, CheckCircle, ChevronLeft, Home, MessageCircle, Package as PackageIcon, PawPrint, Plus, Store, Tag, X, Check } from 'lucide-react'
+import { ArrowRight, Calendar, Clock, CheckCircle, ChevronLeft, Home, MessageCircle, Package as PackageIcon, PawPrint, Plus, Store, Tag, X, Check, ShieldAlert } from 'lucide-react'
 import { format, addDays, startOfToday } from 'date-fns'
 import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel } from '../utils/bookingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
@@ -428,8 +428,14 @@ export default function Book() {
     }
   }
 
+  const isFacilityClosed = Boolean(bookingSettings?.emergencyClosure || bookingSettings?.acceptBookings === false)
+
   const pastelFor = (index) => ({ '--service-pastel': SERVICE_PASTELS[index % SERVICE_PASTELS.length] })
   const handleSubmit = async () => {
+    if (isFacilityClosed) {
+      alert(bookingSettings?.emergencyNotice || 'Our facility is temporarily closed for online bookings. Please check back later.')
+      return
+    }
     if (isBlocked) {
       alert('Your account is blocked from booking. Please contact the admin.')
       return
@@ -632,6 +638,40 @@ export default function Book() {
       <div ref={bookingTopRef} className="book-page-wrap" style={S.wrap}>
         <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: '22px', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>Book Appointment</h1>
         <p style={{ color: 'var(--muted)', marginBottom: '16px', fontSize: '12.5px' }}>Fill the details below to schedule your visit</p>
+
+        {isFacilityClosed && (
+          <div style={{
+            background: '#FEF2F2',
+            border: '1.5px solid #F87171',
+            borderRadius: '14px',
+            padding: '12px 18px',
+            marginBottom: '16px',
+            textAlign: 'center',
+            boxShadow: '0 2px 12px rgba(239, 68, 68, 0.06)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#991B1B', marginBottom: '4px' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '26px', borderRadius: '50%', background: '#FEE2E2', color: '#DC2626', flexShrink: 0 }}>
+                <ShieldAlert size={16} />
+              </span>
+              <strong style={{ fontSize: '14.5px', fontWeight: 800 }}>
+                {bookingSettings?.emergencyClosure ? 'Center Temporarily Closed for Bookings' : 'Grooming Bookings Temporarily Closed'}
+              </strong>
+            </div>
+            {bookingSettings?.emergencyNotice && (
+              <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: '#B91C1C', lineHeight: 1.45 }}>
+                {bookingSettings.emergencyNotice}
+              </p>
+            )}
+            {bookingSettings?.reopenDate && (
+              <div style={{ marginTop: '8px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', fontWeight: 700, color: '#7F1D1D', background: '#FEE2E2', padding: '3px 10px', borderRadius: '999px', border: '1px solid #FCA5A5' }}>
+                  📅 Expected to reopen on: {bookingSettings.reopenDate}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         {isBlocked && (
           <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', fontSize: '13px', padding: '12px 14px', borderRadius: '12px', marginBottom: '16px' }}>
             Your account is blocked from creating new bookings. You can still log in and view your account.
@@ -744,8 +784,19 @@ export default function Book() {
                   </div>
                 )}
 
-                <button onClick={() => setStep(2)} disabled={selectedServices.length === 0 && selectedPackages.length === 0} className="book-panel-continue-btn">
-                  Continue <ArrowRight size={22} />
+                <button
+                  onClick={() => {
+                    if (isFacilityClosed) {
+                      alert(bookingSettings?.emergencyNotice || 'Our facility is temporarily closed for online bookings.')
+                      return
+                    }
+                    setStep(2)
+                  }}
+                  disabled={selectedServices.length === 0 && selectedPackages.length === 0}
+                  className="book-panel-continue-btn"
+                  style={isFacilityClosed ? { opacity: 0.6 } : undefined}
+                >
+                  {isFacilityClosed ? 'Center Temporarily Closed' : <>Continue <ArrowRight size={22} /></>}
                 </button>
               </section>
             </div>
@@ -933,6 +984,10 @@ export default function Book() {
               </div>
               <button
                 onClick={() => {
+                  if (isFacilityClosed) {
+                    alert(bookingSettings?.emergencyNotice || 'Our facility is temporarily closed for online bookings.')
+                    return
+                  }
                   if (savePhoneToProfile && user?.uid && form.phone.trim()) {
                     const cleanPhone = form.phone.replace(/\D/g, '').slice(0, 10)
                     setDoc(doc(db, 'profiles', user.uid), {
@@ -942,11 +997,11 @@ export default function Book() {
                   }
                   setStep(3)
                 }}
-                disabled={!form.ownerName || !form.phone || !form.petName}
+                disabled={!form.ownerName || !form.phone || !form.petName || isFacilityClosed}
                 className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center', marginTop: '20px' }}
+                style={{ width: '100%', justifyContent: 'center', marginTop: '20px', ...(isFacilityClosed ? { opacity: 0.6, cursor: 'not-allowed' } : {}) }}
               >
-                Continue
+                {isFacilityClosed ? 'Center Temporarily Closed' : 'Continue to Date & Time'}
               </button>
             </div>
           )}
@@ -1218,8 +1273,13 @@ export default function Book() {
                 </div>
               )}
 
-              <button onClick={handleSubmit} disabled={isBlocked || !form.slot || !bookableSlots.includes(form.slot) || bookedSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim()) || loading} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-                {loading ? 'Booking...' : 'Confirm Booking'}
+              <button
+                onClick={handleSubmit}
+                disabled={isFacilityClosed || isBlocked || !form.slot || !bookableSlots.includes(form.slot) || bookedSlots.includes(form.slot) || (form.bookingType === 'home' && !form.address.trim()) || loading}
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center', ...(isFacilityClosed ? { opacity: 0.6, cursor: 'not-allowed' } : {}) }}
+              >
+                {loading ? 'Booking...' : isFacilityClosed ? 'Center Temporarily Closed' : 'Confirm Booking'}
               </button>
             </div>
           )}

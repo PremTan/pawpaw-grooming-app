@@ -1,5 +1,6 @@
 // src/utils/boardingSettings.js
 import { doc, getDoc } from 'firebase/firestore'
+import { isEmergencyClosureActive } from './commonSettings'
 
 export const BOARDING_STATUS = {
   PENDING: 'pending',
@@ -117,6 +118,10 @@ export function normalizeBoardingSettings(data = {}) {
     holidayLabels: typeof data.holidayLabels === 'object' && data.holidayLabels !== null ? data.holidayLabels : {},
     terms,
     termsClosingMessage,
+    emergencyClosure: Boolean(data.emergencyClosure),
+    emergencyNotice: String(data.emergencyNotice || '').trim(),
+    closureStartDate: String(data.closureStartDate || '').trim(),
+    reopenDate: String(data.reopenDate || '').trim(),
   }
 }
 
@@ -221,9 +226,13 @@ export async function fetchBoardingSettings(db, forceRefresh = false) {
         if (cd.holidayLabels && typeof cd.holidayLabels === 'object') {
           normalized.holidayLabels = cd.holidayLabels
         }
-        if (cd.emergencyClosure && cd.servicesActive?.boarding === false) {
+        const isEmergActive = isEmergencyClosureActive(cd)
+        const isBoardingDisabled = cd.servicesActive?.boarding === false
+        if (isEmergActive || isBoardingDisabled) {
           normalized.emergencyClosure = true
-          normalized.emergencyNotice = cd.emergencyNotice || ''
+          normalized.emergencyNotice = cd.emergencyNotice || (isEmergActive ? 'Pet Boarding is temporarily paused due to emergency facility closure.' : 'Pet Boarding service is temporarily unavailable.')
+          normalized.closureStartDate = cd.closureStartDate || ''
+          normalized.reopenDate = cd.reopenDate || ''
           normalized.acceptBookings = false
           normalized.active = false
         }

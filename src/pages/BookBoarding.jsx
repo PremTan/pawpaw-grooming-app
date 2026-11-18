@@ -29,6 +29,7 @@ import {
   Phone,
   Plus,
   RotateCcw,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
   Tag,
@@ -859,8 +860,35 @@ export default function BookBoarding() {
           </p>
 
           {boardingSettings?.acceptBookings === false && (
-            <div className="boarding-notice-warn">
-              <Info size={16} /> Boarding reservations are temporarily closed. You may view care and diet details, but new requests cannot be submitted at this time.
+            <div style={{
+              background: '#FEF2F2',
+              border: '1.5px solid #F87171',
+              borderRadius: '14px',
+              padding: '12px 18px',
+              marginBottom: '16px',
+              textAlign: 'center',
+              boxShadow: '0 2px 12px rgba(239, 68, 68, 0.06)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#991B1B', marginBottom: '4px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '26px', borderRadius: '50%', background: '#FEE2E2', color: '#DC2626', flexShrink: 0 }}>
+                  <ShieldAlert size={16} />
+                </span>
+                <strong style={{ fontSize: '14.5px', fontWeight: 800 }}>
+                  {boardingSettings?.emergencyClosure ? 'Center Temporarily Closed for Bookings' : 'Boarding Reservations Temporarily Closed'}
+                </strong>
+              </div>
+              {boardingSettings?.emergencyNotice && (
+                <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: '#B91C1C', lineHeight: 1.45 }}>
+                  {boardingSettings.emergencyNotice}
+                </p>
+              )}
+              {boardingSettings?.reopenDate && (
+                <div style={{ marginTop: '8px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', fontWeight: 700, color: '#7F1D1D', background: '#FEE2E2', padding: '3px 10px', borderRadius: '999px', border: '1px solid #FCA5A5' }}>
+                    📅 Expected to reopen on: {boardingSettings.reopenDate}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 

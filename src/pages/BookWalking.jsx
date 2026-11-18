@@ -863,6 +863,10 @@ export default function BookWalking() {
   }
 
   const handleSubmit = async () => {
+    if (settings?.acceptBookings === false) {
+      alert('Pet Walking bookings are temporarily closed. Please check back soon.')
+      return
+    }
     if (isBlocked) {
       alert('Your account is blocked from booking. Please contact admin.')
       return
@@ -1284,11 +1288,35 @@ export default function BookWalking() {
 
           {/* Closed banner if service disabled */}
           {settings.acceptBookings === false && (
-            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: '14px', padding: '14px 16px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <ShieldAlert size={18} />
-              <div style={{ fontSize: '13px' }}>
-                <strong>Pet Walking Temporarily Paused:</strong> We are currently not accepting new walk bookings online. Please contact admin on WhatsApp for enquiries.
+            <div style={{
+              background: '#FEF2F2',
+              border: '1.5px solid #F87171',
+              borderRadius: '14px',
+              padding: '12px 18px',
+              marginBottom: '16px',
+              textAlign: 'center',
+              boxShadow: '0 2px 12px rgba(239, 68, 68, 0.06)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#991B1B', marginBottom: '4px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '26px', borderRadius: '50%', background: '#FEE2E2', color: '#DC2626', flexShrink: 0 }}>
+                  <ShieldAlert size={16} />
+                </span>
+                <strong style={{ fontSize: '14.5px', fontWeight: 800 }}>
+                  {settings?.emergencyClosure ? 'Center Temporarily Closed for Bookings' : 'Pet Walking Bookings Temporarily Closed'}
+                </strong>
               </div>
+              {settings?.emergencyNotice && (
+                <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: '#B91C1C', lineHeight: 1.45 }}>
+                  {settings.emergencyNotice}
+                </p>
+              )}
+              {settings?.reopenDate && (
+                <div style={{ marginTop: '8px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', fontWeight: 700, color: '#7F1D1D', background: '#FEE2E2', padding: '3px 10px', borderRadius: '999px', border: '1px solid #FCA5A5' }}>
+                    📅 Expected to reopen on: {settings.reopenDate}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -2359,15 +2387,17 @@ export default function BookWalking() {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={submitting || !form.ownerName.trim() || !form.phone.trim()}
+                disabled={submitting || settings?.acceptBookings === false || !form.ownerName.trim() || !form.phone.trim()}
                 className="btn btn-primary"
                 style={{ width: '100%', justifyContent: 'center', gap: '8px', padding: '14px', fontSize: '15px' }}
               >
-                {submitting
-                  ? 'Submitting Request...'
-                  : form.planType !== 'single'
-                    ? `Request Walk Pass (Pay ₹${packCalc.finalPrice} Later)`
-                    : `Request Dog Walk (Pay ₹${packCalc.finalPrice} Later)`}
+                {settings?.acceptBookings === false
+                  ? 'Walking Bookings Temporarily Closed'
+                  : submitting
+                    ? 'Submitting Request...'
+                    : form.planType !== 'single'
+                      ? `Request Walk Pass (Pay ₹${packCalc.finalPrice} Later)`
+                      : `Request Dog Walk (Pay ₹${packCalc.finalPrice} Later)`}
               </button>
               <span style={{ display: 'block', textAlign: 'center', fontSize: '11.5px', color: 'var(--muted)', marginTop: '8px' }}>
                 No advance payment needed. Admin will confirm your walking schedule shortly.

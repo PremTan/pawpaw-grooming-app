@@ -270,6 +270,7 @@ function HeroSlider() {
   const [rescheduleBookedSlots, setRescheduleBookedSlots] = useState([])
   const [reschedulingId, setReschedulingId] = useState('')
 
+  const isGroomingClosed = Boolean(bookingSettings && (bookingSettings.acceptBookings === false || bookingSettings.emergencyClosure === true))
   const isHeroImagesLoading = heroImages === null
   const images = heroImages || []
 
@@ -679,7 +680,13 @@ function HeroSlider() {
             </div>
           </div>
           <div className="mobile-hero-actions">
-            <Link to="/book" className="btn btn-primary"><Calendar size={16} /> Book Appointment</Link>
+            {!isGroomingClosed ? (
+              <Link to="/book" className="btn btn-primary"><Calendar size={16} /> Book Appointment</Link>
+            ) : (
+              <div className="home-boarding-closed-pill" style={{ margin: 0, padding: '10px 16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '999px', color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+                <Clock size={15} /> Grooming Bookings Temporarily Closed
+              </div>
+            )}
             <Link to="/services" className="btn btn-secondary">View Services <ArrowRight size={16} /></Link>
           </div>
         </div>
@@ -767,6 +774,21 @@ function HeroSlider() {
                 >
                   Learn More <ArrowRight size={15} />
                 </button>
+
+                {boardingSettings?.acceptBookings === false && (
+                  <>
+                    {boardingSettings?.emergencyNotice && (
+                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--muted)', textAlign: 'center', fontStyle: 'italic', maxWidth: '420px', width: '100%' }}>
+                        &ldquo;{boardingSettings.emergencyNotice}&rdquo;
+                      </p>
+                    )}
+                    {boardingSettings?.reopenDate && (
+                      <span style={{ fontSize: '11.5px', color: '#059669', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '3px 12px', borderRadius: '999px', fontWeight: 700 }}>
+                        Expected reopening: {boardingSettings.reopenDate}
+                      </span>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
@@ -955,6 +977,21 @@ function HeroSlider() {
                 >
                   Learn More <ArrowRight size={15} />
                 </button>
+
+                {walkingSettings?.acceptBookings === false && (
+                  <>
+                    {walkingSettings?.emergencyNotice && (
+                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--muted)', textAlign: 'center', fontStyle: 'italic', maxWidth: '420px', width: '100%' }}>
+                        &ldquo;{walkingSettings.emergencyNotice}&rdquo;
+                      </p>
+                    )}
+                    {walkingSettings?.reopenDate && (
+                      <span style={{ fontSize: '11.5px', color: '#059669', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '3px 12px', borderRadius: '999px', fontWeight: 700 }}>
+                        Expected reopening: {walkingSettings.reopenDate}
+                      </span>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
@@ -1323,25 +1360,42 @@ function HeroSlider() {
             </div>
 
             {/* Two Columns Grid with overlapping icons */}
-            <div className="home-choice-columns home-fade-up stagger-2">
+            <div className={`home-choice-columns home-fade-up stagger-2 ${isGroomingClosed ? 'is-closed' : ''}`}>
               {/* Left Column: Home Visit */}
-              <Link to="/book?visit=home" className="home-choice-col home-fade-up stagger-2">
-                <div className="home-choice-icon-wrap">
-                  <div className="home-choice-icon-rays">
-                    <span className="ray ray-1" />
-                    <span className="ray ray-2" />
-                    <span className="ray ray-3" />
+              {isGroomingClosed ? (
+                <div className="home-choice-col home-fade-up stagger-2" style={{ cursor: 'default' }}>
+                  <div className="home-choice-icon-wrap">
+                    <div className="home-choice-icon-rays">
+                      <span className="ray ray-1" />
+                      <span className="ray ray-2" />
+                      <span className="ray ray-3" />
+                    </div>
+                    <div className="home-choice-icon-circle">
+                      <HomeIcon size={24} />
+                    </div>
                   </div>
-                  <div className="home-choice-icon-circle">
-                    <HomeIcon size={24} />
-                  </div>
+                  <h3 className="home-choice-col-title">Home Visit</h3>
+                  <p className="home-choice-col-sub">We come to your doorstep</p>
                 </div>
-                <h3 className="home-choice-col-title">Home Visit</h3>
-                <p className="home-choice-col-sub">We come to your doorstep</p>
-                <span className="home-choice-col-btn">
-                  Book Now <ArrowRight size={14} />
-                </span>
-              </Link>
+              ) : (
+                <Link to="/book?visit=home" className="home-choice-col home-fade-up stagger-2">
+                  <div className="home-choice-icon-wrap">
+                    <div className="home-choice-icon-rays">
+                      <span className="ray ray-1" />
+                      <span className="ray ray-2" />
+                      <span className="ray ray-3" />
+                    </div>
+                    <div className="home-choice-icon-circle">
+                      <HomeIcon size={24} />
+                    </div>
+                  </div>
+                  <h3 className="home-choice-col-title">Home Visit</h3>
+                  <p className="home-choice-col-sub">We come to your doorstep</p>
+                  <span className="home-choice-col-btn">
+                    Book Now <ArrowRight size={14} />
+                  </span>
+                </Link>
+              )}
 
               {/* Center Divider / OR Circle */}
               <div className="home-choice-divider-wrap home-fade-up stagger-2">
@@ -1351,24 +1405,71 @@ function HeroSlider() {
               </div>
 
               {/* Right Column: Visit Centre */}
-              <Link to="/book?visit=centre" className="home-choice-col home-fade-up stagger-3">
-                <div className="home-choice-icon-wrap">
-                  <div className="home-choice-icon-rays">
-                    <span className="ray ray-1" />
-                    <span className="ray ray-2" />
-                    <span className="ray ray-3" />
+              {isGroomingClosed ? (
+                <div className="home-choice-col home-fade-up stagger-3" style={{ cursor: 'default' }}>
+                  <div className="home-choice-icon-wrap">
+                    <div className="home-choice-icon-rays">
+                      <span className="ray ray-1" />
+                      <span className="ray ray-2" />
+                      <span className="ray ray-3" />
+                    </div>
+                    <div className="home-choice-icon-circle">
+                      <Store size={24} />
+                    </div>
                   </div>
-                  <div className="home-choice-icon-circle">
-                    <Store size={24} />
-                  </div>
+                  <h3 className="home-choice-col-title">Visit Centre</h3>
+                  <p className="home-choice-col-sub">Bring your pet to our salon.</p>
                 </div>
-                <h3 className="home-choice-col-title">Visit Centre</h3>
-                <p className="home-choice-col-sub">Bring your pet to our salon.</p>
-                <span className="home-choice-col-btn">
-                  Book Now <ArrowRight size={14} />
-                </span>
-              </Link>
+              ) : (
+                <Link to="/book?visit=centre" className="home-choice-col home-fade-up stagger-3">
+                  <div className="home-choice-icon-wrap">
+                    <div className="home-choice-icon-rays">
+                      <span className="ray ray-1" />
+                      <span className="ray ray-2" />
+                      <span className="ray ray-3" />
+                    </div>
+                    <div className="home-choice-icon-circle">
+                      <Store size={24} />
+                    </div>
+                  </div>
+                  <h3 className="home-choice-col-title">Visit Centre</h3>
+                  <p className="home-choice-col-sub">Bring your pet to our salon.</p>
+                  <span className="home-choice-col-btn">
+                    Book Now <ArrowRight size={14} />
+                  </span>
+                </Link>
+              )}
             </div>
+
+            {/* When Closed: Actions block matching Boarding and Walking 1:1 */}
+            {isGroomingClosed && (
+              <div
+                className="home-boarding-actions home-fade-up stagger-3 is-closed"
+                style={{ marginTop: '22px' }}
+              >
+                <div
+                  className="home-boarding-closed-pill"
+                  title="Grooming bookings are temporarily closed"
+                >
+                  <Clock size={15} /> Grooming Bookings Temporarily Closed
+                </div>
+
+                <Link to="/services" className="home-boarding-btn-secondary">
+                  View All Services <ArrowRight size={15} />
+                </Link>
+
+                {bookingSettings?.emergencyNotice && (
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--muted)', textAlign: 'center', fontStyle: 'italic', maxWidth: '420px', width: '100%' }}>
+                    &ldquo;{bookingSettings.emergencyNotice}&rdquo;
+                  </p>
+                )}
+                {bookingSettings?.reopenDate && (
+                  <span style={{ fontSize: '11.5px', color: '#059669', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '3px 12px', borderRadius: '999px', fontWeight: 700 }}>
+                    Expected reopening: {bookingSettings.reopenDate}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </section>
 
@@ -1413,6 +1514,7 @@ export default function Home() {
   const [footerInfo, setFooterInfo] = useState(() => cachedHomeSectionsData?.footerInfo || { tagline: '', socials: [], phones: [], email: '' })
   const [walkingSettings, setWalkingSettings] = useState(() => cachedWalkingSettings)
   const [boardingSettings, setBoardingSettings] = useState(() => cachedBoardingSettings)
+  const [bookingSettings, setBookingSettings] = useState(() => cachedBookingSettings)
   const [reviewIndex, setReviewIndex] = useState(0)
   const [reviewCarouselHeight, setReviewCarouselHeight] = useState(0)
   const [touchStartX, setTouchStartX] = useState(null)
@@ -1472,6 +1574,7 @@ export default function Home() {
   useEffect(() => {
     fetchWalkingSettings(db).then(setWalkingSettings).catch(() => {})
     fetchBoardingSettings(db).then(setBoardingSettings).catch(() => {})
+    fetchBookingSettings(db).then(setBookingSettings).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -2126,7 +2229,13 @@ export default function Home() {
             </div>
           ))}
           <div className="home-location-actions">
-            <Link to="/book" className="btn btn-primary"><Calendar size={16} /> Book Now</Link>
+            {(!bookingSettings || bookingSettings?.acceptBookings !== false) ? (
+              <Link to="/book" className="btn btn-primary"><Calendar size={16} /> Book Now</Link>
+            ) : (
+              <span className="btn btn-secondary disabled" style={{ cursor: 'not-allowed', opacity: 0.85, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <Clock size={15} /> Bookings Closed
+              </span>
+            )}
             <a href={contactAddress ? `https://maps.google.com/?q=${encodeURIComponent(contactAddress)}` : '#'} target="_blank" rel="noopener noreferrer" className="btn btn-secondary"><Navigation size={16} /> Get Directions</a>
           </div>
         </div>
@@ -2159,7 +2268,13 @@ export default function Home() {
             ))}
 
           </div>
-          <Link to="/book" className="btn btn-primary"><Calendar size={16} /> Book Appointment</Link>
+          {(!bookingSettings || bookingSettings?.acceptBookings !== false) ? (
+            <Link to="/book" className="btn btn-primary"><Calendar size={16} /> Book Appointment</Link>
+          ) : (
+            <span className="btn btn-secondary disabled" style={{ cursor: 'not-allowed', opacity: 0.85, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Clock size={15} /> Bookings Closed
+            </span>
+          )}
         </div>
       </section>
       {/* WhatsApp float button */}

@@ -1,5 +1,6 @@
 // src/utils/walkingSettings.js
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { isEmergencyClosureActive } from './commonSettings'
 
 export const DEFAULT_WALKING_SLOTS = [
   // Morning shift
@@ -193,6 +194,8 @@ export async function fetchWalkingSettings(db, forceRefresh = false) {
     let commonHolidays = []
     let emergencyClosure = false
     let emergencyNotice = ''
+    let closureStartDate = ''
+    let reopenDate = ''
     try {
       const [commonSnap, legacySnap] = await Promise.all([
         getDoc(doc(db, 'settings', 'commonSettings')).catch(() => null),
@@ -205,9 +208,13 @@ export async function fetchWalkingSettings(db, forceRefresh = false) {
         if (Array.isArray(cd.holidays)) {
           cd.holidays.forEach(h => setOfHolidays.add(String(h).trim()))
         }
-        if (cd.emergencyClosure && cd.servicesActive?.walking === false) {
+        const isEmergActive = isEmergencyClosureActive(cd)
+        const isWalkingDisabled = cd.servicesActive?.walking === false
+        if (isEmergActive || isWalkingDisabled) {
           emergencyClosure = true
-          emergencyNotice = cd.emergencyNotice || ''
+          emergencyNotice = cd.emergencyNotice || (isEmergActive ? 'Dog Walking is temporarily paused due to emergency facility closure.' : 'Dog Walking service is temporarily unavailable.')
+          closureStartDate = cd.closureStartDate || ''
+          reopenDate = cd.reopenDate || ''
         }
       }
       if (legacySnap && legacySnap.exists()) {
@@ -245,6 +252,8 @@ export async function fetchWalkingSettings(db, forceRefresh = false) {
       holidays: commonHolidays,
       emergencyClosure,
       emergencyNotice,
+      closureStartDate,
+      reopenDate,
     }
 
     cachedWalkingSettings = result
