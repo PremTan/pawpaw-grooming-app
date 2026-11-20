@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { collection, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { Link, useSearchParams } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
-import { ArrowRight, Calendar, CalendarCheck, IndianRupee, Plus, Settings, TrendingUp } from 'lucide-react'
+import { ArrowRight, Calendar, CalendarCheck, CheckCircle2, Clock, IndianRupee, Plus, Settings, TrendingUp, XCircle } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
@@ -504,20 +504,112 @@ export default function AdminDashboard() {
             ))}
           </div>
 
-          {/* Status Pills */}
-          <div className="admin-status-grid">
-            {[
-              { l: 'Pending', v: data.pending, c: 'badge-pending' },
-              { l: 'Confirmed', v: data.confirmed, c: 'badge-confirmed' },
-              { l: 'Completed', v: data.completed, c: 'badge-completed' },
-              { l: 'Cancelled', v: data.cancelled, c: 'badge-cancelled' }
-            ].map(s => (
-              <div key={s.l} className={`badge ${s.c}`} style={{ padding: '12px', borderRadius: '12px', textAlign: 'center', display: 'block' }}>
-                <div style={{ fontSize: '22px', fontWeight: 800 }}>{s.v}</div>
-                <div style={{ fontSize: '11px', marginTop: '2px' }}>{s.l}</div>
+          {/* Status Overview Cards */}
+          {(() => {
+            const statusCards = [
+              {
+                label: 'Pending',
+                value: data.pending || 0,
+                icon: Clock,
+                color: '#d97706',
+                bgColor: 'rgba(245, 158, 11, 0.1)',
+                borderColor: 'rgba(245, 158, 11, 0.25)',
+              },
+              {
+                label: 'Confirmed',
+                value: data.confirmed || 0,
+                icon: CalendarCheck,
+                color: '#059669',
+                bgColor: 'rgba(16, 185, 129, 0.1)',
+                borderColor: 'rgba(16, 185, 129, 0.25)',
+              },
+              {
+                label: 'Completed',
+                value: data.completed || 0,
+                icon: CheckCircle2,
+                color: '#2563eb',
+                bgColor: 'rgba(37, 99, 235, 0.1)',
+                borderColor: 'rgba(37, 99, 235, 0.25)',
+              },
+              {
+                label: 'Cancelled',
+                value: data.cancelled || 0,
+                icon: XCircle,
+                color: '#e11d48',
+                bgColor: 'rgba(225, 29, 72, 0.08)',
+                borderColor: 'rgba(225, 29, 72, 0.22)',
+              },
+            ]
+
+            return (
+              <div className="admin-status-grid" style={{ marginBottom: '22px' }}>
+                {statusCards.map(s => {
+                  const Icon = s.icon
+                  return (
+                    <div
+                      key={s.label}
+                      style={{
+                        background: 'var(--card)',
+                        border: `1.5px solid ${s.borderColor}`,
+                        borderRadius: '14px',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                        userSelect: 'none',
+                      }}
+                    >
+                      {/* Count with Icon beside / in front */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                        <div
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '8px',
+                            background: s.bgColor,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: s.color,
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Icon size={16} />
+                        </div>
+                        <span
+                          style={{
+                            fontSize: '22px',
+                            fontWeight: 800,
+                            color: 'var(--text)',
+                            fontFamily: '"DM Mono", monospace',
+                            lineHeight: 1,
+                          }}
+                        >
+                          {s.value}
+                        </span>
+                      </div>
+
+                      {/* Label below */}
+                      <div
+                        style={{
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          color: s.color,
+                          marginTop: '6px',
+                          letterSpacing: '0.2px',
+                        }}
+                      >
+                        {s.label}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            ))}
-          </div>
+            )
+          })()}
 
           {/* Modern Visual Analytics 2-Column Grid */}
           <div className="admin-dashboard-grid">

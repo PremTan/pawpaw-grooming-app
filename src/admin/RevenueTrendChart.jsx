@@ -424,42 +424,51 @@ export default function RevenueTrendChart({ items = [] }) {
           })}
         </div>
 
-        {/* Floating Tooltip with boundary-safe positioning */}
-        {activePoint && (
-          <div
-            style={{
-              position: 'absolute',
-              left: `${(activePoint.x / width) * 100}%`,
-              top: `${Math.max(6, (activePoint.y / height) * 100 - 32)}%`,
-              transform: `translate(${
-                (activePoint.x / width) < 0.22 ? '-12%' : (activePoint.x / width) > 0.78 ? '-88%' : '-50%'
-              }, -100%)`,
-              background: 'rgba(15, 23, 42, 0.96)',
-              color: '#ffffff',
-              padding: '9px 13px',
-              borderRadius: '9px',
-              fontSize: '11.5px',
-              zIndex: 30,
-              boxShadow: '0 6px 20px rgba(0,0,0,0.3)',
-              whiteSpace: 'nowrap',
-              lineHeight: 1.45,
-              border: '1px solid rgba(255,255,255,0.14)',
-              pointerEvents: 'none',
-            }}
-          >
-            <div style={{ fontWeight: 800, color: '#93c5fd', marginBottom: '2px', fontSize: '12px' }}>
-              {activePoint.fullLabel}
+        {/* Floating Tooltip with smart collision avoidance:
+            If node is in the upper area of chart, flips BELOW the node so it NEVER covers Period Revenue / Completed Visits */}
+        {activePoint && (() => {
+          const xRatio = activePoint.x / width
+          const yRatio = activePoint.y / height
+          // When point is in top 46% of chart, place tooltip below the node so it never covers the KPI boxes above
+          const showBelow = yRatio < 0.46
+          const xAlign = xRatio < 0.22 ? '-6%' : xRatio > 0.78 ? '-94%' : '-50%'
+          const yTransform = showBelow ? '14px' : 'calc(-100% - 14px)'
+
+          return (
+            <div
+              style={{
+                position: 'absolute',
+                left: `${xRatio * 100}%`,
+                top: `${yRatio * 100}%`,
+                transform: `translate(${xAlign}, ${yTransform})`,
+                background: 'rgba(15, 23, 42, 0.96)',
+                color: '#ffffff',
+                padding: '9px 13px',
+                borderRadius: '9px',
+                fontSize: '11.5px',
+                zIndex: 30,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                whiteSpace: 'nowrap',
+                lineHeight: 1.45,
+                border: '1px solid rgba(255,255,255,0.14)',
+                pointerEvents: 'none',
+                transition: 'transform 0.15s ease, left 0.15s ease, top 0.15s ease',
+              }}
+            >
+              <div style={{ fontWeight: 800, color: '#93c5fd', marginBottom: '2px', fontSize: '12px' }}>
+                {activePoint.fullLabel}
+              </div>
+              <div>
+                <span style={{ color: '#60a5fa' }}>● Revenue: </span>
+                <strong style={{ fontSize: '13px' }}>₹{money(activePoint.currentRev)}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#94a3b8' }}>● Completed: </span>
+                <strong>{activePoint.currentCount}</strong> visits
+              </div>
             </div>
-            <div>
-              <span style={{ color: '#60a5fa' }}>● Revenue: </span>
-              <strong style={{ fontSize: '13px' }}>₹{money(activePoint.currentRev)}</strong>
-            </div>
-            <div>
-              <span style={{ color: '#94a3b8' }}>● Completed: </span>
-              <strong>{activePoint.currentCount}</strong> visits
-            </div>
-          </div>
-        )}
+          )
+        })()}
       </div>
 
       {/* Legend Footer */}
