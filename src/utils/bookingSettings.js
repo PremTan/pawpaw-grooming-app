@@ -26,6 +26,9 @@ export const DEFAULT_BOOKING_SETTINGS = {
   fixedVisitCharges: false,
   homeVisitCharge: '',
   centerVisitCharge: '',
+  defaultIncentiveEnabled: true,
+  defaultIncentiveType: 'percentage', // 'percentage' | 'flat'
+  defaultIncentiveValue: 10, // 10% or flat ₹ amount
   cancellationCutoffMinutes: 60,
   paymentMode: 'cash',
   weekly: DAYS.reduce((acc, day) => ({
@@ -120,6 +123,9 @@ export function normalizeBookingSettings(raw = {}) {
     fixedVisitCharges: data.fixedVisitCharges === true,
     homeVisitCharge: data.homeVisitCharge ?? '',
     centerVisitCharge: data.centerVisitCharge ?? '',
+    defaultIncentiveEnabled: data.defaultIncentiveEnabled !== false,
+    defaultIncentiveType: data.defaultIncentiveType === 'flat' ? 'flat' : 'percentage',
+    defaultIncentiveValue: Number(data.defaultIncentiveValue != null ? data.defaultIncentiveValue : 10),
     cancellationCutoffMinutes: Math.max(0, Number(data.cancellationCutoffMinutes ?? 60)),
     paymentMode: ['prepaid', 'cash', 'both'].includes(data.paymentMode) ? data.paymentMode : 'cash',
     allowCustomerInvoiceDownload: data.allowCustomerInvoiceDownload === true,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarOff, ChevronDown, ChevronUp, Clock, Copy, CreditCard, ExternalLink, FileText, Home, Minus, Plus, Save, SlidersHorizontal, Store, Trash2 } from 'lucide-react'
+import { Award, CalendarOff, ChevronDown, ChevronUp, Clock, Copy, CreditCard, ExternalLink, FileText, Home, Minus, Plus, Save, SlidersHorizontal, Store, Trash2 } from 'lucide-react'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
@@ -714,6 +714,50 @@ export default function AdminBookingSettings({ embedded = false }) {
                     <label><Store size={14} /> Center visit charge<input type="number" min="0" value={settings.centerVisitCharge} onChange={e => updateRoot({ centerVisitCharge: e.target.value })} placeholder="100" /></label>
                   </div>
                 )}
+              </section>
+              <section className="booking-panel">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <Award size={18} style={{ color: 'var(--accent, #d97706)' }} />
+                  <h2 style={{ margin: 0 }}>Groomer Staff Incentive</h2>
+                </div>
+                <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '0 0 14px', lineHeight: 1.5 }}>
+                  Set the default incentive rate auto-filled when completing grooming appointments assigned to an employee.
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '12px' }}>
+                  <label>
+                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>Incentive Type</span>
+                    <select
+                      className="input"
+                      value={settings.defaultIncentiveType || 'percentage'}
+                      onChange={e => updateRoot({ defaultIncentiveType: e.target.value })}
+                      style={{ width: '100%', height: '38px', borderRadius: '8px', fontSize: '13px' }}
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="flat">Flat Amount (Rs)</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px' }}>
+                      Default {settings.defaultIncentiveType === 'flat' ? 'Amount (Rs)' : 'Rate (%)'}
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step={settings.defaultIncentiveType === 'flat' ? '10' : '1'}
+                      className="input"
+                      value={settings.defaultIncentiveValue != null ? settings.defaultIncentiveValue : 10}
+                      onChange={e => updateRoot({ defaultIncentiveValue: Math.max(0, parseFloat(e.target.value) || 0) })}
+                      placeholder={settings.defaultIncentiveType === 'flat' ? '100' : '10'}
+                      style={{ width: '100%', height: '38px', borderRadius: '8px', fontSize: '13px' }}
+                    />
+                  </label>
+                </div>
+
+                <div style={{ padding: '8px 12px', borderRadius: '8px', background: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.2)', fontSize: '11.5px', color: '#92400e' }}>
+                  💡 <strong>Example:</strong> On a Rs 1,000 completed grooming session, default incentive will be <strong>Rs {settings.defaultIncentiveType === 'flat' ? (settings.defaultIncentiveValue || 0) : Math.round((1000 * (settings.defaultIncentiveValue || 10)) / 100)}</strong>. Admin can customize or override this per booking upon completion.
+                </div>
               </section>
             </div>
 

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, startAfter, Timestamp, updateDoc, where } from 'firebase/firestore'
 import Cropper from 'react-easy-crop'
-import { Calendar, CalendarDays, Camera, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Edit3, IndianRupee, List, MapPin, MessageCircle, Phone, Plus, ReceiptText, RotateCcw, Scissors, Search, Settings, ShieldAlert, SlidersHorizontal, Sparkles, Tag, Upload, User, UserRound, X } from 'lucide-react'
+import { Award, Calendar, CalendarDays, Camera, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Edit3, IndianRupee, List, MapPin, MessageCircle, Phone, Plus, ReceiptText, RotateCcw, Scissors, Search, Settings, ShieldAlert, SlidersHorizontal, Sparkles, Tag, Upload, User, UserRound, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import Toast from '../components/Toast'
@@ -196,6 +196,9 @@ export default function AdminBookings() {
   const [cashModal, setCashModal] = useState(null)
   const [cashAmt, setCashAmt] = useState('')
   const [recommendedVisitDays, setRecommendedVisitDays] = useState('')
+  const [completionIncentiveType, setCompletionIncentiveType] = useState('percentage')
+  const [completionIncentiveRate, setCompletionIncentiveRate] = useState('')
+  const [completionIncentiveEnabled, setCompletionIncentiveEnabled] = useState(true)
   const [completionImageUrls, setCompletionImageUrls] = useState({ before: '', after: '' })
   const [completionPreviewUrls, setCompletionPreviewUrls] = useState({ before: '', after: '' })
   const [completionUploading, setCompletionUploading] = useState({ before: false, after: false })
@@ -428,7 +431,15 @@ export default function AdminBookings() {
 
   const serviceCatalog = useMemo(() => buildServiceCatalog(serviceDetails), [serviceDetails])
   const ownerAssignee = useMemo(() => getOwnerAssignee(user), [user])
-  const assignableTeamMembers = useMemo(() => teamMembers.filter(member => member.active !== false), [teamMembers])
+  // Grooming bookings should only show groomers and salon staff — dog walkers are excluded
+  const assignableTeamMembers = useMemo(() => {
+    return teamMembers.filter(member => {
+      if (member.active === false) return false
+      const role = (member.role || '').toLowerCase().trim()
+      const isWalker = (role.includes('walker') || member.isWalker === true) && !role.includes('groom')
+      return !isWalker
+    })
+  }, [teamMembers])
   const assigneeOptions = useMemo(() => [ownerAssignee, ...assignableTeamMembers], [ownerAssignee, assignableTeamMembers])
   const assigneeFor = booking => getBookingAssignee(booking, ownerAssignee, teamMembers)
 
@@ -669,6 +680,13 @@ export default function AdminBookings() {
             : ((!isNaN(priceNum) && priceNum > 0) ? priceNum : ''))
       setCashAmt(defaultAmount !== '' ? String(defaultAmount) : '')
       setRecommendedVisitDays(b.recommendedVisitDays ? String(b.recommendedVisitDays) : '30')
+
+      const defType = bookingSettings?.defaultIncentiveType || 'percentage'
+      const defVal = bookingSettings?.defaultIncentiveValue != null ? String(bookingSettings.defaultIncentiveValue) : '10'
+      setCompletionIncentiveType(b.incentiveType || defType)
+      setCompletionIncentiveRate(b.incentiveRate != null ? String(b.incentiveRate) : defVal)
+      setCompletionIncentiveEnabled(b.incentiveAmount !== 0)
+
       setCashModal(b)
       return
     }
@@ -771,6 +789,9 @@ export default function AdminBookings() {
     setCashModal(null)
     setCashAmt('')
     setRecommendedVisitDays('')
+    setCompletionIncentiveType('percentage')
+    setCompletionIncentiveRate('')
+    setCompletionIncentiveEnabled(true)
     resetCompletionUploads()
   }
 
@@ -786,10 +807,24 @@ export default function AdminBookings() {
     const amt = parseFloat(cashAmt) || 0
     const beforeImageUrl = completionImageUrls.before?.trim() || ''
     const afterImageUrl = completionImageUrls.after?.trim() || ''
+
+    const hasAssignee = Boolean(cashModal.assignedTeamMemberId && cashModal.assignedTeamMemberId !== OWNER_ASSIGNEE_ID)
+    const rateNum = parseFloat(completionIncentiveRate) || 0
+    const computedIncentive = (hasAssignee && completionIncentiveEnabled && rateNum > 0)
+      ? (completionIncentiveType === 'percentage'
+          ? Math.round((amt * rateNum) / 100)
+          : Math.round(rateNum))
+      : 0
+
     try {
       const patch = {
         status: 'completed',
         amountCollected: amt,
+        incentiveType: completionIncentiveType,
+        incentiveRate: rateNum,
+        incentiveAmount: computedIncentive,
+        incentiveAssigneeId: hasAssignee ? cashModal.assignedTeamMemberId : null,
+        incentiveAssigneeName: hasAssignee ? (cashModal.assignedTeamMemberName || '') : null,
         nextRecommendedVisitDays: recommendedVisitDays ? parseInt(recommendedVisitDays, 10) : null,
         beforeImageUrl: beforeImageUrl || null,
         afterImageUrl: afterImageUrl || null,
@@ -1086,11 +1121,17 @@ export default function AdminBookings() {
                     </span>
                   )}
                 </span>
-                {b.status === 'confirmed' && (
-                  <select className="admin-booking-assignee-select" value={assigneeFor(b).id || OWNER_ASSIGNEE_ID} onChange={e => assignBooking(b, e.target.value)} disabled={updating === b.id} aria-label="Assign team member">
-                    {assigneeOptions.map(member => <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>)}
-                  </select>
-                )}
+                {b.status === 'confirmed' && (() => {
+                  const currentAssignee = assigneeFor(b)
+                  const rowOptions = (currentAssignee?.id && !assigneeOptions.some(m => m.id === currentAssignee.id))
+                    ? [...assigneeOptions, currentAssignee]
+                    : assigneeOptions
+                  return (
+                    <select className="admin-booking-assignee-select" value={currentAssignee.id || OWNER_ASSIGNEE_ID} onChange={e => assignBooking(b, e.target.value)} disabled={updating === b.id} aria-label="Assign team member">
+                      {rowOptions.map(member => <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>)}
+                    </select>
+                  )
+                })()}
                 <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginLeft: 'auto' }}>
                   {canRescheduleBooking(b) && (
                     <button type="button" onClick={() => openRescheduleModal(b)} disabled={updating === b.id || reschedulingId === b.id} style={S.iconBtn('#f59e0b', 'rgba(245, 158, 11, 0.12)')} className="admin-action">
@@ -1864,6 +1905,121 @@ export default function AdminBookings() {
                 )}
               </div>
 
+              {/* Employee Incentive (If staff is assigned) */}
+              {cashModal.assignedTeamMemberId && cashModal.assignedTeamMemberId !== OWNER_ASSIGNEE_ID && (
+                <div style={{
+                  marginTop: '14px',
+                  padding: '12px 14px',
+                  background: 'rgba(217, 119, 6, 0.06)',
+                  border: '1.5px solid rgba(217, 119, 6, 0.25)',
+                  borderRadius: '12px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 800, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.6px', margin: 0 }}>
+                      <Award size={14} style={{ color: '#d97706' }} /> Groomer Incentive ({cashModal.assignedTeamMemberName || 'Staff'})
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, color: 'var(--text)' }}>
+                      <input
+                        type="checkbox"
+                        checked={completionIncentiveEnabled}
+                        onChange={e => setCompletionIncentiveEnabled(e.target.checked)}
+                        style={{ accentColor: '#d97706', width: '14px', height: '14px' }}
+                      />
+                      Apply
+                    </label>
+                  </div>
+
+                  {completionIncentiveEnabled && (
+                    <>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {/* Toggle Mode % vs Flat */}
+                        <div style={{ display: 'inline-flex', background: 'var(--surface)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                          <button
+                            type="button"
+                            onClick={() => setCompletionIncentiveType('percentage')}
+                            style={{
+                              padding: '5px 10px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              fontSize: '11.5px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              background: completionIncentiveType === 'percentage' ? '#d97706' : 'transparent',
+                              color: completionIncentiveType === 'percentage' ? '#fff' : 'var(--muted)',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            % Percent
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCompletionIncentiveType('flat')}
+                            style={{
+                              padding: '5px 10px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              fontSize: '11.5px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              background: completionIncentiveType === 'flat' ? '#d97706' : 'transparent',
+                              color: completionIncentiveType === 'flat' ? '#fff' : 'var(--muted)',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            Rs Flat
+                          </button>
+                        </div>
+
+                        {/* Rate / Amount Input */}
+                        <div style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          background: 'var(--surface)',
+                          border: '1.5px solid var(--border)',
+                          borderRadius: '10px',
+                          padding: '0 10px',
+                          height: '34px',
+                        }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', marginRight: '4px' }}>
+                            {completionIncentiveType === 'percentage' ? '%' : 'Rs'}
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            step={completionIncentiveType === 'percentage' ? '1' : '10'}
+                            value={completionIncentiveRate}
+                            onChange={e => setCompletionIncentiveRate(e.target.value)}
+                            placeholder={completionIncentiveType === 'percentage' ? '10' : '100'}
+                            style={{
+                              width: '100%',
+                              border: 'none',
+                              background: 'transparent',
+                              fontSize: '13px',
+                              fontWeight: 700,
+                              color: 'var(--text)',
+                              outline: 'none',
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Computed Incentive Preview */}
+                      <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', fontWeight: 700 }}>
+                        <span style={{ color: 'var(--muted)' }}>Incentive to Groomer:</span>
+                        <span style={{ color: '#d97706', fontSize: '13px' }}>
+                          Rs {money(
+                            completionIncentiveType === 'percentage'
+                              ? Math.round(((parseFloat(cashAmt) || 0) * (parseFloat(completionIncentiveRate) || 0)) / 100)
+                              : (parseFloat(completionIncentiveRate) || 0)
+                          )}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* Redesigned Next Recommended Visit */}
               <div style={{ marginTop: '14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
@@ -2454,6 +2610,14 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
                       <span className="admin-detail-kv-value">In {booking.nextVisitDays} days</span>
                     </div>
                   )}
+                  {booking.incentiveAmount > 0 && (
+                    <div className="admin-detail-kv-item">
+                      <span className="admin-detail-kv-label">Staff Incentive ({booking.assignedTeamMemberName || 'Groomer'})</span>
+                      <span className="admin-detail-kv-value" style={{ color: '#d97706', fontWeight: 800 }}>
+                        Rs {money(booking.incentiveAmount)} {booking.incentiveType === 'percentage' ? `(${booking.incentiveRate}%)` : '(Flat)'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2632,9 +2796,14 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
                 <div>
                   <label style={{ display: 'block', marginBottom: '6px', fontWeight: 700, color: 'var(--muted)', fontSize: '12px' }}>Assigned Team Member</label>
                   <select className="input" value={editAssignedTeamMemberId} onChange={e => setEditAssignedTeamMemberId(e.target.value)}>
-                    {assigneeOptions.map(member => (
-                      <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>
-                    ))}
+                    {(() => {
+                      const options = (editAssignedTeamMemberId && !assigneeOptions.some(m => m.id === editAssignedTeamMemberId))
+                        ? [...assigneeOptions, teamMembers.find(m => m.id === editAssignedTeamMemberId) || { id: editAssignedTeamMemberId, name: booking?.assignedTeamMemberName || 'Assigned Staff', role: booking?.assignedTeamMemberRole || 'Staff' }]
+                        : assigneeOptions
+                      return options.map(member => (
+                        <option key={member.id} value={member.id}>{getAssigneeLabel(member)}</option>
+                      ))
+                    })()}
                   </select>
                 </div>
 

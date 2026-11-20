@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
 import { format } from 'date-fns'
 import Cropper from 'react-easy-crop'
-import { AlertTriangle, Calendar, Camera, CheckCircle, CheckSquare, ChevronLeft, ChevronRight, CreditCard, Edit3, Gift, IndianRupee, Mail, Phone, Plus, Save, Slash, Trash2, Upload, UserRound, Users, X, ArrowUpCircle, Footprints, MessageCircle, Copy, Check, KeyRound, ShieldCheck, Settings, Home as HomeIcon, Search, Star, Eye, ExternalLink, Scissors, Sparkles, Filter, Crown } from 'lucide-react'
+import { AlertTriangle, Award, Calendar, Camera, CheckCircle, CheckSquare, ChevronLeft, ChevronRight, CreditCard, Edit3, Gift, IndianRupee, Mail, Phone, Plus, Save, Slash, Trash2, Upload, UserRound, Users, X, ArrowUpCircle, Footprints, MessageCircle, Copy, Check, KeyRound, ShieldCheck, Settings, Home as HomeIcon, Search, Star, Eye, ExternalLink, Scissors, Sparkles, Filter, Crown } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import ConfirmModal from '../components/ConfirmModal'
@@ -942,7 +942,7 @@ Your password has been reset by Admin. Please tap the link below to set your new
   ]
 
   const memberStats = person => {
-    if (!person) return { total: 0, completed: 0, earnings: 0 }
+    if (!person) return { total: 0, completed: 0, earnings: 0, incentives: 0 }
     const assigned = bookings.filter(booking => {
       if (person.isOwner) return !booking.assignedTeamMemberId || booking.assignedTeamMemberId === 'owner' || booking.assignedTeamMemberIsOwner
       return booking.assignedTeamMemberId === person.id
@@ -952,6 +952,7 @@ Your password has been reset by Admin. Please tap the link below to set your new
       total: assigned.length,
       completed: completed.length,
       earnings: completed.reduce((sum, booking) => sum + (parseFloat(booking.amountCollected) || 0), 0),
+      incentives: completed.reduce((sum, booking) => sum + (parseFloat(booking.incentiveAmount) || 0), 0),
     }
   }
 
@@ -1402,7 +1403,39 @@ Your password has been reset by Admin. Please tap the link below to set your new
                         <span>Earnings</span>
                         <strong>Rs {money(stats.earnings)}</strong>
                       </div>
+                      <div className="admin-team-stat-card">
+                        <div className="admin-team-stat-icon" style={{ color: '#d97706', background: 'rgba(217, 119, 6, 0.12)' }}><Award size={18} /></div>
+                        <span>Incentives</span>
+                        <strong style={{ color: '#d97706' }}>Rs {money(stats.incentives)}</strong>
+                      </div>
                     </div>
+
+                    {/* Completed Grooming Incentives Breakdown */}
+                    {stats.incentives > 0 && (
+                      <div style={{ marginTop: '14px', padding: '12px 14px', borderRadius: '12px', background: 'rgba(217, 119, 6, 0.06)', border: '1.5px solid rgba(217, 119, 6, 0.22)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Award size={15} color="#d97706" /> Grooming Incentives Earned
+                          </span>
+                          <strong style={{ fontSize: '14px', color: '#d97706' }}>Rs {money(stats.incentives)}</strong>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '160px', overflowY: 'auto' }}>
+                          {bookings
+                            .filter(b => (selectedMember.isOwner ? (!b.assignedTeamMemberId || b.assignedTeamMemberId === 'owner') : b.assignedTeamMemberId === selectedMember.id) && b.status === 'completed' && b.incentiveAmount > 0)
+                            .map(b => (
+                              <div key={b.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: '8px', background: 'var(--surface)', fontSize: '12px' }}>
+                                <div>
+                                  <strong style={{ color: 'var(--text)' }}>{b.serviceName || 'Grooming'}</strong>
+                                  <span style={{ color: 'var(--muted)', marginLeft: '6px' }}>{b.date || ''}</span>
+                                </div>
+                                <span style={{ color: '#d97706', fontWeight: 700 }}>
+                                  +Rs {money(b.incentiveAmount)} {b.incentiveType === 'percentage' ? `(${b.incentiveRate}%)` : '(Flat)'}
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
 
                     {!selectedMember.isOwner && (
                       <>
@@ -1575,6 +1608,10 @@ Your password has been reset by Admin. Please tap the link below to set your new
                         <button type="button" className="btn admin-team-bonus-button" onClick={() => openPaymentModal('Bonus')} disabled={saving}>
                           <Gift size={18} />
                           Give Bonus
+                        </button>
+                        <button type="button" className="btn btn-secondary" onClick={() => openPaymentModal('Incentive')} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#d97706', borderColor: 'rgba(217, 119, 6, 0.35)' }}>
+                          <Award size={18} />
+                          Pay Incentive
                         </button>
                         <button type="button" className="btn admin-team-add-payment-button" onClick={() => openPaymentModal('Salary')}>
                           <Plus size={18} />
