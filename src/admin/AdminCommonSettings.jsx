@@ -116,12 +116,23 @@ export default function AdminCommonSettings() {
     setToastMessage('Past holidays cleared.')
   }
 
+  const isAllServicesPaused =
+    settings.servicesActive?.grooming === false &&
+    settings.servicesActive?.walking === false &&
+    settings.servicesActive?.boarding === false
+
+  const isAnyServicePaused =
+    settings.servicesActive?.grooming === false ||
+    settings.servicesActive?.walking === false ||
+    settings.servicesActive?.boarding === false
+
   const handleSave = async () => {
     setSaving(true)
     try {
       await saveCommonSettings(db, settings)
       setToastType('success')
-      setToastMessage('Common settings saved successfully!')
+      const isOpen = !settings.emergencyClosure && settings.servicesActive?.grooming !== false
+      setToastMessage(isOpen ? 'Settings saved! Store is open and online bookings are active.' : 'Settings saved successfully.')
     } catch (err) {
       console.error('Failed to save common settings:', err)
       setToastType('error')
@@ -253,9 +264,11 @@ export default function AdminCommonSettings() {
             id: 'emergency',
             label: 'Emergency Closure',
             icon: ShieldAlert,
-            badge: settings.emergencyClosure ? 'Active' : null,
-            badgeBg: settings.emergencyClosure ? '#FEE2E2' : undefined,
-            badgeColor: settings.emergencyClosure ? '#DC2626' : undefined,
+            badge: settings.emergencyClosure
+              ? 'Closed'
+              : (isAnyServicePaused ? 'Paused' : null),
+            badgeBg: settings.emergencyClosure ? '#FEE2E2' : '#FEF3C7',
+            badgeColor: settings.emergencyClosure ? '#DC2626' : '#B45309',
           },
           {
             id: 'invoices',
@@ -427,231 +440,530 @@ export default function AdminCommonSettings() {
 
         {/* SECTION 2: EMERGENCY & GLOBAL CLOSURE */}
         {activeTab === 'emergency' && (
-        <section className="booking-panel" style={{ background: 'var(--card)', border: '1.5px solid var(--border)', borderRadius: '18px', padding: '22px 24px', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-            <span style={{ color: settings.emergencyClosure ? '#EF4444' : 'var(--accent)', display: 'inline-flex' }}>
-              <ShieldAlert size={20} />
-            </span>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: 'var(--text)' }}>
-              Emergency Center Closure
-            </h2>
-          </div>
-          <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '0 0 16px', lineHeight: 1.5 }}>
-            Temporarily pause new online booking requests across the entire facility (due to weather, sudden emergency, or deep sanitization).
-          </p>
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', borderRadius: '12px', background: 'var(--surface)', border: '1px solid var(--border)', marginBottom: '14px' }}>
-            <div>
-              <strong style={{ fontSize: '14px', color: 'var(--text)', display: 'block' }}>Emergency Closure Status</strong>
-              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                {settings.emergencyClosure ? 'Active — all new online bookings paused' : 'Inactive — normal business operations'}
+        <div style={{ display: 'grid', gap: '20px' }}>
+          {/* Card 1: Master Facility Status */}
+          <section className="booking-panel" style={{ background: 'var(--card)', border: '1.5px solid var(--border)', borderRadius: '18px', padding: '22px 24px', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <span style={{ color: settings.emergencyClosure ? '#EF4444' : '#10B981', display: 'inline-flex' }}>
+                {settings.emergencyClosure ? <ShieldAlert size={22} /> : <CheckCircle2 size={22} />}
               </span>
+              <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: 'var(--text)' }}>
+                Center Closure & Emergency Controls
+              </h2>
             </div>
-            <label className="toggle-switch" style={{ cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={settings.emergencyClosure}
-                onChange={e => setSettings(p => ({ ...p, emergencyClosure: e.target.checked }))}
-                style={{ width: '18px', height: '18px', accentColor: '#EF4444' }}
-              />
-            </label>
-          </div>
+            <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '0 0 16px', lineHeight: 1.5 }}>
+              Master switch to temporarily pause all customer bookings across the entire facility (e.g. for severe weather, emergencies, or maintenance).
+            </p>
 
-          {settings.emergencyClosure && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '14px' }}>
-              <div style={{ padding: '14px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#EF4444', marginBottom: '6px' }}>
-                  Notice Message for Customers
-                </label>
-                <input
-                  type="text"
-                  className="input"
-                  value={settings.emergencyNotice}
-                  onChange={e => setSettings(p => ({ ...p, emergencyNotice: e.target.value }))}
-                  placeholder="e.g. Paw Paw Centre is temporarily closed due to weather. We will resume shortly."
-                  style={{ width: '100%', height: '40px', fontSize: '13px', borderRadius: '8px' }}
-                />
+            {/* Master Facility Status Card */}
+            {settings.emergencyClosure ? (
+              <div style={{
+                padding: '18px 20px',
+                borderRadius: '14px',
+                background: '#FEF2F2',
+                border: '2px solid #EF4444',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '14px',
+                marginBottom: '16px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#DC2626', flexShrink: 0 }}>
+                    <ShieldAlert size={24} />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: '16px', color: '#991B1B', fontWeight: 800 }}>Store is EMERGENCY CLOSED</strong>
+                      <span style={{ background: '#DC2626', color: '#fff', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', letterSpacing: '0.3px' }}>
+                        ALL BOOKINGS BLOCKED
+                      </span>
+                    </div>
+                    <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#B91C1C' }}>
+                      New customer booking requests across all services are currently paused.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettings(p => ({
+                      ...p,
+                      emergencyClosure: false,
+                      servicesActive: { grooming: true, walking: true, boarding: true }
+                    }))
+                    setToastType('success')
+                    setToastMessage('Facility reopened! Click "Save Settings" below to apply.')
+                  }}
+                  style={{
+                    background: '#10B981',
+                    border: '1.5px solid #059669',
+                    color: '#fff',
+                    borderRadius: '10px',
+                    padding: '10px 18px',
+                    fontSize: '13.5px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <CheckCircle2 size={16} />
+                  Re-open Store (Accept Bookings)
+                </button>
               </div>
-
-              {/* Estimated Closure & Reopening Schedule (Optional) */}
-              <div style={{ padding: '16px', borderRadius: '12px', background: 'var(--surface)', border: '1.5px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexWrap: 'wrap', gap: '6px' }}>
-                  <strong style={{ fontSize: '13.5px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Calendar size={15} color="var(--accent)" /> Estimated Closure Dates (Optional)
-                  </strong>
-                  <span style={{ fontSize: '11px', color: 'var(--muted)', background: 'var(--card)', padding: '2px 8px', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                    Auto-reopens when date arrives
-                  </span>
-                </div>
-                <p style={{ color: 'var(--muted)', fontSize: '12px', margin: '0 0 12px', lineHeight: 1.45 }}>
-                  Leave blank to keep closed indefinitely until manually turned off. Or set an expected reopening date for <strong>automatic reopening</strong>.
-                </p>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: 'var(--text)', marginBottom: '4px' }}>
-                      Close From (Start Date)
-                    </label>
-                    <input
-                      type="date"
-                      className="input"
-                      value={settings.closureStartDate || ''}
-                      onChange={e => setSettings(p => ({ ...p, closureStartDate: e.target.value }))}
-                      style={{ width: '100%', height: '38px', fontSize: '12.5px', borderRadius: '8px' }}
-                    />
-                    <span style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px', display: 'block' }}>
-                      Leave empty to close immediately (today)
-                    </span>
+            ) : (
+              <div style={{
+                padding: '18px 20px',
+                borderRadius: '14px',
+                background: '#ECFDF5',
+                border: '2px solid #10B981',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '14px',
+                marginBottom: '16px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#059669', flexShrink: 0 }}>
+                    <CheckCircle2 size={24} />
                   </div>
-
                   <div>
-                    <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: 'var(--text)', marginBottom: '4px' }}>
-                      Reopen On (Expected Opening Date)
-                    </label>
-                    <input
-                      type="date"
-                      className="input"
-                      min={settings.closureStartDate || new Date().toISOString().slice(0, 10)}
-                      value={settings.reopenDate || ''}
-                      onChange={e => setSettings(p => ({ ...p, reopenDate: e.target.value }))}
-                      style={{ width: '100%', height: '38px', fontSize: '12.5px', borderRadius: '8px' }}
-                    />
-                    <span style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px', display: 'block' }}>
-                      Center will automatically reopen on this day
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: '16px', color: '#065F46', fontWeight: 800 }}>Store is OPEN</strong>
+                      <span style={{ background: '#059669', color: '#fff', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', letterSpacing: '0.3px' }}>
+                        NORMAL OPERATIONS
+                      </span>
+                    </div>
+                    <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#047857' }}>
+                      Facility is operating normally and online bookings are enabled.
+                    </p>
                   </div>
                 </div>
 
-                {/* Quick Date Presets */}
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>Quick Presets:</span>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    style={{ padding: '3px 9px', fontSize: '11px', borderRadius: '6px' }}
-                    onClick={() => {
-                      const d = new Date()
-                      d.setDate(d.getDate() + 1)
-                      const dStr = d.toISOString().slice(0, 10)
-                      setSettings(p => ({ ...p, closureStartDate: p.closureStartDate || new Date().toISOString().slice(0, 10), reopenDate: dStr }))
-                    }}
-                  >
-                    +1 Day (Reopen Tomorrow)
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    style={{ padding: '3px 9px', fontSize: '11px', borderRadius: '6px' }}
-                    onClick={() => {
-                      const d = new Date()
-                      d.setDate(d.getDate() + 2)
-                      const dStr = d.toISOString().slice(0, 10)
-                      setSettings(p => ({ ...p, closureStartDate: p.closureStartDate || new Date().toISOString().slice(0, 10), reopenDate: dStr }))
-                    }}
-                  >
-                    +2 Days
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    style={{ padding: '3px 9px', fontSize: '11px', borderRadius: '6px' }}
-                    onClick={() => {
-                      const d = new Date()
-                      d.setDate(d.getDate() + 7)
-                      const dStr = d.toISOString().slice(0, 10)
-                      setSettings(p => ({ ...p, closureStartDate: p.closureStartDate || new Date().toISOString().slice(0, 10), reopenDate: dStr }))
-                    }}
-                  >
-                    +1 Week
-                  </button>
-                  {(settings.closureStartDate || settings.reopenDate) && (
+                <button
+                  type="button"
+                  onClick={() => setSettings(p => ({ ...p, emergencyClosure: true }))}
+                  style={{
+                    background: '#fff',
+                    border: '1.5px solid #EF4444',
+                    color: '#DC2626',
+                    borderRadius: '10px',
+                    padding: '9px 16px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <ShieldAlert size={15} />
+                  Emergency Close Store...
+                </button>
+              </div>
+            )}
+
+            {/* If emergency closure is active, show customer notice & auto-reopen schedule */}
+            {settings.emergencyClosure && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '14px' }}>
+                <div style={{ padding: '14px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#EF4444', marginBottom: '6px' }}>
+                    Notice Message for Customers
+                  </label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={settings.emergencyNotice}
+                    onChange={e => setSettings(p => ({ ...p, emergencyNotice: e.target.value }))}
+                    placeholder="e.g. Paw Paw Centre is temporarily closed due to weather. We will resume shortly."
+                    style={{ width: '100%', height: '40px', fontSize: '13px', borderRadius: '8px' }}
+                  />
+                </div>
+
+                {/* Estimated Closure & Reopening Schedule (Optional) */}
+                <div style={{ padding: '16px', borderRadius: '12px', background: 'var(--surface)', border: '1.5px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexWrap: 'wrap', gap: '6px' }}>
+                    <strong style={{ fontSize: '13.5px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Calendar size={15} color="var(--accent)" /> Estimated Closure Dates (Optional)
+                    </strong>
+                    <span style={{ fontSize: '11px', color: 'var(--muted)', background: 'var(--card)', padding: '2px 8px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                      Auto-reopens when date arrives
+                    </span>
+                  </div>
+                  <p style={{ color: 'var(--muted)', fontSize: '12px', margin: '0 0 12px', lineHeight: 1.45 }}>
+                    Leave blank to keep closed indefinitely until manually turned off. Or set an expected reopening date for <strong>automatic reopening</strong>.
+                  </p>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: 'var(--text)', marginBottom: '4px' }}>
+                        Close From (Start Date)
+                      </label>
+                      <input
+                        type="date"
+                        className="input"
+                        value={settings.closureStartDate || ''}
+                        onChange={e => setSettings(p => ({ ...p, closureStartDate: e.target.value }))}
+                        style={{ width: '100%', height: '38px', fontSize: '12.5px', borderRadius: '8px' }}
+                      />
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px', display: 'block' }}>
+                        Leave empty to close immediately (today)
+                      </span>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: 'var(--text)', marginBottom: '4px' }}>
+                        Reopen On (Expected Opening Date)
+                      </label>
+                      <input
+                        type="date"
+                        className="input"
+                        min={settings.closureStartDate || new Date().toISOString().slice(0, 10)}
+                        value={settings.reopenDate || ''}
+                        onChange={e => setSettings(p => ({ ...p, reopenDate: e.target.value }))}
+                        style={{ width: '100%', height: '38px', fontSize: '12.5px', borderRadius: '8px' }}
+                      />
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px', display: 'block' }}>
+                        Center will automatically reopen on this day
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Quick Date Presets */}
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>Quick Presets:</span>
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      style={{ padding: '3px 9px', fontSize: '11px', borderRadius: '6px', color: '#EF4444', borderColor: '#FCA5A5' }}
-                      onClick={() => setSettings(p => ({ ...p, closureStartDate: '', reopenDate: '' }))}
+                      style={{ padding: '3px 9px', fontSize: '11px', borderRadius: '6px' }}
+                      onClick={() => {
+                        const d = new Date()
+                        d.setDate(d.getDate() + 1)
+                        const dStr = d.toISOString().slice(0, 10)
+                        setSettings(p => ({ ...p, closureStartDate: p.closureStartDate || new Date().toISOString().slice(0, 10), reopenDate: dStr }))
+                      }}
                     >
-                      Clear Dates (Indefinite)
+                      +1 Day (Reopen Tomorrow)
                     </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '3px 9px', fontSize: '11px', borderRadius: '6px' }}
+                      onClick={() => {
+                        const d = new Date()
+                        d.setDate(d.getDate() + 2)
+                        const dStr = d.toISOString().slice(0, 10)
+                        setSettings(p => ({ ...p, closureStartDate: p.closureStartDate || new Date().toISOString().slice(0, 10), reopenDate: dStr }))
+                      }}
+                    >
+                      +2 Days
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '3px 9px', fontSize: '11px', borderRadius: '6px' }}
+                      onClick={() => {
+                        const d = new Date()
+                        d.setDate(d.getDate() + 7)
+                        const dStr = d.toISOString().slice(0, 10)
+                        setSettings(p => ({ ...p, closureStartDate: p.closureStartDate || new Date().toISOString().slice(0, 10), reopenDate: dStr }))
+                      }}
+                    >
+                      +1 Week
+                    </button>
+                    {(settings.closureStartDate || settings.reopenDate) && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ padding: '3px 9px', fontSize: '11px', borderRadius: '6px', color: '#EF4444', borderColor: '#FCA5A5' }}
+                        onClick={() => setSettings(p => ({ ...p, closureStartDate: '', reopenDate: '' }))}
+                      >
+                        Clear Dates (Indefinite)
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Status Notice */}
+                  {settings.reopenDate ? (() => {
+                    const todayStr = new Date().toISOString().slice(0, 10)
+                    const isExpired = todayStr >= settings.reopenDate
+                    return (
+                      <div style={{
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        background: isExpired ? '#FFFBEB' : '#ECFDF5',
+                        border: `1px solid ${isExpired ? '#FDE68A' : '#A7F3D0'}`,
+                        color: isExpired ? '#B45309' : '#065F46',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}>
+                        {isExpired ? (
+                          <span>⚠️ Reopen date (<strong>{settings.reopenDate}</strong>) has passed. Closure is expired and bookings will be accepted automatically.</span>
+                        ) : (
+                          <span>🟢 <strong>Auto-Reopen Enabled:</strong> The facility will automatically reopen for new bookings on <strong>{settings.reopenDate}</strong>.</span>
+                        )}
+                      </div>
+                    )
+                  })() : (
+                    <div style={{ padding: '8px 12px', borderRadius: '8px', fontSize: '11.5px', background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF' }}>
+                      ℹ️ <strong>Manual Control:</strong> Facility will remain closed until you click "Re-open Store" above.
+                    </div>
                   )}
                 </div>
+              </div>
+            )}
+          </section>
 
-                {/* Status Notice */}
-                {settings.reopenDate ? (() => {
-                  const todayStr = new Date().toISOString().slice(0, 10)
-                  const isExpired = todayStr >= settings.reopenDate
-                  return (
-                    <div style={{
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      background: isExpired ? '#FFFBEB' : '#ECFDF5',
-                      border: `1px solid ${isExpired ? '#FDE68A' : '#A7F3D0'}`,
-                      color: isExpired ? '#B45309' : '#065F46',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                    }}>
-                      {isExpired ? (
-                        <span>⚠️ Reopen date (<strong>{settings.reopenDate}</strong>) has passed. Closure is expired and bookings will be accepted automatically.</span>
-                      ) : (
-                        <span>🟢 <strong>Auto-Reopen Enabled:</strong> The facility will automatically reopen for new bookings on <strong>{settings.reopenDate}</strong>.</span>
-                      )}
-                    </div>
-                  )
-                })() : (
-                  <div style={{ padding: '8px 12px', borderRadius: '8px', fontSize: '11.5px', background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF' }}>
-                    ℹ️ <strong>Manual Control:</strong> Facility will remain closed until you manually uncheck the toggle above.
+          {/* Card 2: Individual Service Availability */}
+          <section className="booking-panel" style={{ background: 'var(--card)', border: '1.5px solid var(--border)', borderRadius: '18px', padding: '22px 24px', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: 'var(--accent)', display: 'inline-flex' }}>
+                  <Sliders size={20} />
+                </span>
+                <h2 style={{ fontSize: '17px', fontWeight: 700, margin: 0, color: 'var(--text)' }}>
+                  Service-by-Service Availability
+                </h2>
+              </div>
+
+              {/* Quick Action Button if any service is paused */}
+              {isAnyServicePaused && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettings(p => ({
+                      ...p,
+                      servicesActive: { grooming: true, walking: true, boarding: true }
+                    }))
+                    setToastType('success')
+                    setToastMessage('All 3 services set to OPEN! Click "Save Settings" below.')
+                  }}
+                  style={{
+                    background: '#10B981',
+                    border: 'none',
+                    color: '#fff',
+                    borderRadius: '8px',
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)'
+                  }}
+                >
+                  <CheckCircle2 size={14} />
+                  Turn ON All Services (Open Store)
+                </button>
+              )}
+            </div>
+
+            <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '0 0 16px', lineHeight: 1.5 }}>
+              Control which specific services customers can book online. <strong>Keep green (OPEN)</strong> so customers can book. Turn off only if you temporarily cannot take bookings for that particular service.
+            </p>
+
+            {/* Warning banner if all or some services are paused */}
+            {isAllServicesPaused ? (
+              <div style={{
+                padding: '12px 16px',
+                borderRadius: '12px',
+                background: '#FEF2F2',
+                border: '1.5px solid #FCA5A5',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '10px',
+                marginBottom: '16px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <AlertTriangle size={20} style={{ color: '#DC2626', flexShrink: 0 }} />
+                  <div>
+                    <strong style={{ fontSize: '13px', color: '#991B1B', display: 'block' }}>
+                      All 3 services are currently PAUSED (Closed)
+                    </strong>
+                    <span style={{ fontSize: '12px', color: '#B91C1C' }}>
+                      Customers cannot book any service online right now! Click "Open All Services" to restore bookings.
+                    </span>
                   </div>
-                )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettings(p => ({
+                      ...p,
+                      servicesActive: { grooming: true, walking: true, boarding: true }
+                    }))
+                    setToastType('success')
+                    setToastMessage('All services enabled! Click "Save Settings" below.')
+                  }}
+                  style={{
+                    background: '#DC2626',
+                    border: 'none',
+                    color: '#fff',
+                    borderRadius: '8px',
+                    padding: '7px 16px',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Open All Services Now
+                </button>
               </div>
+            ) : isAnyServicePaused ? (
+              <div style={{
+                padding: '10px 14px',
+                borderRadius: '10px',
+                background: '#FFFBEB',
+                border: '1px solid #FDE68A',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: '14px',
+                fontSize: '12.5px',
+                color: '#B45309'
+              }}>
+                <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+                <span>
+                  <strong>Notice:</strong> One or more services are turned OFF. Customers will see those services as unavailable on the booking pages.
+                </span>
+              </div>
+            ) : null}
+
+            {/* Service Toggle Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+              {[
+                {
+                  key: 'grooming',
+                  label: 'Pet Grooming',
+                  icon: Scissors,
+                  desc: 'Salon baths, haircuts & styling',
+                  route: '/book'
+                },
+                {
+                  key: 'walking',
+                  label: 'Dog Walking',
+                  icon: Footprints,
+                  desc: 'Daily walks & exercise packages',
+                  route: '/book-walking'
+                },
+                {
+                  key: 'boarding',
+                  label: 'Pet Boarding',
+                  icon: Hotel,
+                  desc: 'Overnight hotel & cage-free stay',
+                  route: '/book-boarding'
+                },
+              ].map(svc => {
+                const SvcIcon = svc.icon
+                const isOpen = settings.servicesActive?.[svc.key] !== false
+
+                return (
+                  <div
+                    key={svc.key}
+                    style={{
+                      padding: '16px',
+                      borderRadius: '14px',
+                      background: isOpen ? 'var(--surface)' : '#FEF2F2',
+                      border: `1.5px solid ${isOpen ? 'var(--border)' : '#FECACA'}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      gap: '12px',
+                      transition: 'all 0.18s ease',
+                      boxShadow: isOpen ? 'none' : '0 2px 8px rgba(239, 68, 68, 0.08)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                          width: '38px',
+                          height: '38px',
+                          borderRadius: '10px',
+                          background: isOpen ? 'var(--accent-bg, rgba(212,175,55,0.14))' : '#FEE2E2',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: isOpen ? 'var(--accent, #D4AF37)' : '#DC2626',
+                          flexShrink: 0
+                        }}>
+                          <SvcIcon size={19} />
+                        </div>
+                        <div>
+                          <strong style={{ fontSize: '14px', color: 'var(--text)', display: 'block' }}>
+                            {svc.label}
+                          </strong>
+                          <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+                            {svc.desc}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Status Badge */}
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '3px 8px',
+                        borderRadius: '999px',
+                        letterSpacing: '0.2px',
+                        whiteSpace: 'nowrap',
+                        background: isOpen ? '#ECFDF5' : '#FEE2E2',
+                        color: isOpen ? '#047857' : '#DC2626',
+                        border: `1px solid ${isOpen ? '#A7F3D0' : '#FECACA'}`
+                      }}>
+                        {isOpen ? '🟢 OPEN' : '🔴 PAUSED'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '8px', borderTop: `1px solid ${isOpen ? 'var(--border)' : '#FCA5A5'}` }}>
+                      <span style={{ fontSize: '11px', color: isOpen ? '#059669' : '#DC2626', fontWeight: 600 }}>
+                        {isOpen ? '✓ Accepting online bookings' : '✗ Bookings paused for this service'}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSettings(p => ({
+                            ...p,
+                            servicesActive: {
+                              ...(p.servicesActive || { grooming: true, walking: true, boarding: true }),
+                              [svc.key]: !isOpen,
+                            }
+                          }))
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          fontSize: '11.5px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          background: isOpen ? '#FFF1F2' : '#10B981',
+                          color: isOpen ? '#E11D48' : '#fff',
+                          border: `1px solid ${isOpen ? '#FECDD3' : '#059669'}`,
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {isOpen ? 'Pause Service' : '🟢 Turn ON'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-          )}
-
-          {/* Service Active Toggles */}
-          <div style={{ marginTop: '16px' }}>
-            <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--muted)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Service-Level Availability
-            </span>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: '10px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600 }}>
-                  <Scissors size={15} style={{ color: 'var(--accent)' }} /> Pet Grooming
-                </span>
-                <input
-                  type="checkbox"
-                  checked={settings.servicesActive?.grooming !== false}
-                  onChange={e => setSettings(p => ({ ...p, servicesActive: { ...p.servicesActive, grooming: e.target.checked } }))}
-                  style={{ width: '16px', height: '16px', accentColor: 'var(--accent)' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: '10px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600 }}>
-                  <Footprints size={15} style={{ color: 'var(--accent)' }} /> Dog Walking
-                </span>
-                <input
-                  type="checkbox"
-                  checked={settings.servicesActive?.walking !== false}
-                  onChange={e => setSettings(p => ({ ...p, servicesActive: { ...p.servicesActive, walking: e.target.checked } }))}
-                  style={{ width: '16px', height: '16px', accentColor: 'var(--accent)' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: '10px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600 }}>
-                  <Hotel size={15} style={{ color: 'var(--accent)' }} /> Pet Boarding
-                </span>
-                <input
-                  type="checkbox"
-                  checked={settings.servicesActive?.boarding !== false}
-                  onChange={e => setSettings(p => ({ ...p, servicesActive: { ...p.servicesActive, boarding: e.target.checked } }))}
-                  style={{ width: '16px', height: '16px', accentColor: 'var(--accent)' }}
-                />
-              </div>
-            </div>
-          </div>
-        </section>
+          </section>
+        </div>
         )}
 
         {/* SECTION 3: INVOICES & SERVICE QUICK LINKS */}

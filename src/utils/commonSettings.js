@@ -129,6 +129,15 @@ export async function saveCommonSettings(db, settings) {
 
   cachedCommonSettings = normalized
   cachedCommonSettingsTime = Date.now()
+
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem('pawpaw_cached_booking_settings')
+      localStorage.removeItem('pawpaw_cached_walking_settings')
+      localStorage.removeItem('pawpaw_cached_boarding_settings')
+    } catch {}
+  }
+
   return normalized
 }
 
