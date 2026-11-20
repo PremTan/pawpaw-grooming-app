@@ -48,6 +48,7 @@ const AdminBookingSettings = lazy(() => import('./admin/AdminBookingSettings'))
 const AdminCommonSettings = lazy(() => import('./admin/AdminCommonSettings'))
 const AdminInvoices = lazy(() => import('./admin/AdminInvoices'))
 const AdminTeam = lazy(() => import('./admin/AdminTeam'))
+const AdminEarnings = lazy(() => import('./admin/AdminEarnings'))
 const AdminShopPurchases = lazy(() => import('./admin/AdminShopPurchases'))
 const AdminOffers = lazy(() => import('./admin/AdminOffers'))
 
@@ -117,6 +118,7 @@ export default function App() {
         <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
         <Route index            element={<AdminDashboard />} />
         <Route path="dashboard" element={<DashboardRedirect />} />
+        <Route path="earnings"  element={<AdminEarnings />} />
         <Route path="bookings"  element={<AdminBookings />} />
         <Route path="bookings/:bookingId" element={<AdminBookings />} />
         <Route path="boarding"  element={<AdminBoarding />} />

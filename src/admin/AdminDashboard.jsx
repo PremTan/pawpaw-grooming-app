@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { collection, getDocs, addDoc, serverTimestamp, doc, setDoc, orderBy, query } from 'firebase/firestore'
 import { Link, useSearchParams } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
-import { ArrowRight, BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Search, Settings, Store, UserCheck, X } from 'lucide-react'
+import { ArrowRight, BarChart3, Calendar, CalendarCheck, Home, IndianRupee, Plus, Search, Settings, Store, TrendingUp, UserCheck, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
@@ -519,6 +519,13 @@ export default function AdminDashboard() {
           <p style={{ color: 'var(--muted)', fontSize: '13px', marginTop: '4px' }}>Overview of Paw Paw Grooming Centre</p>
         </div>
         <div className="admin-dashboard-actions">
+          <Link
+            to="/admin/earnings"
+            className="btn btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <TrendingUp size={16} /> <span>Revenue</span>
+          </Link>
           <button onClick={() => { setShowModal(true); setSuccess(false); setError('') }} className="btn btn-primary">
             <Plus size={16} /> <span>Add Walk-in</span>
           </button>
