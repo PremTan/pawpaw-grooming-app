@@ -795,6 +795,31 @@ export default function AdminBookings() {
     resetCompletionUploads()
   }
 
+  const handleToggleIncentiveType = (newType) => {
+    if (newType === completionIncentiveType) return
+    const currentRate = parseFloat(completionIncentiveRate) || 0
+    const total = parseFloat(cashAmt) || parseFloat(cashModal?.total) || parseFloat(cashModal?.price) || 0
+
+    if (newType === 'flat') {
+      // Switching from % to Flat: convert percentage of total into the calculated flat rupee amount
+      if (total > 0 && currentRate > 0) {
+        const flatAmount = Math.round((total * currentRate) / 100)
+        setCompletionIncentiveRate(String(flatAmount))
+      }
+      setCompletionIncentiveType('flat')
+    } else {
+      // Switching from Flat to %: convert flat amount into equivalent percentage of total
+      if (total > 0 && currentRate > 0) {
+        const percent = Math.round((currentRate / total) * 100)
+        setCompletionIncentiveRate(String(percent))
+      } else {
+        const defVal = bookingSettings?.defaultIncentiveValue != null ? String(bookingSettings.defaultIncentiveValue) : '10'
+        setCompletionIncentiveRate(defVal)
+      }
+      setCompletionIncentiveType('percentage')
+    }
+  }
+
   const confirmCancel = async () => {
     if (!cancelTarget) return
     await updateStatus(cancelTarget, 'cancelled', cancelReason)
@@ -1936,7 +1961,7 @@ export default function AdminBookings() {
                         <div style={{ display: 'inline-flex', background: 'var(--surface)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                           <button
                             type="button"
-                            onClick={() => setCompletionIncentiveType('percentage')}
+                            onClick={() => handleToggleIncentiveType('percentage')}
                             style={{
                               padding: '5px 10px',
                               borderRadius: '6px',
@@ -1953,7 +1978,7 @@ export default function AdminBookings() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setCompletionIncentiveType('flat')}
+                            onClick={() => handleToggleIncentiveType('flat')}
                             style={{
                               padding: '5px 10px',
                               borderRadius: '6px',

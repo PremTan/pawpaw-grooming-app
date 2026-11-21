@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
 import { format } from 'date-fns'
 import Cropper from 'react-easy-crop'
-import { AlertTriangle, Award, Calendar, Camera, CheckCircle, CheckSquare, ChevronLeft, ChevronRight, CreditCard, Edit3, Gift, IndianRupee, Mail, Phone, Plus, Save, Slash, Trash2, Upload, UserRound, Users, X, ArrowUpCircle, Footprints, MessageCircle, Copy, Check, KeyRound, ShieldCheck, Settings, Home as HomeIcon, Search, Star, Eye, ExternalLink, Scissors, Sparkles, Filter, Crown } from 'lucide-react'
+import { AlertTriangle, Award, Calendar, Camera, CheckCircle, CheckSquare, ChevronLeft, ChevronRight, Clock, CreditCard, Edit3, Gift, IndianRupee, Mail, Phone, Plus, ReceiptText, Save, Slash, Trash2, Upload, UserRound, Users, X, ArrowUpCircle, Footprints, MessageCircle, Copy, Check, KeyRound, ShieldCheck, Settings, Home as HomeIcon, Search, Star, Eye, ExternalLink, Scissors, Sparkles, Filter, Crown } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import ConfirmModal from '../components/ConfirmModal'
@@ -54,12 +54,14 @@ const getPaymentBadgeClass = type => {
   if (normalized === 'deduction') return 'badge badge-cancelled'
   return 'badge'
 }
+const SHORT_MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const getMonthOptions = (count = 7) => {
   const options = []
   const now = new Date()
   for (let i = count - 1; i >= 0; i -= 1) {
     const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    options.push({ month: date.getMonth() + 1, year: date.getFullYear(), label: `${MONTH_LABELS[date.getMonth()]} ${date.getFullYear()}` })
+    const shortYear = String(date.getFullYear()).slice(-2)
+    options.push({ month: date.getMonth() + 1, year: date.getFullYear(), label: `${SHORT_MONTH_LABELS[date.getMonth()]} '${shortYear}` })
   }
   return options
 }
@@ -133,6 +135,7 @@ export default function AdminTeam() {
   const [showAllPayments, setShowAllPayments] = useState(false)
   const [selectedPayrollMonth, setSelectedPayrollMonth] = useState({ month: new Date().getMonth() + 1, year: new Date().getFullYear() })
   const [editingPayment, setEditingPayment] = useState(null)
+  const [detailTab, setDetailTab] = useState('overview')
   const [deletingPayment, setDeletingPayment] = useState(null)
   const [confirmFullSalary, setConfirmFullSalary] = useState(false)
   const [payrollLoading, setPayrollLoading] = useState(false)
@@ -1190,7 +1193,7 @@ Your password has been reset by Admin. Please tap the link below to set your new
           {(!roleTab || roleTab === 'All' || roleTab === 'Active') && (!searchQuery || (owner?.name || '').toLowerCase().includes(searchQuery.toLowerCase())) && (
             <div
               className="admin-team-row is-owner"
-              onClick={() => setSelectedMember(owner)}
+              onClick={() => { setSelectedMember(owner); setDetailTab('overview') }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1259,7 +1262,7 @@ Your password has been reset by Admin. Please tap the link below to set your new
                 <div
                   key={member.id}
                   className={`admin-team-row${isInactive ? ' is-inactive' : ''}`}
-                  onClick={() => setSelectedMember(member)}
+                  onClick={() => { setSelectedMember(member); setDetailTab('overview') }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -1336,57 +1339,186 @@ Your password has been reset by Admin. Please tap the link below to set your new
 
       {selectedMember && (() => {
         const stats = memberStats(selectedMember)
+        const activeDetailTab = (selectedMember.isOwner && (detailTab === 'payroll' || detailTab === 'history'))
+          ? 'overview'
+          : detailTab
+
+        const detailTabs = selectedMember.isOwner
+          ? [
+              { id: 'overview', label: 'Overview & Profile', icon: <UserRound size={15} /> },
+              { id: 'activity', label: 'Work & Incentives', icon: <Award size={15} />, count: stats.completed },
+            ]
+          : [
+              { id: 'overview', label: 'Overview & Profile', icon: <UserRound size={15} /> },
+              { id: 'payroll', label: 'Payroll & Actions', icon: <CreditCard size={15} /> },
+              { id: 'history', label: 'Payment History', icon: <ReceiptText size={15} />, count: filteredPayments.length },
+              { id: 'activity', label: 'Work & Incentives', icon: <Award size={15} />, count: stats.completed },
+            ]
+
         return (
           <div className="modal-overlay" onClick={() => setSelectedMember(null)}>
-            <div className="modal-box admin-team-detail-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-team-modal-head">
-                <div>
-                  <h2 style={{ margin: 0 }}>Team Details</h2>
+            <div
+              className="modal-box admin-team-detail-modal"
+              style={{
+                maxWidth: '860px',
+                width: '100%',
+                padding: 0,
+                borderRadius: '18px',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                maxHeight: '90vh',
+                boxShadow: '0 20px 45px rgba(0,0,0,0.22)',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Clean Top Header with Avatar, Name, Role & Close */}
+              <div
+                className="admin-team-modal-head"
+                style={{
+                  padding: '16px 22px',
+                  borderBottom: '1px solid var(--border)',
+                  background: 'var(--card)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+                  <div
+                    style={{
+                      width: '48px',
+                      height: '48px',
+                      flex: '0 0 48px',
+                      borderRadius: '12px',
+                      overflow: 'hidden',
+                      cursor: selectedMember?.photoUrl ? 'pointer' : 'default',
+                      border: '2px solid var(--accent-border)',
+                      background: 'var(--surface)',
+                    }}
+                    onClick={selectedMember?.photoUrl ? openProfileImage : undefined}
+                    title={selectedMember?.photoUrl ? 'Click to view photo' : undefined}
+                  >
+                    <Avatar person={selectedMember} owner={selectedMember.isOwner} size={24} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: 'var(--text)' }}>
+                        {selectedMember.name}
+                      </h2>
+                      {selectedMember.isOwner ? (
+                        <span className="badge badge-completed" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <Crown size={11} /> Owner
+                        </span>
+                      ) : (
+                        <span className="badge badge-online" style={{ fontSize: '11px' }}>
+                          {selectedMember.role || 'Team Member'}
+                        </span>
+                      )}
+                      {!selectedMember.isOwner && selectedMember.active === false && (
+                        <span className="badge badge-cancelled" style={{ fontSize: '11px' }}>Inactive</span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '3px', fontSize: '12px', color: 'var(--muted)', flexWrap: 'wrap' }}>
+                      {selectedMember.phone && (
+                        <a href={`tel:${selectedMember.phone}`} style={{ color: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <Phone size={12} /> {selectedMember.phone}
+                        </a>
+                      )}
+                      {selectedMember.email && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <Mail size={12} /> {selectedMember.email}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <button type="button" onClick={() => setSelectedMember(null)} aria-label="Close team details"><X size={18} /></button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMember(null)}
+                  aria-label="Close team details"
+                  style={{
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    cursor: 'pointer',
+                    color: 'var(--muted)',
+                    padding: '6px',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <X size={18} />
+                </button>
               </div>
 
-              <div className="admin-team-detail-body">
-                <div className="admin-team-detail-grid">
-                  <section className="admin-team-profile-panel">
-                    <div className="admin-team-profile-head">
-                      <div
-                        className="admin-team-profile-avatar"
-                        style={{
-                          width: '70px',
-                          height: '70px',
-                          flex: '0 0 70px',
-                          borderRadius: '12px',
-                          overflow: 'hidden',
-                          cursor: selectedMember?.photoUrl ? 'pointer' : 'default',
-                        }}
-                        onClick={selectedMember?.photoUrl ? openProfileImage : undefined}
-                      >
-                        <Avatar person={selectedMember} owner={selectedMember.isOwner} size={32} />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="admin-team-title">
-                          <strong>{selectedMember.name}</strong>
-                          {selectedMember.isOwner ? <span className="badge badge-completed">Owner</span> : <span className="badge badge-online">{selectedMember.role || 'Team Member'}</span>}
-                          {!selectedMember.isOwner && selectedMember.active === false && <span className="badge badge-cancelled">Inactive</span>}
-                        </div>
-                        <p style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', wordBreak: 'break-all', overflowWrap: 'anywhere' }}>
-                          <Mail size={13} style={{ flexShrink: 0, marginTop: '3px' }} />
-                          <span style={{ wordBreak: 'break-all', overflowWrap: 'anywhere', minWidth: 0, flex: 1, lineHeight: 1.35 }}>
-                            {selectedMember.email || '-'}
-                          </span>
-                        </p>
-                        <p>
-                          <Phone size={13} />
-                          {selectedMember.phone ? (
-                            <a href={`tel:${selectedMember.phone}`} style={{ color: 'inherit', textDecoration: 'none', marginLeft: '6px' }}>
-                              {selectedMember.phone}
-                            </a>
-                          ) : '-'}
-                        </p>
-                      </div>
-                    </div>
+              {/* Segmented Tab Navigation Bar */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '10px 20px',
+                  background: 'var(--surface)',
+                  borderBottom: '1px solid var(--border)',
+                  overflowX: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  flexShrink: 0,
+                }}
+              >
+                {detailTabs.map(tab => {
+                  const isActive = activeDetailTab === tab.id
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setDetailTab(tab.id)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '7px 14px',
+                        borderRadius: '9px',
+                        fontSize: '12.5px',
+                        fontWeight: isActive ? 800 : 600,
+                        color: isActive ? 'var(--accent)' : 'var(--muted)',
+                        background: isActive ? 'var(--card)' : 'transparent',
+                        border: isActive ? '1px solid var(--accent-border)' : '1px solid transparent',
+                        boxShadow: isActive ? '0 1px 4px rgba(0,0,0,0.06)' : 'none',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {tab.icon}
+                      <span>{tab.label}</span>
+                      {tab.count !== undefined && tab.count > 0 && (
+                        <span
+                          style={{
+                            fontSize: '10.5px',
+                            padding: '1px 6px',
+                            borderRadius: '999px',
+                            background: isActive ? 'var(--accent)' : 'rgba(0,0,0,0.08)',
+                            color: isActive ? '#fff' : 'var(--muted)',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {tab.count}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
 
+              {/* Scrollable Tab Body */}
+              <div className="admin-team-detail-body" style={{ padding: '22px', overflowY: 'auto', flex: 1, minHeight: 0 }}>
+                {/* TAB 1: Overview & Profile */}
+                {activeDetailTab === 'overview' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {/* 4 Stat Cards */}
                     <div className="admin-team-stat-card-grid">
                       <div className="admin-team-stat-card">
                         <div className="admin-team-stat-icon"><Users size={18} /></div>
@@ -1410,308 +1542,496 @@ Your password has been reset by Admin. Please tap the link below to set your new
                       </div>
                     </div>
 
-                    {/* Completed Grooming Incentives Breakdown */}
-                    {stats.incentives > 0 && (
-                      <div style={{ marginTop: '14px', padding: '12px 14px', borderRadius: '12px', background: 'rgba(217, 119, 6, 0.06)', border: '1.5px solid rgba(217, 119, 6, 0.22)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                          <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Award size={15} color="#d97706" /> Grooming Incentives Earned
-                          </span>
-                          <strong style={{ fontSize: '14px', color: '#d97706' }}>Rs {money(stats.incentives)}</strong>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '160px', overflowY: 'auto' }}>
-                          {bookings
-                            .filter(b => (selectedMember.isOwner ? (!b.assignedTeamMemberId || b.assignedTeamMemberId === 'owner') : b.assignedTeamMemberId === selectedMember.id) && b.status === 'completed' && b.incentiveAmount > 0)
-                            .map(b => (
-                              <div key={b.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: '8px', background: 'var(--surface)', fontSize: '12px' }}>
-                                <div>
-                                  <strong style={{ color: 'var(--text)' }}>{b.serviceName || 'Grooming'}</strong>
-                                  <span style={{ color: 'var(--muted)', marginLeft: '6px' }}>{b.date || ''}</span>
-                                </div>
-                                <span style={{ color: '#d97706', fontWeight: 700 }}>
-                                  +Rs {money(b.incentiveAmount)} {b.incentiveType === 'percentage' ? `(${b.incentiveRate}%)` : '(Flat)'}
-                                </span>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    )}
-
+                    {/* Employment Info Panel for non-owner */}
                     {!selectedMember.isOwner && (
-                      <>
-                        <div className="admin-team-info-panel">
-                          <div className="admin-team-info-row">
-                            <div className="admin-team-info-left">
-                              <div className="admin-team-info-icon"><Calendar size={16} /></div>
-                              <span>Joining Date</span>
-                            </div>
-                            <strong>{formatShortDate(selectedMember.joiningDate)}</strong>
+                      <div className="admin-team-info-panel">
+                        <div className="admin-team-info-row">
+                          <div className="admin-team-info-left">
+                            <div className="admin-team-info-icon"><Calendar size={16} /></div>
+                            <span>Joining Date</span>
                           </div>
-                          <div className="admin-team-info-row">
-                            <div className="admin-team-info-left">
-                              <div className="admin-team-info-icon"><IndianRupee size={16} /></div>
-                              <span>Monthly Salary</span>
-                            </div>
-                            <strong>{formatCurrency(Number(selectedMember.monthlySalary) || 0)}</strong>
-                          </div>
-                          <div className={`admin-team-info-row status-row${selectedMember.active === false ? ' inactive' : ''}`}>
-                            <div className="admin-team-info-left">
-                              <div className="admin-team-status-indicator" />
-                              <span>Status</span>
-                            </div>
-                            <strong>{selectedMember.active === false ? 'Inactive' : 'Active'}</strong>
-                          </div>
+                          <strong>{formatShortDate(selectedMember.joiningDate)}</strong>
                         </div>
-
-                        {/* Dedicated Walker Portal Access Card for Walker roles */}
-                        {(selectedMember.role || '').toLowerCase().includes('walker') && (
-                          <div style={{ marginTop: '16px', padding: '16px', background: 'linear-gradient(135deg, rgba(197, 139, 36, 0.08), rgba(197, 139, 36, 0.02))', border: '1.5px solid rgba(197, 139, 36, 0.3)', borderRadius: '16px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>
-                                <Footprints size={18} color="var(--accent)" /> Walker Security & Portal Access
-                              </div>
-                              {selectedMember.isActivated ? (
-                                <span className="badge badge-online" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                  <ShieldCheck size={12} /> Account Active
-                                </span>
-                              ) : (
-                                <span className="badge badge-pending" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                  <KeyRound size={12} /> Pending Password Setup
-                                </span>
-                              )}
-                            </div>
-                            <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.5 }}>
-                              {selectedMember.isActivated
-                                ? `Account is active. ${selectedMember.name} can log in with their phone (${selectedMember.phone}) and password on any single device.`
-                                : `Activation link is ready. Send the link to ${selectedMember.name} on WhatsApp so they can set their private password and activate their portal.`}
-                            </p>
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleShareWalkerWhatsApp(selectedMember)}
-                                className="btn btn-primary"
-                                style={{ background: '#25D366', borderColor: '#20BA5C', color: '#fff', fontSize: '12px', padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                              >
-                                <MessageCircle size={15} /> {selectedMember.isActivated ? 'Send Login Link (WhatsApp)' : 'Send Setup Link (WhatsApp)'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleCopyWalkerLink(selectedMember)}
-                                className="btn btn-secondary"
-                                style={{ fontSize: '12px', padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                              >
-                                <Copy size={15} /> Copy Link
-                              </button>
-                              {selectedMember.isActivated && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleResetWalkerPassword(selectedMember)}
-                                  className="btn btn-secondary"
-                                  style={{ fontSize: '12px', padding: '8px 12px', color: '#b45309', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                  title="Reset Walker Password"
-                                >
-                                  <KeyRound size={13} /> Reset Password
-                                </button>
-                              )}
-                            </div>
+                        <div className="admin-team-info-row">
+                          <div className="admin-team-info-left">
+                            <div className="admin-team-info-icon"><IndianRupee size={16} /></div>
+                            <span>Monthly Salary</span>
                           </div>
-                        )}
-
-                        <div className="admin-team-detail-actions">
-                          <button type="button" className="btn admin-team-edit-button" onClick={() => openEdit(selectedMember)}>
-                            <Edit3 size={18} /> Edit
-                          </button>
-                          <button type="button" className={selectedMember.active === false ? 'btn admin-team-activate-button' : 'btn admin-team-deactivate-button'} onClick={() => toggleMember(selectedMember)} disabled={saving}>
-                            <Trash2 size={18} /> {selectedMember.active === false ? 'Activate' : 'Deactivate'}
-                          </button>
+                          <strong>{formatCurrency(Number(selectedMember.monthlySalary) || 0)}</strong>
                         </div>
-                      </>
+                        <div className={`admin-team-info-row status-row${selectedMember.active === false ? ' inactive' : ''}`}>
+                          <div className="admin-team-info-left">
+                            <div className="admin-team-status-indicator" />
+                            <span>Status</span>
+                          </div>
+                          <strong>{selectedMember.active === false ? 'Inactive' : 'Active'}</strong>
+                        </div>
+                      </div>
                     )}
-                  </section>
 
-                  {showImagePreview && selectedMember?.photoUrl && (
-                    <div className="modal-overlay" style={{ zIndex: 1400 }} onClick={closeProfileImage}>
-                      <div className="modal-box admin-team-image-preview" style={{ maxWidth: '92vw', width: 'min(680px, calc(100vw - 32px))', padding: '18px', background: 'var(--card)', position: 'relative' }} onClick={e => e.stopPropagation()}>
-                        <button type="button" onClick={closeProfileImage} aria-label="Close image preview" style={{ position: 'absolute', top: '14px', right: '14px', width: '40px', height: '40px', borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={18} /></button>
-                        <img src={selectedMember.photoUrl} alt={selectedMember.name || 'Team member'} style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: '14px' }} />
-                      </div>
-                    </div>
-                  )}
-
-                  {!selectedMember.isOwner && (
-                    <section className="admin-team-payroll-panel">
-                      <div className="admin-team-payroll-summary-head">
-                        <div>
-                          <span className="section-label">Payroll Summary</span>
+                    {/* Dedicated Walker Portal Access Card for Walker roles */}
+                    {(selectedMember.role || '').toLowerCase().includes('walker') && (
+                      <div style={{ padding: '16px', background: 'linear-gradient(135deg, rgba(197, 139, 36, 0.08), rgba(197, 139, 36, 0.02))', border: '1.5px solid rgba(197, 139, 36, 0.3)', borderRadius: '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '13.5px', color: 'var(--text)' }}>
+                            <Footprints size={18} color="var(--accent)" /> Walker Security & Portal Access
+                          </div>
+                          {selectedMember.isActivated ? (
+                            <span className="badge badge-online" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <ShieldCheck size={12} /> Account Active
+                            </span>
+                          ) : (
+                            <span className="badge badge-pending" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <KeyRound size={12} /> Pending Password Setup
+                            </span>
+                          )}
                         </div>
-                        <div className="admin-team-month-controls">
-                          <button type="button" className="icon-btn" onClick={() => updateSelectedPayrollMonth(-1)} aria-label="Previous month">
-                            <ChevronLeft size={18} />
+                        <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.5 }}>
+                          {selectedMember.isActivated
+                            ? `Account is active. ${selectedMember.name} can log in with their phone (${selectedMember.phone}) and password on any single device.`
+                            : `Activation link is ready. Send the link to ${selectedMember.name} on WhatsApp so they can set their private password and activate their portal.`}
+                        </p>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleShareWalkerWhatsApp(selectedMember)}
+                            className="btn btn-primary"
+                            style={{ background: '#25D366', borderColor: '#20BA5C', color: '#fff', fontSize: '12px', padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                          >
+                            <MessageCircle size={15} /> {selectedMember.isActivated ? 'Send Login Link (WhatsApp)' : 'Send Setup Link (WhatsApp)'}
                           </button>
-                          <div className="admin-team-month-select-wrapper">
-                            <Calendar size={16} />
-                            <select className="input admin-team-month-select" value={`${selectedPayrollMonth.month}-${selectedPayrollMonth.year}`} onChange={e => {
-                              const [month, year] = e.target.value.split('-').map(Number)
-                              setSelectedPayrollMonth({ month, year })
-                            }}>
-                              {getMonthOptions(12).map(option => (
-                                <option key={`${option.month}-${option.year}`} value={`${option.month}-${option.year}`}>{option.label}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <button type="button" className="icon-btn" onClick={() => updateSelectedPayrollMonth(1)} aria-label="Next month">
-                            <ChevronRight size={18} />
+                          <button
+                            type="button"
+                            onClick={() => handleCopyWalkerLink(selectedMember)}
+                            className="btn btn-secondary"
+                            style={{ fontSize: '12px', padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                          >
+                            <Copy size={15} /> Copy Link
                           </button>
-                        </div>
-                      </div>
-
-                      <div className="admin-team-payroll-card-grid">
-                        <div className="admin-team-payroll-card-sm admin-team-paid-card">
-                          <span>Paid This Month</span>
-                          <strong>{formatCurrency(salaryPaidThisMonth)}</strong>
-                        </div>
-                        <div className="admin-team-payroll-card-sm admin-team-pending-card">
-                          <span>Pending Salary</span>
-                          <strong>{formatCurrency(pendingSalary)}</strong>
-                        </div>
-                        <div className="admin-team-payroll-card-sm admin-team-advance-card">
-                          <span>Advance Paid</span>
-                          <strong>{formatCurrency(advancePaid)}</strong>
-                        </div>
-                      </div>
-
-                      <div className="admin-team-payroll-meta-row">
-                        <div className="admin-team-payroll-status-box">
-                          <span>Salary Status</span>
-                          <div className={`admin-team-payroll-status-pill ${salaryStatusClass}`}>
-                            <strong>{salaryStatus}</strong>
-                          </div>
-                        </div>
-                        <div className="admin-team-last-payment admin-team-last-payment-inline">
-                          <div className="admin-team-last-payment-icon"><Calendar size={16} /></div>
-                          <div>
-                            <span>Last Payment Date</span>
-                            <strong>{formatShortDate(lastPaymentDate)}</strong>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="admin-team-payroll-actions-row">
-                        <button type="button" className="btn admin-team-pay-button" onClick={handlePayFullSalary} disabled={saving}>
-                          <CreditCard size={18} />
-                          Pay Full Salary
-                        </button>
-                        <button type="button" className="btn admin-team-advance-button" onClick={() => openPaymentModal('Advance')} disabled={saving}>
-                          <ArrowUpCircle size={18} />
-                          Give Advance
-                        </button>
-                        <button type="button" className="btn admin-team-bonus-button" onClick={() => openPaymentModal('Bonus')} disabled={saving}>
-                          <Gift size={18} />
-                          Give Bonus
-                        </button>
-                        <button type="button" className="btn btn-secondary" onClick={() => openPaymentModal('Incentive')} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#d97706', borderColor: 'rgba(217, 119, 6, 0.35)' }}>
-                          <Award size={18} />
-                          Pay Incentive
-                        </button>
-                        <button type="button" className="btn admin-team-add-payment-button" onClick={() => openPaymentModal('Salary')}>
-                          <Plus size={18} />
-                          Add Payment
-                        </button>
-                      </div>
-
-                      <div className="admin-team-payment-history-head">
-                        <div>
-                          <h4>Payment History</h4>
-                          <p>{showAllPayments ? `${filteredPayments.length} records` : `${Math.min(3, filteredPayments.length)} latest records`}</p>
-                        </div>
-                        <div className="admin-team-payment-history-actions">
-                          <div className="admin-team-payment-filters">
-                            <label htmlFor="payment-filter-dropdown" className="sr-only">Payment type</label>
-                            <select
-                              id="payment-filter-dropdown"
-                              className="input admin-team-payment-filter-select"
-                              value={paymentFilter}
-                              onChange={e => {
-                                setPaymentFilter(e.target.value)
-                                setShowAllPayments(false)
-                              }}
+                          {selectedMember.isActivated && (
+                            <button
+                              type="button"
+                              onClick={() => handleResetWalkerPassword(selectedMember)}
+                              className="btn btn-secondary"
+                              style={{ fontSize: '12px', padding: '8px 12px', color: '#b45309', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              title="Reset Walker Password"
                             >
-                              {FILTER_TYPES.map(filter => (
-                                <option key={filter} value={filter}>{filter}</option>
-                              ))}
-                            </select>
-                          </div>
-                          {filteredPayments.length > 3 && (
-                            <button type="button" className="btn btn-secondary admin-team-view-all" onClick={() => setShowAllPayments(prev => !prev)}>
-                              {showAllPayments ? 'Show Less' : 'View All'}
+                              <KeyRound size={13} /> Reset Password
                             </button>
                           )}
                         </div>
                       </div>
+                    )}
 
-                      {payrollLoading ? <Spinner text="Loading payroll..." /> : filteredPayments.length === 0 ? (
-                        <div className="admin-booking-empty">
-                          <Users size={24} style={{ margin: '0 auto 10px', color: 'var(--muted)' }} />
-                          No payments found for this employee.
+                    {/* Action buttons for non-owner */}
+                    {!selectedMember.isOwner && (
+                      <div className="admin-team-detail-actions">
+                        <button type="button" className="btn admin-team-edit-button" onClick={() => openEdit(selectedMember)}>
+                          <Edit3 size={18} /> Edit Profile
+                        </button>
+                        <button type="button" className={selectedMember.active === false ? 'btn admin-team-activate-button' : 'btn admin-team-deactivate-button'} onClick={() => toggleMember(selectedMember)} disabled={saving}>
+                          <Trash2 size={18} /> {selectedMember.active === false ? 'Activate Member' : 'Deactivate Member'}
+                        </button>
+                      </div>
+                    )}
+
+                    {selectedMember.isOwner && (
+                      <div className="admin-team-owner-note">
+                        Owner details come from the saved profile and auth photo.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 2: Payroll & Actions */}
+                {!selectedMember.isOwner && activeDetailTab === 'payroll' && (
+                  <section className="admin-team-payroll-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className="admin-team-payroll-summary-head">
+                      <div>
+                        <span className="section-label">Payroll Summary</span>
+                      </div>
+                      <div className="admin-team-month-controls">
+                        <button type="button" className="icon-btn" onClick={() => updateSelectedPayrollMonth(-1)} aria-label="Previous month">
+                          <ChevronLeft size={18} />
+                        </button>
+                        <div className="admin-team-month-select-wrapper" style={{ minWidth: '120px' }}>
+                          <Calendar size={15} />
+                          <select
+                            className="input admin-team-month-select"
+                            value={`${selectedPayrollMonth.month}-${selectedPayrollMonth.year}`}
+                            onChange={e => {
+                              const [month, year] = e.target.value.split('-').map(Number)
+                              setSelectedPayrollMonth({ month, year })
+                            }}
+                            style={{ paddingLeft: '32px', paddingRight: '22px', fontSize: '13px', fontWeight: 700 }}
+                          >
+                            {getMonthOptions(12).map(option => (
+                              <option key={`${option.month}-${option.year}`} value={`${option.month}-${option.year}`}>{option.label}</option>
+                            ))}
+                          </select>
                         </div>
-                      ) : (
-                        <div className="admin-team-payment-list">
-                          {displayedPayments.map(payment => (
-                            <div key={payment.id} className="admin-team-payment-card">
-                              <div className="admin-team-payment-card-main">
-                                <div className={`admin-team-payment-icon ${payment.paymentType?.toLowerCase()}`}>
-                                  {payment.paymentType === 'Salary' ? <IndianRupee size={18} /> : payment.paymentType === 'Advance' ? <ArrowUpCircle size={18} /> : <Gift size={18} />}
+                        <button type="button" className="icon-btn" onClick={() => updateSelectedPayrollMonth(1)} aria-label="Next month">
+                          <ChevronRight size={18} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="admin-team-payroll-card-grid">
+                      <div className="admin-team-payroll-card-sm admin-team-paid-card">
+                        <span>Paid This Month</span>
+                        <strong>{formatCurrency(salaryPaidThisMonth)}</strong>
+                      </div>
+                      <div className="admin-team-payroll-card-sm admin-team-pending-card">
+                        <span>Pending Salary</span>
+                        <strong>{formatCurrency(pendingSalary)}</strong>
+                      </div>
+                      <div className="admin-team-payroll-card-sm admin-team-advance-card">
+                        <span>Advance Paid</span>
+                        <strong>{formatCurrency(advancePaid)}</strong>
+                      </div>
+                    </div>
+
+                    <div className="admin-team-payroll-meta-row">
+                      <div className="admin-team-payroll-status-box">
+                        <span>Salary Status</span>
+                        <div className={`admin-team-payroll-status-pill ${salaryStatusClass}`}>
+                          <strong>{salaryStatus}</strong>
+                        </div>
+                      </div>
+                      <div className="admin-team-last-payment admin-team-last-payment-inline">
+                        <div className="admin-team-last-payment-icon"><Calendar size={16} /></div>
+                        <div>
+                          <span>Last Payment Date</span>
+                          <strong>{formatShortDate(lastPaymentDate)}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="section-label" style={{ display: 'block', marginBottom: '10px' }}>Payroll Actions</span>
+                      <div className="admin-team-payroll-actions-row">
+                        <button type="button" className="btn admin-team-pay-button" onClick={handlePayFullSalary} disabled={saving} style={{ whiteSpace: 'nowrap', fontSize: '12.5px' }}>
+                          <CreditCard size={17} />
+                          Pay Full Salary
+                        </button>
+                        <button type="button" className="btn admin-team-advance-button" onClick={() => openPaymentModal('Advance')} disabled={saving} style={{ whiteSpace: 'nowrap', fontSize: '12.5px' }}>
+                          <ArrowUpCircle size={17} />
+                          Give Advance
+                        </button>
+                        <button type="button" className="btn admin-team-bonus-button" onClick={() => openPaymentModal('Bonus')} disabled={saving} style={{ whiteSpace: 'nowrap', fontSize: '12.5px' }}>
+                          <Gift size={17} />
+                          Give Bonus
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => openPaymentModal('Incentive')}
+                          disabled={saving}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            color: '#d97706',
+                            background: 'rgba(217, 119, 6, 0.08)',
+                            borderColor: 'rgba(217, 119, 6, 0.35)',
+                            whiteSpace: 'nowrap',
+                            fontSize: '12.5px',
+                            fontWeight: 700,
+                            padding: '10px 12px',
+                            borderRadius: '10px',
+                          }}
+                        >
+                          <Award size={17} />
+                          Pay Incentive
+                        </button>
+                        <button type="button" className="btn admin-team-add-payment-button" onClick={() => openPaymentModal('Salary')} style={{ whiteSpace: 'nowrap', fontSize: '12.5px' }}>
+                          <Plus size={17} />
+                          Add Payment
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* TAB 3: Payment History */}
+                {!selectedMember.isOwner && activeDetailTab === 'history' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'nowrap' }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text)', whiteSpace: 'nowrap' }}>Payment Ledger</h4>
+                        <p style={{ margin: '1px 0 0', fontSize: '11.5px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                          {showAllPayments ? `${filteredPayments.length} total records` : `${Math.min(3, filteredPayments.length)} of ${filteredPayments.length} records shown`}
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        <label htmlFor="payment-filter-dropdown" className="sr-only">Payment type</label>
+                        <select
+                          id="payment-filter-dropdown"
+                          className="input"
+                          value={paymentFilter}
+                          onChange={e => {
+                            setPaymentFilter(e.target.value)
+                            setShowAllPayments(false)
+                          }}
+                          style={{
+                            padding: '6px 10px',
+                            fontSize: '12.5px',
+                            fontWeight: 600,
+                            height: '34px',
+                            width: 'auto',
+                            minWidth: '85px',
+                          }}
+                        >
+                          {FILTER_TYPES.map(filter => (
+                            <option key={filter} value={filter}>{filter}</option>
+                          ))}
+                        </select>
+                        {filteredPayments.length > 3 && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => setShowAllPayments(prev => !prev)}
+                            style={{ padding: '6px 10px', fontSize: '11.5px', height: '34px', whiteSpace: 'nowrap' }}
+                          >
+                            {showAllPayments ? 'Show Less' : 'View All'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {payrollLoading ? (
+                      <Spinner text="Loading payroll..." />
+                    ) : filteredPayments.length === 0 ? (
+                      <div className="admin-booking-empty" style={{ padding: '40px 16px', textAlign: 'center', background: 'var(--surface)', borderRadius: '12px', border: '1px dashed var(--border)' }}>
+                        <ReceiptText size={28} style={{ margin: '0 auto 8px', color: 'var(--muted)' }} />
+                        <p style={{ margin: '0 0 12px', fontSize: '13px', color: 'var(--muted)' }}>No payments found for this employee.</p>
+                        <button type="button" className="btn btn-primary" onClick={() => openPaymentModal('Salary')} style={{ fontSize: '12px', padding: '7px 14px' }}>
+                          <Plus size={14} /> Add First Payment
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '360px', overflowY: 'auto', paddingRight: '2px' }}>
+                        {displayedPayments.map(payment => (
+                          <div
+                            key={payment.id}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '10px',
+                              padding: '14px',
+                              borderRadius: '12px',
+                              border: '1px solid var(--border)',
+                              background: 'var(--card)',
+                            }}
+                          >
+                            {/* Upper row: Icon, Type & Month on left; Edit & Delete on right */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                                <div className={`admin-team-payment-icon ${payment.paymentType?.toLowerCase()}`} style={{ flexShrink: 0 }}>
+                                  {payment.paymentType === 'Salary' ? <IndianRupee size={18} /> : payment.paymentType === 'Advance' ? <ArrowUpCircle size={18} /> : payment.paymentType === 'Incentive' ? <Award size={18} /> : <Gift size={18} />}
                                 </div>
-                                <div className="admin-team-payment-card-title">
-                                  <strong>{payment.paymentType || 'Other'}</strong>
-                                  <span>{MONTH_LABELS[(Number(payment.salaryMonth) || 1) - 1]} {payment.salaryYear || '-'}</span>
-                                </div>
-                                <div className="admin-team-payment-amount">
-                                  <span>Rs</span>
-                                  <strong>{formatCurrency(payment.amount)}</strong>
+                                <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <strong style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>
+                                    {payment.paymentType || 'Other'}
+                                  </strong>
+                                  <span style={{ fontSize: '11.5px', color: 'var(--muted)', fontWeight: 600 }}>
+                                    {MONTH_LABELS[(Number(payment.salaryMonth) || 1) - 1]} {payment.salaryYear || '-'}
+                                  </span>
                                 </div>
                               </div>
-                              <div className="admin-team-payment-card-meta">
-                                <div>
-                                  <span className="admin-team-payment-label">Method</span>
-                                  <strong>{payment.paymentMethod || '-'}</strong>
-                                </div>
-                                <div>
-                                  <span className="admin-team-payment-label">Date</span>
-                                  <strong>{formatShortDate(payment.paymentDate)}</strong>
-                                </div>
-                                <div className="admin-team-payment-notes">
-                                  <span className="admin-team-payment-label">Notes</span>
-                                  <strong>{payment.notes || 'No notes'}</strong>
-                                </div>
-                              </div>
-                              <div className="admin-team-payment-card-actions">
-                                <button type="button" className="btn btn-icon" onClick={() => handleEditPayment(payment)}>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditPayment(payment)}
+                                  title="Edit payment"
+                                  style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    borderRadius: '8px',
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--surface)',
+                                    color: 'var(--text)',
+                                    cursor: 'pointer',
+                                  }}
+                                >
                                   <Edit3 size={14} />
                                 </button>
-                                <button type="button" className="btn btn-icon btn-danger" onClick={() => handleDeletePayment(payment)}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePayment(payment)}
+                                  title="Delete payment"
+                                  style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    borderRadius: '8px',
+                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                    background: 'rgba(239, 68, 68, 0.08)',
+                                    color: '#ef4444',
+                                    cursor: 'pointer',
+                                  }}
+                                >
                                   <Trash2 size={14} />
                                 </button>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      )}
 
-                      <button type="button" className="btn btn-secondary admin-team-export-button" onClick={downloadMemberPayroll}>
+                            {/* Amount */}
+                            <div style={{ fontSize: '17px', fontWeight: 900, color: 'var(--accent)', display: 'flex', alignItems: 'baseline', gap: '3px', paddingLeft: '2px' }}>
+                              <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 700 }}>Rs</span>
+                              <span>{Number(payment.amount || 0).toLocaleString('en-IN')}</span>
+                            </div>
+
+                            {/* Meta row: Method, Date, Notes */}
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '14px',
+                                flexWrap: 'wrap',
+                                paddingTop: '8px',
+                                borderTop: '1px solid var(--border)',
+                                fontSize: '11px',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <span style={{ color: 'var(--muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px', fontSize: '10px' }}>METHOD</span>
+                                <strong style={{ color: 'var(--text)', fontWeight: 700 }}>{payment.paymentMethod || '-'}</strong>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <span style={{ color: 'var(--muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px', fontSize: '10px' }}>DATE</span>
+                                <strong style={{ color: 'var(--text)', fontWeight: 700 }}>{formatShortDate(payment.paymentDate)}</strong>
+                              </div>
+                              {payment.notes && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
+                                  <span style={{ color: 'var(--muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px', fontSize: '10px' }}>NOTES</span>
+                                  <strong style={{ color: 'var(--text)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{payment.notes}</strong>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
+                      <button type="button" className="btn btn-secondary admin-team-export-button" onClick={downloadMemberPayroll} style={{ width: 'auto' }}>
                         <Save size={14} /> Export Payroll PDF
                       </button>
-                    </section>
-                  )}
-
-                  {selectedMember.isOwner && (
-                    <div className="admin-team-owner-note">
-                      Owner details come from the saved profile and auth photo.
+                      <button type="button" className="btn btn-primary" onClick={() => openPaymentModal('Salary')} style={{ fontSize: '13px', marginLeft: 'auto' }}>
+                        <Plus size={14} /> Add Payment
+                      </button>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {/* TAB 4: Work & Incentives */}
+                {activeDetailTab === 'activity' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Incentive Summary Banner */}
+                    <div style={{ padding: '16px 20px', borderRadius: '14px', background: 'linear-gradient(135deg, rgba(217, 119, 6, 0.12), rgba(217, 119, 6, 0.04))', border: '1.5px solid rgba(217, 119, 6, 0.28)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#d97706', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Award size={22} />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Total Incentives Earned</span>
+                          <div style={{ fontSize: '20px', fontWeight: 900, color: '#b45309', marginTop: '2px' }}>
+                            Rs {money(stats.incentives)}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontSize: '11.5px', color: 'var(--muted)', display: 'block' }}>Completed Visits</span>
+                          <strong style={{ fontSize: '15px', color: 'var(--text)' }}>{stats.completed} visits</strong>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontSize: '11.5px', color: 'var(--muted)', display: 'block' }}>Service Revenue</span>
+                          <strong style={{ fontSize: '15px', color: 'var(--text)' }}>Rs {money(stats.earnings)}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Completed Bookings List */}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>
+                          Completed Visits & Earned Incentives
+                        </h4>
+                        <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                          {bookings.filter(b => (selectedMember.isOwner ? (!b.assignedTeamMemberId || b.assignedTeamMemberId === 'owner') : b.assignedTeamMemberId === selectedMember.id) && b.status === 'completed').length} visits
+                        </span>
+                      </div>
+
+                      {(() => {
+                        const memberCompleted = bookings.filter(b => 
+                          (selectedMember.isOwner ? (!b.assignedTeamMemberId || b.assignedTeamMemberId === 'owner') : b.assignedTeamMemberId === selectedMember.id) &&
+                          b.status === 'completed'
+                        )
+
+                        if (memberCompleted.length === 0) {
+                          return (
+                            <div className="admin-booking-empty" style={{ padding: '36px 16px', textAlign: 'center', background: 'var(--surface)', borderRadius: '12px', border: '1px dashed var(--border)' }}>
+                              <CheckSquare size={28} style={{ margin: '0 auto 8px', color: 'var(--muted)' }} />
+                              <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)' }}>No completed visits recorded for this member yet.</p>
+                            </div>
+                          )
+                        }
+
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {memberCompleted.map(b => (
+                              <div key={b.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: '12px', background: 'var(--surface)', border: '1px solid var(--border)', fontSize: '12.5px', flexWrap: 'wrap', gap: '10px' }}>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontWeight: 800, color: 'var(--text)', fontSize: '13.5px' }}>
+                                    {b.serviceName || 'Pet Grooming Visit'}
+                                  </div>
+                                  <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span>📅 {b.date || 'No date'}</span>
+                                    {b.slot && <span>⏰ {b.slot}</span>}
+                                    {(b.customerName || b.ownerName) && (
+                                      <span>👤 {b.customerName || b.ownerName}</span>
+                                    )}
+                                    {b.petName && <span>🐾 {b.petName}</span>}
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+                                  {b.incentiveAmount > 0 ? (
+                                    <span style={{ color: '#d97706', background: 'rgba(217, 119, 6, 0.1)', border: '1.5px solid rgba(217, 119, 6, 0.3)', padding: '4px 10px', borderRadius: '8px', fontWeight: 800, fontSize: '12.5px' }}>
+                                      +Rs {money(b.incentiveAmount)} {b.incentiveType === 'percentage' ? `(${b.incentiveRate}%)` : '(Flat)'}
+                                    </span>
+                                  ) : (
+                                    <span className="badge badge-completed" style={{ fontSize: '11px' }}>Completed</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Photo preview lightbox */}
+            {showImagePreview && selectedMember?.photoUrl && (
+              <div className="modal-overlay" style={{ zIndex: 1400 }} onClick={closeProfileImage}>
+                <div className="modal-box admin-team-image-preview" style={{ maxWidth: '92vw', width: 'min(680px, calc(100vw - 32px))', padding: '18px', background: 'var(--card)', position: 'relative' }} onClick={e => e.stopPropagation()}>
+                  <button type="button" onClick={closeProfileImage} aria-label="Close image preview" style={{ position: 'absolute', top: '14px', right: '14px', width: '40px', height: '40px', borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={18} /></button>
+                  <img src={selectedMember.photoUrl} alt={selectedMember.name || 'Team member'} style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: '14px' }} />
+                </div>
+              </div>
+            )}
           </div>
         )
       })()}
