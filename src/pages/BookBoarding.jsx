@@ -436,7 +436,7 @@ export default function BookBoarding() {
 
   const handleSubmit = async () => {
     if (boardingSettings?.acceptBookings === false) {
-      alert('Boarding reservations are temporarily closed. Please check back soon.')
+      alert(boardingSettings?.emergencyNotice || 'Boarding reservations are temporarily paused. Please check back soon.')
       return
     }
 
@@ -874,7 +874,7 @@ export default function BookBoarding() {
                   <ShieldAlert size={16} />
                 </span>
                 <strong style={{ fontSize: '14.5px', fontWeight: 800 }}>
-                  {boardingSettings?.emergencyClosure ? 'Center Temporarily Closed for Bookings' : 'Boarding Reservations Temporarily Closed'}
+                  {boardingSettings?.closureTitle || (boardingSettings?.emergencyClosure ? 'Center Temporarily Closed for Bookings' : 'Pet Boarding Temporarily Paused')}
                 </strong>
               </div>
               {boardingSettings?.emergencyNotice && (
@@ -2155,7 +2155,7 @@ export default function BookBoarding() {
 
                 {boardingSettings?.acceptBookings === false ? (
                   <div className="boarding-notice-warn text-center">
-                    Boarding Bookings Temporarily Closed
+                    {boardingSettings?.buttonLabel || 'Boarding Reservations Temporarily Paused'}
                   </div>
                 ) : (
                   <div

@@ -1247,10 +1247,24 @@ ${portalUrl}`
                     {/* Middle Row: Schedule & Location Details */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 14px', fontSize: '12px' }}>
                       <div>
-                        <span style={{ color: 'var(--muted)', display: 'block', fontSize: '11px' }}>SCHEDULE</span>
-                        <strong style={{ color: 'var(--text)' }}>
-                          📅 {b.date} · ⏰ {b.slot || b.customTimeRequested}
-                        </strong>
+                        <span style={{ color: 'var(--muted)', display: 'block', fontSize: '11px' }}>SCHEDULE & TIMING</span>
+                        <div style={{ color: 'var(--text)', fontWeight: 700 }}>
+                          <div>📅 {b.date || b.walkingDate}</div>
+                          {b.frequency === 'twice_daily' || (b.morningSlot && b.eveningSlot) ? (
+                            <div style={{ display: 'flex', gap: '6px', marginTop: '3px', flexWrap: 'wrap', fontSize: '11px' }}>
+                              <span style={{ color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: '4px', border: '1px solid #fde68a' }}>
+                                🌅 Morning: <strong>{b.morningSlot || b.slot}</strong>
+                              </span>
+                              <span style={{ color: '#4338ca', background: '#e0e7ff', padding: '1px 6px', borderRadius: '4px', border: '1px solid #c7d2fe' }}>
+                                🌆 Evening: <strong>{b.eveningSlot || 'Evening'}</strong>
+                              </span>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '2px' }}>
+                              ⏰ {b.slot || b.walkingSlot || b.customTimeRequested || 'Standard Time'}
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <span style={{ color: 'var(--muted)', display: 'block', fontSize: '11px' }}>DURATION</span>
@@ -2933,10 +2947,23 @@ ${portalUrl}`
                     <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Date</span>
                     <strong style={{ color: 'var(--text)' }}>{selectedBooking.date || selectedBooking.walkingDate}</strong>
                   </div>
-                  <div>
-                    <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Time Slot</span>
-                    <strong style={{ color: 'var(--text)' }}>{selectedBooking.slot || selectedBooking.walkingSlot}</strong>
-                  </div>
+                  {selectedBooking.frequency === 'twice_daily' || (selectedBooking.morningSlot && selectedBooking.eveningSlot) ? (
+                    <>
+                      <div>
+                        <span style={{ color: '#b45309', fontSize: '11px', display: 'block', fontWeight: 700 }}>🌅 Morning Walk Time</span>
+                        <strong style={{ color: '#b45309' }}>{selectedBooking.morningSlot || selectedBooking.slot || 'Morning'}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: '#4338ca', fontSize: '11px', display: 'block', fontWeight: 700 }}>🌆 Evening Walk Time</span>
+                        <strong style={{ color: '#4338ca' }}>{selectedBooking.eveningSlot || 'Evening'}</strong>
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Time Slot</span>
+                      <strong style={{ color: 'var(--text)' }}>{selectedBooking.slot || selectedBooking.walkingSlot}</strong>
+                    </div>
+                  )}
                   <div>
                     <span style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>Duration</span>
                     <strong style={{ color: 'var(--accent)' }}>{selectedBooking.duration || selectedBooking.durationMinutes} Minutes</strong>
@@ -3201,11 +3228,42 @@ ${portalUrl}`
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            Walk #{r.walkIndex || idx + 1} {r.date ? `(${r.date})` : ''} {r.walkerRating ? `⭐${r.walkerRating}` : ''}
+                            {(() => {
+                              const dateObj = r.completedAt ? new Date(r.completedAt) : (r.date ? new Date(r.date) : null)
+                              const dateStr = dateObj && !isNaN(dateObj.getTime())
+                                ? dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                                : (r.date || '')
+                              const timeStr = dateObj && !isNaN(dateObj.getTime())
+                                ? dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                                : (r.walkTime || '')
+                              const period = r.sessionPeriod ? ` · ${r.sessionPeriod}` : ''
+                              return `Walk #${r.walkIndex || idx + 1} (${dateStr}${timeStr ? ` ${timeStr}` : ''}${period}) ${r.walkerRating ? `⭐${r.walkerRating}` : ''}`
+                            })()}
                           </button>
                         ))}
                       </div>
                     )}
+
+                    {/* Walk Date & Session Timestamp */}
+                    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '8px 12px', marginBottom: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                      <span style={{ color: 'var(--text)', fontWeight: 700 }}>
+                        📅 Walk Completed: {(() => {
+                          const dateObj = currentReport.completedAt ? new Date(currentReport.completedAt) : (currentReport.date ? new Date(currentReport.date) : null)
+                          const dStr = dateObj && !isNaN(dateObj.getTime())
+                            ? dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                            : (currentReport.date || 'Completed')
+                          const tStr = dateObj && !isNaN(dateObj.getTime())
+                            ? dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                            : (currentReport.walkTime || '')
+                          return `${dStr}${tStr ? ` at ${tStr}` : ''}`
+                        })()}
+                      </span>
+                      {currentReport.sessionPeriod && (
+                        <span style={{ background: currentReport.sessionPeriod === 'Morning' ? '#FEF3C7' : '#E0E7FF', color: currentReport.sessionPeriod === 'Morning' ? '#B45309' : '#4338CA', padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 800 }}>
+                          {currentReport.sessionPeriod === 'Morning' ? '🌅 Morning Walk' : '🌆 Evening Walk'}
+                        </span>
+                      )}
+                    </div>
 
                     {/* Care Activities Stats Grid */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '6px', textAlign: 'center', marginBottom: '8px' }}>

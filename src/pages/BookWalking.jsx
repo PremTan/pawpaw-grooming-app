@@ -864,7 +864,7 @@ export default function BookWalking() {
 
   const handleSubmit = async () => {
     if (settings?.acceptBookings === false) {
-      alert('Pet Walking bookings are temporarily closed. Please check back soon.')
+      alert(settings?.emergencyNotice || 'Pet Walking bookings are temporarily paused. Please check back soon.')
       return
     }
     if (isBlocked) {
@@ -1302,7 +1302,7 @@ export default function BookWalking() {
                   <ShieldAlert size={16} />
                 </span>
                 <strong style={{ fontSize: '14.5px', fontWeight: 800 }}>
-                  {settings?.emergencyClosure ? 'Center Temporarily Closed for Bookings' : 'Pet Walking Bookings Temporarily Closed'}
+                  {settings?.closureTitle || (settings?.emergencyClosure ? 'Center Temporarily Closed for Bookings' : 'Pet Walking Temporarily Paused')}
                 </strong>
               </div>
               {settings?.emergencyNotice && (
@@ -2392,7 +2392,7 @@ export default function BookWalking() {
                 style={{ width: '100%', justifyContent: 'center', gap: '8px', padding: '14px', fontSize: '15px' }}
               >
                 {settings?.acceptBookings === false
-                  ? 'Walking Bookings Temporarily Closed'
+                  ? (settings?.buttonLabel || 'Walking Bookings Temporarily Closed')
                   : submitting
                     ? 'Submitting Request...'
                     : form.planType !== 'single'

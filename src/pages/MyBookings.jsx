@@ -1727,7 +1727,14 @@ export default function MyBookings() {
                       <div className="my-booking-row-top">
                         <div className="my-booking-date">
                           <strong><Calendar size={12} /> {formatBoardingDate(walkDate)}</strong>
-                          <small><Clock size={12} /> {walkSlot}</small>
+                          {w.frequency === 'twice_daily' || (w.morningSlot && w.eveningSlot) ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px', fontSize: '11px' }}>
+                              <span style={{ color: '#b45309', fontWeight: 700 }}>🌅 Morning: {w.morningSlot || w.slot}</span>
+                              <span style={{ color: '#4338ca', fontWeight: 700 }}>🌆 Evening: {w.eveningSlot || 'Evening'}</span>
+                            </div>
+                          ) : (
+                            <small><Clock size={12} /> {walkSlot}</small>
+                          )}
                         </div>
                         <div className="my-booking-badges">
                           {(() => {
@@ -3755,10 +3762,23 @@ export default function MyBookings() {
                       <strong className="detail-val">{formatBoardingDate(walkDate)}</strong>
                     </div>
 
-                    <div className="detail-item">
-                      <span className="detail-label"><Clock size={14} /> Time Slot</span>
-                      <strong className="detail-val">{walkSlot}</strong>
-                    </div>
+                    {selectedWalking.frequency === 'twice_daily' || (selectedWalking.morningSlot && selectedWalking.eveningSlot) ? (
+                      <>
+                        <div className="detail-item">
+                          <span className="detail-label" style={{ color: '#b45309' }}><Clock size={14} /> 🌅 Morning Walk Time</span>
+                          <strong className="detail-val" style={{ color: '#b45309' }}>{selectedWalking.morningSlot || selectedWalking.slot || 'Morning'}</strong>
+                        </div>
+                        <div className="detail-item">
+                          <span className="detail-label" style={{ color: '#4338ca' }}><Clock size={14} /> 🌆 Evening Walk Time</span>
+                          <strong className="detail-val" style={{ color: '#4338ca' }}>{selectedWalking.eveningSlot || 'Evening'}</strong>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="detail-item">
+                        <span className="detail-label"><Clock size={14} /> Time Slot</span>
+                        <strong className="detail-val">{walkSlot}</strong>
+                      </div>
+                    )}
 
                     <div className="detail-item">
                       <span className="detail-label"><Footprints size={14} /> Duration</span>
@@ -3978,11 +3998,42 @@ export default function MyBookings() {
                                     whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  Walk #{r.walkIndex || idx + 1} {r.date ? `(${r.date})` : ''} {r.walkerRating ? `⭐${r.walkerRating}` : ''}
+                                  {(() => {
+                                    const dateObj = r.completedAt ? new Date(r.completedAt) : (r.date ? new Date(r.date) : null)
+                                    const dateStr = dateObj && !isNaN(dateObj.getTime())
+                                      ? dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                                      : (r.date || '')
+                                    const timeStr = dateObj && !isNaN(dateObj.getTime())
+                                      ? dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                                      : (r.walkTime || '')
+                                    const period = r.sessionPeriod ? ` · ${r.sessionPeriod}` : ''
+                                    return `Walk #${r.walkIndex || idx + 1} (${dateStr}${timeStr ? ` ${timeStr}` : ''}${period}) ${r.walkerRating ? `⭐${r.walkerRating}` : ''}`
+                                  })()}
                                 </button>
                               ))}
                             </div>
                           )}
+
+                          {/* Walk Date & Session Timestamp */}
+                          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '8px 12px', marginBottom: '10px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                            <span style={{ color: 'var(--text)', fontWeight: 700 }}>
+                              📅 Completed on: {(() => {
+                                const dateObj = rep.completedAt ? new Date(rep.completedAt) : (rep.date ? new Date(rep.date) : null)
+                                const dStr = dateObj && !isNaN(dateObj.getTime())
+                                  ? dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                                  : (rep.date || 'Completed')
+                                const tStr = dateObj && !isNaN(dateObj.getTime())
+                                  ? dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                                  : (rep.walkTime || '')
+                                return `${dStr}${tStr ? ` at ${tStr}` : ''}`
+                              })()}
+                            </span>
+                            {rep.sessionPeriod && (
+                              <span style={{ background: rep.sessionPeriod === 'Morning' ? '#FEF3C7' : '#E0E7FF', color: rep.sessionPeriod === 'Morning' ? '#B45309' : '#4338CA', padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 800 }}>
+                                {rep.sessionPeriod === 'Morning' ? '🌅 Morning Walk' : '🌆 Evening Walk'}
+                              </span>
+                            )}
+                          </div>
 
                           {/* Stats Row */}
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', textAlign: 'center', marginBottom: '10px' }}>

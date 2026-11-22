@@ -193,6 +193,10 @@ export async function fetchWalkingSettings(db, forceRefresh = false) {
 
     let commonHolidays = []
     let emergencyClosure = false
+    let isServicePaused = false
+    let closureType = null
+    let closureTitle = ''
+    let buttonLabel = ''
     let emergencyNotice = ''
     let closureStartDate = ''
     let reopenDate = ''
@@ -210,11 +214,23 @@ export async function fetchWalkingSettings(db, forceRefresh = false) {
         }
         const isEmergActive = isEmergencyClosureActive(cd)
         const isWalkingDisabled = cd.servicesActive?.walking === false
-        if (isEmergActive || isWalkingDisabled) {
-          emergencyClosure = true
-          emergencyNotice = cd.emergencyNotice || (isEmergActive ? 'Dog Walking is temporarily paused due to emergency facility closure.' : 'Dog Walking service is temporarily unavailable.')
-          closureStartDate = cd.closureStartDate || ''
-          reopenDate = cd.reopenDate || ''
+        const customNotice = cd.serviceNotices?.walking || ''
+
+        emergencyClosure = isEmergActive
+        isServicePaused = isWalkingDisabled
+        closureStartDate = cd.closureStartDate || ''
+        reopenDate = cd.reopenDate || ''
+
+        if (isEmergActive) {
+          emergencyNotice = cd.emergencyNotice || 'Paw Paw Centre is temporarily closed for new online bookings.'
+          closureType = 'emergency'
+          closureTitle = 'Center Temporarily Closed for Bookings'
+          buttonLabel = 'Center Temporarily Closed'
+        } else if (isWalkingDisabled) {
+          emergencyNotice = customNotice || 'Dog Walking service is temporarily paused for new bookings.'
+          closureType = 'service_paused'
+          closureTitle = 'Dog Walking Temporarily Paused'
+          buttonLabel = 'Dog Walking Paused'
         }
       }
       if (legacySnap && legacySnap.exists()) {
@@ -229,8 +245,16 @@ export async function fetchWalkingSettings(db, forceRefresh = false) {
     }
 
     const result = {
-      active: data.active !== false && data.acceptBookings !== false && !emergencyClosure,
-      acceptBookings: data.acceptBookings !== false && !emergencyClosure,
+      active: data.active !== false && data.acceptBookings !== false && !emergencyClosure && !isServicePaused,
+      acceptBookings: data.acceptBookings !== false && !emergencyClosure && !isServicePaused,
+      emergencyClosure,
+      isServicePaused,
+      closureType,
+      closureTitle,
+      buttonLabel: buttonLabel || (isServicePaused ? 'Dog Walking Paused' : (emergencyClosure ? 'Center Temporarily Closed' : '')),
+      emergencyNotice,
+      closureStartDate,
+      reopenDate,
       showNewBadge: data.showNewBadge !== false,
       rate30Min: rate30,
       rate45Min: rate45,

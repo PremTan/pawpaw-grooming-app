@@ -198,12 +198,34 @@ export async function fetchBookingSettings(db, forceRefresh = false) {
         }
         const isEmergActive = isEmergencyClosureActive(commonData)
         const isGroomingDisabled = commonData.servicesActive?.grooming === false
-        if (isEmergActive || isGroomingDisabled) {
-          normalized.emergencyClosure = true
-          normalized.emergencyNotice = commonData.emergencyNotice || (isEmergActive ? 'Paw Paw Centre is temporarily closed for new online bookings.' : 'Pet Grooming service is temporarily paused for new bookings.')
-          normalized.closureStartDate = commonData.closureStartDate || ''
-          normalized.reopenDate = commonData.reopenDate || ''
+        const customServiceNotice = commonData.serviceNotices?.grooming || ''
+
+        // OVERRIDE emergencyClosure strictly from commonSettings (source of truth)
+        normalized.emergencyClosure = isEmergActive
+        normalized.isServicePaused = isGroomingDisabled
+        normalized.closureStartDate = commonData.closureStartDate || ''
+        normalized.reopenDate = commonData.reopenDate || ''
+
+        if (isEmergActive) {
+          normalized.emergencyNotice = commonData.emergencyNotice || 'Paw Paw Centre is temporarily closed for new online bookings.'
           normalized.acceptBookings = false
+          normalized.closureType = 'emergency'
+          normalized.closureTitle = 'Center Temporarily Closed for Bookings'
+          normalized.buttonLabel = 'Center Temporarily Closed'
+        } else if (isGroomingDisabled) {
+          normalized.emergencyNotice = customServiceNotice || 'Pet Grooming service is temporarily paused for new bookings.'
+          normalized.acceptBookings = false
+          normalized.closureType = 'service_paused'
+          normalized.closureTitle = 'Pet Grooming Temporarily Paused'
+          normalized.buttonLabel = 'Grooming Temporarily Paused'
+        } else {
+          // If neither emergency nor grooming paused, ensure acceptBookings is not blocked by legacy stale flags
+          if (normalized.acceptBookings === false && raw.emergencyClosure) {
+            normalized.acceptBookings = true
+          }
+          normalized.closureType = null
+          normalized.closureTitle = ''
+          normalized.buttonLabel = ''
         }
       }
     } catch (e) {
@@ -251,6 +273,9 @@ export function getAvailabilityForDate(settings, dateString) {
   }
   if (normalized.emergencyClosure && isDateWithinClosure(normalized, dateString)) {
     return { open: false, storeSlots: [], homeSlots: [], reasons: ['Center Temporarily Closed'] }
+  }
+  if (normalized.isServicePaused || normalized.acceptBookings === false) {
+    return { open: false, storeSlots: [], homeSlots: [], reasons: ['Pet Grooming Paused'] }
   }
   const day = normalized.weekly[dayKeyFromDate(dateString)]
   if (!day || day.open === false) {

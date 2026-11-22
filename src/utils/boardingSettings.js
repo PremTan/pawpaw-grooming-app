@@ -228,13 +228,31 @@ export async function fetchBoardingSettings(db, forceRefresh = false) {
         }
         const isEmergActive = isEmergencyClosureActive(cd)
         const isBoardingDisabled = cd.servicesActive?.boarding === false
-        if (isEmergActive || isBoardingDisabled) {
-          normalized.emergencyClosure = true
-          normalized.emergencyNotice = cd.emergencyNotice || (isEmergActive ? 'Pet Boarding is temporarily paused due to emergency facility closure.' : 'Pet Boarding service is temporarily unavailable.')
-          normalized.closureStartDate = cd.closureStartDate || ''
-          normalized.reopenDate = cd.reopenDate || ''
+        const customNotice = cd.serviceNotices?.boarding || ''
+
+        normalized.emergencyClosure = isEmergActive
+        normalized.isServicePaused = isBoardingDisabled
+        normalized.closureStartDate = cd.closureStartDate || ''
+        normalized.reopenDate = cd.reopenDate || ''
+
+        if (isEmergActive) {
+          normalized.emergencyNotice = cd.emergencyNotice || 'Paw Paw Centre is temporarily closed for new online bookings.'
           normalized.acceptBookings = false
           normalized.active = false
+          normalized.closureType = 'emergency'
+          normalized.closureTitle = 'Center Temporarily Closed for Bookings'
+          normalized.buttonLabel = 'Center Temporarily Closed'
+        } else if (isBoardingDisabled) {
+          normalized.emergencyNotice = customNotice || 'Pet Boarding service is temporarily paused for new reservations.'
+          normalized.acceptBookings = false
+          normalized.active = false
+          normalized.closureType = 'service_paused'
+          normalized.closureTitle = 'Pet Boarding Temporarily Paused'
+          normalized.buttonLabel = 'Pet Boarding Paused'
+        } else {
+          normalized.closureType = null
+          normalized.closureTitle = ''
+          normalized.buttonLabel = ''
         }
       }
       if (legacySnap && legacySnap.exists()) {

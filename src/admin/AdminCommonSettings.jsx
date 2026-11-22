@@ -131,8 +131,13 @@ export default function AdminCommonSettings() {
     try {
       await saveCommonSettings(db, settings)
       setToastType('success')
-      const isOpen = !settings.emergencyClosure && settings.servicesActive?.grooming !== false
-      setToastMessage(isOpen ? 'Settings saved! Store is open and online bookings are active.' : 'Settings saved successfully.')
+      if (settings.emergencyClosure) {
+        setToastMessage('Settings saved: Center emergency closure is active (all online bookings paused).')
+      } else if (isAnyServicePaused) {
+        setToastMessage('Settings saved: Paused services updated. Active services are open for bookings.')
+      } else {
+        setToastMessage('Settings saved: Store is open and all services are accepting bookings!')
+      }
     } catch (err) {
       console.error('Failed to save common settings:', err)
       setToastType('error')
@@ -262,13 +267,13 @@ export default function AdminCommonSettings() {
           },
           {
             id: 'emergency',
-            label: 'Emergency Closure',
+            label: 'Store & Service Status',
             icon: ShieldAlert,
             badge: settings.emergencyClosure
               ? 'Closed'
-              : (isAnyServicePaused ? 'Paused' : null),
-            badgeBg: settings.emergencyClosure ? '#FEE2E2' : '#FEF3C7',
-            badgeColor: settings.emergencyClosure ? '#DC2626' : '#B45309',
+              : (isAnyServicePaused ? 'Paused' : 'All Open'),
+            badgeBg: settings.emergencyClosure ? '#FEE2E2' : (isAnyServicePaused ? '#FEF3C7' : '#ECFDF5'),
+            badgeColor: settings.emergencyClosure ? '#DC2626' : (isAnyServicePaused ? '#B45309' : '#047857'),
           },
           {
             id: 'invoices',
@@ -438,168 +443,263 @@ export default function AdminCommonSettings() {
         </section>
         )}
 
-        {/* SECTION 2: EMERGENCY & GLOBAL CLOSURE */}
+        {/* SECTION 2: STORE & SERVICE STATUS (MASTER CLOSURE & INDIVIDUAL SERVICE CONTROLS) */}
         {activeTab === 'emergency' && (
         <div style={{ display: 'grid', gap: '20px' }}>
-          {/* Card 1: Master Facility Status */}
-          <section className="booking-panel" style={{ background: 'var(--card)', border: '1.5px solid var(--border)', borderRadius: '18px', padding: '22px 24px', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <span style={{ color: settings.emergencyClosure ? '#EF4444' : '#10B981', display: 'inline-flex' }}>
-                {settings.emergencyClosure ? <ShieldAlert size={22} /> : <CheckCircle2 size={22} />}
-              </span>
-              <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: 'var(--text)' }}>
-                Center Closure & Emergency Controls
-              </h2>
-            </div>
-            <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '0 0 16px', lineHeight: 1.5 }}>
-              Master switch to temporarily pause all customer bookings across the entire facility (e.g. for severe weather, emergencies, or maintenance).
-            </p>
-
-            {/* Master Facility Status Card */}
-            {settings.emergencyClosure ? (
-              <div style={{
-                padding: '18px 20px',
-                borderRadius: '14px',
-                background: '#FEF2F2',
-                border: '2px solid #EF4444',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '14px',
-                marginBottom: '16px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#DC2626', flexShrink: 0 }}>
-                    <ShieldAlert size={24} />
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <strong style={{ fontSize: '16px', color: '#991B1B', fontWeight: 800 }}>Store is EMERGENCY CLOSED</strong>
-                      <span style={{ background: '#DC2626', color: '#fff', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', letterSpacing: '0.3px' }}>
-                        ALL BOOKINGS BLOCKED
-                      </span>
-                    </div>
-                    <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#B91C1C' }}>
-                      New customer booking requests across all services are currently paused.
-                    </p>
-                  </div>
+          {/* Top Status Summary Card */}
+          {settings.emergencyClosure ? (
+            <div style={{
+              padding: '18px 20px',
+              borderRadius: '16px',
+              background: '#FEF2F2',
+              border: '2px solid #EF4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '14px',
+              boxShadow: '0 4px 16px rgba(239, 68, 68, 0.12)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ width: '46px', height: '46px', borderRadius: '50%', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#DC2626', flexShrink: 0 }}>
+                  <ShieldAlert size={26} />
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSettings(p => ({
-                      ...p,
-                      emergencyClosure: false,
-                      servicesActive: { grooming: true, walking: true, boarding: true }
-                    }))
-                    setToastType('success')
-                    setToastMessage('Facility reopened! Click "Save Settings" below to apply.')
-                  }}
-                  style={{
-                    background: '#10B981',
-                    border: '1.5px solid #059669',
-                    color: '#fff',
-                    borderRadius: '10px',
-                    padding: '10px 18px',
-                    fontSize: '13.5px',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  <CheckCircle2 size={16} />
-                  Re-open Store (Accept Bookings)
-                </button>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <strong style={{ fontSize: '16.5px', color: '#991B1B', fontWeight: 800 }}>Master Facility Emergency Closed</strong>
+                    <span style={{ background: '#DC2626', color: '#fff', fontSize: '11px', fontWeight: 800, padding: '2px 9px', borderRadius: '999px', letterSpacing: '0.3px' }}>
+                      ALL BOOKINGS BLOCKED
+                    </span>
+                  </div>
+                  <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#B91C1C' }}>
+                    Customer bookings across Grooming, Walking, and Boarding are blocked.
+                  </p>
+                </div>
               </div>
-            ) : (
-              <div style={{
-                padding: '18px 20px',
-                borderRadius: '14px',
-                background: '#ECFDF5',
-                border: '2px solid #10B981',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '14px',
-                marginBottom: '16px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#059669', flexShrink: 0 }}>
-                    <CheckCircle2 size={24} />
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <strong style={{ fontSize: '16px', color: '#065F46', fontWeight: 800 }}>Store is OPEN</strong>
-                      <span style={{ background: '#059669', color: '#fff', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', letterSpacing: '0.3px' }}>
-                        NORMAL OPERATIONS
-                      </span>
-                    </div>
-                    <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#047857' }}>
-                      Facility is operating normally and online bookings are enabled.
-                    </p>
-                  </div>
-                </div>
 
+              <button
+                type="button"
+                onClick={() => {
+                  setSettings(p => ({
+                    ...p,
+                    emergencyClosure: false,
+                    servicesActive: { grooming: true, walking: true, boarding: true }
+                  }))
+                  setToastType('success')
+                  setToastMessage('Facility reopened! Click "Save Settings" below to apply.')
+                }}
+                style={{
+                  background: '#10B981',
+                  border: '1.5px solid #059669',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '10px 18px',
+                  fontSize: '13.5px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '7px',
+                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <CheckCircle2 size={16} />
+                Re-open Entire Facility
+              </button>
+            </div>
+          ) : isAnyServicePaused ? (
+            <div style={{
+              padding: '18px 20px',
+              borderRadius: '16px',
+              background: '#FFFBEB',
+              border: '2px solid #F59E0B',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '14px',
+              boxShadow: '0 4px 16px rgba(245, 158, 11, 0.1)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ width: '46px', height: '46px', borderRadius: '50%', background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D97706', flexShrink: 0 }}>
+                  <AlertTriangle size={24} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <strong style={{ fontSize: '16px', color: '#92400E', fontWeight: 800 }}>Store Open — Some Services Paused</strong>
+                    <span style={{ background: '#D97706', color: '#fff', fontSize: '11px', fontWeight: 800, padding: '2px 9px', borderRadius: '999px', letterSpacing: '0.3px' }}>
+                      PARTIALLY ACTIVE
+                    </span>
+                  </div>
+                  <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#B45309' }}>
+                    Active services are open for booking. Paused services show a pause notice to customers.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSettings(p => ({
+                    ...p,
+                    servicesActive: { grooming: true, walking: true, boarding: true }
+                  }))
+                  setToastType('success')
+                  setToastMessage('All 3 services set to OPEN! Click "Save Settings" below to apply.')
+                }}
+                style={{
+                  background: '#10B981',
+                  border: '1.5px solid #059669',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '9px 16px',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+                }}
+              >
+                <CheckCircle2 size={15} />
+                Re-open All 3 Services
+              </button>
+            </div>
+          ) : (
+            <div style={{
+              padding: '18px 20px',
+              borderRadius: '16px',
+              background: '#ECFDF5',
+              border: '2px solid #10B981',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '14px',
+              boxShadow: '0 4px 16px rgba(16, 185, 129, 0.08)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ width: '46px', height: '46px', borderRadius: '50%', background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#059669', flexShrink: 0 }}>
+                  <CheckCircle2 size={26} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <strong style={{ fontSize: '16px', color: '#065F46', fontWeight: 800 }}>Store & All Services are OPEN</strong>
+                    <span style={{ background: '#059669', color: '#fff', fontSize: '11px', fontWeight: 800, padding: '2px 9px', borderRadius: '999px', letterSpacing: '0.3px' }}>
+                      NORMAL OPERATIONS
+                    </span>
+                  </div>
+                  <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#047857' }}>
+                    Paw Paw is operating normally. Online bookings are active for Pet Grooming, Dog Walking, and Pet Boarding.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSettings(p => ({ ...p, emergencyClosure: true }))}
+                style={{
+                  background: '#fff',
+                  border: '1.5px solid #EF4444',
+                  color: '#DC2626',
+                  borderRadius: '10px',
+                  padding: '9px 16px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <ShieldAlert size={15} />
+                Emergency Close Facility...
+              </button>
+            </div>
+          )}
+
+          {/* CARD 1: MASTER FACILITY EMERGENCY CLOSURE */}
+          <section className="booking-panel" style={{ background: 'var(--card)', border: '1.5px solid var(--border)', borderRadius: '18px', padding: '22px 24px', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: settings.emergencyClosure ? '#EF4444' : 'var(--accent)', display: 'inline-flex' }}>
+                  <ShieldAlert size={20} />
+                </span>
+                <h2 style={{ fontSize: '17.5px', fontWeight: 700, margin: 0, color: 'var(--text)' }}>
+                  Master Facility Emergency Closure
+                </h2>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  padding: '3px 10px',
+                  borderRadius: '999px',
+                  background: settings.emergencyClosure ? '#FEE2E2' : '#ECFDF5',
+                  color: settings.emergencyClosure ? '#DC2626' : '#047857',
+                  border: `1px solid ${settings.emergencyClosure ? '#FCA5A5' : '#A7F3D0'}`
+                }}>
+                  {settings.emergencyClosure ? '🔴 CLOSED' : '🟢 OPEN'}
+                </span>
                 <button
                   type="button"
-                  onClick={() => setSettings(p => ({ ...p, emergencyClosure: true }))}
+                  onClick={() => setSettings(p => ({ ...p, emergencyClosure: !p.emergencyClosure }))}
                   style={{
-                    background: '#fff',
-                    border: '1.5px solid #EF4444',
-                    color: '#DC2626',
-                    borderRadius: '10px',
-                    padding: '9px 16px',
-                    fontSize: '13px',
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
                     fontWeight: 700,
                     cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
+                    background: settings.emergencyClosure ? '#10B981' : '#FFF1F2',
+                    color: settings.emergencyClosure ? '#fff' : '#E11D48',
+                    border: `1px solid ${settings.emergencyClosure ? '#059669' : '#FECDD3'}`,
                     transition: 'all 0.15s ease'
                   }}
                 >
-                  <ShieldAlert size={15} />
-                  Emergency Close Store...
+                  {settings.emergencyClosure ? 'Re-open Facility' : 'Emergency Close Facility'}
                 </button>
               </div>
-            )}
+            </div>
 
-            {/* If emergency closure is active, show customer notice & auto-reopen schedule */}
+            <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '0 0 16px', lineHeight: 1.5 }}>
+              Use this ONLY when the entire facility must close at once (e.g., severe storm, full holiday shutdown, maintenance). To pause just one service, use the <strong>Individual Service Controls</strong> below.
+            </p>
+
+            {/* Emergency Closure Details & Auto-reopen Schedule */}
             {settings.emergencyClosure && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '14px' }}>
-                <div style={{ padding: '14px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#EF4444', marginBottom: '6px' }}>
-                    Notice Message for Customers
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '14px' }}>
+                <div style={{ padding: '16px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.08)', border: '1.5px solid rgba(239, 68, 68, 0.25)' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#DC2626', marginBottom: '6px' }}>
+                    Notice Message for Customers (Center-Wide)
                   </label>
                   <input
                     type="text"
                     className="input"
                     value={settings.emergencyNotice}
                     onChange={e => setSettings(p => ({ ...p, emergencyNotice: e.target.value }))}
-                    placeholder="e.g. Paw Paw Centre is temporarily closed due to weather. We will resume shortly."
-                    style={{ width: '100%', height: '40px', fontSize: '13px', borderRadius: '8px' }}
+                    placeholder="e.g. Paw Paw Centre is temporarily closed due to severe weather. We will resume shortly."
+                    style={{ width: '100%', height: '42px', fontSize: '13px', borderRadius: '8px' }}
                   />
+                  <span style={{ fontSize: '11px', color: '#B91C1C', marginTop: '4px', display: 'block' }}>
+                    This message will appear in the red banner across all booking pages (/book, /book-walking, /book-boarding).
+                  </span>
                 </div>
 
-                {/* Estimated Closure & Reopening Schedule (Optional) */}
                 <div style={{ padding: '16px', borderRadius: '12px', background: 'var(--surface)', border: '1.5px solid var(--border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexWrap: 'wrap', gap: '6px' }}>
                     <strong style={{ fontSize: '13.5px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Calendar size={15} color="var(--accent)" /> Estimated Closure Dates (Optional)
+                      <Calendar size={15} color="var(--accent)" /> Estimated Closure Dates (Optional Auto-Reopen)
                     </strong>
                     <span style={{ fontSize: '11px', color: 'var(--muted)', background: 'var(--card)', padding: '2px 8px', borderRadius: '6px', border: '1px solid var(--border)' }}>
                       Auto-reopens when date arrives
                     </span>
                   </div>
                   <p style={{ color: 'var(--muted)', fontSize: '12px', margin: '0 0 12px', lineHeight: 1.45 }}>
-                    Leave blank to keep closed indefinitely until manually turned off. Or set an expected reopening date for <strong>automatic reopening</strong>.
+                    Leave blank to remain closed until you manually turn it off. Or set an expected reopening date to automatically reopen for bookings on that day.
                   </p>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '12px' }}>
@@ -632,13 +732,13 @@ export default function AdminCommonSettings() {
                         style={{ width: '100%', height: '38px', fontSize: '12.5px', borderRadius: '8px' }}
                       />
                       <span style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px', display: 'block' }}>
-                        Center will automatically reopen on this day
+                        Facility will auto-reopen on this day
                       </span>
                     </div>
                   </div>
 
-                  {/* Quick Date Presets */}
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '10px' }}>
+                  {/* Quick Presets */}
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                     <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>Quick Presets:</span>
                     <button
                       type="button"
@@ -647,8 +747,7 @@ export default function AdminCommonSettings() {
                       onClick={() => {
                         const d = new Date()
                         d.setDate(d.getDate() + 1)
-                        const dStr = d.toISOString().slice(0, 10)
-                        setSettings(p => ({ ...p, closureStartDate: p.closureStartDate || new Date().toISOString().slice(0, 10), reopenDate: dStr }))
+                        setSettings(p => ({ ...p, closureStartDate: p.closureStartDate || new Date().toISOString().slice(0, 10), reopenDate: d.toISOString().slice(0, 10) }))
                       }}
                     >
                       +1 Day (Reopen Tomorrow)
@@ -660,8 +759,7 @@ export default function AdminCommonSettings() {
                       onClick={() => {
                         const d = new Date()
                         d.setDate(d.getDate() + 2)
-                        const dStr = d.toISOString().slice(0, 10)
-                        setSettings(p => ({ ...p, closureStartDate: p.closureStartDate || new Date().toISOString().slice(0, 10), reopenDate: dStr }))
+                        setSettings(p => ({ ...p, closureStartDate: p.closureStartDate || new Date().toISOString().slice(0, 10), reopenDate: d.toISOString().slice(0, 10) }))
                       }}
                     >
                       +2 Days
@@ -673,8 +771,7 @@ export default function AdminCommonSettings() {
                       onClick={() => {
                         const d = new Date()
                         d.setDate(d.getDate() + 7)
-                        const dStr = d.toISOString().slice(0, 10)
-                        setSettings(p => ({ ...p, closureStartDate: p.closureStartDate || new Date().toISOString().slice(0, 10), reopenDate: dStr }))
+                        setSettings(p => ({ ...p, closureStartDate: p.closureStartDate || new Date().toISOString().slice(0, 10), reopenDate: d.toISOString().slice(0, 10) }))
                       }}
                     >
                       +1 Week
@@ -690,53 +787,23 @@ export default function AdminCommonSettings() {
                       </button>
                     )}
                   </div>
-
-                  {/* Status Notice */}
-                  {settings.reopenDate ? (() => {
-                    const todayStr = new Date().toISOString().slice(0, 10)
-                    const isExpired = todayStr >= settings.reopenDate
-                    return (
-                      <div style={{
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        background: isExpired ? '#FFFBEB' : '#ECFDF5',
-                        border: `1px solid ${isExpired ? '#FDE68A' : '#A7F3D0'}`,
-                        color: isExpired ? '#B45309' : '#065F46',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}>
-                        {isExpired ? (
-                          <span>⚠️ Reopen date (<strong>{settings.reopenDate}</strong>) has passed. Closure is expired and bookings will be accepted automatically.</span>
-                        ) : (
-                          <span>🟢 <strong>Auto-Reopen Enabled:</strong> The facility will automatically reopen for new bookings on <strong>{settings.reopenDate}</strong>.</span>
-                        )}
-                      </div>
-                    )
-                  })() : (
-                    <div style={{ padding: '8px 12px', borderRadius: '8px', fontSize: '11.5px', background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF' }}>
-                      ℹ️ <strong>Manual Control:</strong> Facility will remain closed until you click "Re-open Store" above.
-                    </div>
-                  )}
                 </div>
               </div>
             )}
           </section>
 
-          {/* Card 2: Individual Service Availability */}
+          {/* CARD 2: INDIVIDUAL SERVICE CONTROLS */}
           <section className="booking-panel" style={{ background: 'var(--card)', border: '1.5px solid var(--border)', borderRadius: '18px', padding: '22px 24px', boxShadow: '0 4px 18px rgba(0,0,0,0.04)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ color: 'var(--accent)', display: 'inline-flex' }}>
                   <Sliders size={20} />
                 </span>
-                <h2 style={{ fontSize: '17px', fontWeight: 700, margin: 0, color: 'var(--text)' }}>
-                  Service-by-Service Availability
+                <h2 style={{ fontSize: '17.5px', fontWeight: 700, margin: 0, color: 'var(--text)' }}>
+                  Individual Service Controls (3 Services)
                 </h2>
               </div>
 
-              {/* Quick Action Button if any service is paused */}
               {isAnyServicePaused && (
                 <button
                   type="button"
@@ -764,170 +831,165 @@ export default function AdminCommonSettings() {
                   }}
                 >
                   <CheckCircle2 size={14} />
-                  Turn ON All Services (Open Store)
+                  Turn ON All Services
                 </button>
               )}
             </div>
 
             <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '0 0 16px', lineHeight: 1.5 }}>
-              Control which specific services customers can book online. <strong>Keep green (OPEN)</strong> so customers can book. Turn off only if you temporarily cannot take bookings for that particular service.
+              Need to pause just one service without closing the entire center? Toggle that service below. Other open services will continue accepting customer bookings normally.
             </p>
 
-            {/* Warning banner if all or some services are paused */}
-            {isAllServicesPaused ? (
-              <div style={{
-                padding: '12px 16px',
-                borderRadius: '12px',
-                background: '#FEF2F2',
-                border: '1.5px solid #FCA5A5',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '10px',
-                marginBottom: '16px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <AlertTriangle size={20} style={{ color: '#DC2626', flexShrink: 0 }} />
-                  <div>
-                    <strong style={{ fontSize: '13px', color: '#991B1B', display: 'block' }}>
-                      All 3 services are currently PAUSED (Closed)
-                    </strong>
-                    <span style={{ fontSize: '12px', color: '#B91C1C' }}>
-                      Customers cannot book any service online right now! Click "Open All Services" to restore bookings.
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSettings(p => ({
-                      ...p,
-                      servicesActive: { grooming: true, walking: true, boarding: true }
-                    }))
-                    setToastType('success')
-                    setToastMessage('All services enabled! Click "Save Settings" below.')
-                  }}
-                  style={{
-                    background: '#DC2626',
-                    border: 'none',
-                    color: '#fff',
-                    borderRadius: '8px',
-                    padding: '7px 16px',
-                    fontSize: '12.5px',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Open All Services Now
-                </button>
-              </div>
-            ) : isAnyServicePaused ? (
-              <div style={{
-                padding: '10px 14px',
-                borderRadius: '10px',
-                background: '#FFFBEB',
-                border: '1px solid #FDE68A',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                marginBottom: '14px',
-                fontSize: '12.5px',
-                color: '#B45309'
-              }}>
-                <AlertTriangle size={16} style={{ flexShrink: 0 }} />
-                <span>
-                  <strong>Notice:</strong> One or more services are turned OFF. Customers will see those services as unavailable on the booking pages.
-                </span>
-              </div>
-            ) : null}
-
-            {/* Service Toggle Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+            {/* 3 Service Control Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))', gap: '16px' }}>
               {[
                 {
                   key: 'grooming',
                   label: 'Pet Grooming',
                   icon: Scissors,
                   desc: 'Salon baths, haircuts & styling',
-                  route: '/book'
+                  route: '/book',
+                  defaultNotice: 'Pet Grooming service is temporarily paused for new bookings.'
                 },
                 {
                   key: 'walking',
                   label: 'Dog Walking',
                   icon: Footprints,
                   desc: 'Daily walks & exercise packages',
-                  route: '/book-walking'
+                  route: '/book-walking',
+                  defaultNotice: 'Dog Walking service is temporarily paused for new bookings.'
                 },
                 {
                   key: 'boarding',
                   label: 'Pet Boarding',
                   icon: Hotel,
                   desc: 'Overnight hotel & cage-free stay',
-                  route: '/book-boarding'
+                  route: '/book-boarding',
+                  defaultNotice: 'Pet Boarding service is temporarily paused for new reservations.'
                 },
               ].map(svc => {
                 const SvcIcon = svc.icon
                 const isOpen = settings.servicesActive?.[svc.key] !== false
+                const customNotice = settings.serviceNotices?.[svc.key] || ''
 
                 return (
                   <div
                     key={svc.key}
                     style={{
-                      padding: '16px',
-                      borderRadius: '14px',
+                      padding: '18px',
+                      borderRadius: '16px',
                       background: isOpen ? 'var(--surface)' : '#FEF2F2',
-                      border: `1.5px solid ${isOpen ? 'var(--border)' : '#FECACA'}`,
+                      border: `1.5px solid ${isOpen ? 'var(--border)' : '#FCA5A5'}`,
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'space-between',
-                      gap: '12px',
+                      gap: '14px',
                       transition: 'all 0.18s ease',
-                      boxShadow: isOpen ? 'none' : '0 2px 8px rgba(239, 68, 68, 0.08)'
+                      boxShadow: isOpen ? 'none' : '0 3px 12px rgba(239, 68, 68, 0.08)'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{
-                          width: '38px',
-                          height: '38px',
-                          borderRadius: '10px',
-                          background: isOpen ? 'var(--accent-bg, rgba(212,175,55,0.14))' : '#FEE2E2',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: isOpen ? 'var(--accent, #D4AF37)' : '#DC2626',
-                          flexShrink: 0
+                    <div>
+                      {/* Service Header Row */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{
+                            width: '42px',
+                            height: '42px',
+                            borderRadius: '12px',
+                            background: isOpen ? 'var(--accent-bg, rgba(212,175,55,0.14))' : '#FEE2E2',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: isOpen ? 'var(--accent, #D4AF37)' : '#DC2626',
+                            flexShrink: 0
+                          }}>
+                            <SvcIcon size={20} />
+                          </div>
+                          <div>
+                            <strong style={{ fontSize: '14.5px', color: 'var(--text)', display: 'block' }}>
+                              {svc.label}
+                            </strong>
+                            <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+                              {svc.desc}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: 800,
+                          padding: '3px 9px',
+                          borderRadius: '999px',
+                          letterSpacing: '0.2px',
+                          whiteSpace: 'nowrap',
+                          background: isOpen ? '#ECFDF5' : '#FEE2E2',
+                          color: isOpen ? '#047857' : '#DC2626',
+                          border: `1px solid ${isOpen ? '#A7F3D0' : '#FECACA'}`
                         }}>
-                          <SvcIcon size={19} />
-                        </div>
-                        <div>
-                          <strong style={{ fontSize: '14px', color: 'var(--text)', display: 'block' }}>
-                            {svc.label}
-                          </strong>
-                          <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
-                            {svc.desc}
-                          </span>
-                        </div>
+                          {isOpen ? '🟢 OPEN' : '⏸️ PAUSED'}
+                        </span>
                       </div>
 
-                      {/* Status Badge */}
-                      <span style={{
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        padding: '3px 8px',
-                        borderRadius: '999px',
-                        letterSpacing: '0.2px',
-                        whiteSpace: 'nowrap',
-                        background: isOpen ? '#ECFDF5' : '#FEE2E2',
-                        color: isOpen ? '#047857' : '#DC2626',
-                        border: `1px solid ${isOpen ? '#A7F3D0' : '#FECACA'}`
-                      }}>
-                        {isOpen ? '🟢 OPEN' : '🔴 PAUSED'}
-                      </span>
+                      {/* If Paused, Show Customer Notice Input & Live Preview */}
+                      {!isOpen && (
+                        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: '#991B1B', marginBottom: '4px' }}>
+                              Notice for Customers (Optional):
+                            </label>
+                            <input
+                              type="text"
+                              className="input"
+                              value={customNotice}
+                              onChange={e => {
+                                const val = e.target.value
+                                setSettings(p => ({
+                                  ...p,
+                                  serviceNotices: {
+                                    ...(p.serviceNotices || {}),
+                                    [svc.key]: val,
+                                  }
+                                }))
+                              }}
+                              placeholder={svc.defaultNotice}
+                              style={{ width: '100%', height: '36px', fontSize: '12px', borderRadius: '8px', background: '#fff' }}
+                            />
+                            <span style={{ fontSize: '10.5px', color: '#B91C1C', marginTop: '2px', display: 'block' }}>
+                              Leave blank to show standard notice: &ldquo;{svc.defaultNotice}&rdquo;
+                            </span>
+                          </div>
+
+                          {/* Live Customer Preview */}
+                          <div style={{
+                            padding: '10px 12px',
+                            borderRadius: '10px',
+                            background: '#fff',
+                            border: '1px dashed #F87171',
+                            fontSize: '11.5px'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ fontSize: '10px', fontWeight: 800, color: '#991B1B', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                                👁️ Live Customer Preview ({svc.route}):
+                              </span>
+                              <span style={{ fontSize: '10px', color: '#DC2626', fontWeight: 700 }}>
+                                Button: [{svc.label} Paused]
+                              </span>
+                            </div>
+                            <strong style={{ fontSize: '12.5px', color: '#991B1B', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <ShieldAlert size={13} color="#DC2626" />
+                              {svc.label} Temporarily Paused
+                            </strong>
+                            <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: '#B91C1C', lineHeight: 1.4 }}>
+                              {customNotice.trim() || svc.defaultNotice}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '8px', borderTop: `1px solid ${isOpen ? 'var(--border)' : '#FCA5A5'}` }}>
+                    {/* Bottom Action Row */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '10px', borderTop: `1px solid ${isOpen ? 'var(--border)' : '#FCA5A5'}` }}>
                       <span style={{ fontSize: '11px', color: isOpen ? '#059669' : '#DC2626', fontWeight: 600 }}>
                         {isOpen ? '✓ Accepting online bookings' : '✗ Bookings paused for this service'}
                       </span>
@@ -944,7 +1006,7 @@ export default function AdminCommonSettings() {
                           }))
                         }}
                         style={{
-                          padding: '6px 12px',
+                          padding: '6px 14px',
                           borderRadius: '8px',
                           fontSize: '11.5px',
                           fontWeight: 700,
@@ -955,7 +1017,7 @@ export default function AdminCommonSettings() {
                           transition: 'all 0.15s ease'
                         }}
                       >
-                        {isOpen ? 'Pause Service' : '🟢 Turn ON'}
+                        {isOpen ? 'Pause Service' : '🟢 Re-open'}
                       </button>
                     </div>
                   </div>

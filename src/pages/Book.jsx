@@ -428,7 +428,7 @@ export default function Book() {
     }
   }
 
-  const isFacilityClosed = Boolean(bookingSettings?.emergencyClosure || bookingSettings?.acceptBookings === false)
+  const isFacilityClosed = Boolean(bookingSettings?.emergencyClosure || bookingSettings?.acceptBookings === false || bookingSettings?.isServicePaused)
 
   const pastelFor = (index) => ({ '--service-pastel': SERVICE_PASTELS[index % SERVICE_PASTELS.length] })
   const handleSubmit = async () => {
@@ -654,7 +654,7 @@ export default function Book() {
                 <ShieldAlert size={16} />
               </span>
               <strong style={{ fontSize: '14.5px', fontWeight: 800 }}>
-                {bookingSettings?.emergencyClosure ? 'Center Temporarily Closed for Bookings' : 'Grooming Bookings Temporarily Closed'}
+                {bookingSettings?.closureTitle || (bookingSettings?.emergencyClosure ? 'Center Temporarily Closed for Bookings' : 'Pet Grooming Temporarily Paused')}
               </strong>
             </div>
             {bookingSettings?.emergencyNotice && (
@@ -796,7 +796,7 @@ export default function Book() {
                   className="book-panel-continue-btn"
                   style={isFacilityClosed ? { opacity: 0.6 } : undefined}
                 >
-                  {isFacilityClosed ? 'Center Temporarily Closed' : <>Continue <ArrowRight size={22} /></>}
+                  {isFacilityClosed ? (bookingSettings?.buttonLabel || 'Grooming Temporarily Paused') : <>Continue <ArrowRight size={22} /></>}
                 </button>
               </section>
             </div>
@@ -1001,7 +1001,7 @@ export default function Book() {
                 className="btn btn-primary"
                 style={{ width: '100%', justifyContent: 'center', marginTop: '20px', ...(isFacilityClosed ? { opacity: 0.6, cursor: 'not-allowed' } : {}) }}
               >
-                {isFacilityClosed ? 'Center Temporarily Closed' : 'Continue to Date & Time'}
+                {isFacilityClosed ? (bookingSettings?.buttonLabel || 'Grooming Temporarily Paused') : 'Continue to Date & Time'}
               </button>
             </div>
           )}
@@ -1279,7 +1279,7 @@ export default function Book() {
                 className="btn btn-primary"
                 style={{ width: '100%', justifyContent: 'center', ...(isFacilityClosed ? { opacity: 0.6, cursor: 'not-allowed' } : {}) }}
               >
-                {loading ? 'Booking...' : isFacilityClosed ? 'Center Temporarily Closed' : 'Confirm Booking'}
+                {loading ? 'Booking...' : isFacilityClosed ? (bookingSettings?.buttonLabel || 'Grooming Temporarily Paused') : 'Confirm Booking'}
               </button>
             </div>
           )}

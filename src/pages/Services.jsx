@@ -180,7 +180,7 @@ export default function Services() {
             <Link to={item.bookTo} className="btn btn-primary">{item.isPackage ? 'Book Package' : 'Book Now'} <ArrowRight size={16} /></Link>
           ) : (
             <span className="btn btn-secondary disabled" style={{ cursor: 'not-allowed', opacity: 0.85, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-              <Clock size={14} /> Closed
+              <Clock size={14} /> {bookingSettings?.buttonLabel || 'Grooming Paused'}
             </span>
           )}
         </div>
@@ -246,7 +246,7 @@ export default function Services() {
                     </Link>
                   ) : (
                     <span className="btn btn-secondary disabled" style={{ cursor: 'not-allowed', opacity: 0.85, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                      <Clock size={14} /> Closed
+                      <Clock size={14} /> {walkingSettings?.buttonLabel || 'Walking Paused'}
                     </span>
                   )}
                 </div>
@@ -296,7 +296,7 @@ export default function Services() {
                     </Link>
                   ) : (
                     <span className="btn btn-secondary disabled" style={{ cursor: 'not-allowed', opacity: 0.85, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                      <Clock size={14} /> Closed
+                      <Clock size={14} /> {boardingSettings?.buttonLabel || 'Boarding Paused'}
                     </span>
                   )}
                 </div>

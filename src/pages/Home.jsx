@@ -763,7 +763,7 @@ function HeroSlider() {
                   </Link>
                 ) : (
                   <div className="home-boarding-closed-pill" title="Boarding reservations are temporarily closed">
-                    <Clock size={15} /> Boarding Bookings Temporarily Closed
+                    <Clock size={15} /> {boardingSettings?.buttonLabel || 'Boarding Bookings Temporarily Closed'}
                   </div>
                 )}
 
@@ -966,7 +966,7 @@ function HeroSlider() {
                   </Link>
                 ) : (
                   <div className="home-boarding-closed-pill" title="Pet walking bookings are temporarily closed">
-                    <Clock size={15} /> Walking Bookings Temporarily Closed
+                    <Clock size={15} /> {walkingSettings?.buttonLabel || 'Walking Bookings Temporarily Closed'}
                   </div>
                 )}
 
@@ -1451,7 +1451,7 @@ function HeroSlider() {
                   className="home-boarding-closed-pill"
                   title="Grooming bookings are temporarily closed"
                 >
-                  <Clock size={15} /> Grooming Bookings Temporarily Closed
+                  <Clock size={15} /> {bookingSettings?.buttonLabel || 'Grooming Bookings Temporarily Closed'}
                 </div>
 
                 <Link to="/services" className="home-boarding-btn-secondary">

@@ -14,6 +14,11 @@ export const DEFAULT_COMMON_SETTINGS = {
     walking: true,
     boarding: true,
   },
+  serviceNotices: {
+    grooming: '',
+    walking: '',
+    boarding: '',
+  },
 }
 
 let cachedCommonSettings = null
@@ -44,6 +49,10 @@ export function normalizeCommonSettings(data = {}) {
     emergencyClosure = false
   }
 
+  const rawServiceNotices = typeof data.serviceNotices === 'object' && data.serviceNotices !== null
+    ? data.serviceNotices
+    : {}
+
   return {
     holidays,
     holidayLabels,
@@ -56,6 +65,11 @@ export function normalizeCommonSettings(data = {}) {
       grooming: data.servicesActive?.grooming !== false,
       walking: data.servicesActive?.walking !== false,
       boarding: data.servicesActive?.boarding !== false,
+    },
+    serviceNotices: {
+      grooming: String(rawServiceNotices.grooming || '').trim(),
+      walking: String(rawServiceNotices.walking || '').trim(),
+      boarding: String(rawServiceNotices.boarding || '').trim(),
     },
   }
 }
@@ -123,6 +137,10 @@ export async function saveCommonSettings(db, settings) {
     setDoc(doc(db, 'settings', 'bookingSettings'), {
       allowCustomerInvoiceDownload: normalized.allowCustomerInvoiceDownload,
       holidays: normalized.holidays,
+      emergencyClosure: normalized.emergencyClosure,
+      emergencyNotice: normalized.emergencyNotice,
+      closureStartDate: normalized.closureStartDate,
+      reopenDate: normalized.reopenDate,
       updatedAt: serverTimestamp(),
     }, { merge: true }),
   ])
@@ -135,6 +153,7 @@ export async function saveCommonSettings(db, settings) {
       localStorage.removeItem('pawpaw_cached_booking_settings')
       localStorage.removeItem('pawpaw_cached_walking_settings')
       localStorage.removeItem('pawpaw_cached_boarding_settings')
+      localStorage.removeItem('pawpaw_cached_common_settings')
     } catch {}
   }
 
@@ -150,6 +169,38 @@ export function isCommonHoliday(commonSettings, dateString) {
 export function getHolidayReason(commonSettings, dateString) {
   if (!dateString || !commonSettings) return ''
   return commonSettings.holidayLabels?.[dateString] || 'Holiday'
+}
+
+/**
+ * Checks whether a specific service is currently open and accepting bookings.
+ * Returns false if center emergency closure is active or if the service is paused.
+ */
+export function isServiceActive(commonSettings, serviceKey) {
+  if (!commonSettings) return true
+  if (isEmergencyClosureActive(commonSettings)) return false
+  if (commonSettings.servicesActive?.[serviceKey] === false) return false
+  return true
+}
+
+/**
+ * Returns the customer notice for a specific service.
+ * If center emergency closure is active, returns the center emergency notice.
+ * If service is paused, returns custom service notice or standard fallback.
+ */
+export function getServiceNotice(commonSettings, serviceKey) {
+  if (!commonSettings) return ''
+  if (isEmergencyClosureActive(commonSettings)) {
+    return commonSettings.emergencyNotice || 'Paw Paw Centre is temporarily closed for new online bookings.'
+  }
+  if (commonSettings.servicesActive?.[serviceKey] === false) {
+    const custom = commonSettings.serviceNotices?.[serviceKey]
+    if (custom) return custom
+    if (serviceKey === 'grooming') return 'Pet Grooming service is temporarily paused for new bookings.'
+    if (serviceKey === 'walking') return 'Dog Walking service is temporarily paused for new bookings.'
+    if (serviceKey === 'boarding') return 'Pet Boarding service is temporarily paused for new reservations.'
+    return 'This service is temporarily paused for new bookings.'
+  }
+  return ''
 }
 
 /**

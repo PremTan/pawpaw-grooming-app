@@ -860,12 +860,27 @@ export default function WalkerPortal() {
       const newCompleted = currentCompleted + 1
       const isFullyFinished = !isMultiDay || (newCompleted >= totalExpected)
 
+      const completedIso = new Date().toISOString()
+      const now = new Date()
+      const todayDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      const currentHour = now.getHours()
+      const sessionPeriod = activeWalk.frequency === 'twice_daily'
+        ? (currentHour < 14 ? 'Morning' : 'Evening')
+        : (currentHour < 12 ? 'Morning' : currentHour < 17 ? 'Afternoon' : 'Evening')
+      const sessionTimeFormatted = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+      const sessionSlot = activeWalk.frequency === 'twice_daily'
+        ? (currentHour < 14 ? (activeWalk.morningSlot || activeWalk.slot || 'Morning') : (activeWalk.eveningSlot || 'Evening'))
+        : (activeWalk.slot || activeWalk.walkingSlot || sessionTimeFormatted)
+
       const walkReport = {
         id: `rep_${Date.now()}`,
         walkIndex: newCompleted,
         totalWalks: totalExpected,
-        date: activeWalk.date || new Date().toISOString().split('T')[0],
-        completedAt: new Date().toISOString(),
+        date: todayDateStr, // Actual completion date
+        completedAt: completedIso,
+        sessionPeriod,
+        walkTime: sessionTimeFormatted,
+        slot: sessionSlot,
         durationSeconds: finalDuration,
         distanceMeters: finalDistance,
         pace: finalPace,
@@ -1064,7 +1079,8 @@ export default function WalkerPortal() {
 
   // Group walks by category
   const categorizedWalks = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0]
+    const today = new Date()
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
     const active = []
     const upcoming = []
     const completed = []
@@ -1088,15 +1104,36 @@ export default function WalkerPortal() {
         // Automatically exclude from daily active route
         skipped.push(w)
       } else if (w.status === WALKING_STATUS.IN_PROGRESS) {
+        // Walk actively streaming right now
         active.unshift(w)
       } else {
-        const walkDate = w.date || w.walkingDate || ''
-        if (walkDate === todayStr || !walkDate) {
-          active.push(w)
-        } else if (walkDate > todayStr) {
-          upcoming.push(w)
+        const startDate = w.date || w.walkingDate || ''
+        const endDate = w.estimatedEndDate || startDate
+
+        if (isMulti) {
+          // Multi-day pass:
+          if (startDate > todayStr) {
+            // Future pass not yet started
+            upcoming.push(w)
+          } else if (endDate >= todayStr || !endDate) {
+            // Active pass running today!
+            active.push(w)
+          } else {
+            // Expired pass
+            completed.push(w)
+          }
         } else {
-          active.push(w)
+          // Single walk:
+          if (startDate === todayStr || !startDate) {
+            // Scheduled for TODAY
+            active.push(w)
+          } else if (startDate > todayStr) {
+            // Scheduled for FUTURE
+            upcoming.push(w)
+          } else {
+            // Scheduled for PAST date (yesterday or older)
+            completed.push(w)
+          }
         }
       }
     })
@@ -1104,11 +1141,9 @@ export default function WalkerPortal() {
     return { active, upcoming, completed, skipped }
   }, [walks])
 
-  // Recent 5 walks for the home/active screen
+  // Today's active walks for the active screen (strictly today only, no past/future)
   const recentWalks = useMemo(() => {
-    // Show active and upcoming walks, up to 5 items max
-    const combined = [...categorizedWalks.active, ...categorizedWalks.upcoming]
-    return combined.slice(0, 5)
+    return categorizedWalks.active
   }, [categorizedWalks])
 
   // Reusable Walk Card Renderer
@@ -1173,12 +1208,19 @@ export default function WalkerPortal() {
         </div>
 
         <div style={{ background: 'var(--surface, #F7F2E7)', borderRadius: '12px', padding: '10px 12px', marginBottom: '12px', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text, #221711)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text, #221711)', flexWrap: 'wrap' }}>
             <Calendar size={13} color="var(--accent, #C08820)" />
             <strong>{w.date || w.walkingDate || 'Today'}</strong>
             <span style={{ color: 'var(--muted, #7E7067)' }}>·</span>
             <Clock size={13} color="var(--accent, #C08820)" />
-            <strong>{w.slot || w.walkingSlot || '-'}</strong>
+            {w.frequency === 'twice_daily' || (w.morningSlot && w.eveningSlot) ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ color: '#b45309', fontWeight: 800 }}>🌅 Morning: {w.morningSlot || w.slot || 'Morning'}</span>
+                <span style={{ color: '#4338ca', fontWeight: 800 }}>🌆 Evening: {w.eveningSlot || 'Evening'}</span>
+              </span>
+            ) : (
+              <strong>{w.slot || w.walkingSlot || '-'}</strong>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', color: 'var(--text, #221711)', lineHeight: 1.4 }}>
@@ -1268,7 +1310,17 @@ export default function WalkerPortal() {
                         Walk #{rep.walkIndex || (idx + 1)}{isMulti ? ` of ${totalExpected}` : ''}
                       </strong>
                       <span style={{ color: 'var(--muted, #7E7067)', fontSize: '10.5px' }}>
-                        {rep.date || (rep.completedAt ? new Date(rep.completedAt).toLocaleDateString() : '')}
+                        {(() => {
+                          const dateObj = rep.completedAt ? new Date(rep.completedAt) : (rep.date ? new Date(rep.date) : null)
+                          const dateStr = dateObj && !isNaN(dateObj.getTime())
+                            ? dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                            : (rep.date || '')
+                          const timeStr = dateObj && !isNaN(dateObj.getTime())
+                            ? dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                            : (rep.walkTime || '')
+                          const period = rep.sessionPeriod ? ` (${rep.sessionPeriod})` : ''
+                          return `${dateStr}${timeStr ? ` · ${timeStr}` : ''}${period}`
+                        })()}
                       </span>
                     </div>
 
@@ -2519,7 +2571,7 @@ export default function WalkerPortal() {
               )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: 900, color: 'var(--text, #221711)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Clock size={16} color="var(--accent, #C08820)" /> Upcoming Walks (Recent {Math.min(5, recentWalks.length)})
+                  <Clock size={16} color="var(--accent, #C08820)" /> Today's Scheduled Walks ({recentWalks.length})
                 </h3>
                 <button
                   type="button"
@@ -2539,37 +2591,17 @@ export default function WalkerPortal() {
                 <div style={{ background: 'var(--card, #fff)', borderRadius: '18px', padding: '28px 16px', textAlign: 'center', border: '1.5px dashed var(--border, #F0EAE1)' }}>
                   <Footprints size={30} color="var(--muted, #7E7067)" style={{ marginBottom: '6px', opacity: 0.5 }} />
                   <div style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text, #221711)' }}>
-                    No upcoming walks scheduled
+                    No walks scheduled for today
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--muted, #7E7067)', marginTop: '2px' }}>
-                    New walks assigned by Paw Paw admin will appear here automatically.
+                    {categorizedWalks.upcoming.length > 0
+                      ? `You have ${categorizedWalks.upcoming.length} upcoming future walk${categorizedWalks.upcoming.length > 1 ? 's' : ''}. Switch to "My Assigned Walks" to view them.`
+                      : 'New walks assigned by Paw Paw admin will appear here automatically.'}
                   </div>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {recentWalks.map(renderWalkCard)}
-
-                  {walks.length > 5 && (
-                    <button
-                      type="button"
-                      onClick={() => setMainPortalTab('all_walks')}
-                      className="btn btn-secondary"
-                      style={{
-                        width: '100%',
-                        padding: '11px',
-                        fontSize: '13px',
-                        fontWeight: 800,
-                        marginTop: '4px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                      }}
-                    >
-                      <span>View All {walks.length} Assigned Walks</span>
-                      <ChevronRight size={15} />
-                    </button>
-                  )}
                 </div>
               )}
             </div>
@@ -2612,7 +2644,7 @@ export default function WalkerPortal() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                Today & Active ({categorizedWalks.active.length})
+                Today ({categorizedWalks.active.length})
               </button>
               <button
                 type="button"
@@ -2630,7 +2662,7 @@ export default function WalkerPortal() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                Upcoming ({categorizedWalks.upcoming.length})
+                Upcoming Future ({categorizedWalks.upcoming.length})
               </button>
               <button
                 type="button"
