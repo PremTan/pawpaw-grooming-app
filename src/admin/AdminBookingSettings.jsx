@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Award, CalendarOff, ChevronDown, ChevronUp, Clock, Copy, CreditCard, ExternalLink, FileText, Home, Minus, Plus, Save, SlidersHorizontal, Store, Trash2 } from 'lucide-react'
+import { Award, ChevronDown, ChevronUp, Clock, Copy, CreditCard, Home, Minus, Plus, Save, SlidersHorizontal, Store, Trash2 } from 'lucide-react'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
@@ -176,7 +176,6 @@ export default function AdminBookingSettings({ embedded = false }) {
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('hours')
   const [activeDay, setActiveDay] = useState('mon')
-  const [holidayDate, setHolidayDate] = useState('')
   const [blockedDate, setBlockedDate] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -239,19 +238,6 @@ export default function AdminBookingSettings({ embedded = false }) {
     setSettings(prev => ({ ...prev, weekly }))
     setToastType('success')
     setToastMessage('Monday hours copied to all days.')
-  }
-
-  const addHoliday = () => {
-    if (!holidayDate) return
-    setSettings(prev => ({
-      ...prev,
-      holidays: Array.from(new Set([...prev.holidays, holidayDate])).sort(),
-    }))
-    setHolidayDate('')
-  }
-
-  const removeHoliday = (date) => {
-    setSettings(prev => ({ ...prev, holidays: prev.holidays.filter(d => d !== date) }))
   }
 
   const toggleBlockedSlot = (slotLabel) => {
@@ -390,7 +376,7 @@ export default function AdminBookingSettings({ embedded = false }) {
           onClick={() => setActiveTab('payments')}
         >
           <CreditCard size={16} />
-          <span>Payments & Invoices</span>
+          <span>Payments</span>
         </button>
       </div>
 
@@ -521,40 +507,8 @@ export default function AdminBookingSettings({ embedded = false }) {
               </div>
             </section>
 
-            {/* Right: Holidays & Blocked Slots */}
+            {/* Right: Blocked Slots */}
             <aside className="booking-side-stack">
-              <section className="booking-panel">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                  <h2 style={{ margin: 0 }}><CalendarOff size={17} /> Holidays</h2>
-                  <Link
-                    to="/admin/common-settings"
-                    style={{ fontSize: '11px', color: '#d97706', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
-                    title="Manage global holidays for Grooming, Walking and Boarding"
-                  >
-                    Common Holidays <ExternalLink size={11} />
-                  </Link>
-                </div>
-                <p>Dates added here will be unavailable for all visit types.</p>
-                <div style={{ background: 'rgba(217,119,6,0.06)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: '8px', padding: '8px 10px', fontSize: '11.5px', color: 'var(--text)', marginBottom: '10px', lineHeight: 1.4 }}>
-                  💡 Universal holidays applying to all 3 services (Grooming, Walking & Boarding) are configured in <Link to="/admin/common-settings" style={{ color: '#d97706', fontWeight: 700 }}>Common Settings</Link>.
-                </div>
-                <div className="holiday-add-row">
-                  <input type="date" value={holidayDate} onChange={e => setHolidayDate(e.target.value)} />
-                  <button type="button" className="btn btn-secondary" onClick={addHoliday}>Add</button>
-                </div>
-                {settings.holidays.length === 0 ? (
-                  <p className="empty-holidays" style={{ marginTop: '10px' }}>No holidays added.</p>
-                ) : (
-                  <div className="holiday-chips">
-                    {settings.holidays.map(date => (
-                      <button key={date} type="button" onClick={() => removeHoliday(date)}>
-                        {date} <Trash2 size={13} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </section>
-
               <section className="booking-panel">
                 <h2><Clock size={17} /> Block Slots by Date</h2>
                 <p>Select a date and choose the time slots that should stay unavailable for customers.</p>
@@ -683,7 +637,7 @@ export default function AdminBookingSettings({ embedded = false }) {
         </div>
       )}
 
-      {/* TAB 3: Payments & Invoices */}
+      {/* TAB 3: Payments */}
       {activeTab === 'payments' && (
         <div className="booking-tab-pane">
           <div className="booking-settings-grid equal-columns">
@@ -715,6 +669,9 @@ export default function AdminBookingSettings({ embedded = false }) {
                   </div>
                 )}
               </section>
+            </div>
+
+            <div className="booking-side-stack">
               <section className="booking-panel">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                   <Award size={18} style={{ color: 'var(--accent, #d97706)' }} />
@@ -758,21 +715,6 @@ export default function AdminBookingSettings({ embedded = false }) {
                 <div style={{ padding: '8px 12px', borderRadius: '8px', background: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.2)', fontSize: '11.5px', color: '#92400e' }}>
                   💡 <strong>Example:</strong> On a Rs 1,000 completed grooming session, default incentive will be <strong>Rs {settings.defaultIncentiveType === 'flat' ? (settings.defaultIncentiveValue || 0) : Math.round((1000 * (settings.defaultIncentiveValue || 10)) / 100)}</strong>. Admin can customize or override this per booking upon completion.
                 </div>
-              </section>
-            </div>
-
-            <div className="booking-side-stack">
-              <section className="booking-panel">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                  <h2 style={{ margin: 0 }}><FileText size={17} /> Customer Invoices</h2>
-                  <Link
-                    to="/admin/common-settings"
-                    style={{ fontSize: '11px', color: '#d97706', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
-                  >
-                    Common Settings <ExternalLink size={11} />
-                  </Link>
-                </div>
-                <p>Customer invoice downloads for all services are managed in <Link to="/admin/common-settings" style={{ color: '#d97706', fontWeight: 700 }}>Common Settings</Link>.</p>
               </section>
             </div>
           </div>
