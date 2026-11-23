@@ -30,6 +30,7 @@ const NotFound = lazy(() => import('./pages/NotFound'))
 // Lazy-loaded Admin modules (prevents bundling heavy admin code into initial user load)
 const AdminLayout = lazy(() => import('./admin/AdminLayout'))
 const AdminDashboard = lazy(() => import('./admin/AdminDashboard'))
+const AdminTodayOperations = lazy(() => import('./admin/AdminTodayOperations'))
 const AdminBookings = lazy(() => import('./admin/AdminBookings'))
 const AdminBoarding = lazy(() => import('./admin/AdminBoarding'))
 const AdminWalking = lazy(() => import('./admin/AdminWalking'))
@@ -118,11 +119,15 @@ export default function App() {
         <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
         <Route index            element={<AdminDashboard />} />
         <Route path="dashboard" element={<DashboardRedirect />} />
+        <Route path="today"     element={<AdminTodayOperations />} />
+        <Route path="operations" element={<AdminTodayOperations />} />
         <Route path="earnings"  element={<AdminEarnings />} />
         <Route path="bookings"  element={<AdminBookings />} />
         <Route path="bookings/:bookingId" element={<AdminBookings />} />
         <Route path="boarding"  element={<AdminBoarding />} />
+        <Route path="boarding/:boardingId" element={<AdminBoarding />} />
         <Route path="walking"   element={<AdminWalking />} />
+        <Route path="walking/:walkingId" element={<AdminWalking />} />
         <Route path="invoices" element={<AdminInvoices />} />
         <Route path="reviews"   element={<AdminReviews />} />
         <Route path="google-reviews" element={<AdminGoogleReviews />} />

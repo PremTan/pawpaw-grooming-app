@@ -28,6 +28,7 @@ import NotificationBell from './NotificationBell'
 import BrandLogo from './BrandLogo'
 import FestiveBanner from './FestiveBanner'
 import PWAInstallModal from './PWAInstallModal'
+import ConfirmModal from './ConfirmModal'
 import { usePWAInstall } from '../hooks/usePWAInstall'
 import { db } from '../firebase'
 import { fetchBookingSettings, getWorkingStatus, getCachedBookingSettings } from '../utils/bookingSettings'
@@ -39,6 +40,7 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [dropOpen, setDropOpen] = useState(false)
   const [showPwModal, setShowPwModal] = useState(false)
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [hoursOpen, setHoursOpen] = useState(false)
   const [workingStatus, setWorkingStatus] = useState(() => {
     const cached = getCachedBookingSettings()
@@ -109,11 +111,16 @@ export default function Navbar() {
       : location.pathname === path
   )
 
-  const handleLogout = async () => {
-    await logout()
-    navigate('/')
+  const handleLogoutClick = () => {
     setDropOpen(false)
     setMenuOpen(false)
+    setShowLogoutModal(true)
+  }
+
+  const handleConfirmLogout = async () => {
+    setShowLogoutModal(false)
+    await logout()
+    navigate('/')
   }
 
   useEffect(() => {
@@ -361,7 +368,7 @@ export default function Navbar() {
                             </button>
                           )}
                           <button
-                            onClick={handleLogout}
+                            onClick={handleLogoutClick}
                             style={{ width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: '9px', fontSize: '12px', color: '#ef4444', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.15s' }}
                             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)' }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
@@ -624,7 +631,7 @@ export default function Navbar() {
                 )}
 
                 <button
-                  onClick={handleLogout}
+                  onClick={handleLogoutClick}
                   style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px 12px', borderRadius: '10px', background: 'none', border: 'none', color: '#ef4444', fontSize: '13px', cursor: 'pointer' }}
                 >
                   <LogOut size={15} /> Logout
@@ -807,6 +814,16 @@ export default function Navbar() {
       <PWAInstallModal
         isOpen={showIOSModal}
         onClose={() => setShowIOSModal(false)}
+      />
+      <ConfirmModal
+        open={showLogoutModal}
+        title="Log Out?"
+        message="Are you sure you want to log out of your account?"
+        confirmText="Log Out"
+        cancelText="Cancel"
+        danger={true}
+        onConfirm={handleConfirmLogout}
+        onCancel={() => setShowLogoutModal(false)}
       />
     </>
   )

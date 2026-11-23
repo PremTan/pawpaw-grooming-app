@@ -3455,6 +3455,26 @@
   display: none;
 }
 
+.admin-home-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  text-decoration: none;
+  padding: 0 !important;
+}
+
+.admin-home-btn:hover {
+  transform: scale(1.05);
+}
+
 @media (max-width: 768px) {
   .admin-shell {
     display: block;
@@ -3499,17 +3519,23 @@
 
   .admin-sidebar-close,
   .admin-menu-toggle {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 10px;
+    border-radius: 12px;
     border: 1px solid var(--accent-border);
     background: var(--accent-bg);
     color: var(--accent);
     cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .admin-sidebar-close:hover,
+  .admin-menu-toggle:hover {
+    transform: scale(1.05);
   }
 
   .admin-sidebar-nav {
@@ -3577,8 +3603,8 @@
   }
 
   .admin-home-btn {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     padding: 0 !important;
   }
 
@@ -3610,14 +3636,16 @@
     margin-bottom: 6px !important;
   }
 
-  .admin-stats-grid .stat-card > div:nth-child(2) {
+  .admin-stats-grid .stat-card-value {
     font-size: 18px !important;
     line-height: 1.15;
     overflow-wrap: anywhere;
   }
 
+  .admin-stats-grid .stat-card-label,
   .admin-stats-grid .stat-card > div:nth-child(3) {
-    font-size: 10px !important;
+    font-size: 11px !important;
+    color: var(--muted) !important;
   }
 
   .admin-earning-split {
@@ -16081,6 +16109,43 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   .admin-team-row {
     padding: 10px 12px;
     gap: 10px;
+  }
+}
+
+/* Today's Operations Hub responsive layout */
+.admin-today-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: nowrap;
+}
+
+.admin-today-title {
+  font-family: "Playfair Display", serif;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  margin: 0;
+  white-space: nowrap;
+  letter-spacing: -0.2px;
+}
+
+.admin-today-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+@media (min-width: 768px) {
+  .admin-today-title {
+    font-size: 24px;
+  }
+  .admin-today-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
   }
 }
 

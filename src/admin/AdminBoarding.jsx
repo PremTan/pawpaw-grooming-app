@@ -1,6 +1,6 @@
 // src/admin/AdminBoarding.jsx
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Cropper from 'react-easy-crop'
 import {
   collection,
@@ -277,6 +277,9 @@ export default function AdminBoarding() {
   const { user } = useAuth()
   const { sendNotification } = useNotifications()
   const navigate = useNavigate()
+  const { boardingId } = useParams()
+  const [searchParams] = useSearchParams()
+  const targetBoardingId = boardingId || searchParams.get('id')
 
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
@@ -364,6 +367,30 @@ export default function AdminBoarding() {
       }
     }
   }, [selectedBooking, showFilterDrawer, checkInModal, checkoutModal, cancelTarget, showSettingsModal])
+
+  const handleCloseDetails = useCallback(() => {
+    setSelectedBooking(null)
+    setIsEditing(false)
+    if (targetBoardingId) {
+      navigate('/admin/boarding')
+    }
+  }, [targetBoardingId, navigate])
+
+  useEffect(() => {
+    if (!targetBoardingId) return
+    const match = bookings.find(b => b.id === targetBoardingId)
+    if (match) {
+      setSelectedBooking(match)
+      setIsEditing(false)
+    } else {
+      getDoc(doc(db, 'boardingBookings', targetBoardingId)).then(snap => {
+        if (snap.exists()) {
+          setSelectedBooking({ id: snap.id, ...snap.data() })
+          setIsEditing(false)
+        }
+      }).catch(err => console.error('Failed to load boarding booking:', err))
+    }
+  }, [targetBoardingId, bookings])
 
   const fetchBoardings = async (isBackground = false) => {
     const isFresh = cachedBoardingData && (Date.now() - cachedBoardingTime < BOARDING_CACHE_TTL)
@@ -1789,15 +1816,38 @@ export default function AdminBoarding() {
           BOARDING RESERVATION DETAILS MODAL (Matches Screenshot 1)
           ============================================================ */}
       {selectedBooking && (
-        <div className="modal-overlay" onClick={() => { setSelectedBooking(null); setIsEditing(false) }}>
+        <div className="modal-overlay" onClick={handleCloseDetails}>
           <div className="boarding-details-modal" onClick={e => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="details-modal-header">
-              {/* Row 1: Title on left, actions on right */}
+              {/* Row 1: Title on left, Close button on right */}
               <div className="details-header-top-row">
                 <h2 className="details-title">
                   {isEditing ? 'Edit Boarding Reservation' : 'Boarding Reservation'}
                 </h2>
+
+                <button
+                  type="button"
+                  className="details-close-btn"
+                  onClick={handleCloseDetails}
+                  aria-label="Close modal"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Row 2: Status badge and Reservation ID on left, Quick Actions on right */}
+              <div className="details-header-sub-row">
+                <div className="details-header-badges">
+                  <span className={`boarding-status-pill ${selectedBooking.status || 'pending'}`}>
+                    {selectedBooking.status === 'checked_out' && <CheckCircle2 size={13} />}
+                    {selectedBooking.status === 'checked_in' && <LogIn size={13} />}
+                    {selectedBooking.status === 'confirmed' && <Check size={13} />}
+                    {selectedBooking.status === 'cancelled' && <X size={13} />}
+                    <span>{statusLabel(selectedBooking.status)}</span>
+                  </span>
+                  <span className="details-ref-id">{shortId(selectedBooking.id)}</span>
+                </div>
 
                 <div className="header-actions-row">
                   {!isEditing && (selectedBooking.status === 'checked_out' || selectedBooking.status === 'completed') && (
@@ -1849,28 +1899,7 @@ export default function AdminBoarding() {
                       Cancel
                     </button>
                   )}
-
-                  <button
-                    type="button"
-                    className="details-close-btn"
-                    onClick={() => { setSelectedBooking(null); setIsEditing(false) }}
-                    aria-label="Close modal"
-                  >
-                    <X size={18} />
-                  </button>
                 </div>
-              </div>
-
-              {/* Row 2: Status badge and Reservation ID on the same line */}
-              <div className="details-header-sub-row">
-                <span className={`boarding-status-pill ${selectedBooking.status || 'pending'}`}>
-                  {selectedBooking.status === 'checked_out' && <CheckCircle2 size={13} />}
-                  {selectedBooking.status === 'checked_in' && <LogIn size={13} />}
-                  {selectedBooking.status === 'confirmed' && <Check size={13} />}
-                  {selectedBooking.status === 'cancelled' && <X size={13} />}
-                  <span>{statusLabel(selectedBooking.status)}</span>
-                </span>
-                <span className="details-ref-id">{shortId(selectedBooking.id)}</span>
               </div>
             </div>
 
@@ -5007,7 +5036,7 @@ export default function AdminBoarding() {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 10px;
+          gap: 12px;
           width: 100%;
         }
 
@@ -5018,21 +5047,29 @@ export default function AdminBoarding() {
           margin: 0;
           line-height: 1.25;
           min-width: 0;
-          word-break: break-word;
           flex: 1;
+        }
+
+        .details-header-sub-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          flex-wrap: wrap;
+          width: 100%;
+        }
+
+        .details-header-badges {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
         }
 
         .header-actions-row {
           display: flex;
           align-items: center;
           gap: 6px;
-          flex-shrink: 0;
-        }
-
-        .details-header-sub-row {
-          display: flex;
-          align-items: center;
-          gap: 8px;
           flex-wrap: wrap;
         }
 
@@ -5701,21 +5738,34 @@ export default function AdminBoarding() {
           }
 
           .details-header-top-row {
-            gap: 8px;
+            gap: 10px;
             width: 100%;
             box-sizing: border-box;
           }
 
           .details-title {
-            font-size: 15px;
+            font-size: 16px;
+            font-weight: 800;
             line-height: 1.25;
             min-width: 0;
-            word-break: break-word;
+            word-break: normal;
+          }
+
+          .details-header-sub-row {
+            gap: 8px;
+            justify-content: space-between;
+            width: 100%;
+          }
+
+          .details-header-badges {
+            display: flex;
+            align-items: center;
+            gap: 8px;
           }
 
           .header-actions-row {
-            gap: 5px;
-            flex-shrink: 0;
+            gap: 6px;
+            flex-wrap: wrap;
           }
 
           .details-header-btn {

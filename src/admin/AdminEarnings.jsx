@@ -146,7 +146,7 @@ export default function AdminEarnings() {
             dateYmd,
             detailSummary: b.serviceName || (Array.isArray(b.services) ? b.services.join(', ') : 'Grooming Package'),
             invoiceUrl: `/admin/invoices?mode=appointment&id=${b.id}`,
-            adminUrl: `/admin/bookings`,
+            adminUrl: `/admin/bookings/${b.id}`,
           })
         }
       })
@@ -187,7 +187,7 @@ export default function AdminEarnings() {
             dateYmd,
             detailSummary: `${passTitle} • ${w.frequency === 'twice_daily' ? '2 walks/day' : '1 walk/day'}`,
             invoiceUrl: `/admin/invoices?mode=walking&id=${w.id}`,
-            adminUrl: `/admin/walking`,
+            adminUrl: `/admin/walking/${w.id}`,
           })
         }
       })
@@ -225,7 +225,7 @@ export default function AdminEarnings() {
             dateYmd,
             detailSummary: `${b.checkInDate || ''} → ${b.checkOutDate || ''} (${nights} nights)`,
             invoiceUrl: `/admin/invoices?mode=boarding&id=${b.id}`,
-            adminUrl: `/admin/boarding`,
+            adminUrl: `/admin/boarding/${b.id}`,
           })
         }
       })

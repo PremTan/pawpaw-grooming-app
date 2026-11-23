@@ -844,11 +844,6 @@ export default function BookBoarding() {
         </div>
       ) : (
         <div ref={bookingTopRef} className="boarding-flow-container">
-          {/* Top Suite Badge */}
-          <div className="suite-tag-row">
-            <span className="suite-gold-tag">PAW PAW SUITES</span>
-          </div>
-
           {/* Dynamic Step Title */}
           <h1 className="boarding-heading">
             {step === 5 ? 'Review Boarding Request' : 'Pet Boarding Reservation'}
@@ -2905,24 +2900,25 @@ export default function BookBoarding() {
           text-decoration: underline;
         }
 
-        /* Saved Pets Stack */
+        /* Saved Pets Grid: 2 pets in single line */
         .saved-pets-list {
-          display: flex;
-          flex-direction: column;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 8px;
         }
 
         .saved-pet-card {
           display: flex;
           align-items: center;
-          gap: 10px;
-          padding: 9px 12px;
+          gap: 8px;
+          padding: 8px 10px;
           border-radius: 12px;
           border: 1.2px solid #EFE8DC;
           background: #FFFFFF;
           cursor: pointer;
           text-align: left;
           transition: all 0.15s ease;
+          min-width: 0;
         }
 
         .saved-pet-card:hover {
@@ -2958,18 +2954,18 @@ export default function BookBoarding() {
         }
 
         .pet-thumb-img {
-          width: 38px;
-          height: 38px;
-          border-radius: 9px;
+          width: 34px;
+          height: 34px;
+          border-radius: 8px;
           object-fit: cover;
           flex-shrink: 0;
           border: 1px solid #EFE8DC;
         }
 
         .pet-thumb-placeholder {
-          width: 38px;
-          height: 38px;
-          border-radius: 9px;
+          width: 34px;
+          height: 34px;
+          border-radius: 8px;
           background: #FAF3E3;
           border: 1px solid #E6D2AB;
           display: flex;
@@ -2984,14 +2980,20 @@ export default function BookBoarding() {
         }
 
         .pet-card-name {
-          font-size: 13.5px;
+          font-size: 12.5px;
           font-weight: 800;
           color: #221711;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .pet-card-meta {
-          font-size: 11.5px;
+          font-size: 10.5px;
           color: #7A6E63;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .empty-saved-pets {

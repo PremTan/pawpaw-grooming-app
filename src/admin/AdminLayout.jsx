@@ -1,6 +1,6 @@
 // src/admin/AdminLayout.jsx
 import { useEffect, useState } from 'react'
-import { Link, Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Link, Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { doc, setDoc } from 'firebase/firestore'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
@@ -9,9 +9,11 @@ import ThemeSwitcher from '../components/ThemeSwitcher'
 import NotificationBell from '../components/NotificationBell'
 import BrandLogo from '../components/BrandLogo'
 import AdminRadialMenu from './AdminRadialMenu'
+import ConfirmModal from '../components/ConfirmModal'
 
 const LINKS = [
   { to:'/admin',           label:'Dashboard',  icon:<LayoutDashboard size={17}/>, end:true },
+  { to:'/admin/today',     label:"Today's Operations", icon:<CalendarClock size={17}/> },
   { to:'/admin/earnings',  label:'Revenue',    icon:<TrendingUp size={17}/> },
   { to:'/admin/bookings',  label:'Bookings',   icon:<CalendarCheck size={17}/> },
   { to:'/admin/boarding',  label:'Pet Boarding', icon:<Building2 size={17}/> },
@@ -37,14 +39,31 @@ const LINKS = [
 export default function AdminLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
+
+  const isAtDashboard = location.pathname === '/admin' || location.pathname === '/admin/'
+  const homeTarget = isAtDashboard ? '/?view=public' : '/admin'
+  const homeTitle = isAtDashboard ? 'View Customer Home' : 'Back to Admin Dashboard'
 
   useEffect(() => {
     if (!user?.uid) return
     setDoc(doc(db, 'settings', 'general'), { adminUid: user.uid }, { merge: true }).catch(() => {})
   }, [user])
 
-  const handleLogout = async () => { await logout(); setMenuOpen(false); navigate('/') }
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
+
+  const handleLogoutClick = () => {
+    setShowLogoutModal(true)
+  }
+
+  const handleConfirmLogout = async () => {
+    setShowLogoutModal(false)
+    setMenuOpen(false)
+    await logout()
+    navigate('/')
+  }
+
   const closeMenu = () => setMenuOpen(false)
 
   return (
@@ -72,8 +91,8 @@ export default function AdminLayout() {
         </nav>
 
         <div className="admin-sidebar-bottom">
-          <Link to="/?view=public" onClick={closeMenu} className="admin-nav-link" style={{ marginBottom:'8px' }}>
-            <Home size={17}/> View Home
+          <Link to={homeTarget} onClick={closeMenu} className="admin-nav-link" style={{ marginBottom:'8px' }}>
+            <Home size={17}/> {isAtDashboard ? 'View Home' : 'Back to Dashboard'}
           </Link>
           <div style={{ display:'flex', alignItems:'center', gap:'8px', padding:'8px', marginBottom:'8px' }}>
             <div style={{ width:'30px', height:'30px', borderRadius:'50%', background:'var(--accent-bg)', border:'1px solid var(--accent-border)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -84,7 +103,7 @@ export default function AdminLayout() {
               <div style={{ color:'var(--accent)', fontSize:'10px' }}>Owner - Admin</div>
             </div>
           </div>
-          <button onClick={handleLogout}
+          <button onClick={handleLogoutClick}
             style={{ width:'100%', display:'flex', alignItems:'center', gap:'8px', padding:'8px 10px', borderRadius:'9px', background:'none', border:'none', color:'#ef4444', fontSize:'12px', cursor:'pointer' }}
             onMouseEnter={e => e.currentTarget.style.background='rgba(239,68,68,0.1)'}
             onMouseLeave={e => e.currentTarget.style.background='none'}
@@ -98,7 +117,7 @@ export default function AdminLayout() {
         <div className="admin-topbar">
           <div className="admin-topbar-left">
             <button type="button" className="admin-menu-toggle" aria-label="Open admin menu" onClick={() => setMenuOpen(true)}>
-              <Menu size={20} />
+              <Menu size={18} />
             </button>
             <div className="admin-mobile-title">
               <strong>Admin Panel</strong>
@@ -106,8 +125,8 @@ export default function AdminLayout() {
             </div>
           </div>
           <div className="admin-topbar-actions">
-            <Link to="/?view=public" className="btn btn-secondary admin-home-btn" style={{ fontSize:'12px', padding:'8px 14px', textDecoration:'none' }}>
-              <Home size={14}/><span>Home</span>
+            <Link to={homeTarget} className="admin-home-btn" title={homeTitle} aria-label={homeTitle}>
+              <Home size={16} />
             </Link>
             <ThemeSwitcher />
             <NotificationBell />
@@ -118,6 +137,17 @@ export default function AdminLayout() {
         </main>
         <AdminRadialMenu />
       </div>
+
+      <ConfirmModal
+        open={showLogoutModal}
+        title="Log Out?"
+        message="Are you sure you want to log out of the Admin Panel?"
+        confirmText="Log Out"
+        cancelText="Cancel"
+        danger={true}
+        onConfirm={handleConfirmLogout}
+        onCancel={() => setShowLogoutModal(false)}
+      />
     </div>
   )
 }

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { collection, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { Link, useSearchParams } from 'react-router-dom'
 import { format, startOfToday } from 'date-fns'
-import { ArrowRight, Calendar, CalendarCheck, CheckCircle2, Clock, IndianRupee, Plus, Settings, TrendingUp, XCircle } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, Calendar, CalendarCheck, CheckCircle2, Clock, IndianRupee, Plus, Settings, TrendingUp, XCircle } from 'lucide-react'
 import Spinner from '../components/Spinner'
 import Toast from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
@@ -87,6 +87,7 @@ export default function AdminDashboard() {
     customerCount: 0,
     normalizedItems: [],
     rawGroomingBookings: [],
+    todayOperations: [],
   })
 
   const [loading, setLoading] = useState(!cachedDashboardState)
@@ -140,6 +141,8 @@ export default function AdminDashboard() {
       ])
 
       const rawGrooming = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const rawWalking = wSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const rawBoarding = bSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       const normalized = []
       const customerKeys = new Set()
 
@@ -208,8 +211,7 @@ export default function AdminDashboard() {
       })
 
       // 2. Walking Bookings (Passes & Single walks)
-      wSnap.docs.forEach(docSnap => {
-        const w = { id: docSnap.id, ...docSnap.data() }
+      rawWalking.forEach(w => {
         const cKey = uniqueCustomerKey(w)
         if (cKey) customerKeys.add(cKey)
         onlineCount++
@@ -257,8 +259,7 @@ export default function AdminDashboard() {
       })
 
       // 3. Boarding Bookings (Overnight Stays)
-      bSnap.docs.forEach(docSnap => {
-        const b = { id: docSnap.id, ...docSnap.data() }
+      rawBoarding.forEach(b => {
         const cKey = uniqueCustomerKey(b)
         if (cKey) customerKeys.add(cKey)
         onlineCount++
@@ -305,6 +306,150 @@ export default function AdminDashboard() {
         })
       })
 
+      // Compute Today's Operations Hub items across all 3 services
+      const todayOps = []
+
+      // 1. Grooming for Today
+      rawGrooming.forEach(g => {
+        const dateObj = parseBookingDate(g)
+        const dateYmd = g.date || format(dateObj, 'yyyy-MM-dd')
+        if (dateYmd === today && g.status !== 'cancelled') {
+          todayOps.push({
+            id: g.id,
+            serviceType: 'grooming',
+            title: g.serviceName || (Array.isArray(g.services) ? g.services.join(', ') : 'Grooming Session'),
+            petName: g.petName || 'Pet',
+            petType: g.petType || 'dog',
+            breed: g.breed || '',
+            ownerName: g.ownerName || g.name || 'Customer',
+            phone: g.phone || '',
+            slot: g.slot || 'Scheduled',
+            rawSlot: g.slot || '',
+            status: g.status || 'confirmed',
+            assignedStaff: g.assignedTeamMemberName || '',
+            assignedStaffRole: 'Groomer',
+            isWalkIn: Boolean(g.isWalkIn),
+            amount: g.amountCollected || g.price || 0,
+            link: `/admin/bookings/${g.id}`,
+            notes: g.specialNotes || g.notes || '',
+          })
+        }
+      })
+
+      // 2. Walking for Today
+      rawWalking.forEach(w => {
+        if (w.status === 'cancelled') return
+        const startDate = w.date || (w.createdAt ? format(parseBookingDate(w), 'yyyy-MM-dd') : '')
+        const endDate = w.estimatedEndDate || w.endDate || startDate
+
+        const isToday = (w.planType === 'single' || !w.planType)
+          ? startDate === today
+          : (startDate <= today && (!endDate || endDate >= today))
+
+        if (isToday) {
+          const isDoneToday = w.status === 'completed' ||
+            (Array.isArray(w.completedDates) && w.completedDates.includes(today)) ||
+            (Array.isArray(w.completedSessions) && w.completedSessions.some(s => s.date === today))
+
+          const status = isDoneToday ? 'completed' : (w.status === 'in_progress' ? 'in_progress' : (w.status || 'confirmed'))
+
+          let slotDisplay = w.slot || 'Morning Walk'
+          if (w.frequency === '2' || w.walksPerDay === 2) {
+            slotDisplay = `${w.morningSlot || 'Morn'} & ${w.eveningSlot || 'Eve'}`
+          }
+
+          todayOps.push({
+            id: w.id,
+            serviceType: 'walking',
+            title: w.planType === 'weekly' ? '7-Day Pass Walk' : w.planType === 'monthly' ? '30-Day Pass Walk' : 'Daily Dog Walk',
+            petName: w.dogName || w.petName || 'Dog',
+            petType: 'dog',
+            breed: w.dogBreed || w.breed || '',
+            ownerName: w.ownerName || w.customerName || w.name || 'Customer',
+            phone: w.phone || '',
+            slot: slotDisplay,
+            rawSlot: w.morningSlot || w.slot || '',
+            status,
+            assignedStaff: w.assignedWalkerName || w.assignedTeamMemberName || '',
+            assignedStaffRole: 'Walker',
+            isWalkIn: false,
+            amount: w.totalPrice || w.amountCollected || 0,
+            link: `/admin/walking`,
+            notes: w.specialInstructions || w.notes || '',
+          })
+        }
+      })
+
+      // 3. Boarding for Today
+      rawBoarding.forEach(b => {
+        if (b.status === 'cancelled') return
+        const checkIn = b.checkInDate || ''
+        const checkOut = b.checkOutDate || ''
+
+        const isCheckInToday = checkIn === today
+        const isCheckOutToday = checkOut === today
+        const isActiveStay = checkIn <= today && checkOut >= today
+
+        if (isCheckInToday || isCheckOutToday || isActiveStay) {
+          let eventType = 'Active Stay'
+          let slotDisplay = 'Stay'
+          if (isCheckInToday) {
+            eventType = 'Check-in Today'
+            slotDisplay = b.checkInTime ? `Check-in ${b.checkInTime}` : 'Check-in'
+          } else if (isCheckOutToday) {
+            eventType = 'Check-out Today'
+            slotDisplay = b.checkOutTime ? `Check-out ${b.checkOutTime}` : 'Check-out'
+          } else {
+            slotDisplay = 'Overnight Stay'
+          }
+
+          let boardingStatus = b.status || 'confirmed'
+          if (isCheckOutToday && (b.status === 'checked_out' || b.status === 'completed')) {
+            boardingStatus = 'completed'
+          }
+
+          todayOps.push({
+            id: b.id,
+            serviceType: 'boarding',
+            title: `${b.petType === 'cat' ? 'Cat' : 'Dog'} Boarding (${eventType})`,
+            petName: b.petName || b.dogName || b.catName || 'Pet',
+            petType: b.petType || 'dog',
+            breed: b.breed || '',
+            ownerName: b.ownerName || b.customerName || b.name || 'Customer',
+            phone: b.phone || '',
+            slot: slotDisplay,
+            rawSlot: isCheckInToday ? (b.checkInTime || '09:00 AM') : (isCheckOutToday ? (b.checkOutTime || '05:00 PM') : '12:00 PM'),
+            status: boardingStatus,
+            assignedStaff: b.assignedStaffName || b.assignedTeamMemberName || '',
+            assignedStaffRole: 'Caregiver',
+            isWalkIn: false,
+            amount: b.estimatedTotal || b.amountCollected || 0,
+            link: `/admin/boarding`,
+            notes: b.foodPreference || b.specialInstructions || '',
+          })
+        }
+      })
+
+      // Chronological sort
+      todayOps.sort((a, b) => {
+        const getMinutes = (slotStr) => {
+          if (!slotStr) return 720
+          const match = String(slotStr).match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
+          if (!match) {
+            if (/morn/i.test(slotStr)) return 540
+            if (/eve/i.test(slotStr)) return 1020
+            return 720
+          }
+          let h = parseInt(match[1], 10)
+          const m = parseInt(match[2], 10)
+          const meridian = match[3] ? match[3].toUpperCase() : ''
+          if (meridian === 'PM' && h < 12) h += 12
+          if (meridian === 'AM' && h === 12) h = 0
+          return h * 60 + m
+        }
+        return getMinutes(a.rawSlot) - getMinutes(b.rawSlot)
+      })
+
       const computedData = {
         totalBookings: normalized.length,
         todayCount,
@@ -324,6 +469,7 @@ export default function AdminDashboard() {
         customerCount: customerKeys.size,
         normalizedItems: normalized,
         rawGroomingBookings: rawGrooming,
+        todayOperations: todayOps,
       }
 
       // UI updates immediately
@@ -376,6 +522,10 @@ export default function AdminDashboard() {
     return () => window.clearTimeout(t)
   }, [toastMessage])
 
+  const groomingOpsCount = (data.todayOperations || []).filter(o => o.serviceType === 'grooming').length
+  const walkingOpsCount = (data.todayOperations || []).filter(o => o.serviceType === 'walking').length
+  const boardingOpsCount = (data.todayOperations || []).filter(o => o.serviceType === 'boarding').length
+
   const statCards = [
     {
       label: 'Total Bookings',
@@ -389,31 +539,35 @@ export default function AdminDashboard() {
     },
     {
       label: 'Total Earnings',
-      value: `Rs ${money(data.totalEarnings)}`,
+      value: money(data.totalEarnings),
       icon: <IndianRupee size={20} />,
       color: '#34d399',
       split: [
-        { label: 'Online', value: `Rs ${money(data.onlineEarnings)}` },
-        { label: 'Offline', value: `Rs ${money(data.walkInEarnings)}` }
+        { label: 'Online', value: money(data.onlineEarnings) },
+        { label: 'Offline', value: money(data.walkInEarnings) }
       ]
     },
     {
       label: "Today's Earnings",
-      value: `Rs ${money(data.todayEarnings)}`,
+      value: money(data.todayEarnings),
       icon: <IndianRupee size={20} />,
       color: '#60a5fa',
       split: [
-        { label: 'Online', value: `Rs ${money(data.todayOnlineEarnings)}` },
-        { label: 'Offline', value: `Rs ${money(data.todayWalkInEarnings)}` }
+        { label: 'Online', value: money(data.todayOnlineEarnings) },
+        { label: 'Offline', value: money(data.todayWalkInEarnings) }
       ]
     },
     {
-      label: "Today's Appointments",
-      value: data.todayCount,
+      label: "Today's Operations",
+      value: data.todayOperations?.length || data.todayCount,
       icon: <CalendarCheck size={20} />,
       color: '#22c55e',
-      link: `/admin/bookings?date=${today}`,
-      action: 'View today appointments'
+      link: '/admin/today',
+      isClickable: true,
+      split: [
+        { label: 'Grooming', value: groomingOpsCount, extraLabel: 'Walking', extraValue: walkingOpsCount },
+        { label: 'Boarding', value: boardingOpsCount, actionText: 'Open Hub ↗' },
+      ]
     },
   ]
 
@@ -487,21 +641,102 @@ export default function AdminDashboard() {
         <>
           {/* Top Metric Cards */}
           <div className="admin-stats-grid">
-            {statCards.map((s, i) => (
-              <div key={i} className="stat-card">
-                <div style={{ color: s.color, marginBottom: '10px' }}>{s.icon}</div>
-                <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text)', fontFamily: '"Playfair Display",serif' }}>
-                  {s.value}
-                </div>
-                <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '3px' }}>{s.label}</div>
-                {s.split && (
-                  <div className="admin-earning-split">
-                    {s.split.map(row => <span key={row.label}>{row.label}: <strong>{row.value}</strong></span>)}
+            {statCards.map((s, i) => {
+              const CardTag = s.isClickable ? Link : 'div'
+              const cardProps = s.isClickable
+                ? {
+                    to: s.link,
+                    className: 'stat-card',
+                    style: {
+                      textDecoration: 'none',
+                      cursor: 'pointer',
+                      display: 'block',
+                    },
+                    title: "Open Today's Operations Hub",
+                  }
+                : {
+                    className: 'stat-card',
+                  }
+
+              return (
+                <CardTag key={i} {...cardProps}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                      <div style={{ color: s.color, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                        {s.icon}
+                      </div>
+                      <div
+                        className="stat-card-value"
+                        style={{
+                          fontSize: '22px',
+                          fontWeight: 800,
+                          color: 'var(--text)',
+                          fontFamily: '"Playfair Display",serif',
+                          lineHeight: 1.1,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {s.value}
+                      </div>
+                    </div>
+
+                    {s.isClickable && (
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          color: 'var(--accent)',
+                          background: 'var(--accent-bg)',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          border: '1px solid var(--accent-border)',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span>Hub</span>
+                        <ArrowUpRight size={13} />
+                      </div>
+                    )}
                   </div>
-                )}
-                {s.link && <Link className="admin-stat-card-link" to={s.link}>{s.action}</Link>}
-              </div>
-            ))}
+
+                  <div className="stat-card-label" style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '2px', fontWeight: 500 }}>
+                    {s.label}
+                  </div>
+
+                  {s.split && (
+                    <div className="admin-earning-split">
+                      {s.split.map((row, idx) => (
+                        <span key={idx}>
+                          {row.label}: <strong>{row.value}</strong>
+                          {row.extraLabel && (
+                            <span style={{ marginLeft: '6px' }}>
+                              &bull; {row.extraLabel}: <strong>{row.extraValue}</strong>
+                            </span>
+                          )}
+                          {row.actionText && (
+                            <span style={{ marginLeft: '6px', color: 'var(--accent)', fontWeight: 700 }}>
+                              &bull; {row.actionText}
+                            </span>
+                          )}
+                          {!row.extraLabel && !row.actionText && row.extra && (
+                            <span style={{ marginLeft: '6px', color: row.extraColor || 'var(--muted)', fontWeight: row.extraColor ? 700 : 500 }}>
+                              {row.extra}
+                            </span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {s.link && !s.isClickable && <Link className="admin-stat-card-link" to={s.link}>{s.action}</Link>}
+                </CardTag>
+              )
+            })}
           </div>
 
           {/* Status Overview Cards */}
@@ -581,10 +816,10 @@ export default function AdminDashboard() {
                         </div>
                         <span
                           style={{
-                            fontSize: '22px',
+                            fontSize: '19px',
                             fontWeight: 800,
                             color: 'var(--text)',
-                            fontFamily: '"DM Mono", monospace',
+                            fontFamily: '"Playfair Display", serif',
                             lineHeight: 1,
                           }}
                         >

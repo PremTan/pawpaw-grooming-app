@@ -1,7 +1,7 @@
 // src/admin/AdminBookings.jsx
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, startAfter, Timestamp, updateDoc, where } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, startAfter, Timestamp, updateDoc, where } from 'firebase/firestore'
 import Cropper from 'react-easy-crop'
 import { Award, Calendar, CalendarDays, Camera, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Edit3, IndianRupee, List, MapPin, MessageCircle, Phone, Plus, ReceiptText, RotateCcw, Scissors, Search, Settings, ShieldAlert, SlidersHorizontal, Sparkles, Tag, Upload, User, UserRound, X } from 'lucide-react'
 import Spinner from '../components/Spinner'
@@ -375,11 +375,21 @@ export default function AdminBookings() {
     fetchPackages()
   }, [])
 
+  const targetBookingId = bookingId || searchParams.get('id')
+
   useEffect(() => {
-    if (!bookingId || bookings.length === 0) return
-    const match = bookings.find(booking => booking.id === bookingId)
-    if (match) setSelectedBooking(match)
-  }, [bookingId, bookings])
+    if (!targetBookingId) return
+    const match = bookings.find(booking => booking.id === targetBookingId)
+    if (match) {
+      setSelectedBooking(match)
+    } else {
+      getDoc(doc(db, 'bookings', targetBookingId)).then(snap => {
+        if (snap.exists()) {
+          setSelectedBooking({ id: snap.id, ...snap.data() })
+        }
+      }).catch(err => console.error('Failed to load booking:', err))
+    }
+  }, [targetBookingId, bookings])
 
   useEffect(() => {
     async function fetchWhatsapp() {
@@ -1550,7 +1560,7 @@ export default function AdminBookings() {
           bookingSettings={bookingSettings}
           onAssign={assignBooking}
           onSave={saveBookingUpdates}
-          onClose={() => { setSelectedBooking(null); if (bookingId) navigate('/admin/bookings') }}
+          onClose={() => { setSelectedBooking(null); if (bookingId || searchParams.get('id')) navigate('/admin/bookings') }}
           onStatus={updateStatus}
           onCancelBooking={openCancelModal}
           onReschedule={openRescheduleModal}

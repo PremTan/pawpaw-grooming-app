@@ -1,6 +1,6 @@
 // src/admin/AdminWalking.jsx
-import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   collection,
   query,
@@ -144,6 +144,16 @@ const generateWhatsAppReportMessage = (booking, customReport = null) => {
 export default function AdminWalking() {
   const navigate = useNavigate()
   const { sendNotification } = useNotifications() || {}
+  const { walkingId } = useParams()
+  const [searchParams] = useSearchParams()
+  const targetWalkingId = walkingId || searchParams.get('id')
+
+  const handleCloseDetails = useCallback(() => {
+    setSelectedBooking(null)
+    if (targetWalkingId) {
+      navigate('/admin/walking')
+    }
+  }, [targetWalkingId, navigate])
 
   const [activeTab, setActiveTab] = useState('bookings') // 'bookings' | 'settings'
   const [adminReportIndex, setAdminReportIndex] = useState(0)
@@ -279,6 +289,20 @@ export default function AdminWalking() {
       if (unsub) unsub()
     }
   }, [])
+
+  useEffect(() => {
+    if (!targetWalkingId) return
+    const match = bookings.find(b => b.id === targetWalkingId)
+    if (match) {
+      setSelectedBooking(match)
+    } else {
+      getDoc(doc(db, 'walkingBookings', targetWalkingId)).then(snap => {
+        if (snap.exists()) {
+          setSelectedBooking({ id: snap.id, ...snap.data() })
+        }
+      }).catch(err => console.error('Failed to load walking booking:', err))
+    }
+  }, [targetWalkingId, bookings])
 
   // Filter assignable team members (only active members with role containing 'Walker')
   const walkerOptions = useMemo(() => {
@@ -2660,7 +2684,7 @@ ${portalUrl}`
           MODAL: BOOKING DETAIL VIEW (Redesigned luxury modal with editable fee)
          ========================================================================= */}
       {selectedBooking && (
-        <div className="walking-details-overlay" onClick={() => setSelectedBooking(null)}>
+        <div className="walking-details-overlay" onClick={handleCloseDetails}>
           <div
             className="walking-details-card"
             onClick={e => e.stopPropagation()}
@@ -2759,7 +2783,7 @@ ${portalUrl}`
                 <button
                   type="button"
                   className="icon-btn"
-                  onClick={() => setSelectedBooking(null)}
+                  onClick={handleCloseDetails}
                   style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--muted)' }}
                 >
                   <X size={16} />
@@ -3571,7 +3595,7 @@ ${portalUrl}`
 
                 <button
                   type="button"
-                  onClick={() => setSelectedBooking(null)}
+                  onClick={handleCloseDetails}
                   className="btn btn-secondary"
                   style={{ fontSize: '12px', padding: '8px 14px' }}
                 >

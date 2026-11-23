@@ -683,7 +683,10 @@ export default function WalkerPortal() {
   // LOGOUT HANDLER
   const handleLogout = async () => {
     if (activeWalk) {
-      const confirmLog = window.confirm('You have a walk currently in progress. Logging out will pause your tracking. Are you sure?')
+      const confirmLog = window.confirm('You have a walk currently in progress. Logging out will pause your tracking. Are you sure you want to log out?')
+      if (!confirmLog) return
+    } else {
+      const confirmLog = window.confirm('Are you sure you want to log out of the Walker Portal?')
       if (!confirmLog) return
     }
 
