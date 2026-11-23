@@ -12,6 +12,7 @@ import { calculatePublicStats } from '../utils/publicStats'
 import { fetchBookingSettings } from '../utils/bookingSettings'
 import RevenueTrendChart from './RevenueTrendChart'
 import CustomerOverviewDonut from './CustomerOverviewDonut'
+import CustomerReengagementRadar from './CustomerReengagementRadar'
 
 const WalkinModal = lazy(() => import('./WalkinModal'))
 
@@ -87,6 +88,7 @@ export default function AdminDashboard() {
     customerCount: 0,
     normalizedItems: [],
     rawGroomingBookings: [],
+    rawWalkingBookings: [],
     todayOperations: [],
   })
 
@@ -469,6 +471,7 @@ export default function AdminDashboard() {
         customerCount: customerKeys.size,
         normalizedItems: normalized,
         rawGroomingBookings: rawGrooming,
+        rawWalkingBookings: rawWalking,
         todayOperations: todayOps,
       }
 
@@ -857,6 +860,12 @@ export default function AdminDashboard() {
               totalUniqueCustomers={data.customerCount}
             />
           </div>
+
+          {/* Customer Re-engagement Radar (Below Customer & Service Overview) */}
+          <CustomerReengagementRadar
+            groomingBookings={data.rawGroomingBookings}
+            walkingBookings={data.rawWalkingBookings}
+          />
         </>
       )}
 
