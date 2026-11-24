@@ -8197,6 +8197,12 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   box-shadow: 0 14px 40px rgba(0,0,0,0.08);
 }
 
+@media (min-width: 769px) {
+  .home-follow-card {
+    margin-bottom: 50px;
+  }
+}
+
 .home-follow-brand {
   display: flex;
   align-items: flex-start;
@@ -10524,7 +10530,7 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 /* Home services redesign and requested layout fixes */
 @media (min-width: 761px) {
   .home-why-section {
-    width: min(100% - 72px, 1180px);
+    width: min(100% - 32px, 1040px);
   }
 
   .home-why-section .why-choose-grid {
@@ -14021,6 +14027,39 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   color: #8A7A68;
 }
 
+/* Pet Walking specific adjustments on laptop/desktop */
+@media (min-width: 900px) {
+  .home-walking-section .home-boarding-prices {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+  .home-walking-section .home-boarding-price-card {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .home-walking-section .home-boarding-avatar {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+  }
+  .home-walking-section .home-boarding-avatar svg {
+    width: 18px;
+    height: 18px;
+  }
+  .home-walking-section .home-boarding-price-label {
+    font-size: 11.5px;
+    white-space: nowrap;
+  }
+  .home-walking-section .home-boarding-price-amount {
+    font-size: 14.5px;
+    white-space: nowrap;
+  }
+  .home-walking-section .home-boarding-price-unit {
+    font-size: 10.5px;
+  }
+}
+
 /* Actions attached directly below rate cards */
 .home-boarding-actions {
   order: 6;
@@ -15698,13 +15737,33 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
 }
 
 .home-team-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 22px;
+  display: flex;
+  overflow-x: auto;
+  gap: 20px;
   margin-bottom: 32px;
+  padding: 10px 4px 20px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) rgba(0, 0, 0, 0.05);
+  -webkit-overflow-scrolling: touch;
+}
+
+.home-team-grid::-webkit-scrollbar {
+  height: 6px;
+}
+
+.home-team-grid::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 999px;
+  margin: 0 40px;
+}
+
+.home-team-grid::-webkit-scrollbar-thumb {
+  background: var(--accent, #D97706);
+  border-radius: 999px;
 }
 
 .home-team-card {
+  flex: 0 0 250px;
   background: var(--card);
   border: 1.5px solid var(--border);
   border-radius: 22px;

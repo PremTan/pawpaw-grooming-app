@@ -6,6 +6,7 @@ import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import MobileBottomNav from './components/MobileBottomNav'
 import Spinner from './components/Spinner'
+import SEO from './components/SEO'
 
 // Pages
 import Home        from './pages/Home'
@@ -112,6 +113,7 @@ function PublicLayout() {
 export default function App() {
   return (
     <>
+      <SEO />
       <ScrollToTop />
       <Suspense fallback={<div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spinner text="Loading..." /></div>}>
         <Routes>

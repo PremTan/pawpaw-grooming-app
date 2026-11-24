@@ -18,6 +18,8 @@ import {
   PawPrint,
   Phone,
   Scissors,
+  Share2,
+  Check,
   User,
   Users,
   X,
@@ -52,6 +54,33 @@ export default function Navbar() {
     setShowIOSModal,
     promptInstall,
   } = usePWAInstall()
+  const [copiedLink, setCopiedLink] = useState(false)
+
+  const handleShareApp = async () => {
+    const shareUrl = window.location.origin
+    const shareData = {
+      title: 'Paw Paw Pet Grooming Centre',
+      text: '🐾 Check out Paw Paw Pet Grooming Centre — premier pet grooming, boarding & dog walking in Pune!',
+      url: shareUrl,
+    }
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData)
+      } catch {
+        // User dismissed share dialog
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(shareUrl)
+        setCopiedLink(true)
+        setTimeout(() => setCopiedLink(false), 2200)
+      } catch {
+        window.prompt('Copy website link:', shareUrl)
+      }
+    }
+  }
+
   const headerBarRef = useRef(null)
   const fullNavbarHeightRef = useRef(100)
   const [isScrolled, setIsScrolled] = useState(() => {
@@ -300,7 +329,7 @@ export default function Navbar() {
                 <BrandLogo size="nav" status={statusSubtitle} />
               </Link>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flex: 1, minWidth: 0, overflow: 'hidden' }} className="desktop-nav">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flex: 1, minWidth: 0 }} className="desktop-nav nav-links-scroll-container">
                 {navLinks.map((link) => (
                   <Link key={link.path} to={link.path} className="nav-link-animated" style={linkStyle(isActive(link.path))}>
                     {link.icon} {link.label}
@@ -331,6 +360,32 @@ export default function Navbar() {
                     <span>Install App</span>
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={handleShareApp}
+                  className="nav-share-btn desktop"
+                  aria-label={copiedLink ? "Link Copied!" : "Share Paw Paw"}
+                  title={copiedLink ? "Link Copied!" : "Share Paw Paw with friends"}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    background: copiedLink ? '#22c55e' : 'var(--accent-bg)',
+                    border: `1px solid ${copiedLink ? '#22c55e' : 'var(--accent-border)'}`,
+                    color: copiedLink ? '#ffffff' : 'var(--accent)',
+                    borderRadius: '999px',
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {copiedLink ? <Check size={14} /> : <Share2 size={14} />}
+                  <span>{copiedLink ? 'Copied!' : 'Share'}</span>
+                </button>
                 <ThemeSwitcher />
                 {user && <NotificationBell />}
 
@@ -594,6 +649,26 @@ export default function Navbar() {
               </button>
             )}
 
+            {/* Share Website Button in Mobile Menu */}
+            <button
+              type="button"
+              onClick={handleShareApp}
+              className="mobile-drawer-share-row"
+              title="Share website with friends"
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div className="mobile-drawer-share-icon">
+                  {copiedLink ? <Check size={16} /> : <Share2 size={16} />}
+                </div>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>
+                  {copiedLink ? 'Link Copied!' : 'Share Paw Paw'}
+                </span>
+              </div>
+              <span className={`mobile-drawer-share-badge ${copiedLink ? 'copied' : ''}`}>
+                {copiedLink ? 'Copied ✓' : 'Share'}
+              </span>
+            </button>
+
             {/* Theme Switcher in Mobile Menu */}
             <div className="mobile-drawer-theme-row">
               <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>Theme</span>
@@ -659,6 +734,24 @@ export default function Navbar() {
         .store-status-strip.expanded .store-status-arrow { transform: rotate(180deg); }
         .store-status-details { max-width: 1200px; margin: 0 auto; padding: 0 20px 10px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
         .store-status-details span { border: 1px solid var(--border); background: var(--surface); color: var(--muted); border-radius: 999px; padding: 5px 9px; font-size: 11px; }
+        .nav-links-scroll-container {
+          overflow-x: auto !important;
+          overflow-y: hidden;
+          scrollbar-width: none; /* Firefox */
+          -ms-overflow-style: none; /* IE and Edge */
+          padding: 4px 0;
+          white-space: nowrap;
+          -webkit-overflow-scrolling: touch;
+        }
+        .nav-links-scroll-container::-webkit-scrollbar {
+          display: none; /* Chrome, Safari, Opera */
+        }
+        @media (max-width: 1200px) {
+          .nav-links-scroll-container {
+            mask-image: linear-gradient(to right, black 85%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+          }
+        }
         .desktop-nav { display: flex !important; }
         .mobile-nav  { display: none  !important; }
         .nav-link-animated:hover,
@@ -747,6 +840,54 @@ export default function Navbar() {
           background: var(--accent, #c08820);
           color: #000;
           flex-shrink: 0;
+        }
+        .mobile-drawer-share-row {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 12px;
+          margin-bottom: 8px;
+          background: var(--accent-bg, rgba(192, 136, 32, 0.04));
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          color: var(--text);
+          text-align: left;
+        }
+        .mobile-drawer-share-row:hover {
+          border-color: var(--accent);
+          background: var(--accent-bg);
+          transform: translateY(-1px);
+        }
+        .mobile-drawer-share-icon {
+          width: 30px;
+          height: 30px;
+          border-radius: 8px;
+          background: var(--card);
+          border: 1px solid var(--accent-border, rgba(192, 136, 32, 0.2));
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--accent);
+          flex-shrink: 0;
+        }
+        .mobile-drawer-share-badge {
+          font-size: 11px;
+          font-weight: 700;
+          padding: 3px 10px;
+          border-radius: 999px;
+          background: var(--card);
+          border: 1px solid var(--accent-border, rgba(192, 136, 32, 0.3));
+          color: var(--accent);
+          flex-shrink: 0;
+          transition: all 0.2s ease;
+        }
+        .mobile-drawer-share-badge.copied {
+          background: #22c55e;
+          border-color: #22c55e;
+          color: #fff;
         }
         .mobile-drawer-theme-row {
           display: flex;
