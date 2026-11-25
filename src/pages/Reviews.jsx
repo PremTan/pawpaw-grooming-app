@@ -9,35 +9,55 @@ import Toast from '../components/Toast'
 import { cropImageFile, isSupportedImage, optimizeImageForUpload, validateImageFile } from '../utils/imageCompression'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { getRelativeTime } from '../utils/dateUtils'
-import { Crop as CropIcon, ImagePlus, Send, X, BadgeCheck, Search, Filter, Image as ImageIcon, PawPrint, PenLine, ZoomIn } from 'lucide-react'
+import { Crop as CropIcon, ImagePlus, Send, X, BadgeCheck, Search, Filter, Image as ImageIcon, PawPrint, PenLine, ZoomIn, Star } from 'lucide-react'
 
-function Stars({ value, onChange, readonly = false, size = 15 }) {
+function Stars({ value, onChange, readonly = false, size = 16 }) {
   const [hover, setHover] = useState(0)
   return (
-    <div style={{ display: 'inline-flex', gap: '3px' }}>
-      {[1, 2, 3, 4, 5].map(n => (
-        <button
-          key={n}
-          type="button"
-          disabled={readonly}
-          onClick={() => !readonly && onChange?.(n)}
-          onMouseEnter={() => !readonly && setHover(n)}
-          onMouseLeave={() => !readonly && setHover(0)}
-          style={{
-            fontSize: `${size}px`,
-            lineHeight: 1,
-            background: 'none',
-            border: 'none',
-            padding: 0,
-            cursor: readonly ? 'default' : 'pointer',
-            color: (hover || value) >= n ? '#eab308' : '#e5e7eb',
-            transition: 'all 0.15s ease',
-            transform: !readonly && hover === n ? 'scale(1.2)' : 'scale(1)',
-          }}
-        >★</button>
-      ))}
+    <div style={{ display: 'inline-flex', gap: readonly ? '3px' : '6px', alignItems: 'center' }}>
+      {[1, 2, 3, 4, 5].map(n => {
+        const active = (hover || value) >= n
+        return (
+          <button
+            key={n}
+            type="button"
+            disabled={readonly}
+            onClick={() => !readonly && onChange?.(n)}
+            onMouseEnter={() => !readonly && setHover(n)}
+            onMouseLeave={() => !readonly && setHover(0)}
+            aria-label={`${n} star${n > 1 ? 's' : ''}`}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: readonly ? 0 : '4px 6px',
+              cursor: readonly ? 'default' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'transform 0.15s ease',
+              transform: !readonly && (hover === n || (!hover && value === n)) ? 'scale(1.2)' : 'scale(1)',
+              touchAction: 'manipulation',
+            }}
+          >
+            <Star
+              size={size}
+              fill={active ? '#eab308' : readonly ? 'none' : 'rgba(234, 179, 8, 0.08)'}
+              color={active ? '#eab308' : '#d1d5db'}
+              strokeWidth={active ? 1.5 : 1.8}
+            />
+          </button>
+        )
+      })}
     </div>
   )
+}
+
+const RATING_LABELS = {
+  5: '5 ★ Outstanding',
+  4: '4 ★ Very Good',
+  3: '3 ★ Good',
+  2: '2 ★ Fair',
+  1: '1 ★ Poor',
 }
 
 export default function Reviews() {
@@ -360,8 +380,8 @@ export default function Reviews() {
 
         {/* Review Form Modal */}
         {showReviewForm && user && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(7, 10, 18, 0.82)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-            <div style={{ width: '100%', maxWidth: '640px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '22px', padding: '22px', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(7, 10, 18, 0.82)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+            <div style={{ width: '100%', maxWidth: '520px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '22px', padding: '20px', maxHeight: '90vh', overflowY: 'auto', boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '18px' }}>
                 <h2 style={{ fontFamily: '"Playfair Display",serif', fontWeight: 700, fontSize: '19px', color: 'var(--text)', margin: 0 }}>Leave a Review</h2>
                 <button type="button" aria-label="Close review form" onClick={() => setShowReviewForm(false)} style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--muted)' }}>
@@ -379,7 +399,18 @@ export default function Reviews() {
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div><label style={L}>Your Rating</label><Stars value={form.rating} onChange={v => setForm(p => ({ ...p, rating: v }))} size={22} /></div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                    <label style={{ ...L, marginBottom: 0 }}>Your Rating *</label>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#b45309', background: 'rgba(245, 158, 11, 0.15)', padding: '3px 10px', borderRadius: '999px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                      {RATING_LABELS[form.rating] || `${form.rating} ★`}
+                    </span>
+                  </div>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'var(--surface)', padding: '6px 12px', borderRadius: '14px', border: '1.5px solid var(--border)' }}>
+                    <Stars value={form.rating} onChange={v => setForm(p => ({ ...p, rating: v }))} size={32} />
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>Tap a star to adjust your score</div>
+                </div>
                 <div>
                   <label style={L}>Pet's Name (optional)</label>
                   <input className="input" placeholder="e.g. Bruno" value={form.petName} onChange={e => setForm(p => ({ ...p, petName: e.target.value }))} />
@@ -409,10 +440,12 @@ export default function Reviews() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: '6px' }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowReviewForm(false)}>Cancel</button>
-                  <button onClick={handleSubmit} disabled={isBlocked || submitting || !form.comment.trim()} className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
-                    <Send size={15} /> {submitting ? 'Submitting…' : 'Submit Review'}
+                <div className="rev-modal-actions">
+                  <button type="button" className="btn btn-secondary rev-modal-btn cancel" onClick={() => setShowReviewForm(false)}>
+                    Cancel
+                  </button>
+                  <button onClick={handleSubmit} disabled={isBlocked || submitting || !form.comment.trim()} className="btn btn-primary rev-modal-btn submit">
+                    <Send size={14} /> {submitting ? 'Submitting…' : 'Submit Review'}
                   </button>
                 </div>
               </div>

@@ -129,7 +129,7 @@ export default function App() {
         <Route path="services"  element={<AdminServices />} />
         <Route path="gallery"   element={<AdminGallery />} />
         <Route path="packages"  element={<AdminPackages />} />
-        <Route path="why-choose-us" element={<AdminWhyChooseUs />} />
+        <Route path="why-choose-us" element={<Navigate to="/admin" replace />} />
         <Route path="hero-images" element={<AdminHeroImages />} />
         <Route path="contact-info" element={<AdminContactInfo />} />
         <Route path="footer" element={<AdminFooter />} />

@@ -17623,6 +17623,135 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   }
 }
 
+/* Admin Review Specific Styling */
+.admin-rev-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-rev-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.admin-rev-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.admin-rev-btn.delete {
+  color: rgba(239, 68, 68, 0.7);
+}
+
+.admin-rev-btn.delete:hover {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.admin-rev-user-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+  color: var(--muted);
+  background: var(--surface);
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-rev-search-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.admin-rev-filter-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.admin-rev-filter-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.admin-rev-filter-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.rev-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.rev-modal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 18px;
+  font-size: 13.5px;
+  font-weight: 700;
+  border-radius: 12px;
+  white-space: nowrap;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+@media (max-width: 520px) {
+  .rev-modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1.35fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .rev-modal-btn {
+    width: 100%;
+    padding: 11px 8px;
+    font-size: 13px;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+}
+
 
 
 
