@@ -9,16 +9,31 @@ import Toast from '../components/Toast'
 import { cropImageFile, isSupportedImage, optimizeImageForUpload, validateImageFile } from '../utils/imageCompression'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { getRelativeTime } from '../utils/dateUtils'
-import { Crop as CropIcon, ImagePlus, Send, X, BadgeCheck, Search, Filter, Image as ImageIcon } from 'lucide-react'
+import { Crop as CropIcon, ImagePlus, Send, X, BadgeCheck, Search, Filter, Image as ImageIcon, PawPrint, PenLine, ZoomIn } from 'lucide-react'
 
-function Stars({ value, onChange, readonly = false }) {
+function Stars({ value, onChange, readonly = false, size = 15 }) {
   const [hover, setHover] = useState(0)
   return (
-    <div style={{ display: 'flex', gap: '4px' }}>
+    <div style={{ display: 'inline-flex', gap: '3px' }}>
       {[1, 2, 3, 4, 5].map(n => (
-        <button key={n} type="button" disabled={readonly} onClick={() => !readonly && onChange?.(n)}
-          onMouseEnter={() => !readonly && setHover(n)} onMouseLeave={() => !readonly && setHover(0)}
-          style={{ fontSize: '24px', background: 'none', border: 'none', cursor: readonly ? 'default' : 'pointer', color: (hover || value) >= n ? 'var(--accent)' : 'var(--border)', transition: 'all 0.1s', transform: !readonly && hover === n ? 'scale(1.2)' : 'scale(1)' }}
+        <button
+          key={n}
+          type="button"
+          disabled={readonly}
+          onClick={() => !readonly && onChange?.(n)}
+          onMouseEnter={() => !readonly && setHover(n)}
+          onMouseLeave={() => !readonly && setHover(0)}
+          style={{
+            fontSize: `${size}px`,
+            lineHeight: 1,
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: readonly ? 'default' : 'pointer',
+            color: (hover || value) >= n ? '#eab308' : '#e5e7eb',
+            transition: 'all 0.15s ease',
+            transform: !readonly && hover === n ? 'scale(1.2)' : 'scale(1)',
+          }}
         >★</button>
       ))}
     </div>
@@ -94,6 +109,15 @@ export default function Reviews() {
   }, [filter, reviews])
   const avgRating = reviews.length ? (reviews.reduce((s, r) => s + (r.rating || 5), 0) / reviews.length).toFixed(1) : '5.0'
   const dist = [5, 4, 3, 2, 1].map(n => ({ n, count: reviews.filter(r => r.rating === n).length, pct: reviews.length ? Math.round((reviews.filter(r => r.rating === n).length / reviews.length) * 100) : 0 }))
+
+  const filterCounts = useMemo(() => {
+    return {
+      all: reviews.length,
+      google: reviews.filter(r => r.source === 'google').length,
+      verified: reviews.filter(r => r.source === 'website').length,
+      photos: reviews.filter(r => (r.reviewImages?.length || r.images?.length || 0) > 0).length,
+    }
+  }, [reviews])
 
   const openCropModalForFile = (file) => {
     const previewUrl = URL.createObjectURL(file)
@@ -237,82 +261,113 @@ export default function Reviews() {
   const L = { fontSize: '11px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '6px' }
 
   return (
-    <div className="reviews-page" style={{ background: 'var(--bg)', paddingTop: 'var(--navbar-height, 98px)', minHeight: '100vh', transition: 'padding-top 0.25s ease' }}>
+    <div className="reviews-page">
       {reviewToast && (
         <div style={{ position: 'fixed', top: '18px', right: '18px', zIndex: 1300 }}>
           <Toast message={reviewToast} type="success" onClose={() => setReviewToast('')} />
         </div>
       )}
-      <div style={{ maxWidth: '860px', margin: '0 auto', padding: '24px 20px 80px' }}>
+      <div className="rev-container">
 
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '48px' }}>
-          <div style={{ textAlign: 'center' }}>
-            <p className="section-label" style={{ marginBottom: '10px' }}>Customer Feedback</p>
-            <h1 style={{ fontFamily: '"Playfair Display",serif', fontSize: 'clamp(32px,5vw,52px)', fontWeight: 800, color: 'var(--text)' }}>Reviews</h1>
+        {/* Modern Header */}
+        <div className="rev-header-wrap">
+          <span className="rev-badge">
+            <PawPrint size={12} /> Real Pet Parent Feedback
+          </span>
+          <h1 className="rev-title">Customer Reviews</h1>
+          <p className="rev-subtitle">
+            Authentic experiences from pet parents who trust Paw Paw with their furry family.
+          </p>
+          <div className="rev-header-action">
+            <button
+              type="button"
+              className="rev-add-btn"
+              onClick={() => {
+                if (!user) {
+                  window.location.href = '/login'
+                  return
+                }
+                setShowReviewForm(prev => !prev)
+              }}
+            >
+              <PenLine size={14} />
+              {user ? (showReviewForm ? 'Close Form' : 'Write a Review') : 'Login to Review'}
+            </button>
           </div>
-          <button type="button" className="btn btn-primary" onClick={() => {
-            if (!user) {
-              window.location.href = '/login'
-              return
-            }
-            setShowReviewForm(prev => !prev)
-          }} style={{ padding: '10px 16px' }}>
-            {user ? (showReviewForm ? 'Close Form' : 'Add Review') : 'Login to Review'}
-          </button>
         </div>
 
-        {/* Summary */}
+        {/* Compact Rating Summary Card */}
         {reviews.length > 0 && (
-          <div className="card" style={{ padding: '28px', marginBottom: '28px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontFamily: '"Playfair Display",serif', fontSize: '72px', fontWeight: 900, background: 'var(--gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1 }}>{avgRating}</div>
-              <Stars value={Math.round(parseFloat(avgRating))} readonly />
-              <p style={{ color: 'var(--muted)', fontSize: '13px', marginTop: '8px' }}>{reviews.length} review{reviews.length !== 1 ? 's' : ''}</p>
+          <div className="rev-summary-card">
+            <div className="rev-summary-score-col">
+              <div className="rev-big-score">{avgRating}</div>
+              <div className="rev-score-meta">
+                <div className="rev-score-stars">
+                  <Stars value={Math.round(parseFloat(avgRating))} readonly size={16} />
+                </div>
+                <span className="rev-total-count">
+                  {reviews.length} Verified Review{reviews.length !== 1 ? 's' : ''}
+                </span>
+              </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px' }}>
+
+            <div className="rev-breakdown-list">
               {dist.map(({ n, count, pct }) => (
-                <div key={n} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ color: 'var(--muted)', fontSize: '12px', width: '8px', textAlign: 'right' }}>{n}</span>
-                  <span style={{ color: 'var(--accent)', fontSize: '11px' }}>★</span>
-                  <div style={{ flex: 1, height: '6px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: 'var(--accent)', borderRadius: '3px', width: `${pct}%`, transition: 'width 0.8s ease' }} />
+                <div key={n} className="rev-breakdown-row">
+                  <span className="rev-star-label">
+                    <span>{n}</span>
+                    <span style={{ color: '#eab308', fontSize: '11px' }}>★</span>
+                  </span>
+                  <div className="rev-bar-track">
+                    <div className="rev-bar-fill" style={{ width: `${pct}%` }} />
                   </div>
-                  <span style={{ color: 'var(--muted)', fontSize: '11px', width: '20px' }}>{count}</span>
+                  <span className="rev-count-label">{count}</span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        <div className="card" style={{ padding: '18px 22px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'nowrap', overflowX: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--muted)', fontSize: '12px', flexShrink: 0 }}><Filter size={14} /> Filter</div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'nowrap', overflowX: 'auto', minWidth: 0, scrollbarWidth: 'none' }}>
-            {['all', 'google', 'verified', 'photos'].map(option => {
-              const label = option === 'all' ? 'All' : option === 'google' ? 'Google Reviews' : option === 'verified' ? 'Verified Customers' : 'Photos'
-              return (
-                <button key={option} type="button" onClick={() => setFilter(option)} style={{ border: filter === option ? '1px solid var(--accent)' : '1px solid var(--border)', background: filter === option ? 'var(--accent-bg)' : 'var(--surface)', color: filter === option ? 'var(--accent)' : 'var(--text)', borderRadius: '999px', padding: '7px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  {label}
-                </button>
-              )
-            })}
-          </div>
+        {/* Filter Chip Bar */}
+        <div className="rev-filter-bar">
+          <span className="rev-filter-label">
+            <Filter size={13} /> Filter:
+          </span>
+          {[
+            { id: 'all', label: 'All Reviews', count: filterCounts.all },
+            { id: 'google', label: 'Google', count: filterCounts.google },
+            { id: 'verified', label: 'Verified', count: filterCounts.verified },
+            { id: 'photos', label: 'With Photos', count: filterCounts.photos },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`rev-filter-chip ${filter === tab.id ? 'active' : ''}`}
+              onClick={() => setFilter(tab.id)}
+            >
+              <span>{tab.label}</span>
+              <span className="rev-chip-count">{tab.count}</span>
+            </button>
+          ))}
         </div>
 
-        {/* Submit */}
-        {!user ? (
-          <div className="card" style={{ padding: '28px', marginBottom: '28px', textAlign: 'center' }}>
-            <p style={{ color: 'var(--muted)', marginBottom: '16px' }}>Login to leave a review</p>
-            <a href="/login" className="btn btn-primary" style={{ display: 'inline-flex' }}>Login to Review</a>
+        {/* Submit Prompt for Unauthenticated Users */}
+        {!user && (
+          <div className="card" style={{ padding: '20px', marginBottom: '20px', textAlign: 'center', borderRadius: '16px' }}>
+            <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '0 0 12px' }}>Have you visited Paw Paw? Share your experience with other pet parents!</p>
+            <a href="/login" className="rev-add-btn" style={{ margin: '0 auto' }}>
+              <PenLine size={13} /> Login to Write Review
+            </a>
           </div>
-        ) : null}
+        )}
 
+        {/* Review Form Modal */}
         {showReviewForm && user && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(7, 10, 18, 0.82)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-            <div style={{ width: '100%', maxWidth: '680px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '20px', padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ width: '100%', maxWidth: '640px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '22px', padding: '22px', maxHeight: '90vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '18px' }}>
-                <h2 style={{ fontFamily: '"Playfair Display",serif', fontWeight: 700, fontSize: '20px', color: 'var(--text)', margin: 0 }}>Leave a Review</h2>
-                <button type="button" aria-label="Close review form" onClick={() => setShowReviewForm(false)} style={{ width: '36px', height: '36px', borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--muted)' }}>
+                <h2 style={{ fontFamily: '"Playfair Display",serif', fontWeight: 700, fontSize: '19px', color: 'var(--text)', margin: 0 }}>Leave a Review</h2>
+                <button type="button" aria-label="Close review form" onClick={() => setShowReviewForm(false)} style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--muted)' }}>
                   <X size={16} />
                 </button>
               </div>
@@ -326,8 +381,8 @@ export default function Reviews() {
                   {imageError}
                 </div>
               )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div><label style={L}>Your Rating</label><Stars value={form.rating} onChange={v => setForm(p => ({ ...p, rating: v }))} /></div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div><label style={L}>Your Rating</label><Stars value={form.rating} onChange={v => setForm(p => ({ ...p, rating: v }))} size={22} /></div>
                 <div>
                   <label style={L}>Pet's Name (optional)</label>
                   <input className="input" placeholder="e.g. Bruno" value={form.petName} onChange={e => setForm(p => ({ ...p, petName: e.target.value }))} />
@@ -357,7 +412,7 @@ export default function Reviews() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: '6px' }}>
                   <button type="button" className="btn btn-secondary" onClick={() => setShowReviewForm(false)}>Cancel</button>
                   <button onClick={handleSubmit} disabled={isBlocked || submitting || !form.comment.trim()} className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
                     <Send size={15} /> {submitting ? 'Submitting…' : 'Submit Review'}
@@ -368,64 +423,94 @@ export default function Reviews() {
           </div>
         )}
 
-        {/* Reviews list */}
-        {loading ? <Spinner text="Loading reviews..." /> : reviews.length === 0 ? (
+        {/* Modern Reviews Grid */}
+        {loading ? (
+          <Spinner text="Loading reviews..." />
+        ) : reviews.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted)' }}>No reviews yet. Be the first!</div>
         ) : visibleReviews.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted)' }}>No reviews match this filter right now.</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div className="rev-grid">
             {visibleReviews.map(r => (
-              <div key={r.id} className="card" style={{ padding: '22px' }}>
-                <div style={{ display: 'flex', gap: '14px' }}>
-                  <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                    {r.profileImage ? <img src={r.profileImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '16px' }}>{(r.customerName || r.userName || 'P')?.[0]?.toUpperCase()}</span>}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--text)', fontSize: '14px' }}>{r.customerName || r.userName}</span>
-                        {r.petName && <span style={{ color: 'var(--muted)', fontSize: '12px', marginLeft: '8px' }}>· {r.petName}'s parent</span>}
-                      </div>
-                      <Stars value={r.rating} readonly />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                      {r.source === 'google' ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(66,133,244,0.12)', color: '#1a73e8', border: '1px solid rgba(66,133,244,0.2)', borderRadius: '999px', padding: '4px 8px', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.7px' }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
-                            <path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2h-9.4v3.8h5.4c-.2 1.3-.9 2.4-2 3.1v2.6h3.2c1.9-1.8 3-4.5 3-7.5Z" />
-                            <path fill="#34A853" d="M12 22c2.7 0 4.9-.9 6.6-2.4l-3.2-2.6c-.9.6-2.1.9-3.4.9-2.6 0-4.8-1.8-5.6-4.2H3.1v2.6C4.8 19.8 8.2 22 12 22Z" />
-                            <path fill="#FBBC05" d="M6.4 13.7c-.2-.6-.3-1.2-.3-1.8s.1-1.3.3-1.8V7.5H3.1C2.4 8.8 2 10.3 2 12s.4 3.2 1.1 4.5l3.3-2.8Z" />
-                            <path fill="#EA4335" d="M12 6.2c1.5 0 2.8.5 3.9 1.5l2.9-2.9C16.9 3.1 14.5 2 12 2 8.2 2 4.8 4.2 3.1 7.5l3.3 2.6c.8-2.4 3-4.2 5.6-4.2Z" />
-                          </svg>
-                          Google Review
-                        </span>
+              <div key={r.id} className="rev-card">
+                <div className="rev-card-head">
+                  <div className="rev-card-author">
+                    <div className="rev-avatar">
+                      {r.profileImage ? (
+                        <img src={r.profileImage} alt="" />
                       ) : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(22, 163, 74, 0.12)', color: '#16a34a', border: '1px solid rgba(22, 163, 74, 0.2)', borderRadius: '999px', padding: '4px 8px', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.7px' }}>
-                          <BadgeCheck size={12} /> Verified Customer
-                        </span>
+                        <span>{(r.customerName || r.userName || 'P')?.[0]?.toUpperCase()}</span>
                       )}
                     </div>
-                    <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: 1.7 }}>"{r.comment}"</p>
-                    {r.reviewImages?.length > 0 && (
-                      <div className="review-upload-grid" style={{ marginTop: '12px' }}>
-                        {r.reviewImages.map((imageUrl, index) => (
-                          <button key={`${r.id}-${index}`} type="button" className="review-upload-tile" onClick={() => setReviewLightbox({ url: imageUrl, alt: `Review photo ${index + 1}` })}>
-                            <img src={imageUrl} alt={`Review photo ${index + 1}`} />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {(r.source === 'google' ? r.reviewDate : r.createdAt?.toDate) && (
-                      <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>
-                        {r.source === 'google'
-                          ? getRelativeTime(r.reviewDate || r.createdAt?.toDate()) || (r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '')
-                          : getRelativeTime(r.createdAt.toDate()) || r.createdAt.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-                        }
-                      </p>
-                    )}
+                    <div className="rev-author-info">
+                      <span className="rev-author-name">{r.customerName || r.userName}</span>
+                      {r.petName ? (
+                        <span className="rev-pet-tag"><PawPrint size={10} /> {r.petName}'s parent</span>
+                      ) : (
+                        <span className="rev-pet-tag"><PawPrint size={10} /> Pet Parent</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rev-card-stars-wrap">
+                    <div className="rev-card-stars">
+                      {[1, 2, 3, 4, 5].map(n => (
+                        <span key={n} style={{ color: (r.rating || 5) >= n ? '#eab308' : '#e5e7eb' }}>★</span>
+                      ))}
+                    </div>
+                    <span className="rev-card-score-num">{(r.rating || 5).toFixed(1)}</span>
                   </div>
                 </div>
+
+                <div className="rev-card-badges-row">
+                  {r.source === 'google' ? (
+                    <span className="rev-source-pill rev-source-google">
+                      <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+                        <path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2h-9.4v3.8h5.4c-.2 1.3-.9 2.4-2 3.1v2.6h3.2c1.9-1.8 3-4.5 3-7.5Z" />
+                        <path fill="#34A853" d="M12 22c2.7 0 4.9-.9 6.6-2.4l-3.2-2.6c-.9.6-2.1.9-3.4.9-2.6 0-4.8-1.8-5.6-4.2H3.1v2.6C4.8 19.8 8.2 22 12 22Z" />
+                        <path fill="#FBBC05" d="M6.4 13.7c-.2-.6-.3-1.2-.3-1.8s.1-1.3.3-1.8V7.5H3.1C2.4 8.8 2 10.3 2 12s.4 3.2 1.1 4.5l3.3-2.8Z" />
+                        <path fill="#EA4335" d="M12 6.2c1.5 0 2.8.5 3.9 1.5l2.9-2.9C16.9 3.1 14.5 2 12 2 8.2 2 4.8 4.2 3.1 7.5l3.3 2.6c.8-2.4 3-4.2 5.6-4.2Z" />
+                      </svg>
+                      Google Review
+                    </span>
+                  ) : (
+                    <span className="rev-source-pill rev-source-verified">
+                      <BadgeCheck size={12} /> Verified Customer
+                    </span>
+                  )}
+
+                  {(r.source === 'google' ? r.reviewDate : r.createdAt?.toDate) && (
+                    <span className="rev-card-time">
+                      {r.source === 'google'
+                        ? getRelativeTime(r.reviewDate || r.createdAt?.toDate()) || (r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '')
+                        : getRelativeTime(r.createdAt.toDate()) || r.createdAt.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                      }
+                    </span>
+                  )}
+                </div>
+
+                <p className="rev-card-text">"{r.comment}"</p>
+
+                {/* Compact Modern Photo Thumbnails (Never giant on laptop!) */}
+                {r.reviewImages?.length > 0 && (
+                  <div className="rev-card-photos">
+                    {r.reviewImages.map((imageUrl, index) => (
+                      <button
+                        key={`${r.id}-${index}`}
+                        type="button"
+                        className="rev-photo-thumb"
+                        title="Click to view photo"
+                        onClick={() => setReviewLightbox({ url: imageUrl, alt: `Review photo ${index + 1}` })}
+                      >
+                        <img src={imageUrl} alt={`Review photo ${index + 1}`} loading="lazy" />
+                        <div className="rev-photo-overlay">
+                          <ZoomIn size={15} />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
