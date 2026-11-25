@@ -281,8 +281,8 @@ export default function AdminBoarding() {
   const [searchParams] = useSearchParams()
   const targetBoardingId = boardingId || searchParams.get('id')
 
-  const [bookings, setBookings] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [bookings, setBookings] = useState(() => cachedBoardingData || [])
+  const [loading, setLoading] = useState(() => !cachedBoardingData)
   const [updating, setUpdating] = useState(null)
 
   // Filters & Search state
@@ -405,6 +405,10 @@ export default function AdminBoarding() {
       setLoading(true)
     }
 
+    const safetyTimer = setTimeout(() => {
+      setLoading(false)
+    }, 4500)
+
     try {
       const q = query(collection(db, 'boardingBookings'), orderBy('createdAt', 'desc'))
       const snap = await getDocs(q)
@@ -423,8 +427,10 @@ export default function AdminBoarding() {
       } catch (err) {
         console.error('Fetch boarding error:', err)
       }
+    } finally {
+      clearTimeout(safetyTimer)
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   useEffect(() => {

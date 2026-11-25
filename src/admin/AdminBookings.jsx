@@ -152,8 +152,8 @@ export default function AdminBookings() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedDate = searchParams.get('date') || ''
   const requestedView = searchParams.get('view')
-  const [bookings, setBookings] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [bookings, setBookings] = useState(() => cachedBookingsData?.bookings || [])
+  const [loading, setLoading] = useState(() => !cachedBookingsData)
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [lastVisibleDoc, setLastVisibleDoc] = useState(null)
@@ -238,6 +238,10 @@ export default function AdminBookings() {
       setLoading(true)
     }
 
+    const safetyTimer = setTimeout(() => {
+      setLoading(false)
+    }, 4500)
+
     try {
       const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(INITIAL_FETCH_LIMIT))
       const [snap, serviceSnap] = await Promise.all([getDocs(q), getDocs(collection(db, 'serviceDetails'))])
@@ -257,6 +261,7 @@ export default function AdminBookings() {
         hasMore: moreAvailable,
       }
       cachedBookingsTime = Date.now()
+      clearTimeout(safetyTimer)
       setLoading(false)
       // Sync public stats in the background without blocking the UI
       syncPublicStats(db).catch(() => {})
@@ -283,9 +288,11 @@ export default function AdminBookings() {
           hasMore: moreAvailable,
         }
         cachedBookingsTime = Date.now()
+        clearTimeout(safetyTimer)
         setLoading(false)
         syncPublicStats(db).catch(() => {})
       } catch {
+        clearTimeout(safetyTimer)
         setLoading(false)
       }
     }

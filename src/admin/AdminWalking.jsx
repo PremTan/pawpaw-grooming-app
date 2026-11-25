@@ -141,6 +141,9 @@ const generateWhatsAppReportMessage = (booking, customReport = null) => {
   return encodeURIComponent(msg)
 }
 
+let cachedWalkingBookings = null
+let cachedWalkingTime = 0
+
 export default function AdminWalking() {
   const navigate = useNavigate()
   const { sendNotification } = useNotifications() || {}
@@ -157,8 +160,8 @@ export default function AdminWalking() {
 
   const [activeTab, setActiveTab] = useState('bookings') // 'bookings' | 'settings'
   const [adminReportIndex, setAdminReportIndex] = useState(0)
-  const [bookings, setBookings] = useState([])
-  const [loadingBookings, setLoadingBookings] = useState(true)
+  const [bookings, setBookings] = useState(() => cachedWalkingBookings || [])
+  const [loadingBookings, setLoadingBookings] = useState(() => !cachedWalkingBookings)
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedBooking, setSelectedBooking] = useState(null)
@@ -237,7 +240,16 @@ export default function AdminWalking() {
   }
 
   useEffect(() => {
-    setLoadingBookings(true)
+    let isMounted = true
+    if (!cachedWalkingBookings) {
+      setLoadingBookings(true)
+    }
+
+    // Safety timeout ensures loading never hangs permanently
+    const safetyTimer = setTimeout(() => {
+      if (isMounted) setLoadingBookings(false)
+    }, 4500)
+
     const q = query(collection(db, 'walkingBookings'), orderBy('createdAt', 'desc'))
 
     let unsub = null
@@ -245,30 +257,54 @@ export default function AdminWalking() {
       unsub = onSnapshot(
         q,
         (snap) => {
-          setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-          setLoadingBookings(false)
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+          cachedWalkingBookings = list
+          cachedWalkingTime = Date.now()
+          clearTimeout(safetyTimer)
+          if (isMounted) {
+            setBookings(list)
+            setLoadingBookings(false)
+          }
         },
         () => {
           // Fallback snapshot without composite ordering
-          unsub = onSnapshot(collection(db, 'walkingBookings'), (snap) => {
-            const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-            list.sort((a, b) => {
-              const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0
-              const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0
-              return bTime - aTime
-            })
-            setBookings(list)
-            setLoadingBookings(false)
-          })
+          try {
+            unsub = onSnapshot(
+              collection(db, 'walkingBookings'),
+              (snap) => {
+                const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                list.sort((a, b) => {
+                  const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0
+                  const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0
+                  return bTime - aTime
+                })
+                cachedWalkingBookings = list
+                cachedWalkingTime = Date.now()
+                clearTimeout(safetyTimer)
+                if (isMounted) {
+                  setBookings(list)
+                  setLoadingBookings(false)
+                }
+              },
+              () => {
+                clearTimeout(safetyTimer)
+                if (isMounted) setLoadingBookings(false)
+              }
+            )
+          } catch {
+            clearTimeout(safetyTimer)
+            if (isMounted) setLoadingBookings(false)
+          }
         }
       )
     } catch {
       loadBookings()
+      clearTimeout(safetyTimer)
     }
 
     fetchWalkingSettings(db).then(setSettings)
     fetchBusinessInfo(db).then(biz => {
-      if (biz) {
+      if (biz && isMounted) {
         setAdminWhatsappNumber(biz.whatsappNumber || '')
         setShopName(biz.contact?.shopName || 'Paw Paw Pet Grooming')
       }
@@ -278,7 +314,7 @@ export default function AdminWalking() {
     async function loadTeam() {
       try {
         const snap = await getDocs(collection(db, 'teamMembers'))
-        setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+        if (isMounted) setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
       } catch (err) {
         console.warn('Could not load team members:', err)
       }
@@ -286,6 +322,8 @@ export default function AdminWalking() {
     loadTeam()
 
     return () => {
+      isMounted = false
+      clearTimeout(safetyTimer)
       if (unsub) unsub()
     }
   }, [])

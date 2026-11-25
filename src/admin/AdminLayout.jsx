@@ -1,5 +1,5 @@
 // src/admin/AdminLayout.jsx
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { Link, Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { doc, setDoc } from 'firebase/firestore'
 import { useAuth } from '../context/AuthContext'
@@ -10,6 +10,8 @@ import NotificationBell from '../components/NotificationBell'
 import BrandLogo from '../components/BrandLogo'
 import AdminRadialMenu from './AdminRadialMenu'
 import ConfirmModal from '../components/ConfirmModal'
+import Spinner from '../components/Spinner'
+import AdminErrorBoundary from '../components/AdminErrorBoundary'
 
 const LINKS = [
   { to:'/admin',           label:'Dashboard',  icon:<LayoutDashboard size={17}/>, end:true },
@@ -49,6 +51,30 @@ export default function AdminLayout() {
     if (!user?.uid) return
     setDoc(doc(db, 'settings', 'general'), { adminUid: user.uid }, { merge: true }).catch(() => {})
   }, [user])
+
+  useEffect(() => {
+    // Preload commonly used admin modules in the background during idle time
+    // Makes switching between tabs instant without chunk load delays
+    const preload = () => {
+      import('./AdminTodayOperations').catch(() => {})
+      import('./AdminBookings').catch(() => {})
+      import('./AdminBoarding').catch(() => {})
+      import('./AdminWalking').catch(() => {})
+      import('./AdminInvoices').catch(() => {})
+      import('./AdminReviews').catch(() => {})
+      import('./AdminGoogleReviews').catch(() => {})
+      import('./AdminEarnings').catch(() => {})
+    }
+    if (typeof window !== 'undefined') {
+      if ('requestIdleCallback' in window) {
+        const id = window.requestIdleCallback(preload, { timeout: 3000 })
+        return () => window.cancelIdleCallback(id)
+      } else {
+        const id = window.setTimeout(preload, 1200)
+        return () => window.clearTimeout(id)
+      }
+    }
+  }, [])
 
   const [showLogoutModal, setShowLogoutModal] = useState(false)
 
@@ -132,7 +158,11 @@ export default function AdminLayout() {
           </div>
         </div>
         <main className="admin-content">
-          <Outlet />
+          <AdminErrorBoundary>
+            <Suspense fallback={<div style={{ padding: '60px 20px', textAlign: 'center' }}><Spinner text="Loading tab..." /></div>}>
+              <Outlet />
+            </Suspense>
+          </AdminErrorBoundary>
         </main>
         <AdminRadialMenu />
       </div>

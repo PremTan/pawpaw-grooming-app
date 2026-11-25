@@ -7,6 +7,7 @@ import Footer from './components/Footer'
 import MobileBottomNav from './components/MobileBottomNav'
 import Spinner from './components/Spinner'
 import SEO from './components/SEO'
+import { lazyWithRetry } from './utils/lazyWithRetry'
 
 // Pages
 import Home        from './pages/Home'
@@ -28,31 +29,30 @@ const WalkerPortal = lazy(() => import('./pages/WalkerPortal'))
 const WalkerSetup = lazy(() => import('./pages/WalkerSetup'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
-// Lazy-loaded Admin modules (prevents bundling heavy admin code into initial user load)
-const AdminLayout = lazy(() => import('./admin/AdminLayout'))
-const AdminDashboard = lazy(() => import('./admin/AdminDashboard'))
-const AdminTodayOperations = lazy(() => import('./admin/AdminTodayOperations'))
-const AdminBookings = lazy(() => import('./admin/AdminBookings'))
-const AdminBoarding = lazy(() => import('./admin/AdminBoarding'))
-const AdminWalking = lazy(() => import('./admin/AdminWalking'))
-const AdminReviews = lazy(() => import('./admin/AdminReviews'))
-const AdminGoogleReviews = lazy(() => import('./admin/AdminGoogleReviews'))
-const AdminCustomers = lazy(() => import('./admin/AdminCustomers'))
-const AdminBlockedUsers = lazy(() => import('./admin/AdminBlockedUsers'))
-const AdminGallery = lazy(() => import('./admin/AdminGallery'))
-const AdminPackages = lazy(() => import('./admin/AdminPackages'))
-const AdminHeroImages = lazy(() => import('./admin/AdminHeroImages'))
-const AdminServices = lazy(() => import('./admin/AdminServices'))
-const AdminWhyChooseUs = lazy(() => import('./admin/AdminWhyChooseUs'))
-const AdminContactInfo = lazy(() => import('./admin/AdminContactInfo'))
-const AdminFooter = lazy(() => import('./admin/AdminFooter'))
-const AdminBookingSettings = lazy(() => import('./admin/AdminBookingSettings'))
-const AdminCommonSettings = lazy(() => import('./admin/AdminCommonSettings'))
-const AdminInvoices = lazy(() => import('./admin/AdminInvoices'))
-const AdminTeam = lazy(() => import('./admin/AdminTeam'))
-const AdminEarnings = lazy(() => import('./admin/AdminEarnings'))
-const AdminShopPurchases = lazy(() => import('./admin/AdminShopPurchases'))
-const AdminOffers = lazy(() => import('./admin/AdminOffers'))
+// Lazy-loaded Admin modules with auto-retry on network/deployment failures
+const AdminLayout = lazyWithRetry(() => import('./admin/AdminLayout'), 'AdminLayout')
+const AdminDashboard = lazyWithRetry(() => import('./admin/AdminDashboard'), 'AdminDashboard')
+const AdminTodayOperations = lazyWithRetry(() => import('./admin/AdminTodayOperations'), 'AdminTodayOperations')
+const AdminBookings = lazyWithRetry(() => import('./admin/AdminBookings'), 'AdminBookings')
+const AdminBoarding = lazyWithRetry(() => import('./admin/AdminBoarding'), 'AdminBoarding')
+const AdminWalking = lazyWithRetry(() => import('./admin/AdminWalking'), 'AdminWalking')
+const AdminReviews = lazyWithRetry(() => import('./admin/AdminReviews'), 'AdminReviews')
+const AdminGoogleReviews = lazyWithRetry(() => import('./admin/AdminGoogleReviews'), 'AdminGoogleReviews')
+const AdminCustomers = lazyWithRetry(() => import('./admin/AdminCustomers'), 'AdminCustomers')
+const AdminBlockedUsers = lazyWithRetry(() => import('./admin/AdminBlockedUsers'), 'AdminBlockedUsers')
+const AdminGallery = lazyWithRetry(() => import('./admin/AdminGallery'), 'AdminGallery')
+const AdminPackages = lazyWithRetry(() => import('./admin/AdminPackages'), 'AdminPackages')
+const AdminHeroImages = lazyWithRetry(() => import('./admin/AdminHeroImages'), 'AdminHeroImages')
+const AdminServices = lazyWithRetry(() => import('./admin/AdminServices'), 'AdminServices')
+const AdminContactInfo = lazyWithRetry(() => import('./admin/AdminContactInfo'), 'AdminContactInfo')
+const AdminFooter = lazyWithRetry(() => import('./admin/AdminFooter'), 'AdminFooter')
+const AdminBookingSettings = lazyWithRetry(() => import('./admin/AdminBookingSettings'), 'AdminBookingSettings')
+const AdminCommonSettings = lazyWithRetry(() => import('./admin/AdminCommonSettings'), 'AdminCommonSettings')
+const AdminInvoices = lazyWithRetry(() => import('./admin/AdminInvoices'), 'AdminInvoices')
+const AdminTeam = lazyWithRetry(() => import('./admin/AdminTeam'), 'AdminTeam')
+const AdminEarnings = lazyWithRetry(() => import('./admin/AdminEarnings'), 'AdminEarnings')
+const AdminShopPurchases = lazyWithRetry(() => import('./admin/AdminShopPurchases'), 'AdminShopPurchases')
+const AdminOffers = lazyWithRetry(() => import('./admin/AdminOffers'), 'AdminOffers')
 
 function ScrollToTop() {
   const { pathname, search, hash } = useLocation()
