@@ -1515,11 +1515,6 @@ export default function Home() {
   const [walkingSettings, setWalkingSettings] = useState(() => cachedWalkingSettings)
   const [boardingSettings, setBoardingSettings] = useState(() => cachedBoardingSettings)
   const [bookingSettings, setBookingSettings] = useState(() => cachedBookingSettings)
-  const [reviewIndex, setReviewIndex] = useState(0)
-  const [reviewCarouselHeight, setReviewCarouselHeight] = useState(0)
-  const [touchStartX, setTouchStartX] = useState(null)
-  const reviewCarouselRef = useRef(null)
-  const reviewSlideRefs = useRef([])
   const homeContainerRef = useRef(null)
 
   // Premium Fade-Up on Scroll with IntersectionObserver
@@ -1590,7 +1585,7 @@ export default function Home() {
         teamResult,
         teamSettingsResult,
       ] = await Promise.allSettled([
-        getDocs(query(collection(db, 'reviews'), orderBy('createdAt', 'desc'), limit(6))),
+        getDocs(collection(db, 'reviews')),
         getDocs(query(collection(db, 'gallery'), limit(12))),
         getDocs(collection(db, 'serviceDetails')),
         getDocs(collection(db, 'packages')),
@@ -1611,17 +1606,27 @@ export default function Home() {
         }
 
         const revs = reviewsResult.status === 'fulfilled'
-          ? reviewsResult.value.docs.map(d => ({ id: d.id, ...d.data() })).filter(item => item.active !== false).map(item => ({
-            ...item,
-            source: item.source || 'website',
-            rating: Number(item.rating || item.stars || 5),
-            comment: item.comment || item.review || '',
-            customerName: item.customerName || item.userName || item.name || 'Pet Parent',
-            profileImage: item.profileImage || item.userPhoto || '',
-            reviewImages: Array.isArray(item.reviewImages) ? item.reviewImages : (Array.isArray(item.images) ? item.images : []),
-            reviewDate: item.reviewDate || '',
-            petName: item.petName || '',
-          }))
+          ? reviewsResult.value.docs
+              .map(d => ({ id: d.id, ...d.data() }))
+              .filter(item => item.active !== false)
+              .map(item => ({
+                ...item,
+                source: item.source || 'website',
+                rating: Number(item.rating || item.stars || 5),
+                comment: item.comment || item.review || '',
+                customerName: item.customerName || item.userName || item.name || 'Pet Parent',
+                profileImage: item.profileImage || item.userPhoto || '',
+                reviewImages: Array.isArray(item.reviewImages) ? item.reviewImages : (Array.isArray(item.images) ? item.images : []),
+                reviewDate: item.reviewDate || '',
+                petName: item.petName || '',
+              }))
+              .sort((a, b) => {
+                const rDiff = (b.rating || 5) - (a.rating || 5)
+                if (rDiff !== 0) return rDiff
+                const timeA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0)
+                const timeB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0)
+                return timeB - timeA
+              })
           : []
 
         const publicStats = homeStatsResult.status === 'fulfilled' && homeStatsResult.value.exists()
@@ -1783,33 +1788,96 @@ export default function Home() {
   }, [galleryImages.length])
 
   const homeServices = buildServiceCatalog(serviceDetails)
-  const featuredReviews = reviews.slice(0, 5)
 
-  useEffect(() => {
-    setReviewIndex(0)
-  }, [featuredReviews.length])
+  const allMarqueeReviews = useMemo(() => {
+    if (!Array.isArray(reviews) || reviews.length === 0) return []
+    // Use exclusively real reviews from the database, prioritizing top ratings (top 20 to 30)
+    const sorted = [...reviews].sort((a, b) => (Number(b.rating) || 5) - (Number(a.rating) || 5))
+    const topReviews = sorted.filter(r => (Number(r.rating) || 5) >= 4)
+    const list = topReviews.length > 0 ? topReviews : sorted
+    return list.slice(0, 30)
+  }, [reviews])
 
-  useEffect(() => {
-    if (!featuredReviews.length) {
-      setReviewCarouselHeight(0)
-      return
-    }
+  const { row1List, row2List } = useMemo(() => {
+    if (!allMarqueeReviews.length) return { row1List: [], row2List: [] }
+    const r1 = []
+    const r2 = []
+    allMarqueeReviews.forEach((item, idx) => {
+      if (idx % 2 === 0) r1.push(item)
+      else r2.push(item)
+    })
+    if (r2.length === 0) r2.push(...r1)
 
-    const updateCarouselHeight = () => {
-      const activeSlide = reviewSlideRefs.current[reviewIndex]
-      if (activeSlide) {
-        setReviewCarouselHeight(activeSlide.offsetHeight)
+    // Duplicate real reviews so each row has 12 to 15 cards (24 to 30 cards total)
+    const fillRow = (arr) => {
+      if (!arr.length) return []
+      let res = [...arr]
+      while (res.length < 12) {
+        res = [...res, ...arr]
       }
+      res = res.slice(0, 15)
+      return [...res, ...res]
     }
 
-    const frame = window.requestAnimationFrame(updateCarouselHeight)
-    window.addEventListener('resize', updateCarouselHeight)
-
-    return () => {
-      window.cancelAnimationFrame(frame)
-      window.removeEventListener('resize', updateCarouselHeight)
+    return {
+      row1List: fillRow(r1),
+      row2List: fillRow(r2)
     }
-  }, [featuredReviews.length, reviewIndex])
+  }, [allMarqueeReviews])
+
+  const renderReviewPill = (r, key) => {
+    const avatarUrl = r.profileImage || r.userPhoto
+    const name = r.customerName || r.userName || 'Pet Parent'
+    const initial = name.slice(0, 1).toUpperCase()
+    const comment = cleanReviewText(r.comment || r.review || '')
+    const rating = Math.min(5, Math.max(1, Math.round(Number(r.rating || 5))))
+    const isGoogle = r.source === 'google'
+
+    return (
+      <Link key={key} to="/reviews" className="review-pill-card" title="Click to view reviews">
+        <div className="review-pill-avatar">
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={name} loading="lazy" decoding="async" />
+          ) : (
+            <span className="review-pill-initial">{initial}</span>
+          )}
+        </div>
+        <div className="review-pill-body">
+          <div className="review-pill-top">
+            <span className="review-pill-name">{name}</span>
+            <span className="review-pill-badge" title={isGoogle ? 'Google Review' : 'Verified Customer'} aria-label={isGoogle ? 'Google Review' : 'Verified Customer'}>
+              {isGoogle ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2h-9.4v3.8h5.4c-.2 1.3-.9 2.4-2 3.1v2.6h3.2c1.9-1.8 3-4.5 3-7.5Z" />
+                  <path fill="#34A853" d="M12 22c2.7 0 4.9-.9 6.6-2.4l-3.2-2.6c-.9.6-2.1.9-3.4.9-2.6 0-4.8-1.8-5.6-4.2H3.1v2.6C4.8 19.8 8.2 22 12 22Z" />
+                  <path fill="#FBBC05" d="M6.4 13.7c-.2-.6-.3-1.2-.3-1.8s.1-1.3.3-1.8V7.5H3.1C2.4 8.8 2 10.3 2 12s.4 3.2 1.1 4.5l3.3-2.8Z" />
+                  <path fill="#EA4335" d="M12 6.2c1.5 0 2.8.5 3.9 1.5l2.9-2.9C16.9 3.1 14.5 2 12 2 8.2 2 4.8 4.2 3.1 7.5l3.3 2.6c.8-2.4 3-4.2 5.6-4.2Z" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" fill="#1e293b" />
+                  <path d="m8.5 12.5 2.5 2.5 5-5" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </span>
+            <div className="review-pill-stars" aria-label={`${rating} out of 5 stars`}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Star
+                  key={n}
+                  size={13}
+                  fill={n <= rating ? '#f59e0b' : 'none'}
+                  color={n <= rating ? '#f59e0b' : '#cbd5e1'}
+                />
+              ))}
+            </div>
+          </div>
+          <p className="review-pill-text">
+            {comment}
+          </p>
+        </div>
+      </Link>
+    )
+  }
 
   const homeWalkingDurations = useMemo(() => {
     if (Array.isArray(walkingSettings?.durations) && walkingSettings.durations.length > 0) {
@@ -1865,26 +1933,6 @@ export default function Home() {
       to: `/book?package=${pkg.id}`,
     })),
   ]
-
-  const goToReview = (index) => {
-    if (!featuredReviews.length) return
-    setReviewIndex((index + featuredReviews.length) % featuredReviews.length)
-  }
-
-  const handleReviewTouchStart = (event) => {
-    setTouchStartX(event.touches[0]?.clientX ?? null)
-  }
-
-  const handleReviewTouchEnd = (event) => {
-    if (touchStartX === null) return
-    const delta = (event.changedTouches[0]?.clientX ?? touchStartX) - touchStartX
-    if (delta > 50) {
-      goToReview(reviewIndex - 1)
-    } else if (delta < -50) {
-      goToReview(reviewIndex + 1)
-    }
-    setTouchStartX(null)
-  }
 
   const socialIcon = (platform) => {
     if (platform === 'instagram') return <Instagram size={18} />
@@ -2005,89 +2053,29 @@ export default function Home() {
       )}
 
       {/* Reviews section */}
-      {featuredReviews.length > 0 && (
+      {allMarqueeReviews.length > 0 && (
         <section className="home-reviews-section">
           <div className="home-section-head centered decorated home-fade-up">
-            <p className="section-label">What Customers Say</p>
-            <h2>Real Reviews <PawPrint size={24} /></h2>
+            <p className="section-label">Real Reviews</p>
+            <h2>Our Customers Love Us <PawPrint size={24} /></h2>
           </div>
-          <div className="home-review-carousel home-fade-up stagger-1" ref={reviewCarouselRef} onTouchStart={handleReviewTouchStart} onTouchEnd={handleReviewTouchEnd} style={{ height: reviewCarouselHeight ? `${reviewCarouselHeight}px` : 'auto' }}>
-            <div className="home-review-carousel-track" style={{ transform: `translateX(-${reviewIndex * 100}%)` }}>
-              {featuredReviews.map((r, index) => {
-                const reviewImageList = Array.isArray(r.reviewImages) && r.reviewImages.length > 0
-                  ? r.reviewImages
-                  : (Array.isArray(r.images) ? r.images : [])
-                const hasReviewImages = reviewImageList.length > 0
-                return (
-                  <article
-                    key={r.id}
-                    ref={(el) => {
-                      reviewSlideRefs.current[index] = el
-                    }}
-                    className={`home-review-card home-review-slide ${hasReviewImages ? 'has-images' : 'no-images'}`}
-                  >
-                    <div className="home-review-person">
-                      <div className="home-review-avatar">
-                        {r.profileImage || r.userPhoto
-                          ? <img src={r.profileImage || r.userPhoto} alt="" loading="lazy" decoding="async" />
-                          : <span>{(r.customerName || r.userName || 'P').slice(0, 1).toUpperCase()}</span>}
-                      </div>
-                      <div>
-                        <strong>{r.customerName || r.userName || 'Pet Parent'}</strong>
-                        {r.source === 'google' ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: '#16a34a', fontSize: '11px', fontWeight: 700 }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
-                              <path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2h-9.4v3.8h5.4c-.2 1.3-.9 2.4-2 3.1v2.6h3.2c1.9-1.8 3-4.5 3-7.5Z" />
-                              <path fill="#34A853" d="M12 22c2.7 0 4.9-.9 6.6-2.4l-3.2-2.6c-.9.6-2.1.9-3.4.9-2.6 0-4.8-1.8-5.6-4.2H3.1v2.6C4.8 19.8 8.2 22 12 22Z" />
-                              <path fill="#FBBC05" d="M6.4 13.7c-.2-.6-.3-1.2-.3-1.8s.1-1.3.3-1.8V7.5H3.1C2.4 8.8 2 10.3 2 12s.4 3.2 1.1 4.5l3.3-2.8Z" />
-                              <path fill="#EA4335" d="M12 6.2c1.5 0 2.8.5 3.9 1.5l2.9-2.9C16.9 3.1 14.5 2 12 2 8.2 2 4.8 4.2 3.1 7.5l3.3 2.6c.8-2.4 3-4.2 5.6-4.2Z" />
-                            </svg>
-                            Google
-                          </span>
-                        ) : (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: '#16a34a', fontSize: '11px', fontWeight: 700 }}>
-                            <BadgeCheck size={12} /> Verified Customer
-                          </span>
-                        )}
-                        <span>{[1, 2, 3, 4, 5].map(n => <Star key={n} size={14} fill={n <= (r.rating || 5) ? 'currentColor' : 'none'} />)}</span>
-                      </div>
-                    </div>
-                    <p>&quot;{cleanReviewText(r.comment || r.review || '')}&quot;</p>
-                    {hasReviewImages && (
-                      <div className="home-review-image-grid">
-                        {reviewImageList.slice(0, 3).map((image, index) => (
-                          <button
-                            key={`${r.id}-${index}`}
-                            type="button"
-                            className="home-review-image-thumb-btn"
-                            onClick={() => setReviewLightbox({ url: image, alt: `${r.customerName || r.userName || 'Review'} image ${index + 1}` })}
-                            aria-label={`Open review image ${index + 1}`}
-                          >
-                            <img className="home-review-image-thumb" src={image} alt={`${r.customerName || r.userName || 'Review'} image ${index + 1}`} loading="lazy" decoding="async" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-          {featuredReviews.length > 1 && (
-            <div className="home-review-nav">
-              <button type="button" className="home-review-nav-btn" onClick={() => goToReview(reviewIndex - 1)} aria-label="Previous review">
-                <ChevronLeft size={16} />
-              </button>
-              <div className="home-review-dots">
-                {featuredReviews.map((_, index) => (
-                  <button key={index} type="button" className={index === reviewIndex ? 'active' : ''} onClick={() => goToReview(index)} aria-label={`Go to review ${index + 1}`} />
-                ))}
+
+          <div className="reviews-marquee-container home-fade-up stagger-1">
+            {/* Row 1 - scrolling left */}
+            <div className="reviews-marquee-row">
+              <div className="reviews-marquee-track reviews-marquee-left">
+                {row1List.map((r, index) => renderReviewPill(r, `r1-${index}`))}
               </div>
-              <button type="button" className="home-review-nav-btn" onClick={() => goToReview(reviewIndex + 1)} aria-label="Next review">
-                <ChevronRight size={16} />
-              </button>
             </div>
-          )}
+
+            {/* Row 2 - scrolling right */}
+            <div className="reviews-marquee-row">
+              <div className="reviews-marquee-track reviews-marquee-right">
+                {row2List.map((r, index) => renderReviewPill(r, `r2-${index}`))}
+              </div>
+            </div>
+          </div>
+
           <div className="home-review-actions home-fade-up stagger-2">
             <Link to="/reviews" className="btn btn-secondary">See All Reviews <ArrowRight size={16} /></Link>
             {googleReviewUrl && (

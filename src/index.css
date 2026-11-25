@@ -7921,6 +7921,203 @@ img.admin-customer-avatar { display: block; object-fit: cover; }
   min-width: 250px;
 }
 
+/* ==========================================================================
+   Reviews Auto-Scroll Marquee (Dual-Track Pill Style)
+   ========================================================================== */
+.reviews-marquee-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  overflow: hidden;
+  padding: 16px 0 20px;
+  position: relative;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+}
+
+.reviews-marquee-row {
+  display: flex;
+  overflow: hidden;
+  user-select: none;
+  width: 100%;
+}
+
+.reviews-marquee-track {
+  display: flex;
+  gap: 16px;
+  width: max-content;
+  will-change: transform;
+}
+
+.reviews-marquee-left {
+  animation: scrollMarqueeLeft 70s linear infinite;
+}
+
+.reviews-marquee-right {
+  animation: scrollMarqueeRight 75s linear infinite;
+}
+
+.reviews-marquee-container:hover .reviews-marquee-track,
+.reviews-marquee-track:hover {
+  animation-play-state: paused;
+}
+
+@keyframes scrollMarqueeLeft {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@keyframes scrollMarqueeRight {
+  0% {
+    transform: translate3d(-50%, 0, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Pill Review Card */
+.review-pill-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--card, #ffffff);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 9999px;
+  padding: 8px 22px 8px 10px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.05);
+  text-decoration: none;
+  color: inherit;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.review-pill-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.09);
+  border-color: var(--accent, #eab308);
+}
+
+.review-pill-avatar {
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.review-pill-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.review-pill-initial {
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--accent-dark, #b45309);
+}
+
+.review-pill-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: left;
+  min-width: 0;
+}
+
+.review-pill-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.2;
+}
+
+.review-pill-name {
+  font-weight: 700;
+  font-size: 14.5px;
+  color: var(--text, #1e293b);
+  white-space: nowrap;
+}
+
+.review-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.review-pill-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+
+.review-pill-text {
+  font-size: 13px;
+  color: var(--muted, #64748b);
+  line-height: 1.4;
+  margin: 3px 0 0;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+@media (max-width: 768px) {
+  .reviews-marquee-container {
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%);
+    gap: 12px;
+    padding: 12px 0 16px;
+  }
+
+  .reviews-marquee-left {
+    animation-duration: 55s;
+  }
+
+  .reviews-marquee-right {
+    animation-duration: 60s;
+  }
+
+  .review-pill-card {
+    padding: 7px 16px 7px 8px;
+    gap: 10px;
+  }
+
+  .review-pill-avatar {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+
+  .review-pill-name {
+    font-size: 13.5px;
+  }
+
+  .review-pill-text {
+    font-size: 12.5px;
+    max-width: 240px;
+  }
+}
+
 .home-review-carousel {
   width: min(100%, 900px);
   margin: 0 auto;
