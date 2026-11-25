@@ -15,4 +15,3 @@ export function normalizeFeature(feature, fallback) {
     desc,
   }
 }
-

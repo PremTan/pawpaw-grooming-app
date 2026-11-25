@@ -71,7 +71,7 @@ export default function Team() {
         }
 
         // Only show active members who haven't been hidden from the website
-        const publicMembers = rows.filter(m => m.active !== false && m.showOnWeb !== false)
+        let publicMembers = rows.filter(m => m.active !== false && m.showOnWeb !== false)
 
         // Sort by admin order if set
         publicMembers.sort((a, b) => {

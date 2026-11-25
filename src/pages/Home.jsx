@@ -1504,8 +1504,8 @@ export default function Home() {
   const [shopName, setShopName] = useState(() => cachedHomeSectionsData?.shopName || 'Paw Paw Pet Grooming')
   const [googleReviewUrl, setGoogleReviewUrl] = useState(() => cachedHomeSectionsData?.googleReviewUrl || '')
   const [homePetImages, setHomePetImages] = useState(() => cachedHomeSectionsData?.homePetImages || { cta: '', follow: '' })
-  const [teamMembers, setTeamMembers] = useState([])
-  const [teamSettings, setTeamSettings] = useState({
+  const [teamMembers, setTeamMembers] = useState(() => cachedHomeSectionsData?.teamMembers || [])
+  const [teamSettings, setTeamSettings] = useState(() => cachedHomeSectionsData?.teamSettings || {
     badge: 'Certified & Passionate',
     title: 'Meet Our Pet Care Team',
     description: 'Loving groomers, certified dog walkers, and devoted caretakers who treat every furry guest like family.',
@@ -1516,6 +1516,68 @@ export default function Home() {
   const [boardingSettings, setBoardingSettings] = useState(() => cachedBoardingSettings)
   const [bookingSettings, setBookingSettings] = useState(() => cachedBookingSettings)
   const homeContainerRef = useRef(null)
+  const teamSliderRef = useRef(null)
+  const [activeTeamIndex, setActiveTeamIndex] = useState(0)
+
+  const handleTeamSlide = (direction) => {
+    const list = teamMembers.slice(0, 8)
+    if (!list.length) return
+    setActiveTeamIndex(prev => {
+      let nextIndex
+      if (direction === 'left') {
+        nextIndex = prev > 0 ? prev - 1 : list.length - 1
+      } else {
+        nextIndex = prev < list.length - 1 ? prev + 1 : 0
+      }
+      if (teamSliderRef.current) {
+        const cards = teamSliderRef.current.querySelectorAll('.home-team-card')
+        if (cards[nextIndex]) {
+          cards[nextIndex].scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+            inline: 'center',
+          })
+        }
+      }
+      return nextIndex
+    })
+  }
+
+  const handleSelectTeamMember = (index) => {
+    setActiveTeamIndex(index)
+    if (teamSliderRef.current) {
+      const cards = teamSliderRef.current.querySelectorAll('.home-team-card')
+      if (cards[index]) {
+        cards[index].scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'center',
+        })
+      }
+    }
+  }
+
+  const handleTeamContainerScroll = () => {
+    if (!teamSliderRef.current) return
+    const container = teamSliderRef.current
+    const cards = container.querySelectorAll('.home-team-card')
+    const containerCenter = container.scrollLeft + container.offsetWidth / 2
+    let closestIndex = 0
+    let minDiff = Infinity
+
+    cards.forEach((card, idx) => {
+      const cardCenter = card.offsetLeft + card.offsetWidth / 2
+      const diff = Math.abs(containerCenter - cardCenter)
+      if (diff < minDiff) {
+        minDiff = diff
+        closestIndex = idx
+      }
+    })
+
+    if (closestIndex !== activeTeamIndex && minDiff < 180) {
+      setActiveTeamIndex(closestIndex)
+    }
+  }
 
   // Premium Fade-Up on Scroll with IntersectionObserver
   useEffect(() => {
@@ -1677,7 +1739,7 @@ export default function Home() {
 
         // If admin has explicitly chosen members to show on home screen, prioritize only those
         const homeFeatured = allTeam.filter(m => m.showOnHome === true)
-        const candidates = homeFeatured.length > 0
+        let candidates = homeFeatured.length > 0
           ? homeFeatured
           : allTeam.filter(m => m.showOnWeb !== false)
 
@@ -1687,6 +1749,10 @@ export default function Home() {
           const orderB = typeof b.order === 'number' ? b.order : (typeof b.homeOrder === 'number' ? b.homeOrder : 999)
           return orderA - orderB
         })
+
+        if (!candidates.length && cachedHomeSectionsData?.teamMembers?.length && teamResult?.status !== 'fulfilled') {
+          candidates = cachedHomeSectionsData.teamMembers
+        }
 
         setTeamMembers(candidates)
 
@@ -1775,6 +1841,10 @@ export default function Home() {
           packages: loadedPackages,
           galleryImages: sortedGallery,
           features: cleanFeatures,
+          teamMembers: candidates,
+          teamSettings: teamSettingsResult?.status === 'fulfilled' && teamSettingsResult.value.exists()
+            ? { ...teamSettings, ...teamSettingsResult.value.data() }
+            : teamSettings,
           adminPhone: loadedPhone,
           contactAddress: loadedAddress,
           contactHours: loadedHours,
@@ -2234,66 +2304,104 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="home-team-grid">
-            {teamMembers.slice(0, 6).map((member, i) => {
-              const roleLower = (member.role || '').toLowerCase()
-              const isWalker = roleLower.includes('walk')
-              const isGroomer = roleLower.includes('groom')
-              const isBoarding = roleLower.includes('board') || roleLower.includes('care')
-              const badgeClass = isWalker ? 'badge-walker' : isGroomer ? 'badge-groomer' : isBoarding ? 'badge-boarding' : 'badge-specialist'
+          <div className="home-team-slider-wrapper home-fade-up">
+            <div className="home-team-grid" ref={teamSliderRef} onScroll={handleTeamContainerScroll}>
+              {teamMembers.slice(0, 8).map((member, i) => {
+                const roleLower = (member.role || '').toLowerCase()
+                const isWalker = roleLower.includes('walk')
+                const isGroomer = roleLower.includes('groom')
+                const isBoarding = roleLower.includes('board') || roleLower.includes('care')
+                const badgeClass = isWalker ? 'badge-walker' : isGroomer ? 'badge-groomer' : isBoarding ? 'badge-boarding' : 'badge-specialist'
+                const isActive = activeTeamIndex === i
 
-              return (
-                <div
-                  key={member.id || i}
-                  className="home-team-card home-fade-up"
-                  style={{ '--fade-delay': `${i * 80}ms` }}
-                >
-                  {/* Solid Opaque Role Badge */}
-                  <div className={`home-team-pill ${badgeClass}`}>
-                    {isWalker ? <Footprints size={12} /> : isGroomer ? <Scissors size={12} /> : <PawPrint size={12} />}
-                    <span>{member.role || 'Pet Specialist'}</span>
-                  </div>
-
-                  {/* Avatar with Double Ring Frame */}
-                  <div className="home-team-avatar-frame">
-                    <div className="home-team-avatar-inner">
-                      {member.photoUrl ? (
-                        <img src={member.photoUrl} alt={member.name} className="home-team-avatar-img" loading="lazy" />
-                      ) : (
-                        <div className="home-team-avatar-fallback">
-                          <Users size={32} />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <h3 className="home-team-name">{member.name}</h3>
-
-                  {member.experience ? (
-                    <span className="home-team-exp">
-                      <Sparkles size={11} /> {member.experience}
-                    </span>
-                  ) : (
-                    <span className="home-team-exp-default">
-                      <Heart size={11} /> Dedicated Pet Lover
-                    </span>
-                  )}
-
-                  {member.bio && (
-                    <p className="home-team-bio">
-                      "{member.bio}"
-                    </p>
-                  )}
-
-                  <Link
-                    to={isWalker ? '/walking' : isBoarding ? '/boarding' : '/book'}
-                    className="home-team-card-btn"
+                return (
+                  <div
+                    key={member.id || i}
+                    className={`home-team-card ${isActive ? 'is-active' : ''}`}
+                    style={{ '--fade-delay': `${i * 80}ms` }}
+                    onClick={() => handleSelectTeamMember(i)}
                   >
-                    {isWalker ? 'Book Walk' : isBoarding ? 'Book Stay' : 'Book Grooming'} <ArrowRight size={12} />
-                  </Link>
-                </div>
-              )
-            })}
+                    {/* Role Badge with pulsing dot */}
+                    <div className={`home-team-pill ${badgeClass}`}>
+                      <span className="home-team-dot" />
+                      {isWalker ? <Footprints size={12} /> : isGroomer ? <Scissors size={12} /> : <PawPrint size={12} />}
+                      <span>{member.role || 'Pet Specialist'}</span>
+                    </div>
+
+                    {/* Avatar with Double Ring Frame & Verified Badge */}
+                    <div className="home-team-avatar-frame">
+                      <div className="home-team-avatar-inner">
+                        {member.photoUrl ? (
+                          <img src={member.photoUrl} alt={member.name} className="home-team-avatar-img" loading="lazy" />
+                        ) : (
+                          <div className="home-team-avatar-fallback">
+                            <Users size={32} />
+                          </div>
+                        )}
+                      </div>
+                      <span className="home-team-verified-badge" title="Certified Pet Expert">
+                        <BadgeCheck size={16} />
+                      </span>
+                    </div>
+
+                    <h3 className="home-team-name">{member.name}</h3>
+
+                    <div className="home-team-stats-pill">
+                      <span className="home-team-star"><Star size={11} fill="currentColor" /> 5.0</span>
+                      <span className="home-team-sep">•</span>
+                      <span className="home-team-exp-text">
+                        <Sparkles size={11} /> {member.experience || '3+ Yrs Exp'}
+                      </span>
+                    </div>
+
+                    <p className="home-team-bio">
+                      {member.bio ? `"${member.bio}"` : 'Dedicated to treating every pet with patient kindness, safety, and loving care.'}
+                    </p>
+
+                    <Link
+                      to={isWalker ? '/walking' : isBoarding ? '/boarding' : '/book'}
+                      className="home-team-card-btn"
+                    >
+                      <span>{isWalker ? 'Book Walk' : isBoarding ? 'Book Stay' : 'Book Grooming'}</span>
+                      <ArrowRight size={13} className="team-btn-arrow" />
+                    </Link>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Slider Navigation Arrows & Interactive Animated Dots */}
+            <div className="home-team-nav-row">
+              <button
+                type="button"
+                className="home-team-nav-btn"
+                onClick={() => handleTeamSlide('left')}
+                aria-label="Previous team member"
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              <div className="home-team-dots" role="tablist" aria-label="Team member pagination">
+                {teamMembers.slice(0, 8).map((_, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    className={`home-team-dot-pill ${activeTeamIndex === idx ? 'active' : ''}`}
+                    onClick={() => handleSelectTeamMember(idx)}
+                    aria-label={`View team member ${idx + 1}`}
+                  />
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="home-team-nav-btn"
+                onClick={() => handleTeamSlide('right')}
+                aria-label="Next team member"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
           </div>
 
           <div className="home-team-actions home-fade-up stagger-1">
