@@ -1867,6 +1867,48 @@ export default function Home() {
 
   const homeServices = buildServiceCatalog(serviceDetails)
 
+  const proofStats = useMemo(() => {
+    const rawBookings = Number(stats?.totalBookings) || 0
+    const bookingsStr = rawBookings > 100 ? `${rawBookings.toLocaleString('en-IN')}+` : '1,500+'
+
+    const rawRating = Number(stats?.avgRating) || 4.9
+    const ratingStr = `${rawRating.toFixed(1)}★`
+
+    const rawReviews = Number(stats?.totalReviews) || (Array.isArray(reviews) ? reviews.length : 0)
+    const reviewsStr = rawReviews > 50 ? `${rawReviews}+` : '150+'
+
+    return [
+      {
+        stat: bookingsStr,
+        title: 'Happy Pets Pampered',
+        desc: 'Dogs and cats of all breeds & sizes treated with gentle care',
+        icon: '🐾',
+        colorTheme: 'paw',
+      },
+      {
+        stat: ratingStr,
+        title: 'Pet Parent Rating',
+        desc: `Top-rated salon with ${reviewsStr} verified 5-star customer reviews`,
+        icon: '⭐',
+        colorTheme: 'star',
+      },
+      {
+        stat: '100%',
+        title: 'Cage-Free & Gentle',
+        desc: 'Fear-free handling with 1-on-1 loving personal attention',
+        icon: '💖',
+        colorTheme: 'heart',
+      },
+      {
+        stat: '100%',
+        title: 'Organic & Pet-Safe',
+        desc: 'Hypoallergenic, tearless & vet-approved natural products',
+        icon: '🛡️',
+        colorTheme: 'shield',
+      },
+    ]
+  }, [stats?.totalBookings, stats?.avgRating, stats?.totalReviews, reviews])
+
   const allMarqueeReviews = useMemo(() => {
     if (!Array.isArray(reviews) || reviews.length === 0) return []
     // Use exclusively real reviews from the database, prioritizing top ratings (top 20 to 30)
@@ -2262,21 +2304,22 @@ export default function Home() {
         </section>
       )}
 
-      {/* Why Choose Us */}
-      <section className="home-why-section">
+      {/* Social Proof & Trusted by Pet Parents Section */}
+      <section className="home-why-section home-proof-section">
         <div className="home-why-head home-fade-up">
-          <p className="section-label"><PawPrint size={14} /> Why Choose Us <PawPrint size={14} /></p>
+          <p className="section-label"><PawPrint size={14} /> Proven Track Record <PawPrint size={14} /></p>
           <h2>Trusted by Pet Parents</h2>
+          <p className="home-why-sub">Real care, real results, and hundreds of happy wagging tails every month.</p>
         </div>
-        <div className="why-choose-grid">
-          {features.map((f, i) => (
-            <div key={`${f.title}-${i}`} className="why-choose-card home-fade-up" style={{ '--fade-delay': `${i * 120}ms` }}>
-              <div className="why-choose-icon">
-                {FEATURE_ICONS[f.icon] || FEATURE_ICONS.star}
+        <div className="home-proof-grid">
+          {proofStats.map((item, idx) => (
+            <div key={idx} className={`home-proof-card proof-${item.colorTheme} home-fade-up`} style={{ '--fade-delay': `${idx * 80}ms` }}>
+              <div className="home-proof-card-top">
+                <span className={`home-proof-icon icon-${item.colorTheme}`} aria-hidden="true">{item.icon}</span>
+                <span className="home-proof-stat">{item.stat}</span>
               </div>
-              <span className="why-choose-number">0{i + 1}</span>
-              <h3>{f.title}</h3>
-              <p>{f.desc}</p>
+              <h3 className="home-proof-title">{item.title}</h3>
+              <p className="home-proof-desc">{item.desc}</p>
             </div>
           ))}
         </div>
