@@ -1586,7 +1586,7 @@ export default function Home() {
         teamSettingsResult,
       ] = await Promise.allSettled([
         getDocs(collection(db, 'reviews')),
-        getDocs(query(collection(db, 'gallery'), limit(12))),
+        getDocs(collection(db, 'gallery')),
         getDocs(collection(db, 'serviceDetails')),
         getDocs(collection(db, 'packages')),
         getDoc(doc(db, 'settings', 'whyChooseUs')),
@@ -1700,16 +1700,27 @@ export default function Home() {
         if (galleryResult.status === 'fulfilled') {
           const galleryItems = galleryResult.value.docs.map(d => {
             const data = d.data()
-            return { id: d.id, ...data, url: data.type === 'video' ? data.url : optimizeCloudinary(data.url, 600), rawUrl: data.url }
-          }).filter(image => image.url)
-          sortedGallery = galleryItems.sort((a, b) => {
+            const type = data.type || (data.duration ? 'video' : 'image')
+            const rawUrl = data.mediaUrl || data.url || ''
+            return {
+              id: d.id,
+              ...data,
+              type,
+              url: type === 'video' ? rawUrl : optimizeCloudinary(rawUrl, 900),
+              rawUrl
+            }
+          }).filter(image => image.url && image.active !== false && image.type !== 'video' && !image.url.match(/\.(mp4|webm|mov|m4v|avi)(\?.*)?$/i))
+
+          const sorted = galleryItems.sort((a, b) => {
             const aPos = Number(a.position ?? -1)
             const bPos = Number(b.position ?? -1)
             if (bPos !== aPos) return bPos - aPos
             const aCreated = a.createdAt?.toMillis ? a.createdAt.toMillis() : a.createdAt ? a.createdAt.seconds * 1000 : 0
             const bCreated = b.createdAt?.toMillis ? b.createdAt.toMillis() : b.createdAt ? b.createdAt.seconds * 1000 : 0
             return bCreated - aCreated
-          }).slice(0, 5)
+          })
+
+          sortedGallery = sorted
           setGalleryImages(sortedGallery)
         }
         const savedFeatures = featuresResult.status === 'fulfilled' && featuresResult.value.exists() && Array.isArray(featuresResult.value.data().features)
@@ -1779,13 +1790,80 @@ export default function Home() {
     fetchStats()
   }, [])
 
+  const [galleryPaused, setGalleryPaused] = useState(false)
+  const [galleryTouchX, setGalleryTouchX] = useState(null)
+
   useEffect(() => {
-    if (galleryImages.length <= 1) return
+    if (galleryImages.length <= 1 || galleryPaused) return
     const t = setInterval(() => {
       setGalleryIndex(i => (i + 1) % galleryImages.length)
-    }, 4200)
+    }, 4500)
     return () => clearInterval(t)
-  }, [galleryImages.length])
+  }, [galleryImages.length, galleryPaused])
+
+  const handleGalleryTouchStart = (e) => {
+    setGalleryTouchX(e.touches[0]?.clientX ?? null)
+  }
+
+  const handleGalleryTouchEnd = (e) => {
+    if (galleryTouchX === null) return
+    const delta = (e.changedTouches[0]?.clientX ?? galleryTouchX) - galleryTouchX
+    if (delta > 40) {
+      setGalleryIndex(i => (i - 1 + galleryImages.length) % galleryImages.length)
+    } else if (delta < -40) {
+      setGalleryIndex(i => (i + 1) % galleryImages.length)
+    }
+    setGalleryTouchX(null)
+  }
+
+  const getCoverflowCardStyle = (offset, isCenter, isVisible) => {
+    if (!isVisible) {
+      return {
+        opacity: 0,
+        pointerEvents: 'none',
+        transform: `translate3d(${offset > 0 ? 250 : -250}%, -50%, 0) scale(0.4)`,
+        zIndex: 1,
+      }
+    }
+
+    const absOffset = Math.abs(offset)
+    const direction = offset > 0 ? 1 : -1
+
+    let xPercent = 0
+    let scale = 1
+    let opacity = 1
+    let zIndex = 12 - absOffset * 2
+    let brightness = 1
+
+    if (absOffset === 0) {
+      xPercent = 0
+      scale = 1
+      opacity = 1
+      brightness = 1
+    } else if (absOffset === 1) {
+      xPercent = direction * 62
+      scale = 0.85
+      opacity = 0.85
+      brightness = 0.85
+    } else if (absOffset === 2) {
+      xPercent = direction * 115
+      scale = 0.70
+      opacity = 0.55
+      brightness = 0.65
+    } else if (absOffset === 3) {
+      xPercent = direction * 162
+      scale = 0.55
+      opacity = 0.28
+      brightness = 0.50
+    }
+
+    return {
+      transform: `translate3d(calc(-50% + ${xPercent}%), -50%, 0) scale(${scale})`,
+      zIndex,
+      opacity,
+      filter: `brightness(${brightness})`,
+    }
+  }
 
   const homeServices = buildServiceCatalog(serviceDetails)
 
@@ -1987,67 +2065,83 @@ export default function Home() {
       {/* Gallery preview */}
       {galleryImages.length > 0 && (
         <section className="home-gallery-section">
-          <div className="home-section-head split home-fade-up">
-            <div>
-              <p className="section-label">Our Work</p>
+          <div className="home-gallery-head home-fade-up">
+            <p className="section-label">Our Work</p>
+            <div className="home-gallery-title-row">
               <h2>Gallery</h2>
-              <p>Recent grooming moments from the salon.</p>
+              <Link to="/gallery" className="home-pill-link">View All <ArrowRight size={17} /></Link>
             </div>
-            <Link to="/gallery" className="home-pill-link">View All <ArrowRight size={17} /></Link>
+            <p className="home-gallery-sub">Recent grooming moments from the salon.</p>
           </div>
 
-          <div className="gallery-mobile-slider home-fade-up stagger-1">
-            <div className="home-gallery-slider-frame">
-              {galleryImages.map((image, index) => (
-                image.type === 'video' ? (
-                  <video
-                    key={image.id}
-                    src={image.url}
-                    muted
-                    loop
-                    playsInline
-                    autoPlay
-                    onClick={() => { setGalleryIndex(index); setGalleryLightbox(galleryImages[index]) }}
-                    className={index === galleryIndex ? 'active' : ''}
-                  />
-                ) : (
-                  <img
-                    key={image.id}
-                    src={image.url}
-                    alt={image.caption || 'Gallery image'}
-                    onClick={() => { setGalleryIndex(index); setGalleryLightbox(galleryImages[index]) }}
-                    className={index === galleryIndex ? 'active' : ''}
-                  />
+          <div
+            className="home-coverflow-wrapper home-fade-up stagger-1"
+            onTouchStart={handleGalleryTouchStart}
+            onTouchEnd={handleGalleryTouchEnd}
+            onMouseEnter={() => setGalleryPaused(true)}
+            onMouseLeave={() => setGalleryPaused(false)}
+          >
+            <div className="home-coverflow-stage">
+              {galleryImages.map((image, index) => {
+                const total = galleryImages.length
+                let offset = index - galleryIndex
+                if (offset > total / 2) offset -= total
+                if (offset < -total / 2) offset += total
+
+                const isCenter = offset === 0
+                const isVisible = Math.abs(offset) <= 3
+
+                return (
+                  <div
+                    key={image.id || index}
+                    className={`home-coverflow-card ${isCenter ? 'active' : ''}`}
+                    style={getCoverflowCardStyle(offset, isCenter, isVisible)}
+                    onClick={() => {
+                      if (isCenter) {
+                        setGalleryLightbox(image)
+                      } else {
+                        setGalleryIndex(index)
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={isCenter ? 'Active gallery photo' : 'Gallery photo'}
+                  >
+                    <img
+                      src={image.url}
+                      alt={image.caption || 'Paw Paw Gallery'}
+                      loading={Math.abs(offset) <= 1 ? 'eager' : 'lazy'}
+                      decoding="async"
+                    />
+                    {isCenter && image.caption && (
+                      <div className="home-coverflow-caption">
+                        <span>{image.caption}</span>
+                      </div>
+                    )}
+                  </div>
                 )
-              ))}
-              {galleryImages.length > 1 && <>
-                <button onClick={() => setGalleryIndex(i => (i - 1 + galleryImages.length) % galleryImages.length)} aria-label="Previous gallery image"><ChevronLeft size={16} /></button>
-                <button onClick={() => setGalleryIndex(i => (i + 1) % galleryImages.length)} aria-label="Next gallery image"><ChevronRight size={16} /></button>
-              </>}
-              <div className="home-gallery-caption">
-                {galleryImages[galleryIndex]?.category && <span><Images size={14} /> {galleryImages[galleryIndex].category}</span>}
-                {galleryImages[galleryIndex]?.caption && <strong>{galleryImages[galleryIndex].caption}</strong>}
-              </div>
+              })}
             </div>
-            {galleryImages.length > 1 && (
-              <div className="home-gallery-dots">
-                {galleryImages.map((_, i) => (
-                  <button key={i} onClick={() => setGalleryIndex(i)} className={i === galleryIndex ? 'active' : ''} aria-label={`Show gallery image ${i + 1}`} />
-                ))}
-              </div>
-            )}
-          </div>
 
-          <div className="gallery-desktop-grid home-gallery-grid home-fade-up stagger-1">
-            {galleryImages.map((image) => (
-              <button key={image.id} onClick={() => setGalleryLightbox(image)}>
-                {image.type === 'video' ? (
-                  <video src={image.url} muted loop playsInline autoPlay preload="metadata" />
-                ) : (
-                  <img src={image.url} alt={image.caption || 'Gallery image'} loading="lazy" decoding="async" />
-                )}
+            {/* Circular navigation arrows centered below matching user screenshot */}
+            <div className="home-coverflow-nav">
+              <button
+                type="button"
+                className="home-coverflow-nav-btn"
+                onClick={() => setGalleryIndex(i => (i - 1 + galleryImages.length) % galleryImages.length)}
+                aria-label="Previous photo"
+              >
+                <ChevronLeft size={20} />
               </button>
-            ))}
+              <button
+                type="button"
+                className="home-coverflow-nav-btn"
+                onClick={() => setGalleryIndex(i => (i + 1) % galleryImages.length)}
+                aria-label="Next photo"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
           </div>
         </section>
       )}
