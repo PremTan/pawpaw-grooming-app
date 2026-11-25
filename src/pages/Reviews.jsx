@@ -271,9 +271,6 @@ export default function Reviews() {
 
         {/* Modern Header */}
         <div className="rev-header-wrap">
-          <span className="rev-badge">
-            <PawPrint size={12} /> Real Pet Parent Feedback
-          </span>
           <h1 className="rev-title">Customer Reviews</h1>
           <p className="rev-subtitle">
             Authentic experiences from pet parents who trust Paw Paw with their furry family.

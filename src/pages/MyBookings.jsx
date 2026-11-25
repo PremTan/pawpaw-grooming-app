@@ -56,7 +56,7 @@ import { useNotifications } from '../context/NotificationContext'
 import Spinner from '../components/Spinner'
 import ConfirmModal from '../components/ConfirmModal'
 import Toast from '../components/Toast'
-import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel, getPaymentOptionLabel } from '../utils/bookingSettings'
+import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel, getPaymentOptionLabel, getCachedBookingSettings } from '../utils/bookingSettings'
 import { SERVICES, buildWhatsAppMessage } from '../utils/services'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { fetchBusinessInfo } from '../utils/businessInfo'
@@ -360,7 +360,7 @@ export default function MyBookings() {
   const { sendNotification } = useNotifications()
   const navigate = useNavigate()
   const [bookings, setBookings] = useState([])
-  const [bookingSettings, setBookingSettings] = useState(null)
+  const [bookingSettings, setBookingSettings] = useState(() => getCachedBookingSettings())
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [selectedBooking, setSelectedBooking] = useState(null)

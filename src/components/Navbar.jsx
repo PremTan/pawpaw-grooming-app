@@ -211,7 +211,7 @@ export default function Navbar() {
     { path: '/gallery', label: 'Gallery', icon: <Image size={14} /> },
     { path: '/reviews', label: 'Reviews', icon: <MessageSquare size={14} /> },
     { path: '/team', label: 'Our Team', icon: <Users size={14} /> },
-    { path: '/?view=public#contact', label: 'Contact Us', icon: <Phone size={14} /> },
+    { path: '/#contact', label: 'Contact Us', icon: <Phone size={14} /> },
   ]
 
   const userLinks = [
@@ -606,7 +606,7 @@ export default function Navbar() {
             </Link>
 
             {/* 10. Contact Us */}
-            <Link to="/?view=public#contact" onClick={() => setMenuOpen(false)} style={mobileLinkStyle(isActive('/?view=public#contact'))}>
+            <Link to="/#contact" onClick={() => setMenuOpen(false)} style={mobileLinkStyle(isActive('/#contact'))}>
               <Phone size={15} /> Contact Us
             </Link>
 

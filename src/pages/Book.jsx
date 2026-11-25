@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import { PET_TYPES, DOG_BREEDS, CAT_BREEDS, BOOKING_STATUS, buildWhatsAppMessage } from '../utils/services'
 import { ArrowRight, Calendar, Clock, CheckCircle, ChevronLeft, Home, MessageCircle, Package as PackageIcon, PawPrint, Plus, Store, Tag, X, Check, ShieldAlert } from 'lucide-react'
 import { format, addDays, startOfToday } from 'date-fns'
-import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel } from '../utils/bookingSettings'
+import { fetchBookingSettings, getAvailabilityForDate, getBookingTypeLabel, getPaymentModeLabel, getCachedBookingSettings } from '../utils/bookingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { renderServiceIcon } from '../utils/serviceIcons.jsx'
@@ -104,7 +104,7 @@ export default function Book() {
   const [bookingRef, setBookingRef] = useState(null)
   const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('')
   const [shopName, setShopName] = useState('Paw Paw Pet Grooming')
-  const [bookingSettings, setBookingSettings] = useState(null)
+  const [bookingSettings, setBookingSettings] = useState(() => getCachedBookingSettings())
   const [bookingToast, setBookingToast] = useState('')
   const [hasProfilePhone, setHasProfilePhone] = useState(true)
   const [savePhoneToProfile, setSavePhoneToProfile] = useState(true)
@@ -239,7 +239,9 @@ export default function Book() {
     return () => unsubscribe()
   }, [form.date, form.bookingType, bookingSettings?.slotCapacity])
 
-  const availability = getAvailabilityForDate(bookingSettings || undefined, form.date)
+  const availability = bookingSettings
+    ? getAvailabilityForDate(bookingSettings, form.date)
+    : { open: false, storeSlots: [], homeSlots: [], reasons: [] }
   const availableSlots = form.bookingType === 'home' ? availability.homeSlots : availability.storeSlots
   const blockedDateSlots = Array.isArray(bookingSettings?.blockedSlots?.[form.date]) ? bookingSettings.blockedSlots[form.date] : []
   const isToday = form.date === dateKeyLocal()
@@ -1019,7 +1021,16 @@ export default function Book() {
 
               <div style={{ marginBottom: '20px' }}>
                 <label style={S.label}>Visit Type *</label>
-                {visitOptions.length === 0 ? (
+                {!bookingSettings ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
+                    <div style={{ padding: '12px 10px', borderRadius: '12px', background: 'var(--surface)', border: '1.5px solid var(--border)', textAlign: 'center', color: 'var(--muted)', fontSize: '13px' }}>
+                      In Store
+                    </div>
+                    <div style={{ padding: '12px 10px', borderRadius: '12px', background: 'var(--surface)', border: '1.5px solid var(--border)', textAlign: 'center', color: 'var(--muted)', fontSize: '13px' }}>
+                      Home Visit
+                    </div>
+                  </div>
+                ) : visitOptions.length === 0 ? (
                   <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', borderRadius: '12px', padding: '12px', fontSize: '13px' }}>No appointments are available for this date.</div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
@@ -1104,34 +1115,45 @@ export default function Book() {
 
               <div style={{ marginBottom: '20px' }}>
                 <label style={S.label}><Clock size={11} style={{ display: 'inline', marginRight: '4px' }} /> Time Slot *</label>
-                <div className="book-slot-grid" style={{ marginTop: '8px' }}>
-                  {availableSlots.map(slot => {
-                    const isPast = isToday && !isFutureSlotForDate(form.date, slot)
-                    const isBooked = bookedSlots.includes(slot)
-                    const isBlocked = blockedDateSlots.includes(slot)
-                    const isFull = isBooked
-                    const disabled = isPast || isFull || isBlocked
-                    return (
-                      <button
-                        key={slot}
-                        disabled={disabled}
-                        onClick={() => {
-                          if (!disabled) update('slot', slot)
-                        }}
-                        className={`slot-btn slot-btn-available${isPast ? ' slot-btn-past' : ''}${isFull ? ' slot-btn-full' : ''}${isBlocked ? ' slot-btn-blocked' : ''}${form.slot === slot ? ' selected' : ''}`}
-                        title={isBlocked ? 'Blocked by admin' : isFull ? 'This slot is full' : undefined}
-                      >
-                        {slot}
-                      </button>
-                    )
-                  })}
-                </div>
-                {availableSlots.length === 0 ? (
-                  <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '8px' }}>No slots are available for this visit type.</p>
-                ) : bookableSlots.length === 0 ? (
-                  <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '8px' }}>No future slots are available for this visit type today.</p>
+                {!bookingSettings ? (
+                  <div style={{ padding: '24px 16px', textAlign: 'center', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--border)', marginTop: '8px' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'var(--muted)', fontSize: '13px', fontWeight: 600 }}>
+                      <Clock size={16} style={{ animation: 'spin 1.5s linear infinite' }} />
+                      <span>Loading available slots...</span>
+                    </div>
+                  </div>
                 ) : (
-                  <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>Green slots are available. Gray slots are past or already booked. Red slots are unavailable/blocked by admin.</p>
+                  <>
+                    <div className="book-slot-grid" style={{ marginTop: '8px' }}>
+                      {availableSlots.map(slot => {
+                        const isPast = isToday && !isFutureSlotForDate(form.date, slot)
+                        const isBooked = bookedSlots.includes(slot)
+                        const isBlocked = blockedDateSlots.includes(slot)
+                        const isFull = isBooked
+                        const disabled = isPast || isFull || isBlocked
+                        return (
+                          <button
+                            key={slot}
+                            disabled={disabled}
+                            onClick={() => {
+                              if (!disabled) update('slot', slot)
+                            }}
+                            className={`slot-btn slot-btn-available${isPast ? ' slot-btn-past' : ''}${isFull ? ' slot-btn-full' : ''}${isBlocked ? ' slot-btn-blocked' : ''}${form.slot === slot ? ' selected' : ''}`}
+                            title={isBlocked ? 'Blocked by admin' : isFull ? 'This slot is full' : undefined}
+                          >
+                            {slot}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {availableSlots.length === 0 ? (
+                      <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '8px' }}>No slots are available for this visit type.</p>
+                    ) : bookableSlots.length === 0 ? (
+                      <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '8px' }}>No future slots are available for this visit type today.</p>
+                    ) : (
+                      <p style={{ color: 'var(--muted)', fontSize: '11px', marginTop: '8px' }}>Green slots are available. Gray slots are past or already booked. Red slots are unavailable/blocked by admin.</p>
+                    )}
+                  </>
                 )}
               </div>
 

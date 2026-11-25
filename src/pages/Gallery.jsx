@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
-import { collection, getDocs, query, orderBy, limit, startAfter, where } from 'firebase/firestore'
-import { Circle, Grid2X2, Play } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { collection, getDocs } from 'firebase/firestore'
+import { Grid2X2, Play, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
 import { formatVideoDuration } from '../utils/videoCompression'
@@ -12,100 +12,150 @@ const FILTERS = [
 ]
 const PAGE_SIZE = 12
 
-const buildQuery = (cursor) => {
-  const galleryRef = collection(db, 'gallery')
-  const base = query(galleryRef, orderBy('createdAt', 'desc'), limit(PAGE_SIZE))
-  return cursor ? query(base, startAfter(cursor)) : base
-}
-
 const matchesFilter = (item, filter) => filter === 'all' || item.type === filter
 
 const mapDoc = (doc) => {
   const data = doc.data()
-  const type = data.type || (data.duration ? 'video' : 'image')
+  const rawUrl = data.mediaUrl || data.url || ''
+  const isVideoExt = Boolean(rawUrl.match(/\.(mp4|webm|mov|m4v|avi)(\?.*)?$/i))
+  const type = data.type || (data.duration || isVideoExt ? 'video' : 'image')
   return {
     id: doc.id,
     type,
     title: data.title || data.caption || '',
     category: data.category || '',
-    mediaUrl: data.mediaUrl || data.url || '',
+    mediaUrl: rawUrl,
     thumbnailUrl: data.thumbnailUrl || '',
     duration: data.duration || '',
+    position: Number(data.position ?? 0),
     createdAt: data.createdAt,
     active: data.active !== false,
     raw: data,
   }
 }
 
+const sortGalleryItems = (items) => items.slice().sort((a, b) => {
+  const aPos = Number(a.position ?? -1)
+  const bPos = Number(b.position ?? -1)
+  if (bPos !== aPos) return bPos - aPos
+  const aCreated = a.createdAt?.toMillis ? a.createdAt.toMillis() : a.createdAt ? a.createdAt.seconds * 1000 : 0
+  const bCreated = b.createdAt?.toMillis ? b.createdAt.toMillis() : b.createdAt ? b.createdAt.seconds * 1000 : 0
+  return bCreated - aCreated
+})
+
 export default function Gallery() {
   const [filter, setFilter] = useState('all')
-  const [state, setState] = useState({
-    all: { items: [], lastDoc: null, hasMore: true, fetched: false },
-    image: { items: [], lastDoc: null, hasMore: true, fetched: false },
-    video: { items: [], lastDoc: null, hasMore: true, fetched: false },
-  })
+  const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [selectedMedia, setSelectedMedia] = useState(null)
+  const [page, setPage] = useState(1)
+  const [selectedIndex, setSelectedIndex] = useState(null)
 
-  const current = state[filter]
-  const mediaItems = current.items.filter(item => item.active && matchesFilter(item, filter))
-
-  const fetchPage = async (pageFilter, nextPage = false) => {
-    const pageState = state[pageFilter]
-    if (nextPage && !pageState.hasMore) return
-
-    if (nextPage) setLoadingMore(true)
-    else setLoading(true)
-
-    try {
-      const q = buildQuery(nextPage ? pageState.lastDoc : null)
-      const snap = await getDocs(q)
-      const newItems = snap.docs.map(mapDoc)
-      const lastDoc = snap.docs[snap.docs.length - 1] || pageState.lastDoc
-      const hasMore = snap.docs.length === PAGE_SIZE
-
-      setState(prev => ({
-        ...prev,
-        [pageFilter]: {
-          items: nextPage ? [...prev[pageFilter].items, ...newItems] : newItems,
-          lastDoc,
-          hasMore,
-          fetched: true,
-        },
-      }))
-    } catch (error) {
-      console.error('Gallery fetch error', error)
-    } finally {
-      if (nextPage) setLoadingMore(false)
-      else setLoading(false)
-    }
-  }
+  const touchStartX = useRef(null)
+  const touchStartY = useRef(null)
 
   useEffect(() => {
-    if (!state[filter].fetched) {
-      fetchPage(filter)
-    } else {
-      setLoading(false)
+    async function fetchGallery() {
+      setLoading(true)
+      try {
+        const snap = await getDocs(collection(db, 'gallery'))
+        const mapped = snap.docs.map(mapDoc)
+        setItems(sortGalleryItems(mapped))
+      } catch (error) {
+        console.error('Gallery fetch error', error)
+      } finally {
+        setLoading(false)
+      }
     }
-  }, [filter])
+    fetchGallery()
+  }, [])
 
-  const handleLoadMore = () => fetchPage(filter, true)
+  // Filter items matching active tab
+  const filteredItems = useMemo(() => {
+    return items.filter(item => item.active && matchesFilter(item, filter))
+  }, [items, filter])
 
-  const displayedItems = useMemo(() => mediaItems, [mediaItems])
+  // Paginated items
+  const displayedItems = useMemo(() => {
+    return filteredItems.slice(0, page * PAGE_SIZE)
+  }, [filteredItems, page])
+
+  // Only show Load More if there are genuinely more items left in this filter
+  const hasMore = displayedItems.length < filteredItems.length
+
+  const handleLoadMore = () => {
+    setPage(p => p + 1)
+  }
+
+  const handleFilterChange = (newFilter) => {
+    setFilter(newFilter)
+    setPage(1)
+    setSelectedIndex(null)
+  }
+
+  const selectedMedia = selectedIndex !== null ? displayedItems[selectedIndex] : null
+
+  const handlePrevMedia = () => {
+    if (selectedIndex === null || !displayedItems.length) return
+    setSelectedIndex(prev => (prev > 0 ? prev - 1 : displayedItems.length - 1))
+  }
+
+  const handleNextMedia = () => {
+    if (selectedIndex === null || !displayedItems.length) return
+    setSelectedIndex(prev => (prev < displayedItems.length - 1 ? prev + 1 : 0))
+  }
+
+  // Touch Swipe navigation (finger sliding)
+  const handleTouchStart = (e) => {
+    if (!e.touches?.length) return
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+  }
+
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null || !e.changedTouches?.length) return
+    const diffX = touchStartX.current - e.changedTouches[0].clientX
+    const diffY = touchStartY.current - e.changedTouches[0].clientY
+
+    // Horizontal swipe threshold
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 40) {
+      if (diffX > 0) {
+        handleNextMedia()
+      } else {
+        handlePrevMedia()
+      }
+    }
+    touchStartX.current = null
+    touchStartY.current = null
+  }
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (selectedIndex === null) return
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowRight') handleNextMedia()
+      if (e.key === 'ArrowLeft') handlePrevMedia()
+      if (e.key === 'Escape') setSelectedIndex(null)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedIndex, displayedItems.length])
 
   return (
     <div className="gallery-page">
       <div className="gallery-shell">
         <div className="gallery-hero">
-          <p className="gallery-kicker"><Circle size={14} /> Our happy moments <Circle size={14} /></p>
           <h1>Gallery</h1>
-          <p>Capturing the special moments and wagging tails with love, every day.</p>
+          <p className="gallery-desc">Special moments & wagging tails, captured with love.</p>
         </div>
 
         <div className="gallery-filters gallery-type-filters">
           {FILTERS.map(item => (
-            <button key={item.key} type="button" className={filter === item.key ? 'active' : ''} onClick={() => setFilter(item.key)}>
+            <button
+              key={item.key}
+              type="button"
+              className={filter === item.key ? 'active' : ''}
+              onClick={() => handleFilterChange(item.key)}
+            >
               {item.label}
             </button>
           ))}
@@ -113,7 +163,7 @@ export default function Gallery() {
 
         {loading ? (
           <div className="gallery-tile-grid">
-            {Array.from({ length: PAGE_SIZE }).map((_, idx) => (
+            {Array.from({ length: 6 }).map((_, idx) => (
               <div key={idx} className="gallery-skeleton" />
             ))}
           </div>
@@ -126,8 +176,13 @@ export default function Gallery() {
         ) : (
           <>
             <div className="gallery-tile-grid">
-              {displayedItems.map(item => (
-                <button key={item.id} type="button" className="gallery-tile" onClick={() => setSelectedMedia(item)}>
+              {displayedItems.map((item, idx) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="gallery-tile"
+                  onClick={() => setSelectedIndex(idx)}
+                >
                   <div className="gallery-tile-media">
                     {item.type === 'video' ? (
                       <>
@@ -150,10 +205,11 @@ export default function Gallery() {
               ))}
             </div>
 
-            {current.hasMore && (
+            {/* Only display Load More if there are actually remaining items */}
+            {hasMore && (
               <div style={{ textAlign: 'center', marginTop: '28px' }}>
-                <button type="button" className="btn btn-primary" onClick={handleLoadMore} disabled={loadingMore}>
-                  {loadingMore ? 'Loading...' : 'Load More'}
+                <button type="button" className="btn btn-primary" onClick={handleLoadMore}>
+                  Load More
                 </button>
               </div>
             )}
@@ -161,19 +217,88 @@ export default function Gallery() {
         )}
       </div>
 
-      {selectedMedia && (
-        <div onClick={() => setSelectedMedia(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(7, 10, 18, 0.94)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', cursor: 'pointer' }}>
-          <div onClick={e => e.stopPropagation()} style={{ maxWidth: '960px', width: '100%', cursor: 'default' }}>
+      {/* Swipeable Lightbox with finger gesture support */}
+      {selectedMedia && selectedIndex !== null && (
+        <div
+          className="gallery-lightbox"
+          onClick={() => setSelectedIndex(null)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Top Bar with Counter & Close Button */}
+          <div className="gallery-lightbox-top" onClick={e => e.stopPropagation()}>
+            <span className="gallery-lightbox-counter">
+              {selectedIndex + 1} / {displayedItems.length}
+            </span>
+            <button
+              type="button"
+              className="gallery-lightbox-close-btn"
+              onClick={() => setSelectedIndex(null)}
+              aria-label="Close media preview"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Desktop Left Nav Arrow */}
+          {displayedItems.length > 1 && (
+            <button
+              type="button"
+              className="gallery-lightbox-nav prev"
+              onClick={(e) => {
+                e.stopPropagation()
+                handlePrevMedia()
+              }}
+              aria-label="Previous image"
+            >
+              <ChevronLeft size={24} />
+            </button>
+          )}
+
+          {/* Center Media Box */}
+          <div className="gallery-lightbox-content" onClick={e => e.stopPropagation()}>
             {selectedMedia.type === 'video' ? (
-              <video controls autoPlay poster={selectedMedia.thumbnailUrl || undefined} style={{ width: '100%', borderRadius: '16px', maxHeight: '80vh', background: '#000' }}>
+              <video
+                key={selectedMedia.id}
+                controls
+                autoPlay
+                poster={selectedMedia.thumbnailUrl || undefined}
+                className="gallery-lightbox-video"
+              >
                 <source src={selectedMedia.mediaUrl} type="video/mp4" />
                 Your browser does not support the video tag.
               </video>
             ) : (
-              <img src={selectedMedia.mediaUrl} alt={selectedMedia.title || ''} style={{ width: '100%', borderRadius: '16px', maxHeight: '80vh', objectFit: 'contain' }} />
+              <img
+                key={selectedMedia.id}
+                src={selectedMedia.mediaUrl}
+                alt={selectedMedia.title || 'Gallery image'}
+                className="gallery-lightbox-img"
+              />
             )}
-            {selectedMedia.title && <p style={{ color: '#fff', textAlign: 'center', marginTop: '16px', fontSize: '15px' }}>{selectedMedia.title}</p>}
-            <button className="gallery-lightbox-close" onClick={() => setSelectedMedia(null)}>Close</button>
+            {selectedMedia.title && (
+              <p className="gallery-lightbox-caption">{selectedMedia.title}</p>
+            )}
+          </div>
+
+          {/* Desktop Right Nav Arrow */}
+          {displayedItems.length > 1 && (
+            <button
+              type="button"
+              className="gallery-lightbox-nav next"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleNextMedia()
+              }}
+              aria-label="Next image"
+            >
+              <ChevronRight size={24} />
+            </button>
+          )}
+
+          {/* Mobile Swipe Hint */}
+          <div className="gallery-lightbox-hint" onClick={e => e.stopPropagation()}>
+            Swipe left or right to browse
           </div>
         </div>
       )}

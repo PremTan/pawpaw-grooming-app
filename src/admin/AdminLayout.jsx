@@ -43,7 +43,7 @@ export default function AdminLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const isAtDashboard = location.pathname === '/admin' || location.pathname === '/admin/'
-  const homeTarget = isAtDashboard ? '/?view=public' : '/admin'
+  const homeTarget = isAtDashboard ? '/' : '/admin'
   const homeTitle = isAtDashboard ? 'View Customer Home' : 'Back to Admin Dashboard'
 
   useEffect(() => {

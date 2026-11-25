@@ -83,15 +83,6 @@ function AdminRoute({ children }) {
   return children
 }
 
-function AdminHomeRedirect({ children }) {
-  const { isAdmin, loading } = useAuth()
-  const location = useLocation()
-  const forcePublicHome = new URLSearchParams(location.search).get('view') === 'public'
-  if (loading) return <Spinner text="Loading..." />
-  if (isAdmin && !forcePublicHome) return <Navigate to="/admin" replace />
-  return children
-}
-
 function DashboardRedirect() {
   const location = useLocation()
   return <Navigate to={`/admin${location.search}`} replace />
@@ -155,7 +146,7 @@ export default function App() {
 
       {/* Public — main layout */}
       <Route element={<PublicLayout />}>
-        <Route index element={<AdminHomeRedirect><Home /></AdminHomeRedirect>} />
+        <Route index element={<Home />} />
         <Route path="services" element={<Services />} />
         <Route path="services/:serviceId" element={<ServiceDetail />} />
         <Route path="reviews" element={<Reviews />} />
