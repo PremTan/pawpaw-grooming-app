@@ -1220,12 +1220,31 @@ export default function AdminBoarding() {
         }
       )
 
+      const estTotal = editForm.estimatedTotal !== undefined && editForm.estimatedTotal !== ''
+        ? Number(editForm.estimatedTotal)
+        : (stayCalc.estimatedTotal || 0)
+
+      const foodCharge = Number(editForm.specialFoodCharge || 0)
+      const lateFee = Number(editForm.lateCheckOutCharge || 0)
+      const computedTotal = estTotal + foodCharge + lateFee
+      const totalAmt = editForm.totalAmount !== undefined && editForm.totalAmount !== ''
+        ? Number(editForm.totalAmount)
+        : computedTotal
+
+      const amtCollected = Number(editForm.amountCollected || 0)
+      const advAmount = Number(editForm.advanceAmount || 0)
+
       const patch = {
         ...editForm,
         stayDays: stayCalc.days || editForm.stayDays || 1,
         stayNights: stayCalc.nights || editForm.stayNights || 0,
         dailyRate: Number(editForm.dailyRate) || stayCalc.dailyRate || 800,
-        estimatedTotal: stayCalc.estimatedTotal || editForm.estimatedTotal || 0,
+        estimatedTotal: estTotal,
+        totalAmount: totalAmt,
+        amountCollected: amtCollected,
+        advanceAmount: advAmount,
+        specialFoodCharge: foodCharge,
+        lateCheckOutCharge: lateFee,
         updatedAt: serverTimestamp(),
       }
       delete patch.id
@@ -2288,90 +2307,60 @@ export default function AdminBoarding() {
                   </div>
                 </>
               ) : (
-                /* EDIT FORM (Controlled by the single Edit button) */
+                /* EDIT FORM — Essential Stay & Payment details only, ultra-compact matching details style */
                 <div className="boarding-edit-form">
-                  <div className="boarding-section-card">
-                    <h4 className="edit-sec-title">Pet Details</h4>
-                    <div className="filter-two-col">
-                      <div>
-                        <label className="edit-input-label">Pet Name</label>
-                        <input
-                          className="input"
-                          value={editForm.petName || ''}
-                          onChange={e => setEditForm(p => ({ ...p, petName: e.target.value }))}
-                        />
+                  {/* COMPACT SUMMARY HERO */}
+                  <div className="boarding-section-card" style={{ padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                        <div style={{ width: '42px', height: '42px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'var(--accent-bg)', border: '1.5px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {editForm.petPhotoUrl || selectedBooking.petPhotoUrl ? (
+                            <img
+                              src={editForm.petPhotoUrl || selectedBooking.petPhotoUrl}
+                              alt={editForm.petName || 'Pet'}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={e => {
+                                e.currentTarget.style.display = 'none'
+                                if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex'
+                              }}
+                            />
+                          ) : null}
+                          <div style={{ display: (editForm.petPhotoUrl || selectedBooking.petPhotoUrl) ? 'none' : 'flex', color: 'var(--accent)' }}>
+                            <PawPrint size={20} />
+                          </div>
+                        </div>
+
+                        <div style={{ minWidth: 0 }}>
+                          <strong style={{ fontSize: '15.5px', color: 'var(--text)', display: 'block', lineHeight: 1.2 }}>
+                            {editForm.petName || selectedBooking.petName || 'Pet'}
+                          </strong>
+                          <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '2px', lineHeight: 1.3 }}>
+                            {editForm.petType || 'Pet'} {editForm.petBreed ? `• ${editForm.petBreed}` : ''}
+                          </div>
+                          <div style={{ fontSize: '11.5px', color: 'var(--text)', fontWeight: 600, marginTop: '1px' }}>
+                            Owner: <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{editForm.ownerName || selectedBooking.ownerName || 'N/A'}</span>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <label className="edit-input-label">Pet Type</label>
-                        <select
-                          className="input"
-                          value={editForm.petType || 'Dog'}
-                          onChange={e => setEditForm(p => ({ ...p, petType: e.target.value }))}
-                        >
-                          <option value="Dog">Dog</option>
-                          <option value="Cat">Cat</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="edit-input-label">Breed</label>
-                        <input
-                          className="input"
-                          value={editForm.petBreed || ''}
-                          onChange={e => setEditForm(p => ({ ...p, petBreed: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <label className="edit-input-label">Weight (kg)</label>
-                        <input
-                          className="input"
-                          value={editForm.petWeight || ''}
-                          onChange={e => setEditForm(p => ({ ...p, petWeight: e.target.value }))}
-                        />
-                      </div>
+
+                      {(editForm.phone || selectedBooking.phone) && (
+                        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', padding: '4px 10px', borderRadius: '999px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          {editForm.phone || selectedBooking.phone}
+                        </div>
+                      )}
                     </div>
                   </div>
 
+                  {/* STAY DATES & TIMES (Side-by-side) */}
                   <div className="boarding-section-card">
-                    <h4 className="edit-sec-title">Owner & Emergency Contact</h4>
-                    <div className="filter-two-col">
-                      <div>
-                        <label className="edit-input-label">Owner Name</label>
-                        <input
-                          className="input"
-                          value={editForm.ownerName || ''}
-                          onChange={e => setEditForm(p => ({ ...p, ownerName: e.target.value }))}
-                        />
+                    <div className="section-card-header">
+                      <div className="section-icon-wrap calendar">
+                        <Calendar size={15} />
                       </div>
-                      <div>
-                        <label className="edit-input-label">Phone Number</label>
-                        <input
-                          className="input"
-                          value={editForm.phone || ''}
-                          onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <label className="edit-input-label">Email</label>
-                        <input
-                          className="input"
-                          value={editForm.userEmail || ''}
-                          onChange={e => setEditForm(p => ({ ...p, userEmail: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <label className="edit-input-label">Emergency Phone</label>
-                        <input
-                          className="input"
-                          value={editForm.emergencyContactPhone || ''}
-                          onChange={e => setEditForm(p => ({ ...p, emergencyContactPhone: e.target.value }))}
-                        />
-                      </div>
+                      <h3>Stay Schedule & Dates</h3>
                     </div>
-                  </div>
 
-                  <div className="boarding-section-card">
-                    <h4 className="edit-sec-title">Stay Dates & Daily Rate</h4>
-                    <div className="filter-two-col">
+                    <div className="edit-form-grid">
                       <div>
                         <label className="edit-input-label">Check-In Date</label>
                         <input
@@ -2406,44 +2395,109 @@ export default function AdminBoarding() {
                           onChange={e => setEditForm(p => ({ ...p, checkOutTime: e.target.value }))}
                         />
                       </div>
+                      {/* Actual Check-out fields shown only when reservation is completed / checked-out */}
+                      {(editForm.status === 'checked_out' || editForm.status === 'completed' || selectedBooking.status === 'checked_out' || selectedBooking.status === 'completed') && (
+                        <>
+                          <div>
+                            <label className="edit-input-label">Actual Check-Out Date</label>
+                            <input
+                              type="date"
+                              className="input"
+                              value={editForm.actualCheckOutDate || ''}
+                              onChange={e => setEditForm(p => ({ ...p, actualCheckOutDate: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="edit-input-label">Actual Check-Out Time</label>
+                            <input
+                              className="input"
+                              value={editForm.actualCheckOutTime || ''}
+                              placeholder="e.g. 06:30 PM"
+                              onChange={e => setEditForm(p => ({ ...p, actualCheckOutTime: e.target.value }))}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* BILLING & PAYMENT AMOUNTS (Side-by-side) */}
+                  <div className="boarding-section-card">
+                    <div className="section-card-header">
+                      <div className="section-icon-wrap wallet">
+                        <Wallet size={15} />
+                      </div>
+                      <h3>Billing & Payment Amounts</h3>
+                    </div>
+
+                    <div className="edit-form-grid">
                       <div>
                         <label className="edit-input-label">Daily Rate (₹)</label>
                         <input
                           type="number"
                           className="input"
-                          value={editForm.dailyRate || 800}
+                          value={editForm.dailyRate !== undefined ? editForm.dailyRate : 800}
                           onChange={e => setEditForm(p => ({ ...p, dailyRate: Number(e.target.value) }))}
                         />
                       </div>
-                    </div>
-                  </div>
-
-                  <div className="boarding-section-card">
-                    <h4 className="edit-sec-title">Health & Instructions</h4>
-                    <div style={{ display: 'grid', gap: '10px' }}>
                       <div>
-                        <label className="edit-input-label">Vaccination Status</label>
+                        <label className="edit-input-label">Base Stay Total (₹)</label>
                         <input
+                          type="number"
                           className="input"
-                          value={editForm.vaccinationStatus || ''}
-                          onChange={e => setEditForm(p => ({ ...p, vaccinationStatus: e.target.value }))}
+                          value={editForm.estimatedTotal !== undefined ? editForm.estimatedTotal : ''}
+                          onChange={e => setEditForm(p => ({ ...p, estimatedTotal: e.target.value === '' ? '' : Number(e.target.value) }))}
+                          placeholder="Auto-calculated from dates"
                         />
                       </div>
                       <div>
-                        <label className="edit-input-label">Vaccine / Medical Notes</label>
+                        <label className="edit-input-label">Advance Paid (₹)</label>
                         <input
+                          type="number"
                           className="input"
-                          value={editForm.vaccinationNotes || ''}
-                          onChange={e => setEditForm(p => ({ ...p, vaccinationNotes: e.target.value }))}
+                          style={{ borderColor: 'rgba(212, 175, 55, 0.5)', fontWeight: 600 }}
+                          value={editForm.advanceAmount !== undefined ? editForm.advanceAmount : (editForm.advancePaid || 0)}
+                          onChange={e => setEditForm(p => ({ ...p, advanceAmount: Number(e.target.value) }))}
+                          placeholder="Advance payment"
                         />
                       </div>
                       <div>
-                        <label className="edit-input-label">Special Requests / Care Notes</label>
-                        <textarea
+                        <label className="edit-input-label">Amount Collected (₹)</label>
+                        <input
+                          type="number"
                           className="input"
-                          rows={2}
-                          value={editForm.additionalInstructions || ''}
-                          onChange={e => setEditForm(p => ({ ...p, additionalInstructions: e.target.value }))}
+                          style={{ borderColor: '#16a34a', fontWeight: 700, color: '#16a34a' }}
+                          value={editForm.amountCollected !== undefined ? editForm.amountCollected : 0}
+                          onChange={e => setEditForm(p => ({ ...p, amountCollected: Number(e.target.value) }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Special Food Charge (₹)</label>
+                        <input
+                          type="number"
+                          className="input"
+                          value={editForm.specialFoodCharge !== undefined ? editForm.specialFoodCharge : 0}
+                          onChange={e => setEditForm(p => ({ ...p, specialFoodCharge: Number(e.target.value) }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="edit-input-label">Late Checkout Charge (₹)</label>
+                        <input
+                          type="number"
+                          className="input"
+                          value={editForm.lateCheckOutCharge !== undefined ? editForm.lateCheckOutCharge : 0}
+                          onChange={e => setEditForm(p => ({ ...p, lateCheckOutCharge: Number(e.target.value) }))}
+                        />
+                      </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <label className="edit-input-label">Total Amount (₹)</label>
+                        <input
+                          type="number"
+                          className="input"
+                          style={{ borderColor: 'var(--accent)', fontWeight: 700 }}
+                          value={editForm.totalAmount !== undefined ? editForm.totalAmount : ''}
+                          onChange={e => setEditForm(p => ({ ...p, totalAmount: e.target.value === '' ? '' : Number(e.target.value) }))}
+                          placeholder="Final total"
                         />
                       </div>
                     </div>
@@ -5427,7 +5481,34 @@ export default function AdminBoarding() {
           box-sizing: border-box;
         }
 
-        .boarding-edit-form .filter-two-col > div {
+        .boarding-edit-form {
+          width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .boarding-edit-form .boarding-section-card {
+          padding: 14px 16px;
+          margin-bottom: 0;
+        }
+
+        .boarding-edit-form .section-card-header {
+          margin-bottom: 10px;
+          padding-bottom: 6px;
+        }
+
+        .edit-form-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px 12px;
+          width: 100%;
+          box-sizing: border-box;
+        }
+
+        .edit-form-grid > div {
           min-width: 0;
           box-sizing: border-box;
         }
@@ -5439,6 +5520,9 @@ export default function AdminBoarding() {
           width: 100%;
           max-width: 100%;
           min-width: 0;
+          padding: 7px 11px;
+          font-size: 13px;
+          border-radius: 9px;
           box-sizing: border-box;
         }
 
@@ -5799,6 +5883,20 @@ export default function AdminBoarding() {
           .boarding-edit-form .boarding-section-card {
             padding: 12px 12px;
             border-radius: 14px;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+          }
+
+          .boarding-edit-form .edit-form-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px 10px;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+          }
+
+          .boarding-edit-form .edit-form-grid > div {
             width: 100%;
             min-width: 0;
             box-sizing: border-box;
