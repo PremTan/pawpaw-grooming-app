@@ -1,5 +1,5 @@
 // src/App.jsx
-import { useEffect, Suspense, lazy } from 'react'
+import { useState, useEffect, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
@@ -7,6 +7,7 @@ import Footer from './components/Footer'
 import MobileBottomNav from './components/MobileBottomNav'
 import Spinner from './components/Spinner'
 import SEO from './components/SEO'
+import AdminErrorBoundary from './components/AdminErrorBoundary'
 import { lazyWithRetry } from './utils/lazyWithRetry'
 
 // Pages
@@ -77,9 +78,35 @@ function ProtectedRoute({ children }) {
 
 function AdminRoute({ children }) {
   const { user, isAdmin, loading } = useAuth()
-  if (loading) return <Spinner text="Checking access..." />
+  if (loading) return <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spinner text="Checking access..." /></div>
   if (!user) return <Navigate to="/login" replace />
   if (!isAdmin) return <Navigate to="/" replace />
+  return children
+}
+
+let isInitialAppLaunch = true
+
+function AdminHomeRedirect({ children }) {
+  const { user, isAdmin, loading } = useAuth()
+  const [shouldRedirect] = useState(() => isInitialAppLaunch)
+
+  useEffect(() => {
+    isInitialAppLaunch = false
+  }, [])
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spinner text="Loading..." />
+      </div>
+    )
+  }
+
+  // If opening the website or PWA afresh at root "/", redirect admin directly to /admin dashboard
+  if (user && isAdmin && shouldRedirect) {
+    return <Navigate to="/admin" replace />
+  }
+
   return children
 }
 
@@ -109,7 +136,7 @@ export default function App() {
       <Suspense fallback={<div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spinner text="Loading..." /></div>}>
         <Routes>
         {/* Admin — own layout */}
-        <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
+        <Route path="/admin" element={<AdminErrorBoundary><AdminRoute><AdminLayout /></AdminRoute></AdminErrorBoundary>}>
         <Route index            element={<AdminDashboard />} />
         <Route path="dashboard" element={<DashboardRedirect />} />
         <Route path="today"     element={<AdminTodayOperations />} />
@@ -146,7 +173,7 @@ export default function App() {
 
       {/* Public — main layout */}
       <Route element={<PublicLayout />}>
-        <Route index element={<Home />} />
+        <Route index element={<AdminHomeRedirect><Home /></AdminHomeRedirect>} />
         <Route path="services" element={<Services />} />
         <Route path="services/:serviceId" element={<ServiceDetail />} />
         <Route path="reviews" element={<Reviews />} />
