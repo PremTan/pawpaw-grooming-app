@@ -112,11 +112,11 @@ export default function Profile() {
   const normalizeAddresses = (list = []) => {
     const normalized = Array.isArray(list)
       ? list.map(item => ({
-          id: item.id || `address-${Math.random().toString(36).slice(2)}`,
-          type: ADDRESS_TYPES.includes(item.type) ? item.type : 'Home',
-          address: (item.address || '').trim(),
-          isDefault: item.isDefault === true,
-        }))
+        id: item.id || `address-${Math.random().toString(36).slice(2)}`,
+        type: ADDRESS_TYPES.includes(item.type) ? item.type : 'Home',
+        address: (item.address || '').trim(),
+        isDefault: item.isDefault === true,
+      }))
         .filter(item => item.address)
       : []
 
@@ -531,7 +531,7 @@ export default function Profile() {
               </div>
               <div className="profile-quick-text">
                 <div className="profile-quick-title">My Bookings</div>
-                <div className="profile-quick-sub">Grooming & Boarding</div>
+                <div className="profile-quick-sub">View</div>
               </div>
               <ChevronRight size={16} className="profile-quick-arrow" />
             </Link>

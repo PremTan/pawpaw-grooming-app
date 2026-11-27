@@ -3233,20 +3233,22 @@ ${portalUrl}`
                 )}
               </div>
 
-              {/* 🐾 Walk Report Card in Admin Panel (Independent Card) */}
+              {/* 🐾 Walk Report Card / Live Activities in Admin Panel */}
               {(selectedBooking.walkReport || selectedBooking.walkActivities || (Array.isArray(selectedBooking.walkReports) && selectedBooking.walkReports.length > 0)) && (() => {
                 const adminReports = Array.isArray(selectedBooking.walkReports) && selectedBooking.walkReports.length > 0
                   ? selectedBooking.walkReports
                   : (selectedBooking.walkReport ? [selectedBooking.walkReport] : [])
                 const currentReport = adminReports[adminReportIndex] || adminReports[0] || selectedBooking.walkReport || {}
+                const isLiveSession = (selectedBooking.status === WALKING_STATUS.IN_PROGRESS || selectedBooking.status === 'in_progress') && (!currentReport.completedAt && adminReports.length === 0)
 
                 return (
                   <div className="walking-details-section">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
                       <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Footprints size={14} color="var(--accent)" /> Walk Report Card {selectedBooking.planType && selectedBooking.planType !== 'single' ? `(Walk #${currentReport.walkIndex || adminReportIndex + 1} of ${selectedBooking.totalWalks || (selectedBooking.planType === 'monthly' ? (selectedBooking.frequency === 'twice_daily' ? 52 : 26) : (selectedBooking.frequency === 'twice_daily' ? 14 : 7))})` : adminReports.length > 1 ? `(${adminReports.length} Walks)` : ''}
+                        <Footprints size={14} color={isLiveSession ? '#16a34a' : 'var(--accent)'} />
+                        {isLiveSession ? 'Live Walk Care Activities (In Progress)' : `Walk Report Card ${selectedBooking.planType && selectedBooking.planType !== 'single' ? `(Walk #${currentReport.walkIndex || adminReportIndex + 1} of ${selectedBooking.totalWalks || (selectedBooking.planType === 'monthly' ? (selectedBooking.frequency === 'twice_daily' ? 52 : 26) : (selectedBooking.frequency === 'twice_daily' ? 14 : 7))})` : adminReports.length > 1 ? `(${adminReports.length} Walks)` : ''}`}
                       </span>
-                      {selectedBooking.phone && (
+                      {!isLiveSession && selectedBooking.phone && (
                         <a
                           href={`https://wa.me/${(selectedBooking.whatsappNumber || selectedBooking.phone).replace(/\D/g, '')}?text=${generateWhatsAppReportMessage(selectedBooking, currentReport)}`}
                           target="_blank"
@@ -3307,25 +3309,43 @@ ${portalUrl}`
                     )}
 
                     {/* Walk Date & Session Timestamp */}
-                    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '8px 12px', marginBottom: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-                      <span style={{ color: 'var(--text)', fontWeight: 700 }}>
-                        📅 Walk Completed: {(() => {
-                          const dateObj = currentReport.completedAt ? new Date(currentReport.completedAt) : (currentReport.date ? new Date(currentReport.date) : null)
-                          const dStr = dateObj && !isNaN(dateObj.getTime())
-                            ? dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-                            : (currentReport.date || 'Completed')
-                          const tStr = dateObj && !isNaN(dateObj.getTime())
-                            ? dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-                            : (currentReport.walkTime || '')
-                          return `${dStr}${tStr ? ` at ${tStr}` : ''}`
-                        })()}
-                      </span>
-                      {currentReport.sessionPeriod && (
-                        <span style={{ background: currentReport.sessionPeriod === 'Morning' ? '#FEF3C7' : '#E0E7FF', color: currentReport.sessionPeriod === 'Morning' ? '#B45309' : '#4338CA', padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 800 }}>
-                          {currentReport.sessionPeriod === 'Morning' ? '🌅 Morning Walk' : '🌆 Evening Walk'}
+                    {isLiveSession ? (
+                      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '8px 12px', marginBottom: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                        <span style={{ color: '#15803d', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                          Walk in Progress {(() => {
+                            const started = selectedBooking.walkStartedAt?.toDate ? selectedBooking.walkStartedAt.toDate() : (selectedBooking.walkStartedAt ? new Date(selectedBooking.walkStartedAt) : null)
+                            if (started && !isNaN(started.getTime())) {
+                              return `· Started at ${started.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`
+                            }
+                            return ''
+                          })()}
                         </span>
-                      )}
-                    </div>
+                        <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 800 }}>
+                          🟢 LIVE SESSION
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '8px 12px', marginBottom: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                        <span style={{ color: 'var(--text)', fontWeight: 700 }}>
+                          📅 Walk Completed: {(() => {
+                            const dateObj = currentReport.completedAt ? new Date(currentReport.completedAt) : (currentReport.date ? new Date(currentReport.date) : (selectedBooking.walkCompletedAt ? (selectedBooking.walkCompletedAt?.toDate ? selectedBooking.walkCompletedAt.toDate() : new Date(selectedBooking.walkCompletedAt)) : null))
+                            const dStr = dateObj && !isNaN(dateObj.getTime())
+                              ? dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                              : (currentReport.date || selectedBooking.date || '')
+                            const tStr = dateObj && !isNaN(dateObj.getTime())
+                              ? dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                              : (currentReport.walkTime || '')
+                            return `${dStr}${tStr ? ` at ${tStr}` : ''}`
+                          })()}
+                        </span>
+                        {currentReport.sessionPeriod && (
+                          <span style={{ background: currentReport.sessionPeriod === 'Morning' ? '#FEF3C7' : '#E0E7FF', color: currentReport.sessionPeriod === 'Morning' ? '#B45309' : '#4338CA', padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 800 }}>
+                            {currentReport.sessionPeriod === 'Morning' ? '🌅 Morning Walk' : '🌆 Evening Walk'}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Care Activities Stats Grid */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '6px', textAlign: 'center', marginBottom: '8px' }}>

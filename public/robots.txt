@@ -1,3 +1,10 @@
-# Paw Paw Pet Grooming - Development Environment (Do NOT index)
+# Paw Paw Pet Grooming & Boarding - Production robots.txt
 User-agent: *
-Disallow: /
+Allow: /
+Disallow: /admin/
+Disallow: /admin
+Disallow: /walker/
+Disallow: /walker
+Disallow: /api/
+
+Sitemap: https://pawpawpetgrooming.in/sitemap.xml

@@ -157,13 +157,17 @@ function getWalkReportsList(booking) {
   if (Array.isArray(booking.walkReports) && booking.walkReports.length > 0) {
     return booking.walkReports
   }
-  if (booking.walkReport || booking.walkActivities || booking.walkCompletedAt) {
+  // During an active walk before completion, do not fabricate a completed report just because walkActivities exists!
+  if (booking.status === 'in_progress') {
+    return []
+  }
+  if (booking.walkReport || (booking.status === 'completed' && (booking.walkCompletedAt || booking.walkActivities))) {
     return [{
       id: 'rep_1',
       walkIndex: 1,
       totalWalks: Number(booking.totalWalks || (booking.planType === 'monthly' ? (booking.frequency === 'twice_daily' ? 52 : 26) : (booking.frequency === 'twice_daily' ? 14 : 7))),
       date: booking.date || '',
-      completedAt: booking.walkCompletedAt?.toDate ? booking.walkCompletedAt.toDate().toISOString() : new Date().toISOString(),
+      completedAt: booking.walkCompletedAt?.toDate ? booking.walkCompletedAt.toDate().toISOString() : (booking.walkCompletedAt || new Date().toISOString()),
       durationSeconds: booking.walkDurationSeconds || booking.walkReport?.durationSeconds || 0,
       distanceMeters: booking.walkDistanceMeters || booking.walkReport?.distanceMeters || 0,
       pace: booking.walkPace || booking.walkReport?.pace || '',
@@ -895,6 +899,7 @@ export default function MyBookings() {
 
   // Open Rating Modal (Overall or specific session index)
   const handleOpenRatingModal = (booking, sessionIndex = null) => {
+    if (!booking || booking.status === 'in_progress') return
     setRatingTarget(booking)
     setRatingSessionIndex(sessionIndex)
     const reports = getWalkReportsList(booking)
@@ -2011,7 +2016,7 @@ export default function MyBookings() {
                         </button>
 
                         {/* Rate Walker Button */}
-                        {getWalkReportsList(w).length > 0 && (
+                        {(w.status === 'completed' || (getWalkReportsList(w).length > 0 && w.status !== 'in_progress')) && (
                           <button
                             type="button"
                             className="my-booking-card-btn"
@@ -3960,6 +3965,39 @@ export default function MyBookings() {
                       </div>
                     )}
 
+                    {/* 🐾 Live Walk Care & Activities Preview (When Walk is in progress) */}
+                    {selectedWalking.status === 'in_progress' && selectedWalking.walkActivities && (
+                      <div style={{ marginTop: '14px', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '16px', padding: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                            Live Walk Care & Activities
+                          </span>
+                          <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 800 }}>
+                            🟢 In Progress
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', textAlign: 'center' }}>
+                          <div style={{ background: '#fff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '6px 2px' }}>
+                            <span style={{ fontSize: '14px', display: 'block' }}>💧</span>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#1e40af' }}>{selectedWalking.walkActivities?.pee || 0} Pee</span>
+                          </div>
+                          <div style={{ background: '#fff', border: '1px solid #fde68a', borderRadius: '10px', padding: '6px 2px' }}>
+                            <span style={{ fontSize: '14px', display: 'block' }}>💩</span>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#92400e' }}>{selectedWalking.walkActivities?.poo || 0} Poo</span>
+                          </div>
+                          <div style={{ background: '#fff', border: '1px solid #a7f3d0', borderRadius: '10px', padding: '6px 2px' }}>
+                            <span style={{ fontSize: '14px', display: 'block' }}>🥤</span>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#065f46' }}>{selectedWalking.walkActivities?.water ? 'Hydrated' : 'No'}</span>
+                          </div>
+                          <div style={{ background: '#fff', border: '1px solid #fcd34d', borderRadius: '10px', padding: '6px 2px' }}>
+                            <span style={{ fontSize: '14px', display: 'block' }}>🦴</span>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#78350f' }}>{selectedWalking.walkActivities?.treats || 0} Treats</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* 🐾 Walk Report Card for Pet Parent */}
                     {getWalkReportsList(selectedWalking).length > 0 && (() => {
                       const reports = getWalkReportsList(selectedWalking)
@@ -4021,7 +4059,7 @@ export default function MyBookings() {
                                 const dateObj = rep.completedAt ? new Date(rep.completedAt) : (rep.date ? new Date(rep.date) : null)
                                 const dStr = dateObj && !isNaN(dateObj.getTime())
                                   ? dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-                                  : (rep.date || 'Completed')
+                                  : (rep.date || '')
                                 const tStr = dateObj && !isNaN(dateObj.getTime())
                                   ? dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
                                   : (rep.walkTime || '')
@@ -4125,32 +4163,34 @@ export default function MyBookings() {
                           )}
 
                           {/* Rating button for this session */}
-                          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: '10px', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            {rep.walkerRating ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '12px', fontWeight: 700, color: '#b45309' }}>
-                                  ⭐ Rated {rep.walkerRating}/5 Stars
+                          {selectedWalking.status !== 'in_progress' && (
+                            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: '10px', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              {rep.walkerRating ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#b45309' }}>
+                                    ⭐ Rated {rep.walkerRating}/5 Stars
+                                  </span>
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+                                  Rate this walk session:
                                 </span>
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
-                                Rate this walk session:
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleOpenRatingModal(selectedWalking, detailsReportIndex || 0)}
-                              style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', color: 'var(--accent)', borderRadius: '8px', padding: '4px 10px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
-                            >
-                              {rep.walkerRating ? 'Edit Rating' : '⭐ Rate This Walk'}
-                            </button>
-                          </div>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenRatingModal(selectedWalking, detailsReportIndex || 0)}
+                                style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', color: 'var(--accent)', borderRadius: '8px', padding: '4px 10px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                              >
+                                {rep.walkerRating ? 'Edit Rating' : '⭐ Rate This Walk'}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )
                     })()}
 
                     {/* 🌟 Walker Review by Pet Parent */}
-                    {(selectedWalking.status === 'completed' || getWalkReportsList(selectedWalking).length > 0) && (
+                    {(selectedWalking.status === 'completed' || (getWalkReportsList(selectedWalking).length > 0 && selectedWalking.status !== 'in_progress')) && (
                       selectedWalking.walkerRating ? (
                         <div style={{ marginTop: '14px', background: '#FFFDF5', border: '1.5px solid #FDE68A', borderRadius: '16px', padding: '14px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -4536,13 +4576,15 @@ export default function MyBookings() {
 
               {/* Modal Footer */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
-                <button
-                  type="button"
-                  onClick={() => handleOpenRatingModal(reportsModalBooking, null)}
-                  style={{ background: 'none', border: 'none', color: '#B45309', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                >
-                  <Star size={13} fill="#F59E0B" color="#F59E0B" /> Rate Walker Overall
-                </button>
+                {reportsModalBooking.status !== 'in_progress' ? (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenRatingModal(reportsModalBooking, null)}
+                    style={{ background: 'none', border: 'none', color: '#B45309', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <Star size={13} fill="#F59E0B" color="#F59E0B" /> Rate Walker Overall
+                  </button>
+                ) : <span />}
                 <button
                   type="button"
                   onClick={() => setReportsModalBooking(null)}
