@@ -655,12 +655,16 @@ export default function WalkerPortal() {
       }
 
       const newSessionId = generateUniqueToken()
-      await updateDoc(doc(db, 'teamMembers', matched.id), {
-        activeSessionId: newSessionId,
-        lastLoginAt: serverTimestamp(),
-        lastActiveDevice: typeof navigator !== 'undefined' ? navigator.userAgent?.slice(0, 80) : 'Mobile',
-        updatedAt: serverTimestamp(),
-      })
+      try {
+        await updateDoc(doc(db, 'teamMembers', matched.id), {
+          activeSessionId: newSessionId,
+          lastLoginAt: serverTimestamp(),
+          lastActiveDevice: typeof navigator !== 'undefined' ? navigator.userAgent?.slice(0, 80) : 'Mobile',
+          updatedAt: serverTimestamp(),
+        })
+      } catch (sessionErr) {
+        console.warn('Could not record activeSessionId on teamMembers (non-admin device):', sessionErr)
+      }
 
       const newSession = {
         walkerId: matched.id,

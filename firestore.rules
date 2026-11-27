@@ -68,23 +68,22 @@ service cloud.firestore {
     }
 
     match /walkingBookings/{id} {
-      allow read: if request.auth != null;
+      allow read: if true;
       allow write: if isAdmin();
 
       allow create: if request.auth != null &&
                     request.auth.uid == request.resource.data.userId;
 
-      allow update: if request.auth != null &&
+      allow update: if isAdmin() ||
                     (
-                      isAdmin() ||
-                      (
-                        request.auth.uid == resource.data.userId &&
-                        request.resource.data.userId == resource.data.userId &&
-                        resource.data.status in ['pending', 'confirmed'] &&
-                        request.resource.data.status == 'cancelled' &&
-                        request.resource.data.cancelledBy == 'user'
-                      )
-                    );
+                      request.auth != null &&
+                      request.auth.uid == resource.data.userId &&
+                      request.resource.data.userId == resource.data.userId &&
+                      resource.data.status in ['pending', 'confirmed'] &&
+                      request.resource.data.status == 'cancelled' &&
+                      request.resource.data.cancelledBy == 'user'
+                    ) ||
+                    request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'walkerArrivalStatus', 'arrivedAt', 'startedAt', 'completedAt', 'liveLocation', 'routeTrail', 'walkDistanceMeters', 'walkDurationSeconds', 'walkActivities', 'walkPhotos', 'walkerNotes', 'hasEmergency', 'emergencyStatus', 'emergencyType', 'emergencyNotes', 'emergencyAt', 'emergencyResolvedAt', 'updatedAt']);
       allow delete: if isAdmin();
     }
 
@@ -120,8 +119,8 @@ service cloud.firestore {
       }
 
       allow read: if isRecipient(resource.data);
-      allow create: if isNotBlocked() &&
-                    (request.resource.data.userId is string || request.resource.data.userEmail is string);
+      allow create: if (request.auth == null) || (isNotBlocked() &&
+                    (request.resource.data.userId is string || request.resource.data.userEmail is string));
       allow update: if request.auth != null &&
                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       allow delete: if isNotBlocked() && (isAdmin() || isRecipient(resource.data));
@@ -150,7 +149,10 @@ service cloud.firestore {
 
     match /teamMembers/{id} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow update: if isAdmin() ||
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeSessionId', 'lastLoginAt', 'lastActiveDevice', 'updatedAt']) ||
+                    (resource.data.activationToken != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['passwordHash', 'salt', 'isActivated', 'activatedAt', 'activationToken', 'activeSessionId', 'lastLoginAt', 'lastActiveDevice', 'updatedAt']));
+      allow create, delete: if isAdmin();
     }
 
     match /employeePayments/{id} {
