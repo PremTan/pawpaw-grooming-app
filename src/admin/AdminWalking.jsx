@@ -3581,7 +3581,7 @@ ${portalUrl}`
                 {selectedBooking.status === WALKING_STATUS.CONFIRMED && (
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--muted)', background: 'var(--surface)', padding: '7px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                     <Footprints size={14} color="var(--accent)" />
-                    <span>Awaiting Walker to start live GPS walk in <a href="/walker" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', fontWeight: 800, textDecoration: 'underline' }}>Walker Portal ↗</a></span>
+                    <span>Awaiting {selectedBooking.assignedTeamMemberName || selectedBooking.assignedWalkerName ? `${selectedBooking.assignedTeamMemberName || selectedBooking.assignedWalkerName} (Walker)` : 'Walker'} to start live GPS walk</span>
                   </div>
                 )}
 
