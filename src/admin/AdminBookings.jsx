@@ -19,6 +19,7 @@ import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { OWNER_ASSIGNEE_ID, buildAssigneePatch, getAssigneeLabel, getBookingAssignee, getOwnerAssignee } from '../utils/teamMembers'
 import { uploadToCloudinary } from '../utils/cloudinary'
 import { IMAGE_FILE_ACCEPT, cropImageFile, validateImageFile } from '../utils/imageCompression'
+import { fetchSuperCoinSettings, calculateCoinsEarned, creditSuperCoins } from '../utils/superCoins'
 
 const STATUS_OPTS = ['all', 'pending', 'confirmed', 'completed', 'cancelled']
 const BADGE = { pending: 'badge-pending', confirmed: 'badge-confirmed', completed: 'badge-completed', cancelled: 'badge-cancelled' }
@@ -879,6 +880,28 @@ export default function AdminBookings() {
         updatedAt: new Date(),
         completedAt: new Date(),
       })
+
+      if (cashModal.userId && cashModal.userId !== 'walkin' && !cashModal.superCoinsCredited) {
+        try {
+          const scSettings = await fetchSuperCoinSettings(db)
+          const earnedCoins = calculateCoinsEarned(amt || cashModal.estimatedTotal || 0, scSettings, 1)
+          if (earnedCoins > 0) {
+            await creditSuperCoins(db, {
+              userId: cashModal.userId,
+              coins: earnedCoins,
+              bookingId: cashModal.id,
+              serviceType: 'grooming',
+              description: `Earned on Grooming appointment #${cashModal.id.slice(0, 6).toUpperCase()}`
+            })
+            await updateDoc(doc(db, 'bookings', cashModal.id), {
+              superCoinsCredited: true,
+              superCoinsEarned: earnedCoins
+            }).catch(() => {})
+          }
+        } catch (scErr) {
+          console.warn('SuperCoins credit failed:', scErr)
+        }
+      }
       await syncPublicStats(db)
       setToastType('success')
       setToastMessage('Appointment marked completed successfully.')
@@ -1148,6 +1171,11 @@ export default function AdminBookings() {
                   {b.couponCode && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent-border)', borderRadius: '999px', padding: '2px 8px', fontSize: '11px', fontWeight: 800 }}>
                       <Tag size={10} /> {b.couponCode} {b.discountAmount ? `(-Rs ${money(b.discountAmount)})` : ''}
+                    </span>
+                  )}
+                  {b.superCoinsUsed > 0 && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A', borderRadius: '999px', padding: '2px 8px', fontSize: '11px', fontWeight: 800 }}>
+                      🪙 {b.superCoinsUsed} coins (-Rs {money(b.superCoinsDiscount || b.superCoinsUsed)})
                     </span>
                   )}
                   {b.amountCollected > 0 && <span className="admin-booking-money">Rs {money(b.amountCollected)}</span>}
@@ -1880,6 +1908,14 @@ export default function AdminBookings() {
                     </span>
                     <span>-Rs {money(cashModal.discountAmount || 0)}</span>
                   </div>
+                  {Number(cashModal.superCoinsUsed) > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#d97706', fontWeight: 700 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                        🪙 SuperCoins Redeemed ({cashModal.superCoinsUsed} coins)
+                      </span>
+                      <span>-Rs {money(cashModal.superCoinsDiscount || cashModal.superCoinsUsed)}</span>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(217, 119, 6, 0.2)', paddingTop: '6px', fontWeight: 800, color: 'var(--text)' }}>
                     <span>Estimated Total (Autofilled)</span>
                     <span style={{ color: 'var(--gold-dark, #b45309)' }}>
@@ -2643,6 +2679,14 @@ function BookingDetailModal({ booking, adminWhatsappNumber, shopName, updating, 
                       <span className="admin-detail-kv-label">Discount Applied</span>
                       <span className="admin-detail-kv-value" style={{ color: '#16a34a', fontWeight: 700 }}>
                         -Rs {money(booking.discountAmount)}
+                      </span>
+                    </div>
+                  )}
+                  {booking.superCoinsUsed > 0 && (
+                    <div className="admin-detail-kv-item">
+                      <span className="admin-detail-kv-label">SuperCoins Redeemed</span>
+                      <span className="admin-detail-kv-value" style={{ color: '#d97706', fontWeight: 700 }}>
+                        🪙 {booking.superCoinsUsed} coins (-Rs {money(booking.superCoinsDiscount || booking.superCoinsUsed)})
                       </span>
                     </div>
                   )}

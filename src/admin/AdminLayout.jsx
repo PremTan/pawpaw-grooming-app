@@ -4,7 +4,7 @@ import { Link, Outlet, NavLink, useNavigate, useLocation } from 'react-router-do
 import { doc, setDoc } from 'firebase/firestore'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
-import { Ban, Building2, LayoutDashboard, CalendarCheck, CalendarClock, Home, MessageSquare, Users, UserRoundCog, Image, Images, Package, LogOut, ReceiptText, Scissors, MapPin, Share2, Menu, X, ShoppingCart, Tag, Footprints, Sliders, TrendingUp } from 'lucide-react'
+import { Ban, Building2, LayoutDashboard, CalendarCheck, CalendarClock, Home, MessageSquare, Users, UserRoundCog, Image, Images, Package, LogOut, ReceiptText, Scissors, MapPin, Share2, Menu, X, ShoppingCart, Tag, Footprints, Sliders, TrendingUp, Coins } from 'lucide-react'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import NotificationBell from '../components/NotificationBell'
 import BrandLogo from '../components/BrandLogo'
@@ -22,6 +22,7 @@ const LINKS = [
   { to:'/admin/walking',   label:'Pet Walking', icon:<Footprints size={17}/> },
   { to:'/admin/invoices',  label:'Invoices',   icon:<ReceiptText size={17}/> },
   { to:'/admin/offers',    label:'Offers & Coupons', icon:<Tag size={17}/> },
+  { to:'/admin/supercoins', label:'SuperCoins Loyalty', icon:<Coins size={17}/> },
   { to:'/admin/common-settings', label:'Common Settings', icon:<Sliders size={17}/> },
   { to:'/admin/customers', label:'Customers',  icon:<Users size={17}/> },
   { to:'/admin/blocked-users', label:'Blocked Users', icon:<Ban size={17}/> },
@@ -49,21 +50,21 @@ export default function AdminLayout() {
 
   useEffect(() => {
     if (!user?.uid) return
-    setDoc(doc(db, 'settings', 'general'), { adminUid: user.uid }, { merge: true }).catch(() => {})
+    setDoc(doc(db, 'settings', 'general'), { adminUid: user.uid }, { merge: true }).catch(() => { })
   }, [user])
 
   useEffect(() => {
     // Preload commonly used admin modules in the background during idle time
     // Makes switching between tabs instant without chunk load delays
     const preload = () => {
-      import('./AdminTodayOperations').catch(() => {})
-      import('./AdminBookings').catch(() => {})
-      import('./AdminBoarding').catch(() => {})
-      import('./AdminWalking').catch(() => {})
-      import('./AdminInvoices').catch(() => {})
-      import('./AdminReviews').catch(() => {})
-      import('./AdminGoogleReviews').catch(() => {})
-      import('./AdminEarnings').catch(() => {})
+      import('./AdminTodayOperations').catch(() => { })
+      import('./AdminBookings').catch(() => { })
+      import('./AdminBoarding').catch(() => { })
+      import('./AdminWalking').catch(() => { })
+      import('./AdminInvoices').catch(() => { })
+      import('./AdminReviews').catch(() => { })
+      import('./AdminGoogleReviews').catch(() => { })
+      import('./AdminEarnings').catch(() => { })
     }
     if (typeof window !== 'undefined') {
       if ('requestIdleCallback' in window) {
@@ -108,7 +109,7 @@ export default function AdminLayout() {
             <NavLink key={link.to} to={link.to} end={link.end}
               onClick={closeMenu}
               className={({ isActive }) => `admin-nav-link${isActive ? ' active' : ''}`}
-              style={{ marginBottom:'2px' }}
+              style={{ marginBottom: '2px' }}
             >
               {link.icon} {link.label}
             </NavLink>
@@ -116,24 +117,24 @@ export default function AdminLayout() {
         </nav>
 
         <div className="admin-sidebar-bottom">
-          <Link to={homeTarget} onClick={closeMenu} className="admin-nav-link" style={{ marginBottom:'8px' }}>
-            <Home size={17}/> {isAtDashboard ? 'View Home' : 'Back to Dashboard'}
+          <Link to={homeTarget} onClick={closeMenu} className="admin-nav-link" style={{ marginBottom: '8px' }}>
+            <Home size={17} /> {isAtDashboard ? 'View Home' : 'Back to Dashboard'}
           </Link>
-          <div style={{ display:'flex', alignItems:'center', gap:'8px', padding:'8px', marginBottom:'8px' }}>
-            <div style={{ width:'30px', height:'30px', borderRadius:'50%', background:'var(--accent-bg)', border:'1px solid var(--accent-border)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              <span style={{ color:'var(--accent)', fontWeight:700, fontSize:'12px' }}>{user?.email?.[0]?.toUpperCase()}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', marginBottom: '8px' }}>
+            <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '12px' }}>{user?.email?.[0]?.toUpperCase()}</span>
             </div>
-            <div style={{ minWidth:0 }}>
-              <div style={{ color:'var(--text)', fontSize:'11px', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email}</div>
-              <div style={{ color:'var(--accent)', fontSize:'10px' }}>Owner - Admin</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: 'var(--text)', fontSize: '11px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email}</div>
+              <div style={{ color: 'var(--accent)', fontSize: '10px' }}>Owner - Admin</div>
             </div>
           </div>
           <button onClick={handleLogoutClick}
-            style={{ width:'100%', display:'flex', alignItems:'center', gap:'8px', padding:'8px 10px', borderRadius:'9px', background:'none', border:'none', color:'#ef4444', fontSize:'12px', cursor:'pointer' }}
-            onMouseEnter={e => e.currentTarget.style.background='rgba(239,68,68,0.1)'}
-            onMouseLeave={e => e.currentTarget.style.background='none'}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '9px', background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'none'}
           >
-            <LogOut size={14}/> Logout
+            <LogOut size={14} /> Logout
           </button>
         </div>
       </aside>

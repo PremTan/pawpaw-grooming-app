@@ -70,6 +70,7 @@ import {
   getGpsQuality,
 } from '../utils/geoUtils'
 import { WALKING_STATUS, WALKING_STATUS_LABELS } from '../utils/walkingSettings'
+import { fetchSuperCoinSettings, calculateCoinsEarned, creditSuperCoins } from '../utils/superCoins'
 import {
   normalizePhone,
   verifyPassword,
@@ -930,6 +931,54 @@ export default function WalkerPortal() {
       }
 
       await updateDoc(doc(db, 'walkingBookings', activeWalk.id), patch)
+
+      // SuperCoins loyalty award
+      if (activeWalk.userId) {
+        try {
+          const scSettings = await fetchSuperCoinSettings(db)
+          if (scSettings.enabled) {
+            const mode = scSettings.walkingCreditMode || 'per_walk'
+            const alreadyCreditedIndices = Array.isArray(activeWalk.superCoinsCreditedWalks) ? activeWalk.superCoinsCreditedWalks : []
+
+            if (mode === 'per_walk' && !alreadyCreditedIndices.includes(newCompleted)) {
+              const totalPassPrice = Number(activeWalk.totalPrice || activeWalk.originalTotalPrice || 0)
+              const totalPassCoins = calculateCoinsEarned(totalPassPrice, scSettings, 1)
+              const walkCoins = Math.max(1, Math.round(totalPassCoins / totalExpected))
+              if (walkCoins > 0) {
+                await creditSuperCoins(db, {
+                  userId: activeWalk.userId,
+                  coins: walkCoins,
+                  bookingId: activeWalk.id,
+                  serviceType: 'walking',
+                  description: `SuperCoins for Walk #${newCompleted} (${activeWalk.dogName || activeWalk.petName || 'Dog'})`
+                })
+                await updateDoc(doc(db, 'walkingBookings', activeWalk.id), {
+                  superCoinsCreditedWalks: arrayUnion(newCompleted),
+                  ...(isFullyFinished ? { superCoinsCredited: true } : {})
+                }).catch(() => {})
+              }
+            } else if (mode === 'on_pass_complete' && isFullyFinished && !activeWalk.superCoinsCredited) {
+              const totalPassPrice = Number(activeWalk.totalPrice || activeWalk.originalTotalPrice || 0)
+              const totalPassCoins = calculateCoinsEarned(totalPassPrice, scSettings, 1)
+              if (totalPassCoins > 0) {
+                await creditSuperCoins(db, {
+                  userId: activeWalk.userId,
+                  coins: totalPassCoins,
+                  bookingId: activeWalk.id,
+                  serviceType: 'walking',
+                  description: `SuperCoins for Walking Pass completed (${activeWalk.dogName || activeWalk.petName || 'Dog'})`
+                })
+                await updateDoc(doc(db, 'walkingBookings', activeWalk.id), {
+                  superCoinsCredited: true,
+                  superCoinsEarned: totalPassCoins
+                }).catch(() => {})
+              }
+            }
+          }
+        } catch (scErr) {
+          console.warn('SuperCoins walking credit failed:', scErr)
+        }
+      }
 
       if (activeWalk.userId) {
         const notifTitle = isMultiDay

@@ -95,8 +95,11 @@ service cloud.firestore {
     }
 
     match /profiles/{id} {
-      allow read: if request.auth != null && request.auth.uid == id;
-      allow create, update, delete: if isNotBlocked() && request.auth.uid == id;
+      allow read: if request.auth != null && (request.auth.uid == id || isAdmin());
+      allow create, delete: if isNotBlocked() && request.auth.uid == id;
+      allow update: if (isNotBlocked() && request.auth.uid == id) ||
+                    isAdmin() ||
+                    (request.auth != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['superCoins', 'superCoinHistory', 'updatedAt']));
       allow read, write: if isAdmin();
     }
 

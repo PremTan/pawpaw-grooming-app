@@ -14,8 +14,10 @@ import {
   serverTimestamp,
   deleteDoc,
   onSnapshot,
+  arrayUnion,
 } from 'firebase/firestore'
 import { ADMIN_EMAIL, db } from '../firebase'
+import { fetchSuperCoinSettings, calculateCoinsEarned, creditSuperCoins } from '../utils/superCoins'
 import { useNotifications } from '../context/NotificationContext'
 import { fetchBusinessInfo } from '../utils/businessInfo'
 import {
@@ -536,6 +538,54 @@ ${portalUrl}`
       }
 
       await updateDoc(doc(db, 'walkingBookings', booking.id), patch)
+
+      // SuperCoins loyalty award
+      if (booking.userId && newStatus === WALKING_STATUS.COMPLETED) {
+        try {
+          const scSettings = await fetchSuperCoinSettings(db)
+          if (scSettings.enabled) {
+            const mode = scSettings.walkingCreditMode || 'per_walk'
+            const alreadyCreditedIndices = Array.isArray(booking.superCoinsCreditedWalks) ? booking.superCoinsCreditedWalks : []
+
+            if (mode === 'per_walk' && !alreadyCreditedIndices.includes(newCompleted)) {
+              const totalPassPrice = Number(booking.totalPrice || booking.originalTotalPrice || 0)
+              const totalPassCoins = calculateCoinsEarned(totalPassPrice, scSettings, 1)
+              const walkCoins = Math.max(1, Math.round(totalPassCoins / totalExpected))
+              if (walkCoins > 0) {
+                await creditSuperCoins(db, {
+                  userId: booking.userId,
+                  coins: walkCoins,
+                  bookingId: booking.id,
+                  serviceType: 'walking',
+                  description: `SuperCoins for Walk #${newCompleted} (${booking.dogName || booking.petName || 'Dog'})`
+                })
+                await updateDoc(doc(db, 'walkingBookings', booking.id), {
+                  superCoinsCreditedWalks: arrayUnion(newCompleted),
+                  ...(isFullyFinished ? { superCoinsCredited: true } : {})
+                }).catch(() => {})
+              }
+            } else if (mode === 'on_pass_complete' && isFullyFinished && !booking.superCoinsCredited) {
+              const totalPassPrice = Number(booking.totalPrice || booking.originalTotalPrice || 0)
+              const totalPassCoins = calculateCoinsEarned(totalPassPrice, scSettings, 1)
+              if (totalPassCoins > 0) {
+                await creditSuperCoins(db, {
+                  userId: booking.userId,
+                  coins: totalPassCoins,
+                  bookingId: booking.id,
+                  serviceType: 'walking',
+                  description: `SuperCoins for Walking Pass completed (${booking.dogName || booking.petName || 'Dog'})`
+                })
+                await updateDoc(doc(db, 'walkingBookings', booking.id), {
+                  superCoinsCredited: true,
+                  superCoinsEarned: totalPassCoins
+                }).catch(() => {})
+              }
+            }
+          }
+        } catch (scErr) {
+          console.warn('SuperCoins walking credit failed:', scErr)
+        }
+      }
 
       const targetWalkerId = booking.assignedWalkerId || booking.assignedTeamMemberId
       if (targetWalkerId && newStatus === WALKING_STATUS.CONFIRMED) {
@@ -1298,6 +1348,11 @@ ${portalUrl}`
                         {b.status === WALKING_STATUS.COMPLETED && b.walkerRating && (
                           <span className="badge" style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                             <Star size={11} fill="#f59e0b" color="#f59e0b" /> {b.walkerRating}/5
+                          </span>
+                        )}
+                        {b.superCoinsUsed > 0 && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A', borderRadius: '999px', padding: '2px 8px', fontSize: '11px', fontWeight: 800 }}>
+                            🪙 {b.superCoinsUsed} coins (-₹{money(b.superCoinsDiscount || b.superCoinsUsed)})
                           </span>
                         )}
                         <span style={{ fontSize: '15px', fontWeight: 900, color: 'var(--accent)' }}>
@@ -2988,6 +3043,11 @@ ${portalUrl}`
                       {selectedBooking.discountAmount > 0 && (
                         <div style={{ marginTop: '8px', fontSize: '11.5px', color: '#15803d' }}>
                           🎉 <strong>Pass Bundle Discount:</strong> ₹{selectedBooking.discountAmount} ({selectedBooking.discountPercent}% OFF) applied
+                        </div>
+                      )}
+                      {selectedBooking.superCoinsUsed > 0 && (
+                        <div style={{ marginTop: '8px', fontSize: '11.5px', color: '#b45309', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          🪙 <strong>SuperCoins Redeemed:</strong> {selectedBooking.superCoinsUsed} coins (-₹{money(selectedBooking.superCoinsDiscount || selectedBooking.superCoinsUsed)}) applied
                         </div>
                       )}
                     </div>

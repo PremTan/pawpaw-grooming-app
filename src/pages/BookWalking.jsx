@@ -20,6 +20,12 @@ import {
   calculateEstimatedEndDate,
 } from '../utils/walkingSettings'
 import {
+  DEFAULT_SUPERCOIN_SETTINGS,
+  fetchSuperCoinSettings,
+  calculateMaxRedeemableCoins,
+  redeemSuperCoins,
+} from '../utils/superCoins'
+import {
   ArrowRight,
   Calendar,
   Check,
@@ -280,13 +286,16 @@ async function reverseGeocodeCoords(lat, lng) {
 }
 
 export default function BookWalking() {
-  const { user, isBlocked } = useAuth()
+  const { user, profile, isBlocked } = useAuth()
   const { sendNotification } = useNotifications() || {}
   const navigate = useNavigate()
   const topRef = useRef(null)
 
   const [step, setStep] = useState(1) // 1: Dog & Address, 2: Duration & Slots, 3: Review & Submit
   const [settings, setSettings] = useState(DEFAULT_WALKING_SETTINGS)
+  const [superCoinsSettings, setSuperCoinsSettings] = useState(DEFAULT_SUPERCOIN_SETTINGS)
+  const [useSuperCoins, setUseSuperCoins] = useState(false)
+  const [customCoinsInput, setCustomCoinsInput] = useState('')
   const [loadingSettings, setLoadingSettings] = useState(true)
   const [pets, setPets] = useState([])
   const [selectedPetId, setSelectedPetId] = useState('')
@@ -356,11 +365,13 @@ export default function BookWalking() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [wSettings, biz] = await Promise.all([
+        const [wSettings, biz, scSettings] = await Promise.all([
           fetchWalkingSettings(db),
           fetchBusinessInfo(db),
+          fetchSuperCoinSettings(db),
         ])
         setSettings(wSettings)
+        setSuperCoinsSettings(scSettings)
         if (biz) {
           setAdminWhatsappNumber(biz.whatsappNumber || '')
           setShopName(biz.contact?.shopName || 'Paw Paw Pet Grooming')
@@ -811,7 +822,17 @@ export default function BookWalking() {
       })
     : form.date
 
-  const durationPrice = () => packCalc.finalPrice
+  const maxCoinsRedeemable = calculateMaxRedeemableCoins(
+    packCalc.finalPrice,
+    profile?.superCoins || 0,
+    superCoinsSettings
+  )
+  const userRequestedCoins = customCoinsInput !== '' ? (parseInt(customCoinsInput, 10) || 0) : maxCoinsRedeemable
+  const coinsToApply = useSuperCoins ? Math.min(Math.max(0, userRequestedCoins), maxCoinsRedeemable) : 0
+  const coinDiscount = coinsToApply * (superCoinsSettings.coinValueInRupees || 1)
+  const finalPayableWalkingPrice = Math.max(0, packCalc.finalPrice - coinDiscount)
+
+  const durationPrice = () => finalPayableWalkingPrice
 
   const isToday = form.date === todayStr
   const nowMins = new Date().getHours() * 60 + new Date().getMinutes()
@@ -939,7 +960,10 @@ export default function BookWalking() {
         perWalkPrice: packCalc.perWalkPrice,
         discountPercent: packCalc.discountPercent,
         discountAmount: packCalc.discountAmount,
-        totalPrice: packCalc.finalPrice,
+        totalPrice: finalPayableWalkingPrice,
+        originalTotalPrice: packCalc.finalPrice,
+        superCoinsUsed: coinsToApply,
+        superCoinsDiscount: coinDiscount,
         paymentStatus: 'pending',
         status: WALKING_STATUS.PENDING,
         serviceType: 'walking',
@@ -950,6 +974,17 @@ export default function BookWalking() {
       const ref = await addDoc(collection(db, 'walkingBookings'), bookingData)
       const finalDoc = { id: ref.id, ...bookingData }
       setSubmittedBooking(finalDoc)
+
+      // Deduct redeemed SuperCoins from user profile if applied
+      if (coinsToApply > 0 && user?.uid) {
+        redeemSuperCoins(db, {
+          userId: user.uid,
+          coins: coinsToApply,
+          bookingId: ref.id,
+          serviceType: 'walking',
+          description: `Redeemed on Dog Walking Booking #${ref.id.slice(-6).toUpperCase()}`,
+        }).catch(() => {})
+      }
 
       // Save phone to profile if selected
       if (savePhoneToProfile && user?.uid && cleanPhone) {
@@ -1125,6 +1160,19 @@ export default function BookWalking() {
             </div>
 
             {/* 5. Total Price */}
+            {submittedBooking.superCoinsUsed > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D97706', flexShrink: 0 }}>
+                    🪙
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--muted)' }}>SuperCoins Redeemed</span>
+                </div>
+                <span style={{ fontSize: '13px', fontWeight: 800, color: '#D97706', textAlign: 'right' }}>
+                  {submittedBooking.superCoinsUsed} coins (-₹{submittedBooking.superCoinsDiscount || submittedBooking.superCoinsUsed})
+                </span>
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--border)', gap: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
                 <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', flexShrink: 0 }}>
@@ -2344,11 +2392,115 @@ export default function BookWalking() {
                         ₹{packCalc.regularTotal}
                       </div>
                     )}
+                    {useSuperCoins && coinDiscount > 0 && (
+                      <div style={{ fontSize: '11px', color: 'var(--muted)', textDecoration: 'line-through' }}>
+                        ₹{packCalc.finalPrice}
+                      </div>
+                    )}
                     <span style={{ fontSize: '16px', fontWeight: 900, color: 'var(--accent)' }}>
-                      ₹{packCalc.finalPrice}
+                      ₹{finalPayableWalkingPrice}
                     </span>
+                    {useSuperCoins && coinDiscount > 0 && (
+                      <div style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700 }}>
+                        🪙 -₹{coinDiscount} Coins
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                {/* 🪙 SuperCoins Redemption Box */}
+                {superCoinsSettings.enabled && (profile?.superCoins || 0) > 0 && maxCoinsRedeemable > 0 && (
+                  <div style={{ marginTop: '12px', padding: '12px 14px', borderRadius: '12px', background: useSuperCoins ? '#FFFDF5' : 'var(--surface)', border: useSuperCoins ? '1.5px solid #FCD34D' : '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '18px' }}>🪙</span>
+                        <div>
+                          <strong style={{ fontSize: '12.5px', color: '#92400E', display: 'block' }}>
+                            Redeem SuperCoins (Balance: {profile?.superCoins || 0})
+                          </strong>
+                          <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                            Available: {profile?.superCoins || 0} coins · 1 coin = ₹1 discount
+                          </span>
+                        </div>
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 800, fontSize: '12px', color: '#B45309' }}>
+                        <input
+                          type="checkbox"
+                          checked={useSuperCoins}
+                          onChange={e => {
+                            setUseSuperCoins(e.target.checked)
+                            if (e.target.checked) {
+                              setCustomCoinsInput(String(maxCoinsRedeemable))
+                            } else {
+                              setCustomCoinsInput('')
+                            }
+                          }}
+                          style={{ width: '16px', height: '16px', accentColor: '#D97706', cursor: 'pointer' }}
+                        />
+                        {useSuperCoins ? `Applied (-₹${coinDiscount})` : 'Apply Coins'}
+                      </label>
+                    </div>
+
+                    {useSuperCoins && (
+                      <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #FCD34D', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#92400E' }}>Coins to use:</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={customCoinsInput}
+                            placeholder="0"
+                            onChange={e => {
+                              const val = e.target.value.replace(/\D/g, '')
+                              setCustomCoinsInput(val)
+                            }}
+                            onBlur={() => {
+                              const num = parseInt(customCoinsInput, 10)
+                              if (isNaN(num) || num <= 0) {
+                                setCustomCoinsInput('0')
+                              } else if (num > maxCoinsRedeemable) {
+                                setCustomCoinsInput(String(maxCoinsRedeemable))
+                              }
+                            }}
+                            style={{
+                              width: '72px',
+                              height: '30px',
+                              padding: '0 6px',
+                              borderRadius: '8px',
+                              border: '1.5px solid #FCD34D',
+                              background: '#FFFFFF',
+                              fontWeight: 800,
+                              fontSize: '12.5px',
+                              color: '#92400E',
+                              textAlign: 'center',
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setCustomCoinsInput(String(maxCoinsRedeemable))}
+                            style={{
+                              padding: '3px 7px',
+                              borderRadius: '6px',
+                              border: '1px solid #D97706',
+                              background: '#FEF3C7',
+                              color: '#92400E',
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Max ({maxCoinsRedeemable})
+                          </button>
+                        </div>
+
+                        <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#16A34A' }}>
+                          Discount: -₹{coinDiscount}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div style={{ fontSize: '12.5px', color: 'var(--muted)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <div><strong>Total Walks:</strong> {packCalc.walkCount} Session{packCalc.walkCount > 1 ? 's' : ''}</div>
@@ -2396,8 +2548,8 @@ export default function BookWalking() {
                   : submitting
                     ? 'Submitting Request...'
                     : form.planType !== 'single'
-                      ? `Request Walk Pass (Pay ₹${packCalc.finalPrice} Later)`
-                      : `Request Dog Walk (Pay ₹${packCalc.finalPrice} Later)`}
+                      ? `Request Walk Pass (Pay ₹${finalPayableWalkingPrice} Later)`
+                      : `Request Dog Walk (Pay ₹${finalPayableWalkingPrice} Later)`}
               </button>
               <span style={{ display: 'block', textAlign: 'center', fontSize: '11.5px', color: 'var(--muted)', marginTop: '8px' }}>
                 No advance payment needed. Admin will confirm your walking schedule shortly.

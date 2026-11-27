@@ -13,6 +13,12 @@ import { buildServiceCatalog } from '../utils/serviceCatalog'
 import { renderServiceIcon } from '../utils/serviceIcons.jsx'
 import Toast from '../components/Toast'
 import { fetchActiveOffers, calculateDiscount, checkCouponUsage, checkFirstTimeCustomer } from '../utils/offers'
+import {
+  DEFAULT_SUPERCOIN_SETTINGS,
+  fetchSuperCoinSettings,
+  calculateMaxRedeemableCoins,
+  redeemSuperCoins,
+} from '../utils/superCoins'
 
 const parseSlotStart = (dateString, slotLabel) => {
   const match = String(slotLabel || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
@@ -47,7 +53,7 @@ const getPackagePriceRange = (pkg) => getPriceRange(pkg.priceRange || pkg.price)
 const SERVICE_PASTELS = ['#fde8ec', '#e8f4ff', '#fff4cf', '#e8f7ed', '#ffe9dd', '#f2e8ff', '#e8fbf7', '#fff0da']
 
 export default function Book() {
-  const { user, isBlocked } = useAuth()
+  const { user, profile, isBlocked } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const preServices = searchParams.getAll('service')
@@ -80,6 +86,9 @@ export default function Book() {
   const [couponError, setCouponError] = useState('')
   const [availableOffers, setAvailableOffers] = useState([])
   const [showOffersList, setShowOffersList] = useState(false)
+  const [superCoinsSettings, setSuperCoinsSettings] = useState(DEFAULT_SUPERCOIN_SETTINGS)
+  const [useSuperCoins, setUseSuperCoins] = useState(false)
+  const [customCoinsInput, setCustomCoinsInput] = useState('')
   const [selectedServices, setSelectedServices] = useState(preServices.length ? preServices : preService ? [preService] : [])
   const [selectedPackages, setSelectedPackages] = useState([])
   const [profileAddresses, setProfileAddresses] = useState([])
@@ -205,6 +214,11 @@ export default function Book() {
     })
     return () => { ignore = true }
   }, [preCoupon])
+
+  // Fetch SuperCoins loyalty settings
+  useEffect(() => {
+    fetchSuperCoinSettings(db).then(setSuperCoinsSettings).catch(() => {})
+  }, [])
 
   // Fetch booked slots
   useEffect(() => {
@@ -346,8 +360,17 @@ export default function Book() {
   const discountCalc = appliedOffer ? calculateDiscount(appliedOffer, rawTotalAmount()) : { valid: false, discountAmount: 0 }
   const currentDiscount = discountCalc.valid ? discountCalc.discountAmount : 0
 
-  const totalAmount = () => Math.max(0, rawTotalAmount() - currentDiscount)
-  const totalAmountMax = () => Math.max(0, rawTotalAmountMax() - currentDiscount)
+  const maxCoinsRedeemable = calculateMaxRedeemableCoins(
+    Math.max(0, rawTotalAmount() - currentDiscount),
+    profile?.superCoins || 0,
+    superCoinsSettings
+  )
+  const userRequestedCoins = customCoinsInput !== '' ? (parseInt(customCoinsInput, 10) || 0) : maxCoinsRedeemable
+  const coinsToApply = useSuperCoins ? Math.min(Math.max(0, userRequestedCoins), maxCoinsRedeemable) : 0
+  const coinDiscount = coinsToApply * (superCoinsSettings.coinValueInRupees || 1)
+
+  const totalAmount = () => Math.max(0, rawTotalAmount() - currentDiscount - coinDiscount)
+  const totalAmountMax = () => Math.max(0, rawTotalAmountMax() - currentDiscount - coinDiscount)
 
   const totalPrice = () => {
     const min = totalAmount()
@@ -471,6 +494,8 @@ export default function Book() {
         originalSubtotal: rawTotalAmount(),
         couponCode: appliedOffer ? appliedOffer.code : null,
         discountAmount: currentDiscount,
+        superCoinsUsed: coinsToApply,
+        superCoinsDiscount: coinDiscount,
         estimatedTotal: totalAmount(),
         estimatedTotalMax: totalAmountMax(),
         paymentMode,
@@ -481,6 +506,17 @@ export default function Book() {
       }
       const ref = await addDoc(collection(db, 'bookings'), bookingData)
       setBookingRef({ id: ref.id, ...bookingData })
+
+      // Deduct redeemed SuperCoins from user profile if applied
+      if (coinsToApply > 0 && user?.uid) {
+        redeemSuperCoins(db, {
+          userId: user.uid,
+          coins: coinsToApply,
+          bookingId: ref.id,
+          serviceType: 'grooming',
+          description: `Redeemed on Grooming Booking #${ref.id.slice(-6).toUpperCase()}`,
+        }).catch(err => console.warn('Could not deduct SuperCoins:', err))
+      }
 
       if (savePhoneToProfile && user?.uid && form.phone.trim()) {
         const cleanPhone = form.phone.replace(/\D/g, '').slice(0, 10)
@@ -610,6 +646,7 @@ export default function Book() {
             { label: 'Date', value: form.date },
             { label: 'Time', value: form.slot },
             { label: 'Visit Charge', value: visitCharge() > 0 ? `Rs ${visitCharge()}` : null },
+            { label: 'SuperCoins Redeemed', value: bookingRef.superCoinsUsed > 0 ? `🪙 ${bookingRef.superCoinsUsed} coins (-Rs ${bookingRef.superCoinsDiscount || bookingRef.superCoinsUsed})` : null },
             { label: 'Est. Total', value: totalPrice() },
             { label: 'Payment', value: getPaymentModeLabel(bookingRef.paymentMode || paymentMode) },
             { label: 'Address', value: form.bookingType === 'home' ? form.address : null },
@@ -1269,6 +1306,100 @@ export default function Book() {
                 )}
               </div>
 
+              {/* 🪙 SuperCoins Redemption Box */}
+              {superCoinsSettings.enabled && (profile?.superCoins || 0) > 0 && maxCoinsRedeemable > 0 && (
+                <div style={{ marginBottom: '20px', padding: '14px 16px', borderRadius: '14px', background: useSuperCoins ? '#FFFDF5' : 'var(--surface)', border: useSuperCoins ? '1.5px solid #FCD34D' : '1px solid var(--border)', boxSizing: 'border-box' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '20px' }}>🪙</span>
+                      <div>
+                        <strong style={{ fontSize: '13px', color: '#92400E', display: 'block' }}>
+                          Redeem SuperCoins (Balance: {profile?.superCoins || 0})
+                        </strong>
+                        <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: 'var(--muted)' }}>
+                          Available: {profile?.superCoins || 0} coins · 1 coin = ₹1 discount
+                        </p>
+                      </div>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 800, fontSize: '12.5px', color: '#B45309' }}>
+                      <input
+                        type="checkbox"
+                        checked={useSuperCoins}
+                        onChange={e => {
+                          setUseSuperCoins(e.target.checked)
+                          if (e.target.checked) {
+                            setCustomCoinsInput(String(maxCoinsRedeemable))
+                          } else {
+                            setCustomCoinsInput('')
+                          }
+                        }}
+                        style={{ width: '18px', height: '18px', accentColor: '#D97706', cursor: 'pointer' }}
+                      />
+                      {useSuperCoins ? `Applied (-₹${coinDiscount})` : 'Apply'}
+                    </label>
+                  </div>
+
+                  {useSuperCoins && (
+                    <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #FCD34D', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#92400E' }}>Coins to use:</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={customCoinsInput}
+                          placeholder="0"
+                          onChange={e => {
+                            const val = e.target.value.replace(/\D/g, '')
+                            setCustomCoinsInput(val)
+                          }}
+                          onBlur={() => {
+                            const num = parseInt(customCoinsInput, 10)
+                            if (isNaN(num) || num <= 0) {
+                              setCustomCoinsInput('0')
+                            } else if (num > maxCoinsRedeemable) {
+                              setCustomCoinsInput(String(maxCoinsRedeemable))
+                            }
+                          }}
+                          style={{
+                            width: '76px',
+                            height: '32px',
+                            padding: '0 8px',
+                            borderRadius: '8px',
+                            border: '1.5px solid #FCD34D',
+                            background: '#FFFFFF',
+                            fontWeight: 800,
+                            fontSize: '13px',
+                            color: '#92400E',
+                            textAlign: 'center',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCustomCoinsInput(String(maxCoinsRedeemable))}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #D97706',
+                            background: '#FEF3C7',
+                            color: '#92400E',
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Max ({maxCoinsRedeemable})
+                        </button>
+                      </div>
+
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: '#16A34A' }}>
+                        Discount: -₹{coinDiscount}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {form.slot && (
                 <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', borderRadius: '14px', padding: '16px', marginBottom: '20px' }}>
                   <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '13px', marginBottom: '12px' }}>Booking Summary</p>
@@ -1283,6 +1414,7 @@ export default function Book() {
                     { k: 'Address', v: form.bookingType === 'home' ? form.address : null },
                     { k: 'Subtotal', v: rawTotalAmount() > 0 ? `Rs ${rawTotalAmount()}` : null },
                     { k: `Discount (${appliedOffer?.code || 'Coupon'})`, v: currentDiscount > 0 ? `-Rs ${currentDiscount}` : null },
+                    { k: `SuperCoins (${coinsToApply} coins)`, v: coinDiscount > 0 ? `-Rs ${coinDiscount}` : null },
                     { k: 'Visit Charge', v: visitCharge() > 0 ? `Rs ${visitCharge()}` : null },
                     { k: 'Est. Total', v: totalPrice() },
                     { k: 'Payment', v: getPaymentModeLabel(paymentMode) },

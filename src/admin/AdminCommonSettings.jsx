@@ -19,6 +19,7 @@ import {
   Calendar,
   CalendarDays,
   Sparkles,
+  Coins,
 } from 'lucide-react'
 import { db } from '../firebase'
 import Spinner from '../components/Spinner'
@@ -108,12 +109,12 @@ export default function AdminCommonSettings() {
   useEffect(() => {
     async function loadData() {
       try {
-        const data = await fetchCommonSettings(db, true)
-        setSettings(data)
+        const commonData = await fetchCommonSettings(db, true)
+        setSettings(commonData)
       } catch (err) {
         console.warn('Failed to load common settings:', err)
         setToastType('error')
-        setToastMessage('Failed to load common settings.')
+        setToastMessage('Failed to load settings.')
       }
       setLoading(false)
     }
@@ -259,7 +260,7 @@ export default function AdminCommonSettings() {
         setToastMessage('Saved: Store is open and all services are accepting bookings!')
       }
     } catch (err) {
-      console.error('Failed to save common settings:', err)
+      console.error('Failed to save settings:', err)
       setToastType('error')
       setToastMessage('Failed to save settings. Please try again.')
     }

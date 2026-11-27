@@ -551,28 +551,35 @@ async function buildInvoicePdf(booking, businessInfo, includeLogo) {
   const rows = [
     ['Sub Total', money(booking?.originalSubtotal || amountPaid)],
     ...(booking?.couponCode ? [
-      [`Discount (${booking.couponCode})`, `-Rs ${money(booking.discountAmount || 0)}`]
+      [`Discount (${booking.couponCode})`, `-${money(booking.discountAmount || 0)}`]
+    ] : []),
+    ...(booking?.superCoinsUsed ? [
+      [`SuperCoins Redeemed (${booking.superCoinsUsed})`, `-${money(booking.superCoinsDiscount || booking.superCoinsUsed)}`]
     ] : []),
     ...(isWalkingPack && booking?.discountAmount ? [
-      [`Pack Discount (${booking.discountPercent || ''}%)`, `-Rs ${money(booking.discountAmount || 0)}`]
+      [`Pack Discount (${booking.discountPercent || ''}%)`, `-${money(booking.discountAmount || 0)}`]
     ] : []),
     ['GST', gstAmount > 0 ? money(gstAmount) : 'Not applicable'],
     ['Adjustment', money(0)],
     ['Total', money(total)],
   ]
 
+  const rowHeight = 24
+  const rowStep = 30
+
   rows.forEach(([label, value], index) => {
-    const y = tableBottom + index * 34
-    drawBox(doc, summaryX, y, labelW, 25)
-    drawBox(doc, summaryX + labelW + 6, y, valueW, 25)
+    const y = tableBottom + index * rowStep
+    drawBox(doc, summaryX, y, labelW, rowHeight)
+    drawBox(doc, summaryX + labelW + 6, y, valueW, rowHeight)
     doc.setFont('helvetica', index === rows.length - 1 ? 'bold' : 'normal')
     doc.setFontSize(10)
     doc.setTextColor(35, 38, 43)
-    doc.text(label, summaryX + 10, y + 17)
-    doc.text(value, summaryX + labelW + valueW - 2, y + 17, { align: 'right' })
+    doc.text(label, summaryX + 10, y + 16)
+    doc.text(value, summaryX + labelW + valueW - 2, y + 16, { align: 'right' })
   })
 
-  drawTextBox(doc, 'Total in words', [numberToWords(total)], summaryX, tableBottom + 144, labelW + valueW + 6, 54)
+  const totalInWordsY = tableBottom + rows.length * rowStep + 8
+  drawTextBox(doc, 'Total in words', [numberToWords(total)], summaryX, totalInWordsY, labelW + valueW + 6, 48)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)

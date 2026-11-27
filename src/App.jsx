@@ -49,6 +49,7 @@ const AdminContactInfo = lazyWithRetry(() => import('./admin/AdminContactInfo'),
 const AdminFooter = lazyWithRetry(() => import('./admin/AdminFooter'), 'AdminFooter')
 const AdminBookingSettings = lazyWithRetry(() => import('./admin/AdminBookingSettings'), 'AdminBookingSettings')
 const AdminCommonSettings = lazyWithRetry(() => import('./admin/AdminCommonSettings'), 'AdminCommonSettings')
+const AdminSuperCoins = lazyWithRetry(() => import('./admin/AdminSuperCoins'), 'AdminSuperCoins')
 const AdminInvoices = lazyWithRetry(() => import('./admin/AdminInvoices'), 'AdminInvoices')
 const AdminTeam = lazyWithRetry(() => import('./admin/AdminTeam'), 'AdminTeam')
 const AdminEarnings = lazyWithRetry(() => import('./admin/AdminEarnings'), 'AdminEarnings')
@@ -162,6 +163,7 @@ export default function App() {
         <Route path="footer" element={<AdminFooter />} />
         <Route path="booking-settings" element={<AdminBookingSettings />} />
         <Route path="common-settings" element={<AdminCommonSettings />} />
+        <Route path="supercoins" element={<AdminSuperCoins />} />
         <Route path="team" element={<AdminTeam />} />
         <Route path="shop-purchases" element={<AdminShopPurchases />} />
         <Route path="offers" element={<AdminOffers />} />

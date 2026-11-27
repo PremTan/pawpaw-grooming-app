@@ -422,6 +422,15 @@ export default function PublicInvoice() {
                 )}
               </>
             )}
+
+            {booking.superCoinsUsed > 0 && (
+              <div style={{ background: '#FFFDF5', padding: '10px 14px', borderRadius: '10px', border: '1px solid #FDE68A', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', color: '#92400E', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  🪙 SuperCoins Redeemed ({booking.superCoinsUsed} coins)
+                </span>
+                <strong style={{ fontSize: '14px', color: '#B45309' }}>-Rs {money(booking.superCoinsDiscount || booking.superCoinsUsed)}</strong>
+              </div>
+            )}
           </div>
 
           {/* Grand Total Bar */}

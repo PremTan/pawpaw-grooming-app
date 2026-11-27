@@ -88,6 +88,7 @@ import {
   isPastStandardCheckOut,
 } from '../utils/boardingSettings'
 import { fetchBusinessInfo } from '../utils/businessInfo'
+import { fetchSuperCoinSettings, calculateCoinsEarned, creditSuperCoins } from '../utils/superCoins'
 
 const STATUS_OPTS = ['all', 'pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled']
 
@@ -859,6 +860,28 @@ export default function AdminBoarding() {
       await updateDoc(doc(db, 'boardingBookings', checkoutModal.id), patch)
       patchLocal(checkoutModal.id, { ...patch, updatedAt: new Date(), checkedOutAt: new Date() })
 
+      if (checkoutModal.userId && !checkoutModal.superCoinsCredited) {
+        try {
+          const scSettings = await fetchSuperCoinSettings(db)
+          const earnedCoins = calculateCoinsEarned(finalTotalCollected || netBaseTotal || 0, scSettings, 1)
+          if (earnedCoins > 0) {
+            await creditSuperCoins(db, {
+              userId: checkoutModal.userId,
+              coins: earnedCoins,
+              bookingId: checkoutModal.id,
+              serviceType: 'boarding',
+              description: `Earned on Pet Boarding stay #${checkoutModal.id.slice(0, 6).toUpperCase()}`
+            })
+            await updateDoc(doc(db, 'boardingBookings', checkoutModal.id), {
+              superCoinsCredited: true,
+              superCoinsEarned: earnedCoins
+            }).catch(() => {})
+          }
+        } catch (scErr) {
+          console.warn('SuperCoins credit failed:', scErr)
+        }
+      }
+
       if (checkoutModal.userId) {
         await sendNotification(checkoutModal.userId, {
           userEmail: checkoutModal.userEmail || checkoutModal.customerEmail || checkoutModal.email || '',
@@ -1559,6 +1582,11 @@ export default function AdminBoarding() {
                           <Tag size={10} /> {b.couponCode} (-₹{money(b.discountAmount || 0)})
                         </span>
                       )}
+                      {b.superCoinsUsed > 0 && (
+                        <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#b45309', display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>
+                          🪙 {b.superCoinsUsed} coins (-₹{money(b.superCoinsDiscount || b.superCoinsUsed)})
+                        </span>
+                      )}
                       {Number(b.specialFoodCharge || 0) > 0 && (
                         <span className="strip-sub" style={{ color: '#16a34a' }}>
                           inc. ₹{money(b.specialFoodCharge)} food
@@ -2144,6 +2172,15 @@ export default function AdminBoarding() {
                           <span className="billing-label"><Tag size={14} /> Coupon Applied</span>
                           <strong className="billing-val" style={{ color: '#10b981' }}>
                             {selectedBooking.couponCode} (-₹{money(selectedBooking.discountAmount || 0)})
+                          </strong>
+                        </div>
+                      )}
+
+                      {selectedBooking.superCoinsUsed > 0 && (
+                        <div className="billing-item">
+                          <span className="billing-label">🪙 SuperCoins Redeemed</span>
+                          <strong className="billing-val" style={{ color: '#d97706' }}>
+                            {selectedBooking.superCoinsUsed} coins (-₹{money(selectedBooking.superCoinsDiscount || selectedBooking.superCoinsUsed)})
                           </strong>
                         </div>
                       )}
@@ -3166,6 +3203,15 @@ export default function AdminBoarding() {
                       <Tag size={12} /> Offer Applied ({checkoutModal.couponCode || 'PROMO'}):
                     </span>
                     <strong>-₹{money(discountAmount)}</strong>
+                  </div>
+                )}
+
+                {Number(checkoutModal.superCoinsUsed) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#d97706', fontWeight: 700 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      🪙 SuperCoins Redeemed ({checkoutModal.superCoinsUsed} coins):
+                    </span>
+                    <strong>-₹{money(checkoutModal.superCoinsDiscount || checkoutModal.superCoinsUsed)}</strong>
                   </div>
                 )}
 

@@ -1591,8 +1591,13 @@ export default function MyBookings() {
                         <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
                           {b.petType} {b.petBreed ? `· ${b.petBreed}` : ''}
                         </div>
-                        <div style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 700, marginTop: '2px' }}>
-                          {b.stayDays || 1} Day(s) ({b.stayNights || 0} Nights) · ₹{money(b.totalAmount || (Number(b.estimatedTotal || 0) + Number(b.specialFoodCharge || 0) + Number(b.lateCheckOutCharge || 0)))}
+                        <div style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span>{b.stayDays || 1} Day(s) ({b.stayNights || 0} Nights) · ₹{money(b.totalAmount || (Number(b.estimatedTotal || 0) + Number(b.specialFoodCharge || 0) + Number(b.lateCheckOutCharge || 0)))}</span>
+                          {b.superCoinsUsed > 0 && (
+                            <span style={{ fontSize: '10.5px', padding: '1px 6px', borderRadius: '4px', background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A', fontWeight: 800 }}>
+                              🪙 {b.superCoinsUsed} coins used
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1805,6 +1810,11 @@ export default function MyBookings() {
                               <span style={{ color: 'var(--accent)', fontWeight: 700 }}>
                                 ₹{money(price)}
                               </span>
+                              {w.superCoinsUsed > 0 && (
+                                <span style={{ fontSize: '10.5px', padding: '1px 6px', borderRadius: '4px', background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A', fontWeight: 800 }}>
+                                  🪙 {w.superCoinsUsed} coins used
+                                </span>
+                              )}
                               {customTime && (
                                 <span style={{ color: '#d97706', fontSize: '11px', fontWeight: 600 }}>
                                   (Custom: {customTime})
@@ -2165,6 +2175,11 @@ export default function MyBookings() {
                               : `Est. total: ${formatBookingEstimate(booking)}`
                             }
                           </span>
+                          {booking.superCoinsUsed > 0 && (
+                            <span style={{ fontSize: '10.5px', padding: '1px 6px', borderRadius: '4px', background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A', fontWeight: 800 }}>
+                              🪙 {booking.superCoinsUsed} coins used
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2493,6 +2508,14 @@ export default function MyBookings() {
                         <span className="detail-label">Offer Applied</span>
                         <span className="grooming-package-tag" style={{ width: 'fit-content', padding: '3px 8px', fontSize: '11.5px' }}>
                           <Tag size={12} /> {selectedBooking.couponCode} (-Rs {money(selectedBooking.discountAmount || 0)})
+                        </span>
+                      </div>
+                    )}
+                    {selectedBooking.superCoinsUsed > 0 && (
+                      <div className="detail-item">
+                        <span className="detail-label">SuperCoins Redeemed</span>
+                        <span style={{ width: 'fit-content', padding: '3px 8px', fontSize: '11.5px', background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 800 }}>
+                          🪙 {selectedBooking.superCoinsUsed} coins (-Rs {money(selectedBooking.superCoinsDiscount || selectedBooking.superCoinsUsed)})
                         </span>
                       </div>
                     )}
@@ -3244,6 +3267,15 @@ export default function MyBookings() {
                     </div>
                   )}
 
+                  {selectedBoarding.superCoinsUsed > 0 && (
+                    <div className="billing-item">
+                      <span className="billing-label">🪙 SuperCoins Redeemed</span>
+                      <strong className="billing-val" style={{ color: '#D97706' }}>
+                        {selectedBoarding.superCoinsUsed} coins (-₹{money(selectedBoarding.superCoinsDiscount || selectedBoarding.superCoinsUsed)})
+                      </strong>
+                    </div>
+                  )}
+
                   <div className="billing-item">
                     <span className="billing-label"><Receipt size={14} /> Estimated Total</span>
                     <strong className="billing-val estimated">₹{money(selectedBoarding.estimatedTotal)}</strong>
@@ -3796,6 +3828,15 @@ export default function MyBookings() {
                         ₹{money(price)}
                       </strong>
                     </div>
+
+                    {selectedWalking.superCoinsUsed > 0 && (
+                      <div className="detail-item">
+                        <span className="detail-label">SuperCoins Redeemed</span>
+                        <span style={{ width: 'fit-content', padding: '3px 8px', fontSize: '11.5px', background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 800 }}>
+                          🪙 {selectedWalking.superCoinsUsed} coins (-₹{money(selectedWalking.superCoinsDiscount || selectedWalking.superCoinsUsed)})
+                        </span>
+                      </div>
+                    )}
 
                     {customTime && (
                       <div className="detail-item full">
