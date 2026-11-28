@@ -22,7 +22,8 @@ import boardingDogAvatar from '../assets/boarding-dog-avatar.png'
 import boardingCatAvatar from '../assets/boarding-cat-avatar.png'
 import petWalkingHero from '../assets/pet-walking-hero.jpg'
 import petGroomingCroppedHero from '../assets/pet-grooming-cropped-hero.jpg'
-import { Calendar, MapPin, Phone, ChevronRight, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils, Footprints, Hotel, Users } from 'lucide-react'
+import { Calendar, MapPin, Phone, ChevronRight, ChevronDown, ChevronUp, Award, Clock, Shield, Star, ChevronLeft, ArrowRight, Images, X, Package, Scissors, Heart, ExternalLink, Home as HomeIcon, Store, Crown, BadgeCheck, Sparkles, PawPrint, Navigation, Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Utensils, Footprints, Hotel, Users, Coins, History, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
+import { DEFAULT_SUPERCOIN_SETTINGS, fetchSuperCoinSettings, getUserTier } from '../utils/superCoins'
 
 const HERO_FALLBACK_IMAGE = '/hero-fallback.jpg'
 const DEFAULT_HERO_IMAGES = [
@@ -245,7 +246,7 @@ if (cachedGroomingChoiceImage) {
 }
 
 function HeroSlider() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { sendNotification } = useNotifications() || {}
   const [current, setCurrent] = useState(0)
   const [heroImages, setHeroImages] = useState(() => cachedHeroImages)
@@ -263,6 +264,9 @@ function HeroSlider() {
   const [showBoardingLearnMore, setShowBoardingLearnMore] = useState(false)
   const [walkingSettings, setWalkingSettings] = useState(() => cachedWalkingSettings)
   const [showWalkingLearnMore, setShowWalkingLearnMore] = useState(false)
+  const [superCoinsSettings, setSuperCoinsSettings] = useState(DEFAULT_SUPERCOIN_SETTINGS)
+  const [showCoinsModal, setShowCoinsModal] = useState(false)
+  const [showHowCoinsWork, setShowHowCoinsWork] = useState(false)
   const [rescheduleToast, setRescheduleToast] = useState('')
   const [rescheduleTarget, setRescheduleTarget] = useState(null)
   const [rescheduleDate, setRescheduleDate] = useState('')
@@ -346,6 +350,7 @@ function HeroSlider() {
     fetchBookingSettings(db).then(setBookingSettings).catch(() => { })
     fetchBoardingSettings(db).then(setBoardingSettings).catch(() => { })
     fetchWalkingSettings(db).then(setWalkingSettings).catch(() => { })
+    fetchSuperCoinSettings(db).then(setSuperCoinsSettings).catch(() => { })
   }, [])
 
   useEffect(() => {
@@ -670,9 +675,83 @@ function HeroSlider() {
             </>
           )}
         </div>
+
+        {/* 🪙 SuperCoins Loyalty Feature Card (Position 1 - Static) */}
+        {superCoinsSettings.enabled && (() => {
+          const userCoins = Math.max(0, Number(profile?.superCoins) || 0)
+          const coinVal = superCoinsSettings.coinValueInRupees || 1
+          return (
+            <div
+              onClick={() => setShowCoinsModal(true)}
+              style={{
+                margin: '12px 0 8px',
+                padding: '10px 14px',
+                borderRadius: '16px',
+                background: 'linear-gradient(135deg, #FFFDF5 0%, #FEF9C3 60%, #FFFBEB 100%)',
+                border: '1.2px solid #FDE68A',
+                boxShadow: '0 2px 10px rgba(217, 119, 6, 0.07)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                <div
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '10px',
+                    background: '#FEF3C7',
+                    border: '1px solid #FCD34D',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '18px',
+                    flexShrink: 0,
+                    boxShadow: '0 1px 3px rgba(245, 158, 11, 0.2)',
+                  }}
+                >
+                  🪙
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <strong style={{ fontSize: '13px', color: '#78350F', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {user ? `Paw Paw SuperCoins (${userCoins})` : 'Paw Paw SuperCoins Loyalty'}
+                    </strong>
+                    <span style={{ fontSize: '10px', fontWeight: 800, background: '#FEF3C7', color: '#92400E', padding: '1px 7px', borderRadius: '999px', border: '1px solid #FDE68A', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      {user ? `₹${userCoins * coinVal} OFF` : `${superCoinsSettings.earnPercentage}% CASHBACK`}
+                    </span>
+                  </div>
+                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#92400E', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {user
+                      ? `Save up to ${superCoinsSettings.maxRedeemPercentage}% on bookings · Tap to view passbook`
+                      : `Earn coins on Grooming, Walking & Boarding · 1 Coin = ₹1`}
+                  </p>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  color: '#B45309',
+                  flexShrink: 0,
+                }}
+              >
+                <span>View</span>
+                <ChevronRight size={14} />
+              </div>
+            </div>
+          )
+        })()}
+
         <div className="mobile-hero-copy" key={`hero-copy-${current}`}>
           <div className="mobile-hero-text">
-            <span className="mobile-hero-badge">{slideCopy.icon} {slideCopy.tag}</span>
             <h1>{slideCopy.title} <span>{slideCopy.highlight}<PawPrint className="hero-title-paw" size={26} /></span></h1>
             <p>{slideCopy.sub}</p>
             <div className="mobile-hero-location-pill">
@@ -1108,6 +1187,274 @@ function HeroSlider() {
             </div>
           </div>
         )}
+
+        {/* SuperCoins Loyalty Modal */}
+        {showCoinsModal && (() => {
+          const userCoins = Math.max(0, Number(profile?.superCoins) || 0)
+          const coinVal = superCoinsSettings.coinValueInRupees || 1
+          const historyList = Array.isArray(profile?.superCoinHistory) ? [...profile.superCoinHistory].reverse() : []
+
+          return (
+            <div className="modal-overlay profile-modal-overlay" onClick={() => setShowCoinsModal(false)}>
+              <div
+                className="modal-box profile-modal-box"
+                onClick={e => e.stopPropagation()}
+                style={{ maxWidth: '480px', borderRadius: '24px', overflow: 'hidden' }}
+              >
+                {/* Head */}
+                <div
+                  style={{
+                    padding: '14px 18px',
+                    background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)',
+                    color: '#fff',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '18px' }}>🪙</span>
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: '14.5px', fontWeight: 800, color: '#fff' }}>
+                        Paw Paw SuperCoins
+                      </h2>
+                      <span style={{ fontSize: '11px', color: '#C7D2FE' }}>
+                        Loyalty Rewards & Passbook
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowCoinsModal(false)}
+                    style={{
+                      background: 'rgba(255,255,255,0.15)',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: '28px',
+                      height: '28px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#fff',
+                      cursor: 'pointer',
+                    }}
+                    aria-label="Close SuperCoins passbook"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div style={{ padding: '14px 16px', maxHeight: '72vh', overflowY: 'auto' }}>
+                  {/* Compact Balance Card */}
+                  <div
+                    style={{
+                      background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+                      border: '1.2px solid #FCD34D',
+                      borderRadius: '12px',
+                      padding: '12px 14px',
+                      marginBottom: '12px',
+                      boxShadow: '0 2px 8px rgba(245, 158, 11, 0.08)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '10px',
+                    }}
+                  >
+                    <div>
+                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.6px', display: 'block' }}>
+                        {user ? 'Available Balance' : 'Loyalty Cashback'}
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '2px 0 1px' }}>
+                        <span style={{ fontSize: '20px', lineHeight: 1 }}>🪙</span>
+                        <strong style={{ fontSize: '22px', fontWeight: 900, color: '#78350F', lineHeight: 1 }}>
+                          {user ? userCoins : `${superCoinsSettings.earnPercentage}%`}
+                        </strong>
+                        <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#B45309', marginLeft: '4px' }}>
+                          {user ? `(₹${userCoins * coinVal})` : 'Cashback on every service'}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '10.5px', color: '#92400E' }}>
+                        {user ? 'Applicable for booking discounts' : 'Earn coins on Grooming, Walking & Boarding'}
+                      </span>
+                    </div>
+
+                    <span style={{ background: '#fff', border: '1px solid #FCD34D', borderRadius: '999px', padding: '3px 9px', fontSize: '10.5px', fontWeight: 800, color: '#92400E', flexShrink: 0 }}>
+                      1 Coin = ₹{coinVal}
+                    </span>
+                  </div>
+
+                  {/* Collapsible Label for How SuperCoins Work */}
+                  <div style={{ marginBottom: '14px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowHowCoinsWork(p => !p)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '4px 2px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        color: '#B45309',
+                      }}
+                    >
+                      <span style={{ fontSize: '13px', lineHeight: 1 }}>💡</span>
+                      <span>How SuperCoins Work</span>
+                      {showHowCoinsWork ? <ChevronUp size={14} color="#B45309" /> : <ChevronDown size={14} color="#B45309" />}
+                    </button>
+
+                    {showHowCoinsWork && (
+                      <div
+                        style={{
+                          marginTop: '6px',
+                          background: 'var(--surface, #F8FAFC)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '12px',
+                          padding: '10px 12px',
+                          fontSize: '11px',
+                          boxSizing: 'border-box',
+                          width: '100%',
+                        }}
+                      >
+                        <ul style={{ margin: 0, paddingLeft: '16px', color: 'var(--muted)', display: 'grid', gap: '4px', lineHeight: 1.4 }}>
+                          <li>
+                            <strong>Earn {superCoinsSettings.earnPercentage}%:</strong> Automatically after each completed service.
+                          </li>
+                          <li>
+                            <strong>Redeem:</strong> Apply at checkout to save up to <strong>{superCoinsSettings.maxRedeemPercentage}%</strong> (1 coin = ₹1).
+                          </li>
+                          <li>
+                            <strong>Tier Boost:</strong> Silver & Gold members earn up to <strong>{superCoinsSettings.tiers?.goldMultiplier || 1.5}x</strong> extra.
+                          </li>
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Passbook History or Login Prompt */}
+                  {user ? (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <strong style={{ fontSize: '12.5px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <History size={14} color="var(--accent)" />
+                          Passbook History
+                        </strong>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', fontWeight: 600 }}>
+                          {historyList.length} {historyList.length === 1 ? 'Entry' : 'Entries'}
+                        </span>
+                      </div>
+
+                      {historyList.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '16px 10px', background: 'var(--surface)', borderRadius: '10px', border: '1px dashed var(--border)', color: 'var(--muted)', fontSize: '11px' }}>
+                          No coin transactions yet. Complete bookings to earn SuperCoins! 🐾
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gap: '6px' }}>
+                          {historyList.slice(0, 5).map((tx, idx) => {
+                            const isCredit = tx.type === 'credit'
+                            const dateStr = tx.createdAt ? new Date(tx.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
+                            const timeStr = tx.createdAt ? new Date(tx.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : ''
+
+                            return (
+                              <div
+                                key={tx.id || idx}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '8px 10px',
+                                  borderRadius: '10px',
+                                  background: 'var(--card)',
+                                  border: '1px solid var(--border)',
+                                  fontSize: '11.5px',
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <div
+                                    style={{
+                                      width: '26px',
+                                      height: '26px',
+                                      borderRadius: '50%',
+                                      background: isCredit ? '#DCFCE7' : '#FEE2E2',
+                                      color: isCredit ? '#15803D' : '#DC2626',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {isCredit ? <ArrowDownLeft size={13} /> : <ArrowUpRight size={13} />}
+                                  </div>
+                                  <div>
+                                    <strong style={{ fontSize: '11.5px', color: 'var(--text)', display: 'block' }}>
+                                      {tx.description || (isCredit ? 'Coins Earned' : 'Coins Redeemed')}
+                                    </strong>
+                                    <span style={{ fontSize: '10px', color: 'var(--muted)' }}>
+                                      {dateStr} {timeStr ? `• ${timeStr}` : ''}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <strong
+                                  style={{
+                                    fontSize: '12.5px',
+                                    fontWeight: 800,
+                                    color: isCredit ? '#16A34A' : '#DC2626',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {isCredit ? `+${tx.coins}` : `-${tx.coins}`}
+                                </strong>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'flex-end' }}>
+                        <Link
+                          to="/profile"
+                          onClick={() => setShowCoinsModal(false)}
+                          style={{
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            color: '#4338CA',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <span>View full profile & loyalty tier</span>
+                          <ArrowRight size={12} />
+                        </Link>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '16px 14px', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                      <p style={{ margin: '0 0 10px', fontSize: '12px', color: 'var(--text)', lineHeight: 1.4 }}>
+                        Sign in to check your SuperCoin balance, earn cashback on bookings, and unlock higher tier multipliers!
+                      </p>
+                      <Link
+                        to="/login"
+                        onClick={() => setShowCoinsModal(false)}
+                        className="btn btn-primary"
+                        style={{ padding: '8px 16px', fontSize: '12.5px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        Sign In / Register <ArrowRight size={14} />
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {(user?.uid || user?.email) && (
           <section className="upcoming-appointment-section home-fade-up">
